@@ -416,7 +416,9 @@ public final class ClassBuilder<T> {
 
 	public static CallSite retrieveCallSite(MethodHandles.Lookup __, String name, MethodType ___) {
 		LOGGER.debug("retrieveCallSite({})", name);
-		return requireNonNull(CALL_SITES_BY_NAME.remove(name));
+		// We'd like to call remove here, but under some circumstances, bootstrap methods
+		// can be called multiple times, so we need to leave the CalLSite in the map.
+		return requireNonNull(CALL_SITES_BY_NAME.get(name));
 	}
 
 	private static final Method RETRIEVE_CALL_SITE_METHOD;
