@@ -15,7 +15,8 @@ import works.bosk.exceptions.InvalidTypeException;
  * the rest unchanged.
  * <p>
  * Unlike {@link ReplicaSet}, this does not automatically fix up the references to
- * point to the right bosk. The references must already be from the downstream bosk.
+ * point to the right bosk: the references must already be from the bosk controlled
+ * by the downstream driver.
  */
 @RequiredArgsConstructor
 public class ForwardingDriver implements BoskDriver {

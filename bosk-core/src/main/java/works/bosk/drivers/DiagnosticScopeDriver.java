@@ -16,7 +16,8 @@ import works.bosk.exceptions.InvalidTypeException;
 import static lombok.AccessLevel.PRIVATE;
 
 /**
- * Automatically sets a {@link DiagnosticScope} around each driver operation based on a user-supplied function.
+ * Automatically sets a {@link DiagnosticScope} around each driver operation
+ * based on a user-supplied function.
  * Allows diagnostic context to be supplied automatically to every operation.
  */
 @RequiredArgsConstructor(access = PRIVATE)
