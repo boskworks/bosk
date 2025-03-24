@@ -29,6 +29,7 @@ import works.bosk.Listing;
 import works.bosk.ListingEntry;
 import works.bosk.ListingReference;
 import works.bosk.Reference;
+import works.bosk.SerializationPlugin;
 import works.bosk.SideTable;
 import works.bosk.TaggedUnion;
 import works.bosk.drivers.BufferingDriver;
@@ -314,7 +315,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	@ParametersByName
 	void updateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, BsonPlugin.class);
+		setLogging(ERROR, SerializationPlugin.class);
 
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName("Newer"), TestEntity.class, this::initialRootWithEmptyCatalog, driverFactory);
 		Bosk<OldEntity> prevBosk = new Bosk<OldEntity>(
@@ -343,7 +344,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	@ParametersByName
 	void updateNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class, BsonPlugin.class);
+		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class, SerializationPlugin.class);
 
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName("Newer"), TestEntity.class, this::initialRootWithEmptyCatalog, driverFactory);
 		Bosk<OldEntity> prevBosk = new Bosk<OldEntity>(

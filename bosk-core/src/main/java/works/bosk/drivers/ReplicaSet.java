@@ -34,8 +34,8 @@ import static java.util.Objects.requireNonNull;
  *
  * <ol>
  *     <li>
- *         Use {@link #mirroringTo} to mirror changes from a primary bosk to some number
- *         of secondary ones.
+ *         Use {@link #mirroringTo} to perform the same changes on some number
+ *         of secondary bosks with the same root type.
  *     </li>
  *     <li>
  *         Use {@link #redirectingTo} just to get a driver that can accept references to the wrong bosk.
@@ -107,6 +107,11 @@ public class ReplicaSet<R extends StateTreeNode> {
 	 * Causes updates to be applied only to <code>other</code>.
 	 * The resulting driver can accept references to a different bosk
 	 * with the same root type.
+	 * <p>
+	 * Note that there is no "primary" bosk in this case.
+	 * The returned driver will send updates only to the {@code other} bosk.
+	 * This is much like a {@link NoOpDriver} except that this one can accept
+	 * references to a different bosk.
 	 */
 	public static <RR extends StateTreeNode> BoskDriver redirectingTo(Bosk<RR> other) {
 		// A ReplicaSet with only the one replica
@@ -204,7 +209,8 @@ public class ReplicaSet<R extends StateTreeNode> {
 
 	/**
 	 * @param driver the downstream driver to use for a given replica
-	 *               (not the driver that would be returned from {@link Bosk#driver()}).
+	 *               (not the driver that would be returned from {@link Bosk#driver()},
+	 *               because that would lead to infinite recursion.)
 	 */
 	record Replica<R extends StateTreeNode>(
 		BoskInfo<R> boskInfo,

@@ -7,6 +7,10 @@ import org.jetbrains.annotations.Nullable;
  * A thread-local set of name-value pairs that propagate all the way from
  * submission of a driver update, through all the driver layers,
  * to the execution of hooks.
+ *
+ * <p>
+ * One single {@code BoskDiagnosticContext} instance is associated with each {@link Bosk}.
+ * You can hold on to this object; there's no need to re-fetch it from the {@link Bosk} every time.
  */
 public final class BoskDiagnosticContext {
 	private final ThreadLocal<MapValue<String>> currentAttributes = ThreadLocal.withInitial(MapValue::empty);
