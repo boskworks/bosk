@@ -46,7 +46,7 @@ import works.bosk.MapValue;
 import works.bosk.Path;
 import works.bosk.Phantom;
 import works.bosk.Reference;
-import works.bosk.SerializationPlugin;
+import works.bosk.StateTreeSerializer;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
@@ -62,21 +62,21 @@ import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toMap;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.ReferenceUtils.rawClass;
-import static works.bosk.jackson.JacksonPluginConfiguration.defaultConfiguration;
+import static works.bosk.jackson.JacksonSerializerConfiguration.defaultConfiguration;
 
 /**
  * Provides JSON serialization/deserialization using Jackson.
- * @see SerializationPlugin
+ * @see StateTreeSerializer
  */
-public final class JacksonPlugin extends SerializationPlugin {
+public final class JacksonSerializer extends StateTreeSerializer {
 	private final JacksonCompiler compiler = new JacksonCompiler(this);
-	private final JacksonPluginConfiguration config;
+	private final JacksonSerializerConfiguration config;
 
-	public JacksonPlugin() {
+	public JacksonSerializer() {
 		this(defaultConfiguration());
 	}
 
-	public JacksonPlugin(JacksonPluginConfiguration config) {
+	public JacksonSerializer(JacksonSerializerConfiguration config) {
 		this.config = config;
 	}
 
@@ -485,7 +485,7 @@ public final class JacksonPlugin extends SerializationPlugin {
 			Class<?> caseStaticClass = caseStaticType.getRawClass();
 			MapValue<Type> variantCaseMap;
 			try {
-				variantCaseMap = SerializationPlugin.getVariantCaseMap(caseStaticClass);
+				variantCaseMap = StateTreeSerializer.getVariantCaseMap(caseStaticClass);
 			} catch (InvalidTypeException e) {
 				throw new IllegalArgumentException(e);
 			}
@@ -710,7 +710,7 @@ public final class JacksonPlugin extends SerializationPlugin {
 	}
 
 	/**
-	 * Structure of the field values used by the {@link JacksonPluginConfiguration.MapShape#LINKED_MAP LINKED_MAP} format.
+	 * Structure of the field values used by the {@link JacksonSerializerConfiguration.MapShape#LINKED_MAP LINKED_MAP} format.
 	 * @param prev the key corresponding to the previous map entry, or {@link Optional#empty() empty} if none.
 	 * @param next the key corresponding to the next map entry, or {@link Optional#empty() empty} if none.
 	 * @param value the actual map entry's value
@@ -767,7 +767,7 @@ public final class JacksonPlugin extends SerializationPlugin {
 	}
 
 	private Object readField(String name, JsonParser p, DeserializationContext ctxt, JavaType parameterType) throws IOException {
-		// TODO: Combine with similar method in BsonPlugin
+		// TODO: Combine with similar method in BsonSerializer
 		JavaType effectiveType = parameterType;
 		Class<?> effectiveClass = effectiveType.getRawClass();
 		if (Optional.class.isAssignableFrom(effectiveClass)) {

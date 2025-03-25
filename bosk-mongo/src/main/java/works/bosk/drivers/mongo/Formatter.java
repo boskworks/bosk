@@ -25,9 +25,9 @@ import org.slf4j.LoggerFactory;
 import works.bosk.BoskInfo;
 import works.bosk.MapValue;
 import works.bosk.Reference;
-import works.bosk.SerializationPlugin;
+import works.bosk.StateTreeSerializer;
 import works.bosk.drivers.mongo.bson.BsonFormatter;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
@@ -47,8 +47,8 @@ public final class Formatter extends BsonFormatter {
 	 */
 	private volatile MapValue<String> lastEventDiagnosticAttributes = MapValue.empty();
 
-	public Formatter(BoskInfo<?> boskInfo, BsonPlugin bsonPlugin) {
-		super(boskInfo, bsonPlugin);
+	public Formatter(BoskInfo<?> boskInfo, BsonSerializer bsonSerializer) {
+		super(boskInfo, bsonSerializer);
 	}
 
 	/**
@@ -85,7 +85,7 @@ public final class Formatter extends BsonFormatter {
 		Type type = target.targetType();
 		Class<T> objectClass = (Class<T>) rawClass(type);
 		Codec<T> objectCodec = (Codec<T>) codecFor(type);
-		try (@SuppressWarnings("unused") SerializationPlugin.DeserializationScope scope = deserializationScopeFunction.apply(target)) {
+		try (@SuppressWarnings("unused") StateTreeSerializer.DeserializationScope scope = deserializationScopeFunction.apply(target)) {
 			return objectClass.cast(objectCodec.decode(doc.asBsonReader(), DecoderContext.builder().build()));
 		}
 	}

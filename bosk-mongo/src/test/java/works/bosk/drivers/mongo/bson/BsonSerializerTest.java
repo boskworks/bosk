@@ -24,11 +24,11 @@ import works.bosk.exceptions.InvalidTypeException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.BoskTestUtils.boskName;
 
-class BsonPluginTest {
+class BsonSerializerTest {
 
 	@Test
 	void sideTableOfSideTables() {
-		BsonPlugin bp = new BsonPlugin();
+		BsonSerializer bp = new BsonSerializer();
 		Bosk<Root> bosk = new Bosk<Root>(boskName(), Root.class, this::defaultRoot, Bosk.simpleDriver());
 		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
 		Codec<Root> codec = registry.get(Root.class);

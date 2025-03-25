@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import works.bosk.Bosk;
 import works.bosk.jackson.BoskJacksonModule;
-import works.bosk.jackson.JacksonPlugin;
+import works.bosk.jackson.JacksonSerializer;
 
 @Configuration
 @EnableConfigurationProperties(WebProperties.class)
@@ -31,20 +31,20 @@ public class BoskAutoConfiguration {
 	ServiceEndpoints serviceEndpoints(
 		Bosk<?> bosk,
 		ObjectMapper mapper,
-		JacksonPlugin plugin
+		JacksonSerializer jackson
 	) {
-		return new ServiceEndpoints(bosk, mapper, plugin);
+		return new ServiceEndpoints(bosk, mapper, jackson);
 	}
 
 	@Bean
 	@ConditionalOnMissingBean
-	JacksonPlugin jacksonPlugin() {
-		return new JacksonPlugin();
+	JacksonSerializer jacksonSerializer() {
+		return new JacksonSerializer();
 	}
 
 	@Bean
-	BoskJacksonModule boskJacksonModule(Bosk<?> bosk, JacksonPlugin jacksonPlugin) {
-		return jacksonPlugin.moduleFor(bosk);
+	BoskJacksonModule boskJacksonModule(Bosk<?> bosk, JacksonSerializer jacksonSerializer) {
+		return jacksonSerializer.moduleFor(bosk);
 	}
 
 }

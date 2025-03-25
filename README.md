@@ -126,7 +126,7 @@ and change your Bosk `driverFactory` method to substitute `MongoDriver` in place
 import com.mongodb.MongoClientSettings;
 import com.mongodb.ReadConcern;
 import com.mongodb.WriteConcern;
-import mongo.drivers.works.bosk.BsonPlugin;
+import mongo.drivers.works.bosk.BsonSerializer;
 import mongo.drivers.works.bosk.MongoDriver;
 import mongo.drivers.works.bosk.MongoDriverSettings;
 
@@ -141,12 +141,12 @@ import mongo.drivers.works.bosk.MongoDriverSettings;
 
 		// For advanced usage, you'll want to inject this object,
 		// but for getting started, we can just create one here.
-		BsonPlugin bsonPlugin = new BsonPlugin();
+		BsonSerializer bsonSerializer = new BsonSerializer();
 
 		return MongoDriver.factory(
 			clientSettings,
 			driverSettings,
-			bsonPlugin);
+			bsonSerializer);
 	}
 ```
 

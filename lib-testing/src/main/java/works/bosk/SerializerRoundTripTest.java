@@ -6,7 +6,7 @@ import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class PluginRoundTripTest extends AbstractRoundTripTest {
+public class SerializerRoundTripTest extends AbstractRoundTripTest {
 	@ParameterizedTest
 	@MethodSource("driverFactories")
 	void testRoundTrip(DriverFactory<TestRoot> driverFactory) throws InvalidTypeException {

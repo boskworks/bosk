@@ -8,13 +8,13 @@ import static works.bosk.AbstractRoundTripTest.jacksonRoundTripFactory;
 
 public class JacksonRoundTripConformanceTest extends DriverConformanceTest {
 	@ParametersByName
-	JacksonRoundTripConformanceTest(JacksonPluginConfiguration config) {
+	JacksonRoundTripConformanceTest(JacksonSerializerConfiguration config) {
 		driverFactory = jacksonRoundTripFactory(config);
 	}
 
 	@SuppressWarnings("unused")
-	static Stream<JacksonPluginConfiguration> config() {
-		return Stream.of(JacksonPluginConfiguration.MapShape.values())
-			.map(shape -> new JacksonPluginConfiguration(shape));
+	static Stream<JacksonSerializerConfiguration> config() {
+		return Stream.of(JacksonSerializerConfiguration.MapShape.values())
+			.map(shape -> new JacksonSerializerConfiguration(shape));
 	}
 }

@@ -43,7 +43,7 @@ import works.bosk.Path;
 import works.bosk.Phantom;
 import works.bosk.Reference;
 import works.bosk.ReferenceUtils;
-import works.bosk.SerializationPlugin;
+import works.bosk.StateTreeSerializer;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
@@ -68,7 +68,7 @@ import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.drivers.mongo.bson.BsonFormatter.dottedFieldNameSegment;
 import static works.bosk.drivers.mongo.bson.BsonFormatter.undottedFieldNameSegment;
 
-public final class BsonPlugin extends SerializationPlugin {
+public final class BsonSerializer extends StateTreeSerializer {
 	private final ValueCodecProvider valueCodecProvider = new ValueCodecProvider();
 	private final Map<Type, Codec<?>> memoizedCodecs = new ConcurrentHashMap<>();
 
@@ -129,7 +129,7 @@ public final class BsonPlugin extends SerializationPlugin {
 	}
 
 	/**
-	 * Most general way to look up a codec. Tries to find a one from this BsonPlugin, using generic type info
+	 * Most general way to look up a codec. Tries to find a one from this BsonSerializer, using generic type info
 	 * if required, and if that fails, falls back to the registry.
 	 */
 	@SuppressWarnings("unused") // GET_ANY_CODEC
@@ -446,7 +446,7 @@ public final class BsonPlugin extends SerializationPlugin {
 		Class<V> caseStaticClass = (Class<V>)rawClass(caseStaticType);
 		MapValue<Type> variantCaseMap;
 		try {
-			variantCaseMap = SerializationPlugin.getVariantCaseMap(caseStaticClass);
+			variantCaseMap = StateTreeSerializer.getVariantCaseMap(caseStaticClass);
 		} catch (InvalidTypeException e) {
 			throw new IllegalArgumentException(e);
 		}
@@ -789,7 +789,7 @@ public final class BsonPlugin extends SerializationPlugin {
 	@SuppressWarnings({"unused", "EmptyMethod"}) // WRITE_NOTHING
 	private static void writeNothing(Object node, BsonWriter writer, EncoderContext context) {}
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(BsonPlugin.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(BsonSerializer.class);
 
 	private static final Lookup LOOKUP = lookup();
 	private static final MethodHandle WRITE_FIELD, WRITE_CATALOG, WRITE_SIDE_TABLE, WRITE_NOTHING, GET_ANY_CODEC;
@@ -798,11 +798,11 @@ public final class BsonPlugin extends SerializationPlugin {
 
 	static {
 		try {
-			WRITE_FIELD   = LOOKUP.findStatic(BsonPlugin.class, "writeField", methodType(void.class, String.class, Codec.class, Object.class, BsonWriter.class, EncoderContext.class));
-			WRITE_CATALOG = LOOKUP.findStatic(BsonPlugin.class, "writeCatalog", methodType(void.class, Codec.class, Catalog.class, BsonWriter.class, EncoderContext.class));
-			WRITE_SIDE_TABLE = LOOKUP.findStatic(BsonPlugin.class, "writeSideTable", methodType(void.class, Codec.class, Codec.class, SideTable.class, BsonWriter.class, EncoderContext.class));
-			WRITE_NOTHING = LOOKUP.findStatic(BsonPlugin.class, "writeNothing", methodType(void.class, Object.class, BsonWriter.class, EncoderContext.class));
-			GET_ANY_CODEC = LOOKUP.findVirtual(BsonPlugin.class, "getAnyCodec", methodType(Codec.class, Type.class, Class.class, CodecRegistry.class, BoskInfo.class));
+			WRITE_FIELD   = LOOKUP.findStatic(BsonSerializer.class, "writeField", methodType(void.class, String.class, Codec.class, Object.class, BsonWriter.class, EncoderContext.class));
+			WRITE_CATALOG = LOOKUP.findStatic(BsonSerializer.class, "writeCatalog", methodType(void.class, Codec.class, Catalog.class, BsonWriter.class, EncoderContext.class));
+			WRITE_SIDE_TABLE = LOOKUP.findStatic(BsonSerializer.class, "writeSideTable", methodType(void.class, Codec.class, Codec.class, SideTable.class, BsonWriter.class, EncoderContext.class));
+			WRITE_NOTHING = LOOKUP.findStatic(BsonSerializer.class, "writeNothing", methodType(void.class, Object.class, BsonWriter.class, EncoderContext.class));
+			GET_ANY_CODEC = LOOKUP.findVirtual(BsonSerializer.class, "getAnyCodec", methodType(Codec.class, Type.class, Class.class, CodecRegistry.class, BoskInfo.class));
 			OPTIONAL_IS_PRESENT = LOOKUP.findVirtual(Optional.class, "isPresent", methodType(boolean.class));
 			OPTIONAL_GET        = LOOKUP.findVirtual(Optional.class, "get", methodType(Object.class));
 		} catch (NoSuchMethodException | IllegalAccessException e) {

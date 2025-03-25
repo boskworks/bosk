@@ -33,7 +33,7 @@ import static works.bosk.drivers.mongo.bson.BsonFormatter.docBsonPath;
 
 public class BsonSurgeonTest extends AbstractDriverTest {
 	BsonSurgeon surgeon;
-	BsonPlugin bsonPlugin;
+	BsonSerializer bsonSerializer;
 	BsonFormatter formatter;
 	private List<Reference<? extends EnumerableByIdentifier<?>>> graftPoints;
 
@@ -53,8 +53,8 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	@BeforeEach
 	void setup() throws InvalidTypeException, IOException, InterruptedException {
 		setupBosksAndReferences(Bosk.simpleDriver());
-		bsonPlugin = new BsonPlugin();
-		formatter = new BsonFormatter(bosk, bsonPlugin);
+		bsonSerializer = new BsonSerializer();
+		formatter = new BsonFormatter(bosk, bsonSerializer);
 
 		refs = bosk.buildReferences(Refs.class);
 

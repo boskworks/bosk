@@ -32,7 +32,7 @@ import works.bosk.Path;
 import works.bosk.Phantom;
 import works.bosk.Reference;
 import works.bosk.ReferenceUtils;
-import works.bosk.SerializationPlugin;
+import works.bosk.StateTreeSerializer;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
@@ -241,7 +241,7 @@ public final class PathCompiler {
 				return new SideTableEntryStep(keyType, targetType, segmentNum);
 			} else if (TaggedUnion.class.isAssignableFrom(currentClass)) {
 				Class<?> caseStaticClass = rawClass(parameterType(currentType, TaggedUnion.class, 0));
-				Map<String, Type> typeMap = SerializationPlugin.getVariantCaseMap(caseStaticClass);
+				Map<String, Type> typeMap = StateTreeSerializer.getVariantCaseMap(caseStaticClass);
 				Type targetType = typeMap.get(segment);
 				if (targetType == null) {
 					throw new InvalidTypeException("Invalid tag \"" + segment + "\" for TaggedUnion<" + caseStaticClass.getSimpleName() + ">: expected one of " + typeMap.keySet());

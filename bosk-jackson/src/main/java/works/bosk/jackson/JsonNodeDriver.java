@@ -28,15 +28,15 @@ public class JsonNodeDriver implements BoskDriver {
 	protected JsonNode currentRoot;
 	int updateNumber = 0;
 
-	public static <R extends StateTreeNode> DriverFactory<R> factory(JacksonPlugin jacksonPlugin) {
-		return (b,d) -> new JsonNodeDriver(b, d, jacksonPlugin);
+	public static <R extends StateTreeNode> DriverFactory<R> factory(JacksonSerializer jacksonSerializer) {
+		return (b,d) -> new JsonNodeDriver(b, d, jacksonSerializer);
 	}
 
-	protected JsonNodeDriver(BoskInfo<?> bosk, BoskDriver downstream, JacksonPlugin jacksonPlugin) {
+	protected JsonNodeDriver(BoskInfo<?> bosk, BoskDriver downstream, JacksonSerializer jacksonSerializer) {
 		this.downstream = downstream;
 		this.mapper = new ObjectMapper();
 		this.surgeon = new JsonNodeSurgeon();
-		mapper.registerModule(jacksonPlugin.moduleFor(bosk));
+		mapper.registerModule(jacksonSerializer.moduleFor(bosk));
 	}
 
 	@Override

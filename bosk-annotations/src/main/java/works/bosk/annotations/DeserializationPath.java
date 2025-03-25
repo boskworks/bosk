@@ -34,7 +34,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  * If the path contains parameters, their values will be taken from the
  * binding environment on the
  * <code>DeserializationScope</code>, which can be set using
- * <code>SerializationPlugin.overlayScope</code>.
+ * <code>StateTreeSerializer.overlayScope</code>.
  */
 @Retention(RUNTIME)
 @Target({ FIELD, PARAMETER })

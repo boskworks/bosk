@@ -21,7 +21,7 @@ import works.bosk.Reference;
 
 import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static org.openjdk.jmh.annotations.Mode.AverageTime;
-import static works.bosk.jackson.JacksonPluginConfiguration.defaultConfiguration;
+import static works.bosk.jackson.JacksonSerializerConfiguration.defaultConfiguration;
 
 @Fork(0)
 @Warmup(iterations = 5, time = 1)
@@ -50,8 +50,8 @@ public class JacksonRoundTripBenchmark extends AbstractRoundTripTest {
 			));
 			this.driver = bosk.driver();
 			this.downstreamDriver = downstreamRef.get();
-			JacksonPlugin jacksonPlugin = new JacksonPlugin();
-			this.mapper = new ObjectMapper().registerModule(jacksonPlugin.moduleFor(bosk));
+			JacksonSerializer jacksonSerializer = new JacksonSerializer();
+			this.mapper = new ObjectMapper().registerModule(jacksonSerializer.moduleFor(bosk));
 			rootRef = bosk.rootReference();
 			try (var _ = bosk.readContext()) {
 				root1 = rootRef.value();

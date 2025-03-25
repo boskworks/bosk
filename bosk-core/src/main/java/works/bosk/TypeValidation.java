@@ -27,9 +27,9 @@ import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
-import static works.bosk.SerializationPlugin.hasDeserializationPath;
-import static works.bosk.SerializationPlugin.isEnclosingReference;
-import static works.bosk.SerializationPlugin.isSelfReference;
+import static works.bosk.StateTreeSerializer.hasDeserializationPath;
+import static works.bosk.StateTreeSerializer.isEnclosingReference;
+import static works.bosk.StateTreeSerializer.isSelfReference;
 
 /**
  * Checks that a given type conforms to the rules for a {@link Bosk} root type.
@@ -168,7 +168,7 @@ public final class TypeValidation {
 	}
 
 	private static void validateVariantCaseClass(Class<?> nodeClass, Set<Type> alreadyValidated) throws InvalidTypeException {
-		for (Map.Entry<String, Type> entry : SerializationPlugin.getVariantCaseMap(nodeClass).entrySet()) {
+		for (Map.Entry<String, Type> entry : StateTreeSerializer.getVariantCaseMap(nodeClass).entrySet()) {
 			String tag = requireNonNull(entry.getKey());
 			Type type = requireNonNull(entry.getValue());
 			validateFieldName(nodeClass, tag); // TODO: this produces confusing exception messages

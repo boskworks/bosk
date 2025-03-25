@@ -29,7 +29,7 @@ import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.bson.BsonFormatter.DocumentFields;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
@@ -63,11 +63,11 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		BoskInfo<R> boskInfo,
 		MongoCollection<BsonDocument> collection,
 		MongoDriverSettings driverSettings,
-		BsonPlugin bsonPlugin,
+		BsonSerializer bsonSerializer,
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), new Formatter(boskInfo, bsonPlugin));
+		super(boskInfo.rootReference(), new Formatter(boskInfo, bsonSerializer));
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.collection = collection;
 		this.downstream = downstream;

@@ -8,7 +8,7 @@ import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.jackson.JacksonPlugin;
+import works.bosk.jackson.JacksonSerializer;
 
 import static java.util.Objects.requireNonNull;
 
@@ -19,11 +19,11 @@ import static java.util.Objects.requireNonNull;
  * and skip certain logic that isn't needed for internal calls.
  */
 class SqlDriverFacade implements SqlDriver {
-	private final JacksonPlugin jacksonPlugin;
+	private final JacksonSerializer jacksonSerializer;
 	final SqlDriverImpl impl;
 
-	SqlDriverFacade(JacksonPlugin jacksonPlugin, SqlDriverImpl impl) {
-		this.jacksonPlugin = requireNonNull(jacksonPlugin);
+	SqlDriverFacade(JacksonSerializer jacksonSerializer, SqlDriverImpl impl) {
+		this.jacksonSerializer = requireNonNull(jacksonSerializer);
 		this.impl = impl;
 	}
 
@@ -42,21 +42,21 @@ class SqlDriverFacade implements SqlDriver {
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
 		LOGGER.debug("submitReplacement({}, {})", target, newValue);
-		jacksonPlugin.initializeAllEnclosingPolyfills(target, impl);
+		jacksonSerializer.initializeAllEnclosingPolyfills(target, impl);
 		impl.submitReplacement(target, newValue);
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		LOGGER.debug("submitConditionalReplacement({}, {}, {}, {})", target, newValue, precondition, requiredValue);
-		jacksonPlugin.initializeAllEnclosingPolyfills(target, impl);
+		jacksonSerializer.initializeAllEnclosingPolyfills(target, impl);
 		impl.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 	}
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 		LOGGER.debug("submitConditionalCreation({}, {})", target, newValue);
-		jacksonPlugin.initializeAllEnclosingPolyfills(target, impl);
+		jacksonSerializer.initializeAllEnclosingPolyfills(target, impl);
 		impl.submitConditionalCreation(target, newValue);
 	}
 

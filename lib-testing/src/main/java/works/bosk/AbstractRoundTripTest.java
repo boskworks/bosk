@@ -28,15 +28,15 @@ import org.bson.codecs.configuration.CodecRegistries;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.jackson.JacksonPlugin;
-import works.bosk.jackson.JacksonPluginConfiguration;
+import works.bosk.jackson.JacksonSerializer;
+import works.bosk.jackson.JacksonSerializerConfiguration;
 
 import static com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT;
 import static java.lang.System.identityHashCode;
 import static java.util.Collections.newSetFromMap;
-import static works.bosk.jackson.JacksonPluginConfiguration.MapShape.LINKED_MAP;
+import static works.bosk.jackson.JacksonSerializerConfiguration.MapShape.LINKED_MAP;
 
 public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 
@@ -45,8 +45,8 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 				directFactory(),
 				factoryThatMakesAReference(),
 
-				jacksonRoundTripFactory(JacksonPluginConfiguration.defaultConfiguration()),
-				jacksonRoundTripFactory(new JacksonPluginConfiguration(LINKED_MAP)),
+				jacksonRoundTripFactory(JacksonSerializerConfiguration.defaultConfiguration()),
+				jacksonRoundTripFactory(new JacksonSerializerConfiguration(LINKED_MAP)),
 
 				bsonRoundTripFactory()
 		);
@@ -63,15 +63,15 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 		};
 	}
 
-	public static <R extends Entity> DriverFactory<R> jacksonRoundTripFactory(JacksonPluginConfiguration config) {
+	public static <R extends Entity> DriverFactory<R> jacksonRoundTripFactory(JacksonSerializerConfiguration config) {
 		return new JacksonRoundTripDriverFactory<>(config);
 	}
 
 	private static class JacksonRoundTripDriverFactory<R extends Entity> implements DriverFactory<R> {
-		private final JacksonPlugin jp;
+		private final JacksonSerializer jp;
 
-		private JacksonRoundTripDriverFactory(JacksonPluginConfiguration config) {
-			this.jp = new JacksonPlugin(config);
+		private JacksonRoundTripDriverFactory(JacksonSerializerConfiguration config) {
+			this.jp = new JacksonSerializer(config);
 		}
 
 		@Override
@@ -115,7 +115,7 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 	private static class BsonRoundTripDriverFactory<R extends Entity> implements DriverFactory<R> {
 		@Override
 		public BoskDriver build(BoskInfo<R> boskInfo, BoskDriver driver) {
-			final BsonPlugin bp = new BsonPlugin();
+			final BsonSerializer bp = new BsonSerializer();
 			return new PreprocessingDriver(driver) {
 				final CodecRegistry codecRegistry = CodecRegistries.fromProviders(bp.codecProviderFor(boskInfo));
 
@@ -190,7 +190,7 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 									pType = ReferenceUtils.parameterType(pType, Optional.class, 0);
 									pruneDocument(field.getValue(), pType, alreadyPruned);
 								}
-							} else if (SerializationPlugin.isEnclosingReference(nodeClass, component)) {
+							} else if (StateTreeSerializer.isEnclosingReference(nodeClass, component)) {
 								LOGGER.warn("Pruning enclosing reference {} included in BSON", qualifiedName);
 								fieldIter.remove();
 							} else {

@@ -7,7 +7,7 @@ import works.bosk.Reference;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.exceptions.InvalidTypeException;
 
 public class ExampleBosk extends Bosk<ExampleState> {
@@ -40,11 +40,11 @@ public class ExampleBosk extends Bosk<ExampleState> {
 
 		// For advanced usage, you'll want to inject this object,
 		// but for getting started, we can just create one here.
-		BsonPlugin bsonPlugin = new BsonPlugin();
+		BsonSerializer bsonSerializer = new BsonSerializer();
 
 		return MongoDriver.factory(
 			clientSettings,
 			driverSettings,
-			bsonPlugin);
+			bsonSerializer);
 	}
 }

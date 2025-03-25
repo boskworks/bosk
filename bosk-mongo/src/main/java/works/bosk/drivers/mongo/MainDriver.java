@@ -34,7 +34,7 @@ import works.bosk.drivers.mongo.MappedDiagnosticContext.MDCScope;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode;
 import works.bosk.drivers.mongo.bson.BsonFormatter.DocumentFields;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
@@ -60,7 +60,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BoskInfo<R> boskInfo;
 	private final ChangeReceiver receiver;
 	private final MongoDriverSettings driverSettings;
-	private final BsonPlugin bsonPlugin;
+	private final BsonSerializer bsonSerializer;
 	private final BoskDriver downstream;
 	private final MongoClient mongoClient;
 	private final TransactionalCollection<BsonDocument> collection;
@@ -91,13 +91,13 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		BoskInfo<R> boskInfo,
 		MongoClientSettings clientSettings,
 		MongoDriverSettings driverSettings,
-		BsonPlugin bsonPlugin,
+		BsonSerializer bsonSerializer,
 		BoskDriver downstream
 	) {
 		try (MDCScope __ = setupMDC(boskInfo.name(), boskInfo.instanceID())) {
 			this.boskInfo = boskInfo;
 			this.driverSettings = driverSettings;
-			this.bsonPlugin = bsonPlugin;
+			this.bsonSerializer = bsonSerializer;
 			this.downstream = downstream;
 
 			mongoClient = MongoClients.create(
@@ -114,7 +114,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			Type rootType = boskInfo.rootReference().targetType();
 			this.listener = new Listener(new FutureTask<>(() -> doInitialRoot(rootType)));
-			this.formatter = new Formatter(boskInfo, bsonPlugin);
+			this.formatter = new Formatter(boskInfo, bsonSerializer);
 			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, rawCollection);
 		}
 	}
@@ -278,7 +278,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
 		doRetryableDriverOperation(()->{
-			bsonPlugin.initializeAllEnclosingPolyfills(target, formatDriver);
+			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitReplacement(target, newValue);
 		}, "submitReplacement({})", target);
 	}
@@ -286,7 +286,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		doRetryableDriverOperation(()->{
-			bsonPlugin.initializeAllEnclosingPolyfills(target, formatDriver);
+			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		}, "submitConditionalReplacement({}, {}={})", target, precondition, requiredValue);
 	}
@@ -294,7 +294,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 		doRetryableDriverOperation(()->{
-			bsonPlugin.initializeAllEnclosingPolyfills(target, formatDriver);
+			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalCreation(target, newValue);
 		}, "submitConditionalCreation({})", target);
 	}
@@ -302,7 +302,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
 		doRetryableDriverOperation(()->{
-			bsonPlugin.initializeAllEnclosingPolyfills(target, formatDriver);
+			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitDeletion(target);
 		}, "submitDeletion({})", target);
 	}
@@ -310,7 +310,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		doRetryableDriverOperation(() -> {
-			bsonPlugin.initializeAllEnclosingPolyfills(target, formatDriver);
+			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalDeletion(target, precondition, requiredValue);
 		}, "submitConditionalDeletion({}, {}={})", target, precondition, requiredValue);
 	}
@@ -540,7 +540,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				boskInfo,
 				collection,
 				driverSettings,
-				bsonPlugin,
+				bsonSerializer,
 				new FlushLock(driverSettings, revisionAlreadySeen),
 				downstream);
 		} else if (format instanceof PandoFormat pandoFormat) {
@@ -549,7 +549,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				collection,
 				driverSettings,
 				pandoFormat,
-				bsonPlugin,
+				bsonSerializer,
 				new FlushLock(driverSettings, revisionAlreadySeen),
 				downstream);
 		}
