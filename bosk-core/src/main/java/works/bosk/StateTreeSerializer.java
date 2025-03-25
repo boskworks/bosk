@@ -43,10 +43,6 @@ import static java.util.Collections.synchronizedSet;
 import static java.util.Objects.requireNonNull;
 
 /**
- * A "Plugin", for now, is a thing that translates Bosk objects for interfacing
- * with the outside world.  One fine day, we'll think of a better name.
- *
- * <p>
  * Serialization systems are generally not good at allowing custom logic to
  * supply any context. This class works around that limitation by supplying a
  * place to put some context, maintained using {@link ThreadLocal}s, and managed
@@ -54,7 +50,7 @@ import static java.util.Objects.requireNonNull;
  * state is managed correctly.
  *
  * <p>
- * Generally, applications create one instance of each plugin they need.
+ * Generally, applications create one instance of each serializer they need.
  * Instances are thread-safe. The only case where you might want another
  * instance is if you need to perform a second, unrelated, nested
  * deserialization while one is already in progress on the same thread. It's
@@ -63,7 +59,7 @@ import static java.util.Objects.requireNonNull;
  * @author pdoyle
  *
  */
-public abstract class SerializationPlugin {
+public abstract class StateTreeSerializer {
 	private final ThreadLocal<DeserializationScope> currentScope = ThreadLocal.withInitial(this::outermostScope);
 
 	public final DeserializationScope newDeserializationScope(Path newPath) {
@@ -176,7 +172,7 @@ public abstract class SerializationPlugin {
 	public static <V> Function<Object[], ? extends ListValue<V>> listValueFactory(Class<ListValue<V>> targetClass) {
 		Function<Object[], ? extends ListValue<V>> factory;
 		if (ListValue.class.equals(targetClass)) {
-			factory = SerializationPlugin::listValueOf;
+			factory = StateTreeSerializer::listValueOf;
 		} else {
 			// User-supplied subclass needs a public constructor
 			Constructor<ListValue<V>> ctor = ReferenceUtils.theOnlyConstructorFor(targetClass);
@@ -569,5 +565,5 @@ public abstract class SerializationPlugin {
 
 	private static final AtomicBoolean ANY_POLYFILLS = new AtomicBoolean(false);
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(SerializationPlugin.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(StateTreeSerializer.class);
 }

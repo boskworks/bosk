@@ -7,6 +7,6 @@ import works.bosk.drivers.DriverConformanceTest;
 class JsonNodeDriverConformanceTest extends DriverConformanceTest {
 	@BeforeEach
 	void setUp() {
-		driverFactory = JsonNodeDriver.factory(new JacksonPlugin());
+		driverFactory = JsonNodeDriver.factory(new JacksonSerializer());
 	}
 }

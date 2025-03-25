@@ -8,7 +8,7 @@ import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.DriverFactory;
 import works.bosk.StateTreeNode;
-import works.bosk.jackson.JacksonPlugin;
+import works.bosk.jackson.JacksonSerializer;
 
 public interface SqlDriver extends BoskDriver {
 	/**
@@ -20,9 +20,9 @@ public interface SqlDriver extends BoskDriver {
 		BiFunction<BoskInfo<RR>, ObjectMapper, ObjectMapper> objectMapperCustomizer
 	) {
 		return (b, d) -> {
-			JacksonPlugin jacksonPlugin = new JacksonPlugin();
-			ObjectMapper mapper = objectMapperCustomizer.apply(b, new ObjectMapper().registerModule(jacksonPlugin.moduleFor(b)));
-			return new SqlDriverFacade(jacksonPlugin, new SqlDriverImpl(
+			JacksonSerializer jacksonSerializer = new JacksonSerializer();
+			ObjectMapper mapper = objectMapperCustomizer.apply(b, new ObjectMapper().registerModule(jacksonSerializer.moduleFor(b)));
+			return new SqlDriverFacade(jacksonSerializer, new SqlDriverImpl(
 				settings, connectionSource, b, mapper, d
 			));
 		};

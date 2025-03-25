@@ -15,7 +15,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.drivers.SharedDriverConformanceTest;
 import works.bosk.drivers.mongo.TestParameters.EventTiming;
 import works.bosk.drivers.mongo.TestParameters.ParameterSet;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.junit.ParametersByName;
 import works.bosk.junit.Slow;
 
@@ -69,7 +69,7 @@ class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 	private <R extends StateTreeNode> DriverFactory<R> createDriverFactory(TestInfo testInfo) {
 		return (boskInfo, downstream) -> {
 			MongoDriver driver = MongoDriver.<R>factory(
-				mongoService.clientSettings(testInfo), driverSettings, new BsonPlugin()
+				mongoService.clientSettings(testInfo), driverSettings, new BsonSerializer()
 			).build(boskInfo, downstream);
 			LOGGER.debug("Driver created; {} open", numOpenDrivers.incrementAndGet());
 			tearDownActions.addFirst(() -> {

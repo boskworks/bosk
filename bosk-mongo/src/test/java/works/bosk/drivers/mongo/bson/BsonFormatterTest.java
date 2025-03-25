@@ -36,7 +36,7 @@ class BsonFormatterTest extends AbstractBoskTest {
 		weirdEntity = builder.blankEntity(Identifier.from(WEIRD_ID), TestEnum.OK);
 		bosk.driver().submitReplacement(entitiesRef, Catalog.of(weirdEntity));
 		bosk.driver().flush();
-		formatter = new BsonFormatter(bosk, new BsonPlugin());
+		formatter = new BsonFormatter(bosk, new BsonSerializer());
 	}
 
 	@Test

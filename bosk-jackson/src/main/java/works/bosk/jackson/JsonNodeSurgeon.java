@@ -28,7 +28,7 @@ import static works.bosk.jackson.JsonNodeSurgeon.ReplacementStyle.WRAPPED_ENTITY
  * a given bosk {@link Reference}.
  *
  * <p>
- * Note: currently only works with {@link works.bosk.jackson.JacksonPluginConfiguration.MapShape#ARRAY MapShape.ARRAY}.
+ * Note: currently only works with {@link JacksonSerializerConfiguration.MapShape#ARRAY MapShape.ARRAY}.
  */
 public class JsonNodeSurgeon {
 	/**

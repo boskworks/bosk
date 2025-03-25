@@ -21,10 +21,10 @@ import works.bosk.EnumerableByIdentifier;
 import works.bosk.Identifier;
 import works.bosk.Path;
 import works.bosk.Reference;
-import works.bosk.SerializationPlugin;
+import works.bosk.StateTreeSerializer;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NonexistentReferenceException;
-import works.bosk.jackson.JacksonPlugin;
+import works.bosk.jackson.JacksonSerializer;
 
 import static org.springframework.http.HttpStatus.ACCEPTED;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
@@ -36,16 +36,16 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 public class ServiceEndpoints {
 	private final Bosk<?> bosk;
 	private final ObjectMapper mapper;
-	private final JacksonPlugin plugin;
+	private final JacksonSerializer jackson;
 
 	public ServiceEndpoints(
 		Bosk<?> bosk,
 		ObjectMapper mapper,
-		JacksonPlugin plugin
+		JacksonSerializer jackson
 	) {
 		this.bosk = bosk;
 		this.mapper = mapper;
-		this.plugin = plugin;
+		this.jackson = jackson;
 	}
 
 	@GetMapping(produces = APPLICATION_JSON_VALUE, path = {"", "{*path}"})
@@ -73,7 +73,7 @@ public class ServiceEndpoints {
 		@SuppressWarnings("unchecked")
 		Reference<T> ref = (Reference<T>) referenceForPath(path);
 		T newValue;
-		try (@SuppressWarnings("unused") SerializationPlugin.DeserializationScope scope = plugin.newDeserializationScope(ref)) {
+		try (@SuppressWarnings("unused") StateTreeSerializer.DeserializationScope scope = jackson.newDeserializationScope(ref)) {
 			newValue = mapper
 				.readerFor(mapper.constructType(ref.targetType()))
 				.readValue(body);

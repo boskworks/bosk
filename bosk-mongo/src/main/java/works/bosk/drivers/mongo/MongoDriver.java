@@ -7,7 +7,7 @@ import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.DriverFactory;
 import works.bosk.StateTreeNode;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.drivers.mongo.status.MongoStatus;
 
 /**
@@ -68,10 +68,10 @@ public sealed interface MongoDriver
 	static <RR extends StateTreeNode> MongoDriverFactory<RR> factory(
 		MongoClientSettings clientSettings,
 		MongoDriverSettings driverSettings,
-		BsonPlugin bsonPlugin
+		BsonSerializer bsonSerializer
 	) {
 		driverSettings.validate();
-		return (b, d) -> new MainDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
+		return (b, d) -> new MainDriver<>(b, clientSettings, driverSettings, bsonSerializer, d);
 	}
 
 	interface MongoDriverFactory<RR extends StateTreeNode> extends DriverFactory<RR> {

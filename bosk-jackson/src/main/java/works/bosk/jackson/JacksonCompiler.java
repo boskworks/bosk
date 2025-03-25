@@ -35,12 +35,12 @@ import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.Arrays.asList;
 import static works.bosk.ReferenceUtils.getterMethod;
-import static works.bosk.SerializationPlugin.isImplicitParameter;
+import static works.bosk.StateTreeSerializer.isImplicitParameter;
 import static works.bosk.bytecode.ClassBuilder.here;
 
 @RequiredArgsConstructor
 final class JacksonCompiler {
-	private final JacksonPlugin jacksonPlugin;
+	private final JacksonSerializer jacksonSerializer;
 
 	/**
 	 * A stack of types for which we are in the midst of compiling a {@link CompiledSerDes}.
@@ -265,7 +265,7 @@ final class JacksonCompiler {
 
 				// Write the value
 				valueWriter.generateFieldWrite(name, cb, jsonGenerator, serializers, serializerProvider,
-					JacksonPlugin.javaParameterType(type, Optional.class, 0));
+					JacksonSerializer.javaParameterType(type, Optional.class, 0));
 			});
 		}
 	}
@@ -304,9 +304,9 @@ final class JacksonCompiler {
 					// Performance-critical. Pre-compute as much as possible outside this method.
 					// Note: the reading side can't be as efficient as the writing side
 					// because we need to tolerate the fields arriving in arbitrary order.
-					Map<String, Object> valueMap = jacksonPlugin.gatherParameterValuesByName(nodeJavaType, componentsByName, p, ctxt);
+					Map<String, Object> valueMap = jacksonSerializer.gatherParameterValuesByName(nodeJavaType, componentsByName, p, ctxt);
 
-					List<Object> parameterValues = jacksonPlugin.parameterValueList(nodeJavaType.getRawClass(), valueMap, componentsByName, boskInfo);
+					List<Object> parameterValues = jacksonSerializer.parameterValueList(nodeJavaType.getRawClass(), valueMap, componentsByName, boskInfo);
 
 					@SuppressWarnings("unchecked")
 					T result = (T) codec.instantiateFrom(parameterValues);

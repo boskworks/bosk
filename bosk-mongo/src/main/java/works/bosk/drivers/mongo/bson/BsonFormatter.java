@@ -27,7 +27,7 @@ import works.bosk.BoskInfo;
 import works.bosk.Listing;
 import works.bosk.Path;
 import works.bosk.Reference;
-import works.bosk.SerializationPlugin;
+import works.bosk.StateTreeSerializer;
 import works.bosk.SideTable;
 import works.bosk.exceptions.InvalidTypeException;
 
@@ -42,15 +42,15 @@ public class BsonFormatter {
 	protected static final UnaryOperator<String> ENCODER;
 	protected final CodecRegistry simpleCodecs;
 	protected final Function<Type, Codec<?>> preferredBoskCodecs;
-	protected final Function<Reference<?>, SerializationPlugin.DeserializationScope> deserializationScopeFunction;
+	protected final Function<Reference<?>, StateTreeSerializer.DeserializationScope> deserializationScopeFunction;
 
-	public BsonFormatter(BoskInfo<?> boskInfo, BsonPlugin bsonPlugin) {
+	public BsonFormatter(BoskInfo<?> boskInfo, BsonSerializer bsonSerializer) {
 		this.simpleCodecs = CodecRegistries.fromProviders(
-			bsonPlugin.codecProviderFor(boskInfo),
+			bsonSerializer.codecProviderFor(boskInfo),
 			new ValueCodecProvider(),
 			new DocumentCodecProvider());
-		this.preferredBoskCodecs = type -> bsonPlugin.getCodec(type, rawClass(type), simpleCodecs, boskInfo);
-		this.deserializationScopeFunction = bsonPlugin::newDeserializationScope;
+		this.preferredBoskCodecs = type -> bsonSerializer.getCodec(type, rawClass(type), simpleCodecs, boskInfo);
+		this.deserializationScopeFunction = bsonSerializer::newDeserializationScope;
 	}
 
 	public static String dottedFieldNameSegment(String segment) {
@@ -221,7 +221,7 @@ public class BsonFormatter {
 	}
 
 	protected Codec<?> codecFor(Type type) {
-		// BsonPlugin gives better codecs than CodecRegistry, because BsonPlugin is aware of generics,
+		// BsonSerializer gives better codecs than CodecRegistry, because BsonSerializer is aware of generics,
 		// so we always try that first. The CodecSupplier protocol uses "null" to indicate that another
 		// CodecSupplier should be used, so we follow that protocol and fall back on the CodecRegistry.
 		Codec<?> result = preferredBoskCodecs.apply(type);
@@ -271,7 +271,7 @@ public class BsonFormatter {
 		BsonDocument document = new BsonDocument();
 		document.append("value", bson);
 		try (
-			@SuppressWarnings("unused") SerializationPlugin.DeserializationScope scope = deserializationScopeFunction.apply(target);
+			@SuppressWarnings("unused") StateTreeSerializer.DeserializationScope scope = deserializationScopeFunction.apply(target);
 			BsonReader reader = document.asBsonReader()
 		) {
 			reader.readStartDocument();

@@ -1,10 +1,10 @@
 package works.bosk.jackson;
 
-public record JacksonPluginConfiguration(
+public record JacksonSerializerConfiguration(
 	MapShape mapShape
 ) {
-	public static JacksonPluginConfiguration defaultConfiguration() {
-		return new JacksonPluginConfiguration(MapShape.ARRAY);
+	public static JacksonSerializerConfiguration defaultConfiguration() {
+		return new JacksonSerializerConfiguration(MapShape.ARRAY);
 	}
 
 	/**
@@ -38,7 +38,7 @@ public record JacksonPluginConfiguration(
 		 *     </li>
 		 *     <li>
 		 *         The object's field values are themselves objects defined by
-		 *         {@link works.bosk.jackson.JacksonPlugin.LinkedMapEntry LinkedMapEntry}.
+		 *         {@link JacksonSerializer.LinkedMapEntry LinkedMapEntry}.
 		 *     </li>
 		 * </ul>
 		 *

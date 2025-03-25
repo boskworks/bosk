@@ -41,7 +41,7 @@ import works.bosk.Reference;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.bson.BsonFormatter;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.drivers.mongo.bson.BsonSurgeon;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
@@ -85,11 +85,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		BoskInfo<R> boskInfo,
 		TransactionalCollection<BsonDocument> collection,
 		MongoDriverSettings driverSettings,
-		PandoFormat format, BsonPlugin bsonPlugin,
+		PandoFormat format, BsonSerializer bsonSerializer,
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), new Formatter(boskInfo, bsonPlugin));
+		super(boskInfo.rootReference(), new Formatter(boskInfo, bsonSerializer));
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
 		this.format = format;

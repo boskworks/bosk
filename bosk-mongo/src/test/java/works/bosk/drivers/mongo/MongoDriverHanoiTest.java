@@ -9,7 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import works.bosk.DriverStack;
 import works.bosk.drivers.HanoiTest;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.junit.ParametersByName;
 import works.bosk.junit.Slow;
 
@@ -28,7 +28,7 @@ public class MongoDriverHanoiTest extends HanoiTest {
 			MongoDriver.factory(
 				mongoService.clientSettings(testInfo),
 				settings,
-				new BsonPlugin()
+				new BsonSerializer()
 			)
 		);
 		mongoService.client()

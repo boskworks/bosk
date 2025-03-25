@@ -27,7 +27,7 @@ import works.bosk.SideTable;
 import works.bosk.TaggedUnion;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriverSettings.MongoDriverSettingsBuilder;
-import works.bosk.drivers.mongo.bson.BsonPlugin;
+import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.drivers.state.TestEntity;
 import works.bosk.drivers.state.TestValues;
 import works.bosk.exceptions.InvalidTypeException;
@@ -140,7 +140,7 @@ abstract class AbstractMongoDriverTest {
 					})
 					.build(),
 				driverSettings,
-				new BsonPlugin()
+				new BsonSerializer()
 			).build(boskInfo, downstream);
 			tearDownActions.addFirst(driver::close);
 			return driver;
