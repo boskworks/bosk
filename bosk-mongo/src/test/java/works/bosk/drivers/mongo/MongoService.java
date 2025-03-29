@@ -27,9 +27,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
  * suitable for use by a test class.
  *
  * <p>
- * Use {@link UsesMongoService} and {@link DisruptsMongoProxy} to make sure
- * that the network outage tests don't run at the same time as
- * other tests that need MongoDB.
+ * Use {@link DisruptsMongoProxy} to make sure that
+ * the network outage tests don't run at the same time as other tests that use the proxy.
  *
  * <p>
  * All instances use the same MongoDB container, so
