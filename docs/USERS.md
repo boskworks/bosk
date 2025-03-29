@@ -8,9 +8,10 @@ In particular, check out the [Recommendations](#recommendations) section.
 The `Bosk` object is a container for your application state tree.
 If it helps, you can picture it as an `AtomicReference<MyStateTreeRoot>` that your application can access,
 though it actually does several more things:
-- it acts as a factory for `Reference` objects, which provide efficient access to specific nodes of your state tree,
+- it acts as a factory for `Reference` objects, via `RootReference`, which provide efficient access to specific nodes of your state tree,
 - it provides stable thread-local state snapshots, via `ReadContext`,
-- it provides a `BoskDriver` interface, through which you can modify the immutable state tree, and
+- it provides a `BoskDriver` interface, through which you can modify the immutable state tree,
+- it propagates telemetry information, via `BoskDiagnosticContext`, and
 - it can execute _hook_ callback functions when part of the tree changes.
 
 The `Bosk` object is typically a singleton.

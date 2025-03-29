@@ -180,6 +180,14 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		return (b,d) -> d;
 	}
 
+	/**
+	 * Provides access to the {@link BoskDriver} object to use for submitting updates to this bosk's state tree.
+	 * <p>
+	 * The bosk's driver is fixed for the lifetime of the bosk.
+	 * You can hold on to the returned object if that suits you; there's no need to re-fetch it.
+	 *
+	 * @return the {@link BoskDriver} to use for submitting updates to this bosk's state tree.
+	 */
 	public BoskDriver driver() {
 		return driver;
 	}
