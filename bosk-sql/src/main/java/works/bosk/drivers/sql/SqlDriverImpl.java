@@ -21,6 +21,7 @@ import org.jooq.Record;
 import org.jooq.TableField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.BoskDiagnosticContext;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.Identifier;
@@ -54,6 +55,7 @@ class SqlDriverImpl implements SqlDriver {
 	private final SqlDriverSettings settings;
 	private final BoskDriver downstream;
 	private final RootReference<?> rootRef;
+	private final BoskDiagnosticContext diagnosticContext;
 	private final ConnectionSource connectionSource;
 	private final ObjectMapper mapper;
 	private final JsonNodeSurgeon surgeon = new JsonNodeSurgeon();
@@ -86,6 +88,7 @@ class SqlDriverImpl implements SqlDriver {
 		this.settings = settings;
 		this.downstream = requireNonNull(downstream);
 		this.rootRef = requireNonNull(bosk.rootReference());
+		this.diagnosticContext = requireNonNull(bosk.diagnosticContext());
 		this.mapper = requireNonNull(mapper);
 		this.connectionSource = () -> {
 			Connection result = cs.get();
@@ -156,7 +159,7 @@ class SqlDriverImpl implements SqlDriver {
 							diagnosticAttributes = MapValue.empty();
 						}
 					}
-					try (var __ = rootRef.diagnosticContext().withOnly(diagnosticAttributes)) {
+					try (var __ = diagnosticContext.withOnly(diagnosticAttributes)) {
 						Reference<Object> target = rootRef.then(Object.class, Path.parse(ref));
 						Object newValue;
 						if (newState == null) {
@@ -479,7 +482,7 @@ class SqlDriverImpl implements SqlDriver {
 		try {
 			return using(c)
 				.insertInto(CHANGES).columns(CHANGES.EPOCH, REF, NEW_STATE, DIAGNOSTICS)
-				.values(epoch, ref.pathString(), newValue, mapper.writeValueAsString(ref.root().diagnosticContext().getAttributes()))
+				.values(epoch, ref.pathString(), newValue, mapper.writeValueAsString(diagnosticContext.getAttributes()))
 				.returning(REVISION)
 				.fetchOptional(REVISION)
 				.orElseThrow(()->new NotYetImplementedException("No change inserted"));

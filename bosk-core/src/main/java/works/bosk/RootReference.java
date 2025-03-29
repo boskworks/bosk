@@ -6,6 +6,10 @@ import works.bosk.exceptions.InvalidTypeException;
 /**
  * A {@link Reference} to the root node of a particular bosk's state tree,
  * doubling as the main way to acquire/construct other references.
+ *
+ * <p>
+ * One single {@code RootReference} instance is associated with each {@link Bosk}.
+ * You can hold on to this object; there's no need to re-fetch it from the {@link Bosk} every time.
  */
 public sealed interface RootReference<R>
 	extends Reference<R>
@@ -46,5 +50,4 @@ public sealed interface RootReference<R>
 	<T> Reference<Reference<T>> thenReference(Class<T> targetClass, Path path) throws InvalidTypeException;
 	<TT extends VariantCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> variantCaseClass, Path path) throws InvalidTypeException;
 
-	BoskDiagnosticContext diagnosticContext();
 }

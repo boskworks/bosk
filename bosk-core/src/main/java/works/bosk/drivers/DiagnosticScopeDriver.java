@@ -27,7 +27,7 @@ public class DiagnosticScopeDriver implements BoskDriver {
 	final Function<BoskDiagnosticContext, DiagnosticScope> scopeSupplier;
 
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Function<BoskDiagnosticContext, DiagnosticScope> scopeSupplier) {
-		return (b,d) -> new DiagnosticScopeDriver(d, b.rootReference().diagnosticContext(), scopeSupplier);
+		return (b,d) -> new DiagnosticScopeDriver(d, b.diagnosticContext(), scopeSupplier);
 	}
 
 	@Override

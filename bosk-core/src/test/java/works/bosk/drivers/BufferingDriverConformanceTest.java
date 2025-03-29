@@ -6,7 +6,7 @@ public class BufferingDriverConformanceTest extends DriverConformanceTest {
 
 	@BeforeEach
 	void setupDriverFactory() {
-		driverFactory = (b,d)-> BufferingDriver.writingTo(d);
+		driverFactory = BufferingDriver.factory();
 	}
 
 }

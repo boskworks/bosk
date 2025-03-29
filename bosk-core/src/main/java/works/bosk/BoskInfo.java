@@ -10,10 +10,12 @@ public interface BoskInfo<R extends StateTreeNode> {
 	String name();
 	Identifier instanceID();
 	RootReference<R> rootReference();
+	BoskDiagnosticContext diagnosticContext();
 	void registerHooks(Object receiver) throws InvalidTypeException;
 
 	/**
 	 * @throws IllegalStateException if called before the {@link Bosk} constructor returns
 	 */
 	Bosk<R> bosk();
+
 }
