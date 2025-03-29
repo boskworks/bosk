@@ -120,7 +120,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		UnderConstruction<R> boskInfo = new UnderConstruction<>(
-			name, instanceID, rootRef, this::registerHooks, new AtomicReference<>());
+			name, instanceID, rootRef, diagnosticContext, this::registerHooks, new AtomicReference<>());
 
 		// We do this as late as possible because the driver factory is allowed
 		// to do such things as create References, so it needs the rest of the
@@ -149,6 +149,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		String name,
 		Identifier instanceID,
 		RootReference<RR> rootReference,
+		BoskDiagnosticContext diagnosticContext,
 		RegisterHooksMethod m,
 		AtomicReference<Bosk<RR>> boskRef
 	) implements BoskInfo<RR> {
@@ -985,11 +986,6 @@ try (ReadContext originalThReadContext = bosk.readContext()) {
 		@Override
 		public <TT extends VariantCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> variantCaseClass, Path path) throws InvalidTypeException {
 			return this.then(Classes.taggedUnion(variantCaseClass), path);
-		}
-
-		@Override
-		public BoskDiagnosticContext diagnosticContext() {
-			return diagnosticContext;
 		}
 
 		@Override

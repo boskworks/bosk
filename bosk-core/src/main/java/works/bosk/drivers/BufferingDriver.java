@@ -37,15 +37,12 @@ import static lombok.AccessLevel.PROTECTED;
 @RequiredArgsConstructor(access = PROTECTED)
 public class BufferingDriver implements BoskDriver {
 	private final BoskDriver downstream;
+	private final BoskDiagnosticContext diagnosticContext;
 	private final Deque<Consumer<BoskDriver>> updateQueue = new ConcurrentLinkedDeque<>();
 	private final AtomicLong changeID = new AtomicLong();
 
-	public static BufferingDriver writingTo(BoskDriver downstream) {
-		return new BufferingDriver(downstream);
-	}
-
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory() {
-		return (b,d) -> new BufferingDriver(d);
+		return (b,d) -> new BufferingDriver(d, b.diagnosticContext());
 	}
 
 	@Override
@@ -55,27 +52,27 @@ public class BufferingDriver implements BoskDriver {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		enqueue(d -> d.submitReplacement(target, newValue), target.root().diagnosticContext());
+		enqueue(d -> d.submitReplacement(target, newValue));
 	}
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		enqueue(d -> d.submitConditionalCreation(target, newValue), target.root().diagnosticContext());
+		enqueue(d -> d.submitConditionalCreation(target, newValue));
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		enqueue(d -> d.submitDeletion(target), target.root().diagnosticContext());
+		enqueue(d -> d.submitDeletion(target));
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		enqueue(d -> d.submitConditionalReplacement(target, newValue, precondition, requiredValue), target.root().diagnosticContext());
+		enqueue(d -> d.submitConditionalReplacement(target, newValue, precondition, requiredValue));
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		enqueue(d -> d.submitConditionalDeletion(target, precondition, requiredValue), target.root().diagnosticContext());
+		enqueue(d -> d.submitConditionalDeletion(target, precondition, requiredValue));
 	}
 
 	@Override
@@ -86,7 +83,7 @@ public class BufferingDriver implements BoskDriver {
 		downstream.flush();
 	}
 
-	private void enqueue(Consumer<BoskDriver> action, BoskDiagnosticContext diagnosticContext) {
+	private void enqueue(Consumer<BoskDriver> action) {
 		long changeID = this.changeID.incrementAndGet();
 		LOGGER.debug("Buffering action {} {}", changeID, diagnosticContext.getAttributes());
 		MapValue<String> capturedAttributes = diagnosticContext.getAttributes();

@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonValue;
+import works.bosk.BoskDiagnosticContext;
 import works.bosk.MapValue;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
@@ -17,6 +18,7 @@ import static works.bosk.drivers.mongo.Formatter.REVISION_ZERO;
 @RequiredArgsConstructor
 non-sealed abstract class AbstractFormatDriver<R extends StateTreeNode> implements FormatDriver<R> {
 	final RootReference<R> rootRef;
+	final BoskDiagnosticContext diagnosticContext;
 	final Formatter formatter;
 
 	@Override

@@ -46,5 +46,4 @@ public sealed interface RootReference<R>
 	<T> Reference<Reference<T>> thenReference(Class<T> targetClass, Path path) throws InvalidTypeException;
 	<TT extends VariantCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> variantCaseClass, Path path) throws InvalidTypeException;
 
-	BoskDiagnosticContext diagnosticContext();
 }
