@@ -19,7 +19,7 @@ import static works.bosk.BoskTestUtils.boskName;
 /**
  * Tests the ability of a driver to share state between two bosks.
  */
-public class SharedDriverConformanceTest extends DriverConformanceTest {
+public abstract class SharedDriverConformanceTest extends DriverConformanceTest {
 
 	@Override
 	protected void assertCorrectBoskContents() {

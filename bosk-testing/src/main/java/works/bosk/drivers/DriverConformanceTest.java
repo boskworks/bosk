@@ -20,10 +20,12 @@ import works.bosk.Identifier;
 import works.bosk.ListValue;
 import works.bosk.Listing;
 import works.bosk.ListingEntry;
+import works.bosk.ListingReference;
 import works.bosk.MapValue;
 import works.bosk.Path;
 import works.bosk.Reference;
 import works.bosk.SideTable;
+import works.bosk.SideTableReference;
 import works.bosk.TaggedUnion;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.state.TestEntity;
@@ -123,6 +125,45 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 				.withString("replaced-part2"));
 		driver.submitReplacement(listingEntryRef, LISTING_ENTRY);
 
+		assertCorrectBoskContents();
+	}
+
+	@ParametersByName
+	void replaceListingDomain(Path enclosingCatalogPath) throws InvalidTypeException, IOException, InterruptedException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		ListingReference<TestEntity> listingRef = catalogRef.thenListing(TestEntity.class, child1ID.toString(), "listing");
+		Listing<TestEntity> initialListing = Listing.of(catalogRef, child1ID, child2ID);
+		driver.submitReplacement(listingRef, initialListing);
+		driver.flush();
+		assertCorrectBoskContents(); // Correct starting state
+
+		// Make a new listing with a different domain but the same contents
+		CatalogReference<TestEntity> innerCatalogRef = catalogRef.thenCatalog(TestEntity.class, child1ID.toString(), "catalog");
+		Listing<TestEntity> newListing = Listing.of(innerCatalogRef, initialListing.ids());
+		driver.submitReplacement(listingRef, newListing);
+		driver.flush();
+		assertCorrectBoskContents();
+	}
+
+	@ParametersByName
+	void replaceSideTableDomain(Path enclosingCatalogPath) throws InvalidTypeException, IOException, InterruptedException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		driver.flush();
+		Catalog<TestEntity> catalog;
+		try (var __ = bosk.readContext()) {
+			catalog = catalogRef.value();
+		}
+		SideTableReference<TestEntity, TestEntity> sideTableRef = catalogRef.thenSideTable(TestEntity.class, TestEntity.class, child1ID.toString(), "sideTable");
+		SideTable<TestEntity, TestEntity> initialSideTable = SideTable.fromFunction(catalogRef, Stream.of(child1ID, child2ID), catalog::get);
+		driver.submitReplacement(sideTableRef, initialSideTable);
+		driver.flush();
+		assertCorrectBoskContents(); // Correct starting state
+
+		// Make a new side table with a different domain but the same contents
+		CatalogReference<TestEntity> innerCatalogRef = catalogRef.thenCatalog(TestEntity.class, child1ID.toString(), "catalog");
+		SideTable<TestEntity, TestEntity> newSideTable = SideTable.fromEntries(innerCatalogRef, initialSideTable.idEntrySet().stream());
+		driver.submitReplacement(sideTableRef, newSideTable);
+		driver.flush();
 		assertCorrectBoskContents();
 	}
 
