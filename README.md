@@ -95,7 +95,7 @@ giving you "snapshot-at-start" semantics and protecting you from race conditions
 It is an antipattern to use many small read contexts during the course of a single operation.
 
 If you're using Spring Boot 3, you can bring in `bosk-spring-boot-3`
-and set the `bosk.web.service-path` property to get an immediate HTTP REST API to view and edit your state tree.
+and set the `bosk.web.maintenance-path` property to get an immediate HTTP REST API to view and edit your state tree.
 
 To modify state programmatically, use the `BoskDriver` interface:
 

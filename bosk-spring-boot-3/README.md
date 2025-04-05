@@ -17,11 +17,11 @@ This feature is enabled by default, and can be disabled by setting `bosk.web.rea
 (Note, though, that if you have a situation where you need more control over read contexts,
 you can consider using `Bosk.supersedingReadContext()` rather than turning off automatic read contexts globally.)
 
-### Service endpoints
+### Maintenance endpoints
 
-The [`ServiceEndpoints`](src/main/java/works/bosk/spring/boot/ServiceEndpoints.java) component
+The [`MaintenanceEndpoints`](src/main/java/works/bosk/spring/boot/MaintenanceEndpoints.java) component
 registers HTTP endpoints giving direct `GET`, `PUT`, and `DELETE` access to the bosk state in JSON form.
-The endpoints have a prefix based on the `bosk.web.service-path` setting,
+The endpoints have a prefix based on the `bosk.web.maintenance-path` setting,
 followed by the path of the node within the bosk state.
 
 The endpoints also support ETags via `If-Match` and `If-None-Match` headers,

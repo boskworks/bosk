@@ -32,13 +32,13 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @RestController
-@RequestMapping("${bosk.web.service-path}")
-public class ServiceEndpoints {
+@RequestMapping("${bosk.web.maintenance-path}")
+public class MaintenanceEndpoints {
 	private final Bosk<?> bosk;
 	private final ObjectMapper mapper;
 	private final JacksonSerializer jackson;
 
-	public ServiceEndpoints(
+	public MaintenanceEndpoints(
 		Bosk<?> bosk,
 		ObjectMapper mapper,
 		JacksonSerializer jackson
@@ -223,5 +223,5 @@ public class ServiceEndpoints {
 		}
 	}
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(ServiceEndpoints.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(MaintenanceEndpoints.class);
 }
