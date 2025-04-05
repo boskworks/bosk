@@ -35,7 +35,6 @@ allprojects {
 
 dependencies {
 	compileJava {
-		options.compilerArgs << '-parameters'        // @ParametersByName doesn't work without this; not sure why
 		options.compilerArgs << '-Xlint'
 		options.compilerArgs << '-Xlint:-serial'     // Don't care about Java serialization
 		options.compilerArgs << '-Xlint:-try'        // Really annoying bogus "auto-closeable never used" warnings
