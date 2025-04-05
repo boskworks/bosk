@@ -229,6 +229,9 @@ public final class PathCompiler {
 			LOGGER.debug("Steps for {}: {}", path, steps);
 		}
 
+		/**
+		 * @param currentType the type within which {@code segment} is defined
+		 */
 		private Step newSegmentStep(Type currentType, String segment, int segmentNum) throws InvalidTypeException {
 			Class<?> currentClass = rawClass(currentType);
 			if (Catalog.class.isAssignableFrom(currentClass)) {
@@ -279,6 +282,8 @@ public final class PathCompiler {
 			if (USE_FIELD_STEP) {
 				return new FieldStep(segment, getters, constructor);
 			} else {
+				// FieldStep is technically redundant if we have CustomStep,
+				// though TBH the former is more understandable.
 				Method getter = getters.get(segment);
 				Type targetType = getter.getGenericReturnType();
 				MethodHandle methodHandle_get;
@@ -362,7 +367,7 @@ public final class PathCompiler {
 		//
 
 		private Step lastStep() {
-			return steps.get(steps.size()-1);
+			return steps.getLast();
 		}
 
 		/**
@@ -706,13 +711,12 @@ public final class PathCompiler {
 	private static List<Path> pathList() {
 		List<Path> result = synchronizedList(new ArrayList<>());
 		if (LOGGER.isTraceEnabled()) {
-			Runtime.getRuntime().addShutdownHook(new Thread(()->{
+			Runtime.getRuntime().addShutdownHook(new Thread(()->
 				LOGGER.trace("keepAliveFullyParameterizedPaths:{}",
 					result.stream()
 						.map(Path::urlEncoded)
 						.sorted()
-						.collect(joining("\n\t", "\n\t", "")));
-			}));
+						.collect(joining("\n\t", "\n\t", "")))));
 		}
 		return result;
 	}
