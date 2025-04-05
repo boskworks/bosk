@@ -36,7 +36,6 @@ import works.bosk.jackson.JacksonSerializerConfiguration;
 import static com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT;
 import static java.lang.System.identityHashCode;
 import static java.util.Collections.newSetFromMap;
-import static works.bosk.jackson.JacksonSerializerConfiguration.MapShape.LINKED_MAP;
 
 public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 
@@ -46,7 +45,6 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 				factoryThatMakesAReference(),
 
 				jacksonRoundTripFactory(JacksonSerializerConfiguration.defaultConfiguration()),
-				jacksonRoundTripFactory(new JacksonSerializerConfiguration(LINKED_MAP)),
 
 				bsonRoundTripFactory()
 		);
@@ -71,7 +69,7 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 		private final JacksonSerializer jp;
 
 		private JacksonRoundTripDriverFactory(JacksonSerializerConfiguration config) {
-			this.jp = new JacksonSerializer(config);
+			this.jp = new JacksonSerializer();
 		}
 
 		@Override

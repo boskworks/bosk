@@ -35,7 +35,6 @@ import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.Root;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.BoskTestUtils.boskName;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
-import static works.bosk.jackson.JacksonSerializerConfiguration.MapShape.ARRAY;
 
 // TODO: Test mutation methods too
 public class JsonNodeSurgeonTest {
@@ -53,7 +52,7 @@ public class JsonNodeSurgeonTest {
 			b->JsonRoot.empty(b.buildReferences(Refs.class)),
 			Bosk.simpleDriver());
 		refs = bosk.buildReferences(Refs.class);
-		jacksonSerializer = new JacksonSerializer(new JacksonSerializerConfiguration(ARRAY));
+		jacksonSerializer = new JacksonSerializer();
 		mapper = new ObjectMapper();
 		mapper.registerModule(jacksonSerializer.moduleFor(bosk));
 		surgeon = new JsonNodeSurgeon();

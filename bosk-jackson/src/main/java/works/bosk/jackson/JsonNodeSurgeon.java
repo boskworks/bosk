@@ -26,9 +26,6 @@ import static works.bosk.jackson.JsonNodeSurgeon.ReplacementStyle.WRAPPED_ENTITY
 /**
  * Utilities to find and modify the {@link JsonNode} corresponding to
  * a given bosk {@link Reference}.
- *
- * <p>
- * Note: currently only works with {@link JacksonSerializerConfiguration.MapShape#ARRAY MapShape.ARRAY}.
  */
 public class JsonNodeSurgeon {
 	/**

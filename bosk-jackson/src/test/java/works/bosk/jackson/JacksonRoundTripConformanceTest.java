@@ -14,7 +14,6 @@ public class JacksonRoundTripConformanceTest extends DriverConformanceTest {
 
 	@SuppressWarnings("unused")
 	static Stream<JacksonSerializerConfiguration> config() {
-		return Stream.of(JacksonSerializerConfiguration.MapShape.values())
-			.map(shape -> new JacksonSerializerConfiguration(shape));
+		return Stream.of(JacksonSerializerConfiguration.defaultConfiguration());
 	}
 }
