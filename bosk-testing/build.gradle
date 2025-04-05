@@ -13,6 +13,7 @@ java {
 
 compileJava {
 	options.release = prodJavaVersion
+	options.compilerArgs << '-parameters' // For @ParametersByName
 }
 
 compileTestJava {
