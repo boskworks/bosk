@@ -54,6 +54,7 @@ import static works.bosk.ReferenceUtils.gettersForConstructorParameters;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.bytecode.ClassBuilder.here;
+import static works.bosk.util.ReflectionHelpers.boxedClass;
 
 /**
  * Compiles {@link Path} objects into {@link Dereferencer}s for a given source {@link Type}.
@@ -158,7 +159,9 @@ public final class PathCompiler {
 	 */
 	private interface Step {
 		/**
-		 * @return the {@link Type} of the object pointed to by the {@link Path} segment that this Step corresponds to
+		 * @return the {@link Type} that would be returned by a reference ending with the {@link Path} segment that this Step corresponds to.
+		 * This is the type of the object that would be returned by the dereferencer.
+		 * For primitives, this is the boxed type.
 		 */
 		Type targetType();
 
@@ -229,6 +232,9 @@ public final class PathCompiler {
 			LOGGER.debug("Steps for {}: {}", path, steps);
 		}
 
+		/**
+		 * @param currentType the type within which {@code segment} is defined
+		 */
 		private Step newSegmentStep(Type currentType, String segment, int segmentNum) throws InvalidTypeException {
 			Class<?> currentClass = rawClass(currentType);
 			if (Catalog.class.isAssignableFrom(currentClass)) {
@@ -261,10 +267,10 @@ public final class PathCompiler {
 				getters.put(segment, getterMethod(currentClass, segment));
 
 				Step fieldStep = newFieldStep(segment, getters, ReferenceUtils.getCanonicalConstructor(currentClass));
-				Class<?> fieldClass = rawClass(fieldStep.targetType());
-				if (Optional.class.isAssignableFrom(fieldClass)) {
+				Class<?> targetClass = rawClass(fieldStep.targetType());
+				if (Optional.class.isAssignableFrom(targetClass)) {
 					return new OptionalValueStep(parameterType(fieldStep.targetType(), Optional.class, 0), fieldStep);
-				} else if (Phantom.class.isAssignableFrom(fieldClass)) {
+				} else if (Phantom.class.isAssignableFrom(targetClass)) {
 					return new PhantomValueStep(parameterType(fieldStep.targetType(), Phantom.class, 0), segment);
 				} else {
 					return fieldStep;
@@ -279,6 +285,8 @@ public final class PathCompiler {
 			if (USE_FIELD_STEP) {
 				return new FieldStep(segment, getters, constructor);
 			} else {
+				// FieldStep is technically redundant if we have CustomStep,
+				// though TBH the former is more understandable.
 				Method getter = getters.get(segment);
 				Type targetType = getter.getGenericReturnType();
 				MethodHandle methodHandle_get;
@@ -362,7 +370,7 @@ public final class PathCompiler {
 		//
 
 		private Step lastStep() {
-			return steps.get(steps.size()-1);
+			return steps.getLast();
 		}
 
 		/**
@@ -461,13 +469,27 @@ public final class PathCompiler {
 
 			private Method getter() { return gettersByName.get(name); }
 
-			@Override public Type targetType() { return getter().getGenericReturnType(); }
+			@Override public Type targetType() {
+				var valueType = valueType();
+				if (valueType instanceof Class<?> c) {
+					return boxedClass(c);
+				} else {
+					return valueType;
+				}
+			}
+
+			public Type valueType() { return getter().getGenericReturnType(); }
 
 			@Override public String fullyParameterizedPathSegment() { return name; }
 
-			@Override public void generate_get() { invoke(getter()); }
+			@Override public void generate_get() {
+				invoke(getter());
+				cb.autoBox(valueType());
+			}
 
 			@Override public void generate_with() {
+				cb.autoUnbox(valueType());
+
 				// This is too complex to do on the stack. Put what we need in local variables.
 				LocalVariable newValue = cb.popToLocal();
 				LocalVariable originalObject = cb.popToLocal();
@@ -631,21 +653,37 @@ public final class PathCompiler {
 
 		@Value
 		public class CustomStep implements Step {
-			Type targetType;
+			Type valueType;
 			String fullyParameterizedPathSegment;
 			CallSite callSite_get;
 			CallSite callSite_with;
 
+			@Override public Type targetType() {
+				if (valueType instanceof Class<?> c) {
+					return boxedClass(c);
+				} else {
+					return valueType;
+				}
+			}
+
 			@Override public String fullyParameterizedPathSegment() { return fullyParameterizedPathSegment; }
 
-			@Override public void generate_get()      { cb.invokeDynamic("get", callSite_get); }
-			@Override public void generate_with()     { cb.invokeDynamic("with", callSite_with); }
+			@Override public void generate_get() {
+				cb.invokeDynamic("get", callSite_get);
+				cb.autoBox(valueType);
+			}
+
+			@Override public void generate_with() {
+				cb.autoUnbox(valueType);
+				cb.invokeDynamic("with", callSite_with);
+			}
 
 			@Override
 			public String toString() {
 				return getClass().getSimpleName();
 			}
 		}
+
 	}
 
 	/**
@@ -706,13 +744,12 @@ public final class PathCompiler {
 	private static List<Path> pathList() {
 		List<Path> result = synchronizedList(new ArrayList<>());
 		if (LOGGER.isTraceEnabled()) {
-			Runtime.getRuntime().addShutdownHook(new Thread(()->{
+			Runtime.getRuntime().addShutdownHook(new Thread(()->
 				LOGGER.trace("keepAliveFullyParameterizedPaths:{}",
 					result.stream()
 						.map(Path::urlEncoded)
 						.sorted()
-						.collect(joining("\n\t", "\n\t", "")));
-			}));
+						.collect(joining("\n\t", "\n\t", "")))));
 		}
 		return result;
 	}

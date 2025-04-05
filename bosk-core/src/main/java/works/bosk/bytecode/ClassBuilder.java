@@ -52,6 +52,8 @@ import static org.objectweb.asm.Opcodes.RETURN;
 import static org.objectweb.asm.Opcodes.SWAP;
 import static org.objectweb.asm.Opcodes.V1_8;
 import static org.objectweb.asm.Type.getMethodDescriptor;
+import static works.bosk.ReferenceUtils.rawClass;
+import static works.bosk.util.ReflectionHelpers.boxedClass;
 
 /**
  * Wrapper around ASM's {@link ClassWriter} to simplify things for our purposes.
@@ -145,8 +147,10 @@ public final class ClassBuilder<T> {
 	 * Emit a CHECKCAST: <a href="https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-6.html#jvms-6.5.checkcast">...</a>
 	 */
 	public void castTo(Class<?> expectedType) {
-		emitLineNumberInfo();
-		methodVisitor().visitTypeInsn(CHECKCAST, Type.getInternalName(expectedType));
+		if (!expectedType.isPrimitive()) {
+			emitLineNumberInfo();
+			methodVisitor().visitTypeInsn(CHECKCAST, Type.getInternalName(expectedType));
+		}
 	}
 
 	/**
@@ -266,18 +270,24 @@ public final class ClassBuilder<T> {
 		String typeName = Type.getInternalName(type);
 		String methodName = method.getName();
 		String signature = getMethodDescriptor(method);
-		Type methodType = Type.getType(method);
-		int weird = methodType.getArgumentsAndReturnSizes();
-		int argumentSlots = weird >> 2; // NOTE: This is off by 1 for static methods!
-		int resultSlots = weird & 0x3;
-		if (isStatic(method.getModifiers())) {
-			argumentSlots -= 1; // Static methods have no "this" argument
+		boolean isStatic = isStatic(method.getModifiers());
+		if (isStatic) {
 			methodVisitor().visitMethodInsn(INVOKESTATIC, typeName, methodName, signature, false);
 		} else if (type.isInterface()) {
 			methodVisitor().visitMethodInsn(INVOKEINTERFACE, typeName, methodName, signature, true);
 		} else {
 			methodVisitor().visitMethodInsn(INVOKEVIRTUAL, typeName, methodName, signature, false);
 		}
+		endPop(Type.getType(method), isStatic);
+	}
+
+	private void endPop(Type methodType, boolean isStatic) {
+		int weird = methodType.getArgumentsAndReturnSizes();
+		int argumentSlots = weird >> 2; // NOTE: This is off by 1 for static methods!
+		if (isStatic) {
+			argumentSlots -= 1; // Static methods have no "this" argument
+		}
+		int resultSlots = weird & 0x3;
 		endPop(argumentSlots - resultSlots);
 	}
 
@@ -290,13 +300,14 @@ public final class ClassBuilder<T> {
 		Type[] parameterTypes = Stream.of(ctor.getParameterTypes()).map(Type::getType).toArray(Type[]::new);
 		String signature = getMethodDescriptor(Type.getType(void.class), parameterTypes);
 		methodVisitor().visitMethodInsn(INVOKESPECIAL, typeName, "<init>", signature, false);
-		endPop(ctor.getParameterCount());
+		endPop(Type.getType(ctor), false);
 	}
 
 	/**
 	 * Emit NEW for the given class.
 	 */
 	public void instantiate(Class<?> type) {
+		beginPush();
 		methodVisitor().visitTypeInsn(NEW, Type.getInternalName(type));
 	}
 
@@ -311,6 +322,28 @@ public final class ClassBuilder<T> {
 
 	public void ifFalse(Runnable action) { branchAround(action, IFNE, 1); }
 	public void ifTrue(Runnable action) { branchAround(action, IFEQ, 1); }
+
+	public void autoBox(java.lang.reflect.Type valueType) {
+		Class<?> valueClass = rawClass(valueType);
+		if (valueClass.isPrimitive()) {
+			try {
+				invoke(boxedClass(valueClass).getMethod("valueOf", valueClass));
+			} catch (NoSuchMethodException e) {
+				throw new AssertionError("Expected boxing method to exist", e);
+			}
+		}
+	}
+
+	public void autoUnbox(java.lang.reflect.Type valueType) {
+		Class<?> valueClass = rawClass(valueType);
+		if (valueClass.isPrimitive()) {
+			try {
+				invoke(boxedClass(valueClass).getMethod(valueClass.getName() + "Value"));
+			} catch (NoSuchMethodException e) {
+				throw new AssertionError("Expected unboxing method to exist", e);
+			}
+		}
+	}
 
 	/**
 	 * Finish building the class, load it with its own ClassLoader, and instantiate it.

@@ -1,7 +1,10 @@
 package works.bosk.drivers;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.RecordComponent;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
@@ -28,6 +31,7 @@ import works.bosk.SideTable;
 import works.bosk.SideTableReference;
 import works.bosk.TaggedUnion;
 import works.bosk.annotations.ReferencePath;
+import works.bosk.drivers.state.Primitives;
 import works.bosk.drivers.state.TestEntity;
 import works.bosk.drivers.state.TestEntity.IdentifierCase;
 import works.bosk.drivers.state.TestEntity.StringCase;
@@ -46,6 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.util.Classes.listValue;
 import static works.bosk.util.Classes.mapValue;
+import static works.bosk.util.ReflectionHelpers.boxedClass;
 
 /**
  * Tests the basic functionality of {@link BoskDriver}
@@ -452,6 +457,27 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 		assertThrows(IllegalArgumentException.class, ()->driver.submitDeletion(mapRef));
 		assertCorrectBoskContents();
+	}
+
+	@ParametersByName
+	@SuppressWarnings({"rawtypes","unchecked"})
+	void primitive_works(RecordComponent primitiveComponent) throws InvalidTypeException, InvocationTargetException, IllegalAccessException {
+		setupBosksAndReferences(driverFactory);
+
+		// Two values we can distinguish from each other
+		var zero = Primitives.of(0);
+		var one = Primitives.of(1);
+
+		Reference ref = bosk.rootReference().then(boxedClass(primitiveComponent.getType()), "values", "primitives", primitiveComponent.getName());
+		bosk.driver().submitReplacement(ref, primitiveComponent.getAccessor().invoke(zero));
+		assertCorrectBoskContents();
+		bosk.driver().submitReplacement(ref, primitiveComponent.getAccessor().invoke(one));
+		assertCorrectBoskContents();
+	}
+
+	@SuppressWarnings("unused")
+	static Stream<RecordComponent> primitiveComponent() {
+		return Arrays.stream(Primitives.class.getRecordComponents());
 	}
 
 	@ParametersByName
