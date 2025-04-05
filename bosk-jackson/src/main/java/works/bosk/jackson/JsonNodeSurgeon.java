@@ -32,14 +32,14 @@ public class JsonNodeSurgeon {
 	 * Describes how to access a particular {@link JsonNode} from its parent node.
 	 */
 	public sealed interface NodeLocation {
-		public record Root() implements NodeLocation {}
-		public record ObjectMember(ObjectNode parent, String memberName) implements NodeLocation {
+		record Root() implements NodeLocation {}
+		record ObjectMember(ObjectNode parent, String memberName) implements NodeLocation {
 			public ObjectMember {
 				requireNonNull(parent);
 				requireNonNull(memberName);
 			}
 		}
-		public record ArrayElement(ArrayNode parent, int elementIndex) implements NodeLocation {
+		record ArrayElement(ArrayNode parent, int elementIndex) implements NodeLocation {
 			public ArrayElement {
 				requireNonNull(parent);
 				// Note that elementIndex == parent.size() is valid for nonexistent array elements
@@ -58,7 +58,7 @@ public class JsonNodeSurgeon {
 		 * to the {@link Reference#enclosingReference enclosing reference}.
 		 * They're two related but different concepts. See {@link ReplacementStyle#WRAPPED_ENTITY WRAPPED_ENTITY}.)
 		 */
-		public record NonexistentParent() implements NodeLocation {}
+		record NonexistentParent() implements NodeLocation {}
 	}
 
 	/**
@@ -67,7 +67,7 @@ public class JsonNodeSurgeon {
 	 */
 	public enum ReplacementStyle {
 		/**
-		 * Use the serialized form of the resired value
+		 * Use the serialized form of the desired value
 		 */
 		PLAIN,
 
@@ -90,11 +90,11 @@ public class JsonNodeSurgeon {
 		 * because the parent JSON node (the wrapper object) doesn't yet exist,
 		 * since it is created at the same time as the JSON node for the entity;
 		 * however, the <i>replacement location</i> will exist (that is, it will be
-		 * something other than {@link NonexistentParent NonexistentParent}
+		 * something other than {@link NonexistentParent NonexistentParent})
 		 * and will indicate where the wrapper object should be.
 		 */
 		WRAPPED_ENTITY,
-	};
+	}
 
 	/**
 	 * Information about which {@link JsonNode} corresponds to a particular {@link Reference}.
@@ -166,7 +166,7 @@ public class JsonNodeSurgeon {
 			var ids = (ArrayNode)parent.get("ids");
 			var id = ref.path().lastSegment();
 			for (int i = 0; i < ids.size(); i++) {
-				if (id.equals(((TextNode)ids.get(i)).textValue())) {
+				if (id.equals(ids.get(i).textValue())) {
 					return NodeInfo.idOnly(new ArrayElement(ids, i));
 				}
 			}
@@ -231,18 +231,10 @@ public class JsonNodeSurgeon {
 
 	private static JsonNode getNode(NodeLocation nodeLocation, JsonNode rootDocument) {
 		return switch (nodeLocation) {
-			case ArrayElement a -> {
-				yield a.parent().get(a.elementIndex());
-			}
-			case ObjectMember o -> {
-				yield o.parent().get(o.memberName());
-			}
-			case Root() -> {
-				yield rootDocument;
-			}
-			case NonexistentParent() -> {
-				yield null;
-			}
+			case ArrayElement a -> a.parent().get(a.elementIndex());
+			case ObjectMember o -> o.parent().get(o.memberName());
+			case Root() -> rootDocument;
+			case NonexistentParent() -> null;
 		};
 	}
 
@@ -257,9 +249,7 @@ public class JsonNodeSurgeon {
 			return;
 		}
 		switch (location) {
-			case Root() -> {
-				throw new IllegalArgumentException("Cannot replace root node");
-			}
+			case Root() -> throw new IllegalArgumentException("Cannot replace root node");
 			case JsonNodeSurgeon.NodeLocation.ArrayElement(var parent, int i) -> {
 				if (parent.size() == i) {
 					parent.add(replacement);
@@ -267,12 +257,8 @@ public class JsonNodeSurgeon {
 					parent.set(i, replacement);
 				}
 			}
-			case JsonNodeSurgeon.NodeLocation.ObjectMember(var parent, String member) -> {
-				parent.set(member, replacement);
-			}
-			case NonexistentParent() -> {
-				throw new IllegalArgumentException("This should already have been handled");
-			}
+			case JsonNodeSurgeon.NodeLocation.ObjectMember(var parent, String member) -> parent.set(member, replacement);
+			case NonexistentParent() -> throw new IllegalArgumentException("This should already have been handled");
 		}
 	}
 
@@ -293,15 +279,9 @@ public class JsonNodeSurgeon {
 
 	public void deleteNode(NodeInfo nodeInfo) {
 		switch (nodeInfo.replacementLocation()) {
-			case Root() -> {
-				throw new IllegalArgumentException("Cannot delete root");
-			}
-			case JsonNodeSurgeon.NodeLocation.ArrayElement(var parent, int i) -> {
-				parent.remove(i);
-			}
-			case JsonNodeSurgeon.NodeLocation.ObjectMember(var parent, String member) -> {
-				parent.remove(member);
-			}
+			case Root() -> throw new IllegalArgumentException("Cannot delete root");
+			case JsonNodeSurgeon.NodeLocation.ArrayElement(var parent, int i) -> parent.remove(i);
+			case JsonNodeSurgeon.NodeLocation.ObjectMember(var parent, String member) -> parent.remove(member);
 			case NonexistentParent() -> {
 				// Nothing to do
 			}
