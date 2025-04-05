@@ -23,6 +23,8 @@ The [`MaintenanceEndpoints`](src/main/java/works/bosk/spring/boot/MaintenanceEnd
 registers HTTP endpoints giving direct `GET`, `PUT`, and `DELETE` access to the bosk state in JSON form.
 The endpoints have a prefix based on the `bosk.web.maintenance-path` setting,
 followed by the path of the node within the bosk state.
+They are intended for troubleshooting, manual operations,
+or integrating with external systems that need full control over the bosk state.
 
 The endpoints also support ETags via `If-Match` and `If-None-Match` headers,
 which exposes a limited ability to do conditional updates.
