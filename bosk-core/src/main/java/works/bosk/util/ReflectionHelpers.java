@@ -106,4 +106,34 @@ public final class ReflectionHelpers {
 			default        -> null;
 		};
 	}
+
+	public static Class<?> boxedClass(Class<?> valueClass) {
+		return switch (valueClass.getName()) {
+			case "int" -> Integer.class;
+			case "long" -> Long.class;
+			case "short" -> Short.class;
+			case "char" -> Character.class;
+			case "byte" -> Byte.class;
+			case "float" -> Float.class;
+			case "double" -> Double.class;
+			case "boolean" -> Boolean.class;
+			case "void" -> Void.class;
+			default -> valueClass;
+		};
+	}
+
+	public static Class<?> unboxedClass(Class<?> valueClass) {
+		return switch (valueClass.getName()) {
+			case "java.lang.Integer" -> int.class;
+			case "java.lang.Long" -> long.class;
+			case "java.lang.Short" -> short.class;
+			case "java.lang.Character" -> char.class;
+			case "java.lang.Byte" -> byte.class;
+			case "java.lang.Float" -> float.class;
+			case "java.lang.Double" -> double.class;
+			case "java.lang.Boolean" -> boolean.class;
+			case "java.lang.Void" -> void.class;
+			default -> valueClass;
+		};
+	}
 }

@@ -15,9 +15,10 @@ public record TestValues(
 	String string,
 	ChronoUnit chronoUnit,
 	ListValue<String> list,
-	MapValue<String> map
+	MapValue<String> map,
+	Primitives primitives
 ) implements StateTreeNode {
 	public static TestValues blank() {
-		return new TestValues("", FOREVER, ListValue.empty(), MapValue.empty());
+		return new TestValues("", FOREVER, ListValue.empty(), MapValue.empty(), Primitives.of(0));
 	}
 }

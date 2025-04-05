@@ -37,6 +37,7 @@ import static java.util.Arrays.asList;
 import static works.bosk.ReferenceUtils.getterMethod;
 import static works.bosk.StateTreeSerializer.isImplicitParameter;
 import static works.bosk.bytecode.ClassBuilder.here;
+import static works.bosk.util.ReflectionHelpers.boxedClass;
 
 @RequiredArgsConstructor
 final class JacksonCompiler {
@@ -157,6 +158,7 @@ final class JacksonCompiler {
 			cb.castTo(nodeClass);
 			try {
 				cb.invoke(getterMethod(nodeClass, name));
+				cb.autoBox(component.getType());
 			} catch (InvalidTypeException e) {
 				throw new AssertionError("Should be impossible for a type that has already been validated", e);
 			}
@@ -188,7 +190,9 @@ final class JacksonCompiler {
 			cb.pushLocal(parameterValues);
 			cb.pushInt(i);
 			cb.invoke(LIST_GET);
-			cb.castTo(components.get(i).getType());
+			Class<?> type = components.get(i).getType();
+			cb.castTo(boxedClass(type));
+			cb.autoUnbox(type);
 		}
 		cb.invoke(constructor);
 

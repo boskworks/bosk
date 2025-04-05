@@ -29,6 +29,7 @@ import org.bson.codecs.EncoderContext;
 import org.bson.codecs.ValueCodecProvider;
 import org.bson.codecs.configuration.CodecProvider;
 import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskInfo;
@@ -43,9 +44,9 @@ import works.bosk.Path;
 import works.bosk.Phantom;
 import works.bosk.Reference;
 import works.bosk.ReferenceUtils;
-import works.bosk.StateTreeSerializer;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
+import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
 import works.bosk.VariantCase;
 import works.bosk.exceptions.InvalidTypeException;
@@ -67,6 +68,7 @@ import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.drivers.mongo.bson.BsonFormatter.dottedFieldNameSegment;
 import static works.bosk.drivers.mongo.bson.BsonFormatter.undottedFieldNameSegment;
+import static works.bosk.util.ReflectionHelpers.boxedClass;
 
 public final class BsonSerializer extends StateTreeSerializer {
 	private final ValueCodecProvider valueCodecProvider = new ValueCodecProvider();
@@ -116,6 +118,11 @@ public final class BsonSerializer extends StateTreeSerializer {
 	public <T, R extends StateTreeNode> Codec<T> getCodec(Type targetType, Class<T> targetClass, CodecRegistry registry, BoskInfo<R> boskInfo) {
 		if (rawClass(targetType) != targetClass) {
 			throw new IllegalArgumentException("Type does not match Class " + targetClass.getSimpleName() + ": " + targetType);
+		}
+
+		if (targetClass.isPrimitive()) {
+			// We know from peeking at the Morphia code: the boxed codec works for the unboxed type
+			return requireNonNull((Codec<T>) Bson.DEFAULT_CODEC_REGISTRY.get(boxedClass(targetClass)));
 		}
 
 		Codec<T> result = (Codec<T>) memoizedCodecs.get(targetType);
