@@ -17,8 +17,8 @@ The `bosk-spring-boot-3` module automatically establishes a `ReadContext` around
 using the `ReadContextFilter` class.
 (This can be disabled by adding the line `bosk.web.read-context: false` to `application.properties`.)
 
-#### Service endpoints
+#### Maintenance endpoints
 
-By setting `bosk.web.service-path: /bosk` in `application.properties`,
+By setting `bosk.web.maintenance-path: /bosk` in `application.properties`,
 the `bosk-spring-boot-3` module creates `GET`, `PUT`, and `DELETE` endpoints
 that allow users to view and modify the bosk contents over HTTP.

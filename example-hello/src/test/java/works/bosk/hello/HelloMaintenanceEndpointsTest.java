@@ -38,7 +38,7 @@ import static works.bosk.logging.MdcKeys.BOSK_INSTANCE_ID;
 
 @SpringBootTest(classes = HelloApplication.class)
 @AutoConfigureMockMvc
-public class HelloServiceEndpointsTest {
+public class HelloMaintenanceEndpointsTest {
 	static final Target INITIAL_TARGET = new Target(Identifier.from("world"));
 	static final BoskState INITIAL_STATE = new BoskState(Catalog.of(INITIAL_TARGET));
 

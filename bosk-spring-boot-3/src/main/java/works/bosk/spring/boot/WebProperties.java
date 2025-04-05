@@ -9,5 +9,5 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Accessors(fluent = false)
 public class WebProperties {
 	Boolean readContext;
-	String servicePath;
+	String maintenancePath;
 }

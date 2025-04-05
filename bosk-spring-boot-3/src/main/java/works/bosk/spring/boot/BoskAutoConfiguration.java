@@ -27,13 +27,13 @@ public class BoskAutoConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnProperty(prefix = "bosk.web", name = "service-path")
-	ServiceEndpoints serviceEndpoints(
+	@ConditionalOnProperty(prefix = "bosk.web", name = "maintenance-path")
+	MaintenanceEndpoints maintenanceEndpoints(
 		Bosk<?> bosk,
 		ObjectMapper mapper,
 		JacksonSerializer jackson
 	) {
-		return new ServiceEndpoints(bosk, mapper, jackson);
+		return new MaintenanceEndpoints(bosk, mapper, jackson);
 	}
 
 	@Bean
