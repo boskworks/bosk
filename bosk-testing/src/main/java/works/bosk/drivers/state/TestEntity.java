@@ -24,6 +24,7 @@ public record TestEntity(
 	Catalog<TestEntity> catalog,
 	Listing<TestEntity> listing,
 	SideTable<TestEntity, TestEntity> sideTable,
+	SideTable<TestEntity, SideTable<TestEntity, TestEntity>> nestedSideTable,
 	TaggedUnion<Variant> variant,
 	Optional<TestValues> values
 ) implements Entity {
@@ -52,6 +53,7 @@ public record TestEntity(
 			id.toString(),
 			Catalog.empty(),
 			Listing.empty(catalogRef),
+			SideTable.empty(catalogRef),
 			SideTable.empty(catalogRef),
 			TaggedUnion.of(new StringCase("")),
 			Optional.empty());

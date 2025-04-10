@@ -21,7 +21,7 @@ import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.Root;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.jackson.JsonNodeSurgeon.ReplacementStyle.ID_ONLY;
 import static works.bosk.jackson.JsonNodeSurgeon.ReplacementStyle.PLAIN;
-import static works.bosk.jackson.JsonNodeSurgeon.ReplacementStyle.WRAPPED_ENTITY;
+import static works.bosk.jackson.JsonNodeSurgeon.ReplacementStyle.WRAPPED;
 
 /**
  * Utilities to find and modify the {@link JsonNode} corresponding to
@@ -56,7 +56,7 @@ public class JsonNodeSurgeon {
 		 * <p>
 		 * (Note that the parent {@link JsonNode} is not always the node corresponding
 		 * to the {@link Reference#enclosingReference enclosing reference}.
-		 * They're two related but different concepts. See {@link ReplacementStyle#WRAPPED_ENTITY WRAPPED_ENTITY}.)
+		 * They're two related but different concepts. See {@link ReplacementStyle#WRAPPED WRAPPED}.)
 		 */
 		record NonexistentParent() implements NodeLocation {}
 	}
@@ -78,8 +78,7 @@ public class JsonNodeSurgeon {
 
 		/**
 		 * Use an {@link ObjectNode} having a single member whose name is the desired
-		 * entity's {@link works.bosk.Entity#id id} and whose value is the serialized
-		 * form of the desired entity.
+		 * last segment of the {@link Reference} pointing at the desired node,
 		 *
 		 * <p>
 		 * Note that this is the style that causes the {@link NodeInfo#valueLocation value location}
@@ -93,7 +92,7 @@ public class JsonNodeSurgeon {
 		 * something other than {@link NonexistentParent NonexistentParent})
 		 * and will indicate where the wrapper object should be.
 		 */
-		WRAPPED_ENTITY,
+		WRAPPED,
 	}
 
 	/**
@@ -125,8 +124,8 @@ public class JsonNodeSurgeon {
 			return new NodeInfo(theLocation, theLocation, ID_ONLY);
 		}
 
-		static NodeInfo wrappedEntity(NodeLocation valueLocation, NodeLocation replacementLocation) {
-			return new NodeInfo(valueLocation, replacementLocation, WRAPPED_ENTITY);
+		static NodeInfo wrapped(NodeLocation valueLocation, NodeLocation replacementLocation) {
+			return new NodeInfo(valueLocation, replacementLocation, WRAPPED);
 		}
 	}
 
@@ -174,30 +173,33 @@ public class JsonNodeSurgeon {
 			return NodeInfo.idOnly(new ArrayElement(ids, ids.size()));
 		} else if (Catalog.class.isAssignableFrom(enclosingRef.targetClass())) {
 			if (parent == null) {
-				return NodeInfo.wrappedEntity(new NonexistentParent(), new NonexistentParent());
+				return NodeInfo.wrapped(new NonexistentParent(), new NonexistentParent());
 			} else {
 				String entryID = ref.path().lastSegment();
 				NodeLocation element = findArrayElementWithId(parent, entryID);
 				JsonNode elementNode = getNode(element, doc);
 				if (elementNode == null) {
 					// Doesn't exist yet
-					return NodeInfo.wrappedEntity (new NonexistentParent(), element);
+					return NodeInfo.wrapped(new NonexistentParent(), element);
 				} else {
-					return NodeInfo.wrappedEntity (getMapEntryValueLocation(elementNode, entryID), element);
+					return NodeInfo.wrapped(getMapEntryValueLocation(elementNode, entryID), element);
 				}
 			}
 		} else if (SideTable.class.isAssignableFrom(enclosingRef.targetClass())) {
 			if (parent == null) {
-				return NodeInfo.wrappedEntity(new NonexistentParent(), new NonexistentParent());
+				NodeLocation valueLocation = new NonexistentParent();
+				return NodeInfo.wrapped(valueLocation, new NonexistentParent());
 			} else {
 				String entryID = ref.path().lastSegment();
 				NodeLocation element = findArrayElementWithId(parent.get("valuesById"), entryID);
 				JsonNode elementNode = getNode(element, doc);
 				if (elementNode == null) {
 					// Doesn't exist yet
-					return NodeInfo.wrappedEntity(new NonexistentParent(), element);
+					NodeLocation valueLocation = new NonexistentParent();
+					return NodeInfo.wrapped(valueLocation, element);
 				} else {
-					return NodeInfo.wrappedEntity(getMapEntryValueLocation(elementNode, entryID), element);
+					NodeLocation valueLocation = getMapEntryValueLocation(elementNode, entryID);
+					return NodeInfo.wrapped(valueLocation, element);
 				}
 			}
 		}
@@ -219,7 +221,7 @@ public class JsonNodeSurgeon {
 			ObjectNode entryObject = (ObjectNode) entries.get(i);
 			var properties = entryObject.properties();
 			if (properties.size() != 1) {
-				throw new NotYetImplementedException(properties.toString());
+				throw new NotYetImplementedException("SO MANY PROPERTIES" + properties);
 			}
 			Map.Entry<String, JsonNode> entry = properties.iterator().next();
 			if (id.equals(entry.getKey())) {
@@ -269,11 +271,8 @@ public class JsonNodeSurgeon {
 		return switch (nodeInfo.replacementStyle()) {
 			case PLAIN -> newValue.get();
 			case ID_ONLY -> new TextNode(lastSegment);
-			case WRAPPED_ENTITY -> {
-				JsonNode entityNode = newValue.get();
-				String id = entityNode.get("id").textValue();
-				yield new ObjectNode(JsonNodeFactory.instance, Map.of(id, entityNode));
-			}
+			case WRAPPED -> new ObjectNode(JsonNodeFactory.instance)
+				.set(lastSegment, newValue.get());
 		};
 	}
 

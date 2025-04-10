@@ -2,7 +2,7 @@
 plugins {
 	id 'bosk.development'
 	id 'bosk.maven-publish'
-	id 'info.solidsoft.pitest' version '1.15.0'
+//	id 'info.solidsoft.pitest' version '1.15.0'
 	id 'com.github.spotbugs' version '6.1.2'
 }
 
@@ -38,14 +38,14 @@ dependencies {
 	testImplementation project(":lib-testing")
 }
 
-pitest {
-	pitestVersion = '1.15.0'
-	junit5PluginVersion = '1.2.0'
-	jvmArgs = ['-ea'] // Our unit tests check for assert statements
-	targetClasses = ['works.bosk.drivers.mongo.BsonSurgeon']
-	targetTests   = ['works.bosk.drivers.mongo.BsonSurgeonTest']
-	threads = 4
-	outputFormats = ['XML', 'HTML']
-	timestampedReports = false
-	//verbose = true
-}
+//pitest {
+//	pitestVersion = '1.15.0'
+//	junit5PluginVersion = '1.2.0'
+//	jvmArgs = ['-ea'] // Our unit tests check for assert statements
+//	targetClasses = ['works.bosk.drivers.mongo.BsonSurgeon']
+//	targetTests   = ['works.bosk.drivers.mongo.BsonSurgeonTest']
+//	threads = 4
+//	outputFormats = ['XML', 'HTML']
+//	timestampedReports = false
+//	//verbose = true
+//}

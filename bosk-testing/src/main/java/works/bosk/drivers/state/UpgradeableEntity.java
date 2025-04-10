@@ -19,6 +19,7 @@ public record UpgradeableEntity(
 	Catalog<TestEntity> catalog,
 	Listing<TestEntity> listing,
 	SideTable<TestEntity, TestEntity> sideTable,
+	SideTable<TestEntity, SideTable<TestEntity, TestEntity>> nestedSideTable,
 	TaggedUnion<TestEntity.Variant> variant,
 	TestValues values
 ) implements Entity {

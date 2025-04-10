@@ -429,7 +429,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			// the variant field hasn't changed since it was initialized.)
 			expected2 = TestEntity.empty(Identifier.from("optionalEntity"), refs.catalog())
 				.withString("stringValue")
-				.withVariant(setupBosk.rootReference().value().variant());
+				.withVariant(setupBosk.rootReference().value().variant().get());
 		}
 
 		TestEntity actual2;
@@ -671,7 +671,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Optional<Catalog<TestEntity>> catalog,
 		Optional<Listing<TestEntity>> listing,
 		Optional<SideTable<TestEntity, TestEntity>> sideTable,
-		TaggedUnion<TestEntity.Variant> variant,
+		Optional<SideTable<TestEntity, SideTable<TestEntity, TestEntity>>> nestedSideTable,
+		Optional<TaggedUnion<TestEntity.Variant>> variant,
 		Optional<TestValues> values
 	) implements Entity {
 		static OptionalEntity withString(Optional<String> string, Bosk<OptionalEntity> bosk) throws InvalidTypeException {
@@ -682,8 +683,9 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				Optional.of(Catalog.empty()),
 				Optional.of(Listing.empty(domain)),
 				Optional.of(SideTable.empty(domain)),
-				TaggedUnion.of(new TestEntity.StringCase("stringCase")),
-				java.util.Optional.empty());
+				Optional.of(SideTable.empty(domain)),
+				Optional.of(TaggedUnion.of(new TestEntity.StringCase("stringCase"))),
+				Optional.empty());
 		}
 	}
 

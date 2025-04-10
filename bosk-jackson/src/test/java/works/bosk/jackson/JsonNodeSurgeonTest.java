@@ -152,14 +152,14 @@ public class JsonNodeSurgeonTest {
 		JsonNode catalogArray = doc.get("catalog");
 		JsonNode catalogEntry = catalogArray.get(0);
 		{
-			NodeInfo expected = NodeInfo.wrappedEntity(
+			NodeInfo expected = NodeInfo.wrapped(
 				new ObjectMember((ObjectNode) catalogEntry, "testEntry"),
 				new ArrayElement((ArrayNode) catalogArray, 0));
 			NodeInfo actual = surgeon.nodeInfo(doc, refs.catalogEntry(id));
 			assertEquals(expected, actual);
 		}
 		{
-			NodeInfo expected = NodeInfo.wrappedEntity(
+			NodeInfo expected = NodeInfo.wrapped(
 				new NonexistentParent(),
 				new ArrayElement((ArrayNode) catalogArray, 1));
 			NodeInfo actual = surgeon.nodeInfo(doc, refs.catalogEntry(Identifier.from("NONEXISTENT")));
@@ -212,14 +212,14 @@ public class JsonNodeSurgeonTest {
 		JsonNode valuesById = doc.get("sideTable").get("valuesById");
 		JsonNode entry = valuesById.get(0);
 		{
-			NodeInfo expected = NodeInfo.wrappedEntity(
+			NodeInfo expected = NodeInfo.wrapped(
 				new ObjectMember((ObjectNode) entry, "testKey"),
 				new ArrayElement((ArrayNode) valuesById, 0));
 			NodeInfo actual = surgeon.nodeInfo(doc, refs.sideTableEntry(id));
 			assertEquals(expected, actual);
 		}
 		{
-			NodeInfo expected = NodeInfo.wrappedEntity(
+			NodeInfo expected = NodeInfo.wrapped(
 				new NonexistentParent(),
 				new ArrayElement((ArrayNode) valuesById, 1));
 			NodeInfo actual = surgeon.nodeInfo(doc, refs.sideTableEntry(Identifier.from("NONEXISTENT")));
