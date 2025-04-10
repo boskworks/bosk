@@ -190,7 +190,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 
 		// Make a new side table with a different domain but the same contents
 		SideTable<TestEntity, TestEntity> newSideTable = SideTable.fromEntries(refs.innerCatalog(child1ID), initialSideTable.idEntrySet().stream());
-		assert initialSideTable.domain() != newSideTable.domain(): "Domains should be different or we're not actually testing a replace operation";
+		assert !initialSideTable.domain().equals(newSideTable.domain()): "Domains should be different or we're not actually testing a replace operation";
 		driver.submitReplacement(refs.outer(), newSideTable);
 		driver.flush();
 		assertCorrectBoskContents();
