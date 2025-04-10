@@ -70,6 +70,8 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	public interface Refs {
 		@ReferencePath("/id") Reference<Identifier> rootID();
 		@ReferencePath("/catalog/-id-") Reference<TestEntity> catalogEntry(Identifier id);
+		@ReferencePath("/nestedSideTable/outer") SideTableReference<TestEntity, TestEntity> outer();
+		@ReferencePath("/nestedSideTable/outer/-inner-/catalog") CatalogReference<TestEntity> innerCatalog(Identifier id);
 		@ReferencePath("/values/string") Reference<String> valuesString();
 	}
 
@@ -168,6 +170,28 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		CatalogReference<TestEntity> innerCatalogRef = catalogRef.thenCatalog(TestEntity.class, child1ID.toString(), "catalog");
 		SideTable<TestEntity, TestEntity> newSideTable = SideTable.fromEntries(innerCatalogRef, initialSideTable.idEntrySet().stream());
 		driver.submitReplacement(sideTableRef, newSideTable);
+		driver.flush();
+		assertCorrectBoskContents();
+	}
+
+	@ParametersByName
+	void replaceNestedSideTableDomain() throws InvalidTypeException, IOException, InterruptedException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(Path.just("catalog"));
+		driver.flush();
+		Refs refs = bosk.buildReferences(Refs.class);
+		Catalog<TestEntity> catalog;
+		try (var __ = bosk.readContext()) {
+			catalog = catalogRef.value();
+		}
+		SideTable<TestEntity, TestEntity> initialSideTable = SideTable.fromFunction(catalogRef, Stream.of(child1ID, child2ID), catalog::get);
+		driver.submitReplacement(refs.outer(), initialSideTable);
+		driver.flush();
+		assertCorrectBoskContents(); // Correct starting state
+
+		// Make a new side table with a different domain but the same contents
+		SideTable<TestEntity, TestEntity> newSideTable = SideTable.fromEntries(refs.innerCatalog(child1ID), initialSideTable.idEntrySet().stream());
+		assert initialSideTable.domain() != newSideTable.domain(): "Domains should be different or we're not actually testing a replace operation";
+		driver.submitReplacement(refs.outer(), newSideTable);
 		driver.flush();
 		assertCorrectBoskContents();
 	}
@@ -599,6 +623,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 			Path.just(TestEntity.Fields.catalog),
 			Path.of(TestEntity.Fields.catalog, AWKWARD_ID, TestEntity.Fields.catalog),
 			Path.of(TestEntity.Fields.sideTable, AWKWARD_ID, TestEntity.Fields.catalog),
+			Path.of(TestEntity.Fields.nestedSideTable, "outer", "inner", TestEntity.Fields.catalog),
 			Path.of(TestEntity.Fields.sideTable, AWKWARD_ID, TestEntity.Fields.catalog, "parent", TestEntity.Fields.catalog),
 			Path.of(TestEntity.Fields.sideTable, AWKWARD_ID, TestEntity.Fields.sideTable, "parent", TestEntity.Fields.catalog)
 		);

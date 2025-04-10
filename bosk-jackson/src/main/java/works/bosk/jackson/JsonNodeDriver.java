@@ -1,6 +1,5 @@
 package works.bosk.jackson;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -110,11 +109,7 @@ public class JsonNodeDriver implements BoskDriver {
 
 	void traceCurrentState(String description) {
 		if (LOGGER.isTraceEnabled()) {
-			try {
-				LOGGER.trace("State {} {}:\n{}", ++updateNumber, description, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(currentRoot));
-			} catch (JsonProcessingException e) {
-				throw new IllegalStateException(e);
-			}
+			LOGGER.trace("State {} {}:\n{}", ++updateNumber, description, currentRoot.toPrettyString());
 		}
 	}
 

@@ -15,8 +15,10 @@ import works.bosk.DriverStack;
 import works.bosk.Identifier;
 import works.bosk.Path;
 import works.bosk.Reference;
+import works.bosk.SideTable;
 import works.bosk.drivers.state.TestEntity;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.util.Classes;
 
 import static java.lang.Thread.currentThread;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -74,8 +76,27 @@ public abstract class AbstractDriverTest {
 		} else {
 			autoInitialize(ref.enclosingReference(TestEntity.class));
 			TestEntity newEntity = emptyEntityAt(ref);
-			driver.submitConditionalCreation(ref, newEntity);
+			if (isInNestedSideTable(ref)) {
+				Reference<SideTable<TestEntity, TestEntity>> outerRef;
+				try {
+					outerRef = ref.root().then(Classes.sideTable(TestEntity.class, TestEntity.class), ref.path().truncatedBy(1));
+				} catch (InvalidTypeException e) {
+					throw new AssertionError(e);
+				}
+				driver.submitConditionalCreation(outerRef, SideTable.of(newEntity.listing().domain(), Identifier.from(ref.path().lastSegment()), newEntity));
+			} else {
+				driver.submitConditionalCreation(ref, newEntity);
+			}
 			return newEntity;
+		}
+	}
+
+	private boolean isInNestedSideTable(Reference<TestEntity> ref) {
+		Path path = ref.path();
+		if (path.length() < 3) {
+			return false;
+		} else {
+			return path.truncatedBy(2).lastSegment().equals(TestEntity.Fields.nestedSideTable);
 		}
 	}
 

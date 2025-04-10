@@ -671,6 +671,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Optional<Catalog<TestEntity>> catalog,
 		Optional<Listing<TestEntity>> listing,
 		Optional<SideTable<TestEntity, TestEntity>> sideTable,
+		Optional<SideTable<TestEntity, SideTable<TestEntity, TestEntity>>> nestedSideTable,
 		Optional<TaggedUnion<TestEntity.Variant>> variant,
 		Optional<TestValues> values
 	) implements Entity {
@@ -681,6 +682,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				string,
 				Optional.of(Catalog.empty()),
 				Optional.of(Listing.empty(domain)),
+				Optional.of(SideTable.empty(domain)),
 				Optional.of(SideTable.empty(domain)),
 				Optional.of(TaggedUnion.of(new TestEntity.StringCase("stringCase"))),
 				Optional.empty());
