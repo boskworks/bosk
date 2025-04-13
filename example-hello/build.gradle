@@ -38,7 +38,7 @@ dependencies {
 	implementation project(':bosk-logback')
 
 	// A real project would pull this like any other library
-	implementation project(':bosk-spring-boot-3')
+	implementation project(':bosk-spring-boot')
 }
 
 tasks.named('test') {
