@@ -1,0 +1,32 @@
+
+plugins {
+	id 'bosk.development'
+	id 'bosk.maven-publish'
+	id 'com.github.spotbugs' version '6.1.2'
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(jdkVersion)
+	}
+}
+
+compileJava {
+	options.release = prodJavaVersion
+}
+
+compileTestJava {
+	options.release = null
+}
+
+dependencies {
+	api project(":bosk-jackson")
+	implementation 'org.springframework.boot:spring-boot-starter-web:3.4.3'
+	annotationProcessor "org.springframework.boot:spring-boot-configuration-processor:3.4.3"
+	testImplementation project(":bosk-testing")
+	testImplementation project(":lib-testing")
+}
+
+repositories {
+	mavenCentral()
+}
