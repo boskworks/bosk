@@ -31,14 +31,15 @@ public class BoskConstructorTest {
 		StateTreeNode root = newEntity();
 
 		AtomicReference<BoskDriver> driver = new AtomicReference<>();
-		Bosk<StateTreeNode> bosk = new Bosk<StateTreeNode>(
+		Bosk<StateTreeNode> bosk = new Bosk<>(
 			name,
 			rootType,
 			_ -> root,
-			(_, d)-> {
+			(_, d) -> {
 				driver.set(new ForwardingDriver(d));
 				return driver.get();
-			});
+			},
+			Bosk.simpleRegistrar());
 
 		assertEquals(name, bosk.name());
 		assertEquals(rootType, bosk.rootReference().targetType());
@@ -64,7 +65,8 @@ public class BoskConstructorTest {
 				boskName("Invalid root type"),
 				TypeValidationTest.ArrayField.class,
 				bosk -> new TypeValidationTest.ArrayField(Identifier.from("test"), new String[0]),
-				Bosk.simpleDriver()));
+				Bosk.simpleDriver(),
+				Bosk.simpleRegistrar()));
 	}
 
 	@Test
@@ -86,23 +88,24 @@ public class BoskConstructorTest {
 	@Test
 	void mismatchedRootType_throws() {
 		assertThrows(ClassCastException.class, ()->
-			new Bosk<Entity> (
+			new Bosk<Entity>(
 				boskName("Mismatched root"),
-				BoxedPrimitives.class, // Valid but wrong
+				BoxedPrimitives.class,
 				bosk -> newEntity(),
-				Bosk.simpleDriver()
-			)
+				Bosk.simpleDriver(),
+				Bosk.simpleRegistrar())
 		);
 	}
 
 	@Test
 	void driverInitialRoot_matches() {
 		SimpleTypes root = newEntity();
-		Bosk<StateTreeNode> bosk = new Bosk<StateTreeNode>(
+		Bosk<StateTreeNode> bosk = new Bosk<>(
 			boskName(),
 			SimpleTypes.class,
-			_ -> {throw new AssertionError("Shouldn't be called");},
-			initialRootDriver(()->root));
+			_ -> { throw new AssertionError("Shouldn't be called"); },
+			initialRootDriver(() -> root),
+			Bosk.simpleRegistrar());
 		try (var _ = bosk.readContext()) {
 			assertSame(root, bosk.rootReference().value());
 		}
@@ -112,14 +115,14 @@ public class BoskConstructorTest {
 	void defaultRoot_matches() {
 		SimpleTypes root = newEntity();
 		{
-			Bosk<StateTreeNode> valueBosk = new Bosk<>(boskName(), SimpleTypes.class, _ -> root, Bosk.simpleDriver());
+			Bosk<StateTreeNode> valueBosk = new Bosk<>(boskName(), SimpleTypes.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
 			try (var _ = valueBosk.readContext()) {
 				assertSame(root, valueBosk.rootReference().value());
 			}
 		}
 
 		{
-			Bosk<StateTreeNode> functionBosk = new Bosk<StateTreeNode>(boskName(), SimpleTypes.class, _ -> root, Bosk.simpleDriver());
+			Bosk<StateTreeNode> functionBosk = new Bosk<StateTreeNode>(boskName(), SimpleTypes.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
 			try (var _ = functionBosk.readContext()) {
 				assertSame(root, functionBosk.rootReference().value());
 			}
@@ -139,8 +142,8 @@ public class BoskConstructorTest {
 			boskName(),
 			SimpleTypes.class,
 			_ -> newEntity(),
-			initialRootDriver(initialRootFunction)
-		));
+			initialRootDriver(initialRootFunction),
+			Bosk.simpleRegistrar()));
 	}
 
 	/**
@@ -151,8 +154,8 @@ public class BoskConstructorTest {
 			boskName(),
 			SimpleTypes.class,
 			defaultRootFunction,
-			Bosk.simpleDriver()
-		));
+			Bosk.simpleDriver(),
+			Bosk.simpleRegistrar()));
 	}
 
 	@NotNull

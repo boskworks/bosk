@@ -16,7 +16,8 @@ public class ExampleBosk extends Bosk<ExampleState> {
 			"ExampleBosk",
 			ExampleState.class,
 			_ -> defaultRoot(),
-			driverFactory());
+			driverFactory(),
+			Bosk.simpleRegistrar());
 	}
 
 	public interface Refs {

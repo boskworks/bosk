@@ -268,8 +268,11 @@ public class PathCompilerTest extends AbstractBoskTest {
 			.getConstructor(Identifier.class)
 			.newInstance(rootID);
 		Bosk<StateTreeNode> differentBosk = new Bosk<>(
-			boskName("Different"), differentRootClass, _ -> initialRoot, Bosk.simpleDriver()
-		);
+			boskName("Different"),
+			differentRootClass,
+			_ -> initialRoot,
+			Bosk.simpleDriver(),
+			Bosk.simpleRegistrar());
 		Reference<Identifier> idRef = differentBosk.rootReference().then(Identifier.class, Path.parse(
 			"/id" ));
 

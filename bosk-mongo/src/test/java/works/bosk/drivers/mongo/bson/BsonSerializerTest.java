@@ -29,7 +29,7 @@ class BsonSerializerTest {
 	@Test
 	void sideTableOfSideTables() {
 		BsonSerializer bp = new BsonSerializer();
-		Bosk<Root> bosk = new Bosk<Root>(boskName(), Root.class, this::defaultRoot, Bosk.simpleDriver());
+		Bosk<Root> bosk = new Bosk<Root>(boskName(), Root.class, this::defaultRoot, Bosk.simpleDriver(), Bosk.simpleRegistrar());
 		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
 		Codec<Root> codec = registry.get(Root.class);
 		try (var _ = bosk.readContext()) {

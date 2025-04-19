@@ -18,7 +18,7 @@ import works.bosk.logback.BoskLogFilter.LogController;
 @Component
 public class HelloBosk extends Bosk<BoskState> {
 	public HelloBosk(LogController logController) throws InvalidTypeException {
-		super("Hello", BoskState.class, HelloBosk::defaultRoot, getDriverFactory(logController));
+		super("Hello", BoskState.class, HelloBosk::defaultRoot, getDriverFactory(logController), Bosk.simpleRegistrar());
 	}
 
 	private static DriverFactory<BoskState> getDriverFactory(LogController logController) {

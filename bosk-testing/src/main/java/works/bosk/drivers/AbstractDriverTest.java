@@ -55,13 +55,18 @@ public abstract class AbstractDriverTest {
 
 	protected void setupBosksAndReferences(DriverFactory<TestEntity> driverFactory) {
 		// This is the bosk whose behaviour we'll consider to be correct by definition
-		canonicalBosk = new Bosk<>(boskName("Canonical", 1), TestEntity.class, AbstractDriverTest::initialRoot, Bosk.simpleDriver());
+		canonicalBosk = new Bosk<>(boskName("Canonical", 1), TestEntity.class, AbstractDriverTest::initialRoot, Bosk.simpleDriver(), Bosk.simpleRegistrar());
 
 		// This is the bosk we're testing
-		bosk = new Bosk<>(boskName("Test", 1), TestEntity.class, AbstractDriverTest::initialRoot, DriverStack.of(
-			ReplicaSet.mirroringTo(canonicalBosk),
-			DriverStateVerifier.wrap(driverFactory, TestEntity.class, AbstractDriverTest::initialRoot)
-		));
+		bosk = new Bosk<>(
+			boskName("Test", 1),
+			TestEntity.class,
+			AbstractDriverTest::initialRoot,
+			DriverStack.of(
+				ReplicaSet.mirroringTo(canonicalBosk),
+				DriverStateVerifier.wrap(driverFactory, TestEntity.class, AbstractDriverTest::initialRoot)
+			),
+			Bosk.simpleRegistrar());
 		driver = bosk.driver();
 	}
 

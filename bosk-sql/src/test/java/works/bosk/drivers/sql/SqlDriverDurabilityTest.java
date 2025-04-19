@@ -61,7 +61,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		// to spontaneous state changes, even though they are valid in a setup with
 		// multiple bosks sharing a database.
 		//
-		bosk = new Bosk<>(boskName("tablesDropped", 1), TestEntity.class, AbstractDriverTest::initialRoot, factory);
+		bosk = new Bosk<>(boskName("tablesDropped", 1), TestEntity.class, AbstractDriverTest::initialRoot, factory, Bosk.simpleRegistrar());
 		driver = bosk.driver();
 
 		var schema = new Schema();
@@ -81,7 +81,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		assertThrows(FlushFailureException.class, () -> bosk.driver().flush());
 
 		LOGGER.debug("Use another bosk to recreate the database");
-		var fixer = new Bosk<>("fixer", TestEntity.class, SqlDriverDurabilityTest::differentInitialRoot, factory);
+		var fixer = new Bosk<>("fixer", TestEntity.class, SqlDriverDurabilityTest::differentInitialRoot, factory, Bosk.simpleRegistrar());
 
 		LOGGER.debug("State should be restored");
 

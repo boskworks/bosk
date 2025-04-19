@@ -56,12 +56,12 @@ public abstract class HanoiTest {
 
 	@BeforeEach
 	void setup() throws InvalidTypeException {
-		bosk = new Bosk<HanoiState>(
+		bosk = new Bosk<>(
 			boskName(),
 			HanoiState.class,
 			this::defaultRoot,
-			driverFactory
-		);
+			driverFactory,
+			Bosk.simpleRegistrar());
 		refs = bosk.rootReference().buildReferences(Refs.class);
 		numSolved = new LinkedBlockingDeque<>();
 		bosk.registerHooks(this);
