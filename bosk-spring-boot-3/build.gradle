@@ -28,9 +28,11 @@ repositories {
 publishing {
 	publications {
 		mavenJava(MavenPublication) {
-			description = '''
+			pom {
+				description = '''
 				This library has been renamed. Please use bosk-spring-boot instead.
-			'''.stripIndent().trim()
+				'''.stripIndent().trim()
+			}
 		}
 	}
 }
