@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,6 +78,22 @@ public class HooksTest extends AbstractBoskTest {
 				new HookRecorder.Event("child2", HookRecorder.Event.Kind.CHANGED, refs.child(child2), originalChild2)),
 			recorder.events(),
 			"Hook should fire when it's registered");
+	}
+
+	@Test
+	void basic_hooksDoNotPropagateThreadLocals() throws InterruptedException {
+		ThreadLocal<String> threadLocal = ThreadLocal.withInitial(() -> "initial");
+		threadLocal.set("updated");
+		BlockingQueue<String> queue = new LinkedBlockingQueue<>();
+		bosk.registerHook("foo", bosk.rootReference(), ref -> {
+			try {
+				queue.put(threadLocal.get());
+			} catch (InterruptedException e) {
+				throw new AssertionError("Huh?", e);
+			}
+		});
+		String observed = queue.take();
+		assertEquals("initial", observed, "Thread locals should not propagate into hooks");
 	}
 
 	@ParameterizedTest
