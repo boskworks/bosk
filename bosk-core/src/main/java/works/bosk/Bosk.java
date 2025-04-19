@@ -11,6 +11,9 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -89,6 +92,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final RootRef rootRef;
 	private final ThreadLocal<R> rootSnapshot = new ThreadLocal<>();
 	private final Queue<HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
+	private final ExecutorService hookExecutor = Executors.newVirtualThreadPerTaskExecutor();
 	private final PathCompiler pathCompiler;
 
 	// Mutable state
@@ -542,8 +546,23 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				if (hookExecutionPermit.tryAcquire()) {
 					try {
 						for (Runnable ex = hookExecutionQueue.pollFirst(); ex != null; ex = hookExecutionQueue.pollFirst()) {
-							ex.run();
+							// Run the task in a separate virtual thread to prevent ThreadLocals from propagating.
+							// This is slightly tragic, because usually ThreadLocal propagation works just the
+							// way we'd want, but not always. Given the choices "always, sometimes, never", if
+							// we can't achieve "always", then the bosk philosophy prefers "never" over "sometimes".
+							hookExecutor.submit(ex).get();
 						}
+					} catch (ExecutionException e) {
+						if (e.getCause() instanceof RuntimeException r) {
+							throw r;
+						} else if (e.getCause() instanceof Error error) {
+							throw error;
+						} else {
+							throw new AssertionError("Hook runnable should catch and wrap checked exceptions", e);
+						}
+					} catch (InterruptedException e) {
+						LOGGER.warn("Interrupted while running hooks", e);
+						return;
 					} finally {
 						hookExecutionPermit.release();
 					}
