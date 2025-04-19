@@ -7,7 +7,6 @@ import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.annotations.Hook;
@@ -17,8 +16,10 @@ import static java.lang.reflect.Modifier.isPrivate;
 import static java.lang.reflect.Modifier.isStatic;
 import static works.bosk.util.ReflectionHelpers.getDeclaredMethodsInOrder;
 
-@RequiredArgsConstructor
-class HookRegistrar {
+/**
+ * Finds methods annotated with {@link Hook} in the given {@code object} and registers them in the given {@link Bosk}.
+ */
+class HookScanner {
 	static <T> void registerHooks(T receiverObject, Bosk<?> bosk) throws InvalidTypeException {
 		int hookCounter = 0;
 		for (
@@ -91,5 +92,5 @@ class HookRegistrar {
 		}
 	}
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(HookRegistrar.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(HookScanner.class);
 }
