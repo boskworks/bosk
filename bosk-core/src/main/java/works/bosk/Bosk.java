@@ -91,6 +91,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final LocalDriver localDriver;
 	private final RootRef rootRef;
 	private final ThreadLocal<R> rootSnapshot = new ThreadLocal<>();
+	private final HookRegistrar hookRegistrar;
 	private final Queue<HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
 	private final ExecutorService hookExecutor = Executors.newVirtualThreadPerTaskExecutor();
 	private final PathCompiler pathCompiler;
@@ -112,7 +113,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @see DriverStack
 	 */
 	@SuppressWarnings("this-escape")
-	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, DriverFactory<R> driverFactory) {
+	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, DriverFactory<R> driverFactory, RegistrarFactory registrarFactory) {
 		this.name = name;
 		this.pathCompiler = PathCompiler.withSourceType(rootType); // Required before rootRef
 		this.localDriver = new LocalDriver(defaultRootFunction);
@@ -131,6 +132,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		// initialization to have completed already.
 		//
 		this.driver = new ValidatingDriver(driverFactory.build(boskInfo, this.localDriver));
+		this.hookRegistrar = registrarFactory.build(boskInfo, this::localRegisterHook);
 
 		try {
 			this.currentRoot = rootRef.targetClass().cast(requireNonNull(driver.initialRoot(rootType)));
@@ -143,6 +145,14 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 		// Ok, we're done initializing
 		boskInfo.boskRef().set(this); // @SuppressWarnings("this-escape")
+	}
+
+	/**
+	 * @deprecated This constructor is going to be removed. You can inline it into your code to get its replacement.
+	 */
+	@Deprecated(forRemoval = true)
+	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, DriverFactory<R> driverFactory) {
+		this(name, rootType, defaultRootFunction, driverFactory, Bosk.simpleRegistrar());
 	}
 
 	public interface DefaultRootFunction<RR extends StateTreeNode> {
@@ -181,6 +191,13 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @return a {@link DriverFactory} with only the basic functionality.
 	 */
 	public static <RR extends StateTreeNode> DriverFactory<RR> simpleDriver() {
+		return (b,d) -> d;
+	}
+
+	/**
+	 * @return a {@link RegistrarFactory} with only the basic functionality.
+	 */
+	public static RegistrarFactory simpleRegistrar() {
 		return (b,d) -> d;
 	}
 
@@ -634,6 +651,13 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 *
 	 */
 	public <T> void registerHook(String name, @NonNull Reference<T> scope, @NonNull BoskHook<T> action) {
+		hookRegistrar.registerHook(name, scope, action);
+	}
+
+	/**
+	 * The unadorned version of {@link #registerHook} that simply registers the hook as given.
+	 */
+	private <T> void localRegisterHook(String name, @NotNull Reference<T> scope, @NotNull BoskHook<T> action) {
 		HookRegistration<T> reg = new HookRegistration<>(name, requireNonNull(scope), requireNonNull(action));
 		hooks.add(reg);
 		localDriver.triggerEverywhere(reg);

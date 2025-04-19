@@ -78,7 +78,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	@ParametersByName
 	void warmStart_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
-		Bosk<TestEntity> setupBosk = new Bosk<TestEntity>(boskName("Setup"), TestEntity.class, this::initialRoot, driverFactory);
+		Bosk<TestEntity> setupBosk = new Bosk<>(
+			boskName("Setup"),
+			TestEntity.class,
+			this::initialRoot,
+			driverFactory,
+			Bosk.simpleRegistrar());
 		Refs refs = setupBosk.buildReferences(Refs.class);
 
 		// Make a change to the bosk so it's not just the initial root
@@ -87,9 +92,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		TestEntity expected = initialRoot(setupBosk)
 			.withListing(Listing.of(refs.catalog(), entity123));
 
-		Bosk<TestEntity> latecomerBosk = new Bosk<TestEntity>(boskName("Latecomer"), TestEntity.class, b->{
-			throw new AssertionError("Default root function should not be called");
-		}, driverFactory);
+		Bosk<TestEntity> latecomerBosk = new Bosk<>(
+			boskName("Latecomer"),
+			TestEntity.class,
+			b -> { throw new AssertionError("Default root function should not be called"); },
+			driverFactory,
+			Bosk.simpleRegistrar());
 
 		try (var _ = latecomerBosk.readContext()) {
 			TestEntity actual = latecomerBosk.rootReference().value();
@@ -102,14 +110,18 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		// Set up MongoDriver writing to a modified BufferingDriver that lets us
 		// have tight control over all the comings and goings from MongoDriver.
 		BlockingQueue<Reference<?>> replacementsSeen = new LinkedBlockingDeque<>();
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName(), TestEntity.class, this::initialRoot,
-			(b,d) -> driverFactory.build(b, new BufferingDriver(d, b.diagnosticContext()) {
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			this::initialRoot,
+			(b, d) -> driverFactory.build(b, new BufferingDriver(d, b.diagnosticContext()) {
 				@Override
 				public <T> void submitReplacement(Reference<T> target, T newValue) {
 					super.submitReplacement(target, newValue);
 					replacementsSeen.add(target);
 				}
-			}));
+			}),
+			Bosk.simpleRegistrar());
 
 		CatalogReference<TestEntity> catalogRef = bosk.rootReference().thenCatalog(TestEntity.class,
 			TestEntity.Fields.catalog);
@@ -153,7 +165,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	@ParametersByName
 	void listing_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName(), TestEntity.class, this::initialRoot, driverFactory);
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			this::initialRoot,
+			driverFactory,
+			Bosk.simpleRegistrar());
 		BoskDriver driver = bosk.driver();
 		CatalogReference<TestEntity> catalogRef = bosk.rootReference().thenCatalog(TestEntity.class,
 			TestEntity.Fields.catalog);
@@ -193,7 +210,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	void networkOutage_boskRecovers() throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName("Main"), TestEntity.class, this::initialRoot, driverFactory);
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Main"),
+			TestEntity.class,
+			this::initialRoot,
+			driverFactory,
+			Bosk.simpleRegistrar());
 		Refs refs = bosk.buildReferences(Refs.class);
 		BoskDriver driver = bosk.driver();
 
@@ -201,7 +223,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		driver.flush();
 
 		LOGGER.debug("Make another bosk that doesn't witness any change stream events before the outage");
-		Bosk<TestEntity> latecomerBosk = new Bosk<TestEntity>(boskName("Latecomer"), TestEntity.class, this::initialRoot, driverFactory);
+		Bosk<TestEntity> latecomerBosk = new Bosk<>(
+			boskName("Latecomer"),
+			TestEntity.class,
+			this::initialRoot,
+			driverFactory,
+			Bosk.simpleRegistrar());
 
 		LOGGER.debug("Cut connection");
 		mongoService.proxy().setConnectionCut(true);
@@ -239,7 +266,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	void hookRegisteredDuringNetworkOutage_works() throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName(), TestEntity.class, this::initialRoot, driverFactory);
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			this::initialRoot,
+			driverFactory,
+			Bosk.simpleRegistrar());
 		Refs refs = bosk.buildReferences(Refs.class);
 		BoskDriver driver = bosk.driver();
 		CountDownLatch listingEntry124Exists = new CountDownLatch(1);
@@ -295,14 +327,20 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		setLogging(ERROR, BsonSerializer.class);
 
 		// Upon creating bosk, the initial value will be saved to MongoDB
-		new Bosk<TestEntity>(boskName("Newer"), TestEntity.class, this::initialRootWithValues, driverFactory);
+		new Bosk<>(
+			boskName("Newer"),
+			TestEntity.class,
+			this::initialRootWithValues,
+			driverFactory,
+			Bosk.simpleRegistrar());
 
 		// Upon creating prevBosk, the state in the database will be loaded into the local.
-		Bosk<OldEntity> prevBosk = new Bosk<OldEntity>(
+		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
 			OldEntity.class,
-			(b) -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo));
+			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		OldEntity expected = OldEntity.withString(rootID.toString(), prevBosk);
 
@@ -317,12 +355,18 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	void updateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, StateTreeSerializer.class);
 
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName("Newer"), TestEntity.class, this::initialRootWithEmptyCatalog, driverFactory);
-		Bosk<OldEntity> prevBosk = new Bosk<OldEntity>(
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Newer"),
+			TestEntity.class,
+			this::initialRootWithEmptyCatalog,
+			driverFactory,
+			Bosk.simpleRegistrar());
+		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
 			OldEntity.class,
-			(b) -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo));
+			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		TestEntity initialRoot = initialRootWithEmptyCatalog(bosk);
 		bosk.driver().submitReplacement(bosk.rootReference(),
@@ -346,12 +390,20 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	void updateNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class, StateTreeSerializer.class);
 
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName("Newer"), TestEntity.class, this::initialRootWithEmptyCatalog, driverFactory);
-		Bosk<OldEntity> prevBosk = new Bosk<OldEntity>(
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Newer"),
+			TestEntity.class,
+			this::initialRootWithEmptyCatalog,
+			driverFactory,
+			Bosk.simpleRegistrar());
+		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
 			OldEntity.class,
-			(b) -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo));
+			_ -> {
+				throw new AssertionError("prevBosk should use the state from MongoDB");
+			},
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		Refs refs = bosk.buildReferences(Refs.class);
 		bosk.driver().submitReplacement(refs.values(),
@@ -374,12 +426,18 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	void deleteNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class);
 
-		Bosk<TestEntity> newerBosk = new Bosk<TestEntity>(boskName("Newer"), TestEntity.class, this::initialRootWithEmptyCatalog, driverFactory);
-		Bosk<OldEntity> prevBosk = new Bosk<OldEntity>(
+		Bosk<TestEntity> newerBosk = new Bosk<>(
+			boskName("Newer"),
+			TestEntity.class,
+			this::initialRootWithEmptyCatalog,
+			driverFactory,
+			Bosk.simpleRegistrar());
+		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
 			OldEntity.class,
-			(b) -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo));
+			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		Refs refs = newerBosk.buildReferences(Refs.class);
 		newerBosk.driver().submitDeletion(refs.values());
@@ -402,10 +460,20 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		setLogging(ERROR, ChangeReceiver.class);
 
 		LOGGER.debug("Set up database with entity that has no string field");
-		Bosk<OptionalEntity> setupBosk = new Bosk<OptionalEntity>(boskName("Setup"), OptionalEntity.class, b -> OptionalEntity.withString(Optional.empty(), b), createDriverFactory(logController, testInfo));
+		Bosk<OptionalEntity> setupBosk = new Bosk<>(
+			boskName("Setup"),
+			OptionalEntity.class,
+			b -> OptionalEntity.withString(Optional.empty(), b),
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		LOGGER.debug("Connect another bosk where the string field is mandatory");
-		Bosk<TestEntity> testBosk = new Bosk<TestEntity>(boskName("Test"), TestEntity.class, this::initialRoot, driverFactory);
+		Bosk<TestEntity> testBosk = new Bosk<>(
+			boskName("Test"),
+			TestEntity.class,
+			this::initialRoot,
+			driverFactory,
+			Bosk.simpleRegistrar());
 		TestEntity expected1 = initialRoot(testBosk); // NOT what was put there by the setup bosk!
 		TestEntity actual1;
 		try (var _ = testBosk.readContext()) {
@@ -457,7 +525,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	}
 
 	private void doUnrelatedChangeTest(String databaseName, String collectionName, String docID) throws IOException, InterruptedException, InvalidTypeException {
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName(), TestEntity.class, this::initialRoot, driverFactory);
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			this::initialRoot,
+			driverFactory,
+			Bosk.simpleRegistrar());
 
 		MongoCollection<Document> counterfeitCollection = mongoService.client()
 			.getDatabase(databaseName)
@@ -487,20 +560,20 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	void refurbish_createsField(TestInfo testInfo) throws IOException, InterruptedException {
 		// We'll use this as an honest observer of the actual state
 		LOGGER.debug("Create Original bosk");
-		Bosk<TestEntity> originalBosk = new Bosk<TestEntity>(
+		Bosk<TestEntity> originalBosk = new Bosk<>(
 			boskName("Original"),
 			TestEntity.class,
 			this::initialRoot,
-			createDriverFactory(logController, testInfo)
-		);
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		LOGGER.debug("Create Upgradeable bosk");
-		Bosk<UpgradeableEntity> upgradeableBosk = new Bosk<UpgradeableEntity>(
+		Bosk<UpgradeableEntity> upgradeableBosk = new Bosk<>(
 			boskName("Upgradeable"),
 			UpgradeableEntity.class,
-			(b) -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo)
-		);
+			_ -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		LOGGER.debug("Check state before");
 		Optional<TestValues> before;
@@ -526,12 +599,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	void manifestVersionBump_disconnects(TestInfo testInfo) throws IOException, InterruptedException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(
+		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),
 			TestEntity.class,
 			this::initialRoot,
-			createDriverFactory(logController, testInfo)
-		);
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		LOGGER.debug("Flush should work");
 		bosk.driver().flush();
@@ -559,12 +632,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	@ParametersByName
 	void refurbish_fixesMetadata(TestInfo testInfo) throws IOException, InterruptedException {
 		// Set up the database so it looks basically right
-		Bosk<TestEntity> initialBosk = new Bosk<TestEntity>(
+		Bosk<TestEntity> initialBosk = new Bosk<>(
 			boskName("Initial"),
 			TestEntity.class,
 			this::initialRoot,
-			createDriverFactory(logController, testInfo)
-		);
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		// (Close this so it doesn't crash when we delete the "path" field)
 		initialBosk.getDriver(MongoDriver.class).close();
@@ -576,12 +649,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		deleteFields(collection, Formatter.DocumentFields.path, Formatter.DocumentFields.revision);
 
 		// Make the bosk whose refurbish operation we want to test
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(
+		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("Main"),
 			TestEntity.class,
 			this::initialRoot,
-			createDriverFactory(logController, testInfo)
-		);
+			createDriverFactory(logController, testInfo),
+			Bosk.simpleRegistrar());
 
 		// Get the new bosk reconnected
 		bosk.driver().flush();

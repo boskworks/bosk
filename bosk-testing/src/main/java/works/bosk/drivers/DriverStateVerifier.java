@@ -59,9 +59,10 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 	public static <RR extends StateTreeNode> DriverFactory<RR> wrap(DriverFactory<RR> subject, Type rootType, Bosk.DefaultRootFunction<RR> defaultRootFunction) {
 		Bosk<RR> stateTrackingBosk = new Bosk<>(
 			boskName(),
-			rootType, defaultRootFunction,
-			Bosk.simpleDriver()
-		);
+			rootType,
+			defaultRootFunction,
+			Bosk.simpleDriver(),
+			Bosk.simpleRegistrar());
 		DriverStateVerifier<RR> verifier = new DriverStateVerifier<>(
 			stateTrackingBosk,
 			ReplicaSet.redirectingTo(stateTrackingBosk)

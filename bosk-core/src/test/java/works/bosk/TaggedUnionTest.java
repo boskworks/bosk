@@ -51,7 +51,7 @@ class TaggedUnionTest extends AbstractBoskTest {
 		Identifier idValue = Identifier.from("test2");
 		StringCase stringCase = new StringCase(stringValue);
 		IDCase idCase = new IDCase(idValue);
-		var bosk = new Bosk<>(boskName(), BoskState.class, _ -> new BoskState(TaggedUnion.of(stringCase)), Bosk.simpleDriver());
+		var bosk = new Bosk<>(boskName(), BoskState.class, _ -> new BoskState(TaggedUnion.of(stringCase)), Bosk.simpleDriver(), Bosk.simpleRegistrar());
 		var refs = bosk.rootReference().buildReferences(Refs.class);
 
 		// Initial state

@@ -50,7 +50,7 @@ class ListingTest {
 			return childrenStream
 					.map(children -> {
 						TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
-						Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver());
+						Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
 						CatalogReference<TestEntity> catalog;
 						try {
 							catalog = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
@@ -69,7 +69,7 @@ class ListingTest {
 			TestEntity child = new TestEntity(Identifier.unique("child"), Catalog.empty());
 			List<TestEntity> children = singletonList(child);
 			TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
-			Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver());
+			Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
 			CatalogReference<TestEntity> childrenRef = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
 			return idStreams().map(list -> Arguments.of(list.map(Identifier::from).collect(toList()), childrenRef, bosk));
 		}
@@ -242,7 +242,7 @@ class ListingTest {
 		TestEntity child = new TestEntity(Identifier.unique("child"), Catalog.empty());
 		List<TestEntity> children = singletonList(child);
 		TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
 		CatalogReference<TestEntity> childrenRef = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
 
 		Listing<TestEntity> actual = Listing.empty(childrenRef);

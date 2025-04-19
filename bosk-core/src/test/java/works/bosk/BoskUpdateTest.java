@@ -39,12 +39,12 @@ public class BoskUpdateTest extends AbstractBoskTest {
 
 	@BeforeEach
 	void createBosk() throws InvalidTypeException {
-		bosk = new Bosk<TestRoot>(
+		bosk = new Bosk<>(
 			boskName(),
 			TestRoot.class,
 			AbstractBoskTest::initialRoot,
-			Bosk.simpleDriver()
-		);
+			Bosk.simpleDriver(),
+			Bosk.simpleRegistrar());
 		refs = bosk.buildReferences(Refs.class);
 		try (var _ = bosk.readContext()) {
 			originalRoot = bosk.rootReference().value();

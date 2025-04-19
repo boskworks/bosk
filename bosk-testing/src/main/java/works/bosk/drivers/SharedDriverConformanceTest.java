@@ -24,7 +24,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 	@Override
 	protected void assertCorrectBoskContents() {
 		super.assertCorrectBoskContents();
-		var latecomer = new Bosk<>(BoskTestUtils.boskName("latecomer"), TestEntity.class, AbstractDriverTest::initialRoot, driverFactory);
+		var latecomer = new Bosk<>(BoskTestUtils.boskName("latecomer"), TestEntity.class, AbstractDriverTest::initialRoot, driverFactory, Bosk.simpleRegistrar());
 		try {
 			latecomer.driver().flush();
 		} catch (Exception e) {
@@ -48,8 +48,8 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 			boskName("Original"),
 			TestEntity.class,
 			AbstractDriverTest::initialRoot,
-			driverFactory
-		);
+			driverFactory,
+			Bosk.simpleRegistrar());
 
 		LOGGER.debug("Create Upgradeable bosk");
 		@SuppressWarnings({"rawtypes","unchecked"})
@@ -58,8 +58,8 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 			boskName("Upgradeable"),
 			UpgradeableEntity.class,
 			(b) -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
-			upgradeableDriverFactory
-		);
+			upgradeableDriverFactory,
+			Bosk.simpleRegistrar());
 
 		LOGGER.debug("Ensure polyfill returns the right value on read");
 		TestValues polyfill;

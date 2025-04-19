@@ -18,7 +18,8 @@ class ReplicaSetConformanceTest extends DriverConformanceTest {
 			boskName("Replica"),
 			TestEntity.class,
 			AbstractDriverTest::initialRoot,
-			replicaSet.driverFactory());
+			replicaSet.driverFactory(),
+			Bosk.simpleRegistrar());
 		driverFactory = replicaSet.driverFactory();
 	}
 

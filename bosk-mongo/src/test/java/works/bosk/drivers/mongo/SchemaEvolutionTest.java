@@ -179,7 +179,7 @@ public class SchemaEvolutionTest {
 	}
 
 	private static Bosk<TestEntity> newBosk(Helper helper) {
-		return new Bosk<>(boskName(helper.toString()), TestEntity.class, helper::initialRoot, helper.driverFactory);
+		return new Bosk<>(boskName(helper.toString()), TestEntity.class, helper::initialRoot, helper.driverFactory, Bosk.simpleRegistrar());
 	}
 
 	record Configuration(

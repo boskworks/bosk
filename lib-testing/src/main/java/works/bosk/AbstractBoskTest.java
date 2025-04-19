@@ -137,7 +137,7 @@ public abstract class AbstractBoskTest {
 	public record VariantCase1(String stringField) implements Variant { }
 
 	protected static Bosk<TestRoot> setUpBosk(DriverFactory<TestRoot> driverFactory) {
-		return new Bosk<TestRoot>(boskName(1), TestRoot.class, AbstractRoundTripTest::initialRoot, driverFactory);
+		return new Bosk<TestRoot>(boskName(1), TestRoot.class, AbstractRoundTripTest::initialRoot, driverFactory, Bosk.simpleRegistrar());
 	}
 
 	protected static TestRoot initialRoot(Bosk<TestRoot> bosk) {

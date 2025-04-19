@@ -29,8 +29,8 @@ class BoskDiagnosticContextTest extends AbstractDriverTest {
 			boskName(),
 			TestEntity.class,
 			AbstractDriverTest::initialRoot,
-			Bosk.simpleDriver()
-		);
+			Bosk.simpleDriver(),
+			Bosk.simpleRegistrar());
 	}
 
 	@Test

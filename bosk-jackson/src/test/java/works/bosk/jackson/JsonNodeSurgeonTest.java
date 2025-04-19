@@ -46,11 +46,12 @@ public class JsonNodeSurgeonTest {
 
 	@BeforeEach
 	void setUp() throws InvalidTypeException {
-		bosk = new Bosk<JsonRoot>(
+		bosk = new Bosk<>(
 			boskName(),
 			JsonRoot.class,
-			b->JsonRoot.empty(b.buildReferences(Refs.class)),
-			Bosk.simpleDriver());
+			b -> JsonRoot.empty(b.buildReferences(Refs.class)),
+			Bosk.simpleDriver(),
+			Bosk.simpleRegistrar());
 		refs = bosk.buildReferences(Refs.class);
 		jacksonSerializer = new JacksonSerializer();
 		mapper = new ObjectMapper();
