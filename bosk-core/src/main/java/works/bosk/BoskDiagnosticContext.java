@@ -3,6 +3,8 @@ package works.bosk;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import static java.util.function.Predicate.not;
+
 /**
  * A thread-local set of name-value pairs that propagate all the way from
  * submission of a driver update, through all the driver layers,
@@ -71,5 +73,21 @@ public final class BoskDiagnosticContext {
 		} else {
 			return new DiagnosticScope(attributes);
 		}
+	}
+
+	/**
+	 * Removes all attributes from the current thread's diagnostic context that start with the given prefix,
+	 * and adds the given attributes after prepending the prefix to each of its keys.
+	 *
+	 * @param prefix the leftmost part of the keys to be replaced; must end with a dot and be at least two characters long
+	 * @param replacementAttributes the attributes to be added, without the prefix
+	 */
+	public DiagnosticScope withReplacedPrefix(String prefix, MapValue<String> replacementAttributes) {
+		assert prefix.endsWith("."): "Prefix must end with a dot: " + prefix;
+		assert prefix.length() >= 2: "Prefix must be at least two characters long: " + prefix;
+		MapValue<String> prefixedAttributes = MapValue.fromFunctions(replacementAttributes.keySet(), k -> prefix+k, replacementAttributes::get);
+		return new DiagnosticScope(currentAttributes.get().withOnly(
+			not(k -> k.startsWith(prefix))
+		).withAll(prefixedAttributes));
 	}
 }

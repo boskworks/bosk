@@ -25,6 +25,10 @@ configurations {
 	compileOnly {
 		extendsFrom annotationProcessor
 	}
+	openTelemetryJavaAgent {
+		canBeResolved = true
+		extendsFrom runtimeOnly
+	}
 }
 
 repositories {
@@ -36,9 +40,29 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	implementation project(':bosk-logback')
+	implementation project(':bosk-opentelemetry')
+	openTelemetryJavaAgent 'io.opentelemetry.javaagent:opentelemetry-javaagent:2.14.0'
+	implementation 'io.opentelemetry:opentelemetry-exporter-jaeger:1.34.1'
+
 
 	// A real project would pull this like any other library
 	implementation project(':bosk-spring-boot')
+}
+
+tasks.register('run', JavaExec) {
+	// Run the application with the opentelemetry-javaagent attached
+	classpath = sourceSets.main.runtimeClasspath
+	main = 'works.bosk.hello.HelloApplication'
+	args = []
+
+	def javaAgentPath = configurations.openTelemetryJavaAgent.find { it.name.contains('opentelemetry-javaagent') }
+
+	jvmArgs = [
+			'-javaagent:' + javaAgentPath,
+			'-Dotel.resource.attributes=service.name=hello',
+			'-Dotel.traces.exporter=otlp',
+			'-Dotel.metrics.exporter=none',
+	]
 }
 
 tasks.named('test') {
