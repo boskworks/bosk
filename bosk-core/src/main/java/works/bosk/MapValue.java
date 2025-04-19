@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,12 @@ public final class MapValue<V> implements Map<String, V> {
 	public static <VV> MapValue<VV> fromFunction(Iterable<String> keys, Function<String, VV> valueFunction) {
 		LinkedHashMap<String,VV> map = new LinkedHashMap<>();
 		keys.forEach(key -> addToMap(map, key, valueFunction.apply(key)));
+		return new MapValue<>(OrderedPMap.from(map));
+	}
+
+	public static <VV> MapValue<VV> fromFunctions(Iterable<String> keys, Function<String, String> keyFunction, Function<String, VV> valueFunction) {
+		LinkedHashMap<String,VV> map = new LinkedHashMap<>();
+		keys.forEach(key -> addToMap(map, keyFunction.apply(key), valueFunction.apply(key)));
 		return new MapValue<>(OrderedPMap.from(map));
 	}
 
@@ -97,6 +104,16 @@ public final class MapValue<V> implements Map<String, V> {
 
 	public MapValue<V> withAll(Map<String, ? extends V> m) {
 		return new MapValue<>(contents.plusAll(m));
+	}
+
+	public MapValue<V> withOnly(Predicate<String> predicate) {
+		var newContents = contents;
+		for (String key : contents.keySet()) {
+			if (!predicate.test(key)) {
+				newContents = newContents.minus(key);
+			}
+		}
+		return new MapValue<>(newContents);
 	}
 
 	@Override

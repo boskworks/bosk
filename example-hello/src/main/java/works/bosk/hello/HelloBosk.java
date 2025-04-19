@@ -14,17 +14,21 @@ import works.bosk.hello.state.BoskState;
 import works.bosk.hello.state.Target;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.logback.BoskLogFilter.LogController;
+import works.bosk.opentelemetry.OpenTelemetryDriver;
 
 @Component
 public class HelloBosk extends Bosk<BoskState> {
+
 	public HelloBosk(LogController logController) throws InvalidTypeException {
-		super("Hello", BoskState.class, HelloBosk::defaultRoot, getDriverFactory(logController), Bosk.simpleRegistrar());
+		super("Hello", BoskState.class, HelloBosk::defaultRoot, driverFactory(logController), Bosk.simpleRegistrar());
 	}
 
-	private static DriverFactory<BoskState> getDriverFactory(LogController logController) {
+	private static DriverFactory<BoskState> driverFactory(LogController logController) {
 		return DriverStack.of(
 			BoskLogFilter.withController(logController),
-			BufferingDriver.factory() // Act like this bosk has some latency
+			OpenTelemetryDriver.wrapping(
+				BufferingDriver.factory() // Defer operations to try to mix up the OTel context
+			)
 		);
 	}
 

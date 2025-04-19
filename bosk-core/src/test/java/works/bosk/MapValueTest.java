@@ -341,6 +341,21 @@ class MapValueTest extends AbstractBoskTest {
 	}
 
 	@Test
+	void testBad_duplicateKeysFromFunctions() {
+		assertThrows(IllegalArgumentException.class, () -> MapValue.fromFunctions(asList("first", "second"), k -> "dup", Identifier::unique));
+	}
+
+	@Test
+	void testBad_nullKeyFromFunctions() {
+		assertThrows(NullPointerException.class, () -> MapValue.fromFunctions(singletonList("key"), k -> null, s ->"Value"));
+	}
+
+	@Test
+	void testBad_nullValueFromFunctions() {
+		assertThrows(NullPointerException.class, () -> MapValue.fromFunctions(singletonList("key"), k->k, s ->null));
+	}
+
+	@Test
 	void testBad_nullKeyFromMap() {
 		Map<String, ?> map = singletonMap(null, "value");
 		assertThrows(NullPointerException.class, () -> MapValue.copyOf(map));

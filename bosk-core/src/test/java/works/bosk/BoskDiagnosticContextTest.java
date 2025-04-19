@@ -1,6 +1,7 @@
 package works.bosk;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.Semaphore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,4 +49,28 @@ class BoskDiagnosticContextTest extends AbstractDriverTest {
 		assertTrue(diagnosticsVerified.tryAcquire(5, SECONDS));
 	}
 
+	@Test
+	void replacePrefix_works() {
+		MapValue<String> expectedOuter = MapValue.copyOf(Map.of(
+			"unprefixed", "unprefixedValue",
+			"prefix.key1", "outer1",
+			"prefix.key2", "outer2"
+		));
+		MapValue<String> overrides = MapValue.copyOf(Map.of(
+			"key1", "inner1",
+			"key3", "inner3"
+		));
+		MapValue<String> expectedInner = MapValue.copyOf(Map.of(
+			"unprefixed", "unprefixedValue",
+			"prefix.key1", "inner1",
+			"prefix.key3", "inner3"
+		));
+		var diagnosticContext = bosk.diagnosticContext();
+		try (var _ = diagnosticContext.withAttributes(expectedOuter)) {
+			assertEquals(expectedOuter, diagnosticContext.getAttributes());
+			try (var __ = diagnosticContext.withReplacedPrefix("prefix.", overrides)) {
+				assertEquals(expectedInner, diagnosticContext.getAttributes());
+			}
+		}
+	}
 }
