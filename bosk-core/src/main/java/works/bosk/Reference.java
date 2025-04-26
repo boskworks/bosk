@@ -12,10 +12,8 @@ import works.bosk.exceptions.NonexistentReferenceException;
 import static java.util.Arrays.asList;
 
 /**
- * A pointer to an object stored at a known location in the document tree.
+ * A typed pointer to an object stored at a known location in the state tree of a particular {@link Bosk}.
  * The location is indicated by {@link #path()}.
- *
- * @author pdoyle
  *
  * @param <T> The type of object being referenced.
  */
@@ -170,7 +168,9 @@ public sealed interface Reference<T> permits
 	<TT> Reference<Reference<TT>> thenReference(Class<TT> targetClass, String... segments) throws InvalidTypeException;
 	<TT extends VariantCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> variantCaseClass, String... segments) throws InvalidTypeException;
 
-	<TT> Reference<TT> truncatedTo(Class<TT> targetClass, int remainingSegments) throws InvalidTypeException;
+	default <TT> Reference<TT> truncatedTo(Class<TT> targetClass, int remainingSegments) throws InvalidTypeException {
+		return root().then(targetClass, path().truncatedTo(remainingSegments));
+	}
 
 	/**
 	 * Returns a {@link Reference} with the {@link Path#lastSegment() last segment} removed.
