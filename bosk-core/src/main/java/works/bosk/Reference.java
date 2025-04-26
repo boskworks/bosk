@@ -12,10 +12,8 @@ import works.bosk.exceptions.NonexistentReferenceException;
 import static java.util.Arrays.asList;
 
 /**
- * A pointer to an object stored at a known location in the document tree.
+ * A typed pointer to an object stored at a known location in the state tree of a particular {@link Bosk}.
  * The location is indicated by {@link #path()}.
- *
- * @author pdoyle
  *
  * @param <T> The type of object being referenced.
  */
