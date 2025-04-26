@@ -114,9 +114,9 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 */
 	@SuppressWarnings("this-escape")
 	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, DriverFactory<R> driverFactory, RegistrarFactory registrarFactory) {
-		this.name = name;
-		this.pathCompiler = PathCompiler.withSourceType(rootType); // Required before rootRef
-		this.localDriver = new LocalDriver(defaultRootFunction);
+		this.name = requireNonNull(name);
+		this.pathCompiler = PathCompiler.withSourceType(requireNonNull(rootType)); // Required before rootRef
+		this.localDriver = new LocalDriver(requireNonNull(defaultRootFunction));
 		this.rootRef = new RootRef(rootType);
 		try {
 			validateType(rootType);
@@ -131,8 +131,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		// to do such things as create References, so it needs the rest of the
 		// initialization to have completed already.
 		//
-		this.driver = new ValidatingDriver(driverFactory.build(boskInfo, this.localDriver));
-		this.hookRegistrar = registrarFactory.build(boskInfo, this::localRegisterHook);
+		this.driver = new ValidatingDriver(requireNonNull(driverFactory.build(boskInfo, this.localDriver)));
+		this.hookRegistrar = requireNonNull(registrarFactory.build(boskInfo, this::localRegisterHook));
 
 		try {
 			this.currentRoot = rootRef.targetClass().cast(requireNonNull(driver.initialRoot(rootType)));
