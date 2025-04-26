@@ -100,7 +100,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private volatile R currentRoot;
 
 	/**
-	 * @param name Any string that identifies this object.
+	 * @param name A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
 	 * @param rootType The @{link Type} of the root node of the state tree, whose {@link Reference#path path} is <code>"/"</code>.
 	 * @param defaultRootFunction The root object to use if the driver chooses not to supply one,
 	 *    and instead delegates {@link BoskDriver#initialRoot} all the way to the local driver.
@@ -153,6 +153,18 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	@Deprecated(forRemoval = true)
 	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, DriverFactory<R> driverFactory) {
 		this(name, rootType, defaultRootFunction, driverFactory, Bosk.simpleRegistrar());
+	}
+
+	/**
+	 * Convenience method to create a bosk with only the basic functionality,
+	 * to get going quickly.
+	 * To customize the bosk behaviour later,
+	 * you can inline this into your call site and modify it as desired.
+	 * @param name A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
+	 * @param initialRoot The starting value of the bosk state tree, before any updates.
+	 */
+	public static <RR extends StateTreeNode> Bosk<RR> simple(String name, RR initialRoot) {
+		return new Bosk<>(requireNonNull(name), initialRoot.getClass(), b -> initialRoot, simpleDriver(), simpleRegistrar());
 	}
 
 	public interface DefaultRootFunction<RR extends StateTreeNode> {

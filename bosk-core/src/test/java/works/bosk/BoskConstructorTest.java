@@ -114,18 +114,9 @@ public class BoskConstructorTest {
 	@Test
 	void defaultRoot_matches() {
 		SimpleTypes root = newEntity();
-		{
-			Bosk<StateTreeNode> valueBosk = new Bosk<>(boskName(), SimpleTypes.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
-			try (var _ = valueBosk.readContext()) {
-				assertSame(root, valueBosk.rootReference().value());
-			}
-		}
-
-		{
-			Bosk<StateTreeNode> functionBosk = new Bosk<StateTreeNode>(boskName(), SimpleTypes.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
-			try (var _ = functionBosk.readContext()) {
-				assertSame(root, functionBosk.rootReference().value());
-			}
+		Bosk<StateTreeNode> valueBosk = Bosk.simple(boskName(), root);
+		try (var _ = valueBosk.readContext()) {
+			assertSame(root, valueBosk.rootReference().value());
 		}
 	}
 
