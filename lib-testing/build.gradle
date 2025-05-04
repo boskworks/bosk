@@ -1,12 +1,6 @@
-plugins {
-	id 'bosk.development'
-	id 'com.github.spotbugs' version '6.1.2'
-}
 
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(jdkVersion)
-	}
+compileJava {
+    options.release = null // Not a published library
 }
 
 dependencies {
@@ -22,11 +16,9 @@ dependencies {
 
 	// The bosk.development plugin brings these in as test dependencies,
 	// but we need them as main dependencies.
-	// It's gross that we need to repeat the version info here.
-	// There must be a clean way to do this in Gradle??
-	implementation 'org.junit.jupiter:junit-jupiter-api:5.10.3'
-	implementation 'org.junit.jupiter:junit-jupiter-params:5.10.3'
-	runtimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.3'
+	implementation libs.junit.api
+	implementation libs.junit.params
+	runtimeOnly libs.junit.engine
 }
 
 spotbugsMain.enabled = false // Spotbugs is counterproductive on test code

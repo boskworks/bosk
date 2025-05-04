@@ -1,5 +1,6 @@
 
 rootProject.name = 'bosk'
+
 include 'bosk-annotations'
 include 'bosk-core'
 include 'bosk-jackson'
@@ -12,3 +13,4 @@ include 'bosk-sql'
 include 'bosk-testing'
 include 'example-hello'
 include 'lib-testing'
+

@@ -1,29 +1,5 @@
 
-plugins {
-	id 'bosk.development'
-	id 'bosk.maven-publish'
-	id 'com.github.spotbugs' version '6.1.2'
-}
-
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(jdkVersion)
-	}
-}
-
-compileJava {
-	options.release = prodJavaVersion
-}
-
-compileTestJava {
-	options.release = null
-}
-
-repositories {
-	mavenCentral()
-}
-
 dependencies {
 	api project(":bosk-core")
-	implementation "ch.qos.logback:logback-classic:1.5.16"
+	implementation libs.logback.classic
 }

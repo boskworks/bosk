@@ -1,51 +1,13 @@
 
-plugins {
-	id 'bosk.development'
-	id 'bosk.maven-publish'
-//	id 'info.solidsoft.pitest' version '1.15.0'
-	id 'com.github.spotbugs' version '6.1.2'
-}
-
-base {
-	archivesName = 'bosk-mongo'
-}
-
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(jdkVersion)
-	}
-}
-
-compileJava {
-	options.release = prodJavaVersion
-}
-
-compileTestJava {
-	options.release = null
-}
-
 dependencies {
 	api project(":bosk-core")
-	api 'org.mongodb:mongodb-driver-sync:5.1.2'
-	implementation 'com.github.spotbugs:spotbugs-annotations:4.8.6' // To stop warnings about When from MongoDB driver
-
+	api libs.mongodb
+	implementation libs.spotbugs.annotations
 
 	// Allows us to annotate status objects so they're handy to serialize with jackson
-	implementation group: 'com.fasterxml.jackson.core', name: 'jackson-annotations', version: '2.18.1'
+	implementation libs.jackson.annotations
 
 	testImplementation project(":bosk-logback")
 	testImplementation project(":bosk-testing")
 	testImplementation project(":lib-testing")
 }
-
-//pitest {
-//	pitestVersion = '1.15.0'
-//	junit5PluginVersion = '1.2.0'
-//	jvmArgs = ['-ea'] // Our unit tests check for assert statements
-//	targetClasses = ['works.bosk.drivers.mongo.BsonSurgeon']
-//	targetTests   = ['works.bosk.drivers.mongo.BsonSurgeonTest']
-//	threads = 4
-//	outputFormats = ['XML', 'HTML']
-//	timestampedReports = false
-//	//verbose = true
-//}

@@ -1,47 +1,10 @@
 
-plugins {
-	id 'bosk.development'
-	id 'bosk.maven-publish'
-	id 'info.solidsoft.pitest' version '1.7.4'
-	id 'com.github.spotbugs' version '6.1.2'
-}
-
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(jdkVersion)
-	}
-}
-
-compileJava {
-	options.release = prodJavaVersion
-}
-
-compileTestJava {
-	options.release = null
-}
-
 dependencies {
 	api project(":bosk-annotations")
-	implementation group: 'org.ow2.asm', name: 'asm', version: '9.7'
-	implementation group: 'org.ow2.asm', name: 'asm-util', version: '9.7'
-	implementation 'org.pcollections:pcollections:4.0.2'
-	implementation 'org.jetbrains:annotations:24.1.0'
+	implementation libs.asm
+	implementation libs.asm.util
+	implementation libs.pcollections
+	implementation libs.jetbrains.annotations
 	testImplementation project(':bosk-testing')
 	testImplementation project(':lib-testing')
-}
-
-pitest {
-	junit5PluginVersion = '0.15'
-	jvmArgs = ['-ea'] // Our unit tests check for assert statements
-	targetClasses = ['works.bosk.ReferenceBuilder*']  //by default "${project.group}.*"
-	targetTests   = ['works.bosk.BuildReferences*Test']
-	//targetTests   = ['works.bosk.OldBoskTest', 'works.bosk.BoskTest', 'works.bosk.BoskConstructorTest', 'works.bosk.HooksTest', 'works.bosk.ReferenceTest']
-	threads = 4
-	outputFormats = ['XML', 'HTML']
-	timestampedReports = false
-	//verbose = true
-}
-
-repositories {
-	mavenCentral()
 }

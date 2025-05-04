@@ -14,7 +14,7 @@ java {
 }
 
 compileJava {
-	options.release = prodJavaVersion
+	options.release = minSupportedJavaVersion
 }
 
 compileTestJava {
