@@ -5,13 +5,6 @@ plugins {
 	alias(libs.plugins.spotbugs) apply false
 }
 
-group = 'works.bosk'
-// version should be set as a property with -Pversion
-
-repositories {
-	mavenCentral()
-}
-
 ext {
 	jdkVersion = 22 // If you bump this, change the CI workflows too
 	minSupportedJavaVersion = 21
@@ -23,10 +16,14 @@ java {
 	}
 }
 
-subprojects {
+allprojects {
 	repositories {
 		mavenCentral()
 	}
+
+	group = 'works.bosk'
+	// version should be set as a property with -Pversion
+
 }
 
 configure(subprojects.findAll {
