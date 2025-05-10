@@ -63,10 +63,11 @@ configure(subprojects.findAll {
 		dependencies {
 			annotationProcessor libs.lombok
 			compileOnly libs.lombok
+			implementation libs.slf4j.api
+
 			testAnnotationProcessor libs.lombok
 			testCompileOnly libs.lombok
 
-			implementation libs.slf4j.api
 			testImplementation libs.logback.classic
 
 			testImplementation libs.junit.api
