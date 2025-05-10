@@ -1,0 +1,50 @@
+[versions]
+asm = "9.7"
+hamcrest = "2.2"
+jackson = "2.18.1"
+jetbrains-annotations = "24.1.0"
+jmh = "1.37"
+junit = "5.10.3"
+logback = "1.5.16"
+lombok = "1.18.34"
+pcollections = "4.0.2"
+slf4j = "2.0.13"
+spring-boot = "3.4.3"
+testcontainers = "1.20.4"
+
+[libraries]
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
+hamcrest = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
+hamcrest-library = { module = "org.hamcrest:hamcrest-library", version.ref = "hamcrest" }
+hikari = { module = "com.zaxxer:HikariCP", version = "6.2.1" }
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref="jackson" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref="jetbrains-annotations" }
+jmh-apt = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
+jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
+jooq = { module = "org.jooq:jooq", version = "3.19.18" }
+junit-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
+junit-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
+junit-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.1.2" }
+mysql = { module = "com.mysql:mysql-connector-j", version = "9.2.0" }
+opentelemetry = { module="io.opentelemetry:opentelemetry-sdk", version="1.48.0" }
+pcollections = { module = "org.pcollections:pcollections", version.ref="pcollections" }
+postgresql = { module = "org.postgresql:postgresql", version = "42.7.5" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+spotbugs-annotations = { module = "com.github.spotbugs:spotbugs-annotations", version="4.8.6" }
+spring-boot-annotation-processor = { module="org.springframework.boot:spring-boot-configuration-processor", version.ref="spring-boot" }
+spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter-web", version.ref="spring-boot" }
+sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.49.1.0" }
+testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
+testcontainers-mysql = { module = "org.testcontainers:mysql", version.ref="testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref="testcontainers" }
+testcontainers-toxiproxy = { module = "org.testcontainers:toxiproxy", version.ref = "testcontainers" }
+
+[plugins]
+nexus = { id = "io.github.gradle-nexus.publish-plugin", version="2.0.0" }
+spotbugs = { id = "com.github.spotbugs", version = "6.1.2" }

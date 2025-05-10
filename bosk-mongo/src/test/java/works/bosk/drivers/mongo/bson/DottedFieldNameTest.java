@@ -67,7 +67,7 @@ class DottedFieldNameTest {
 		assertEquals(expected.path(), actual.path());
 		assertEquals(expected.targetType(), actual.targetType());
 	}
-	
+
 	@Test
 	void testTruncatedPaths() throws InvalidTypeException {
 		assertEquals("state", dotted("/", 0));

@@ -1,26 +1,6 @@
 
-plugins {
-	id 'bosk.development'
-	id 'bosk.maven-publish'
-	id 'com.github.spotbugs' version '6.1.2'
-}
-
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(jdkVersion)
-	}
-}
-
-compileJava {
-	options.release = prodJavaVersion
-}
-
-compileTestJava {
-	options.release = null
-}
-
 dependencies {
-	api 'com.fasterxml.jackson.core:jackson-databind:2.18.1'
+	api libs.jackson.databind
 	api project(":bosk-core")
 
 	testImplementation project(":bosk-testing")

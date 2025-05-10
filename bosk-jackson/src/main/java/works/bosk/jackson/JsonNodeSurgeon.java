@@ -203,7 +203,7 @@ public class JsonNodeSurgeon {
 				}
 			}
 		}
-		
+
 		// For every other type, this is an object member contained in the parent
 		NodeLocation valueLocation = parent == null
 			? new NonexistentParent()

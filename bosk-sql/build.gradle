@@ -1,40 +1,20 @@
 
-plugins {
-	id 'bosk.development'
-	id 'bosk.maven-publish'
-	id 'com.github.spotbugs' version '6.1.2'
-}
-
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(jdkVersion)
-	}
-}
-
-compileJava {
-	options.release = prodJavaVersion
-}
-
-compileTestJava {
-	options.release = null
-}
-
 dependencies {
 	api project(':bosk-core')
 	implementation project(':bosk-jackson')
-	implementation 'org.jooq:jooq:3.19.18'
+	implementation libs.jooq
 
 	testImplementation project(':bosk-testing')
 	testImplementation project(':lib-testing')
 
 	testImplementation project(':bosk-logback')
 
-	testImplementation 'com.zaxxer:HikariCP:6.2.1'
-	testImplementation 'org.testcontainers:postgresql:1.20.4'
-	testImplementation 'org.postgresql:postgresql:42.7.5'
-	testImplementation 'org.testcontainers:mysql:1.20.4'
-	testImplementation 'com.mysql:mysql-connector-j:9.2.0'
-	testImplementation 'org.xerial:sqlite-jdbc:3.49.1.0'
+	testImplementation libs.hikari
+	testImplementation libs.testcontainers.postgresql
+	testImplementation libs.postgresql
+	testImplementation libs.testcontainers.mysql
+	testImplementation libs.mysql
+	testImplementation libs.sqlite
 
 
 }

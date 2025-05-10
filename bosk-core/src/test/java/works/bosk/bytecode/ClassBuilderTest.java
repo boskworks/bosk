@@ -68,4 +68,3 @@ public class ClassBuilderTest {
 		return "ABC";
 	}
 }
-

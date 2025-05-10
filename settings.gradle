@@ -1,5 +1,6 @@
 
 rootProject.name = 'bosk'
+
 include 'bosk-annotations'
 include 'bosk-core'
 include 'bosk-jackson'

@@ -135,7 +135,7 @@ public class SchemaEvolutionTest {
 
 		LOGGER.debug("Flush toBosk({}) to see the update", toBosk.name());
 		toBosk.driver().flush();
-		
+
 		LOGGER.debug("Perform toBosk ({}) read", toBosk.name());
 		try (var _ = toBosk.readContext()) {
 			assertEquals("Distinctive String", toRefs.string().value());

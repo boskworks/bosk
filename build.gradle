@@ -1,46 +1,90 @@
-
 plugins {
 	id 'java'
-	id "com.diffplug.spotless" version "6.20.0"
-	id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
-}
-
-ext {
-	prodJavaVersion = 21
-	jdkVersion = 22 // If you bump this, change the CI workflows too
+	id "com.diffplug.spotless" version '6.20.0'
+	alias(libs.plugins.nexus)
+	alias(libs.plugins.spotbugs) apply false
 }
 
 repositories {
-	maven {
-		url 'https://plugins.gradle.org/m2/'
-	}
 	mavenCentral()
 }
 
-spotless {
-	enforceCheck false
-	java {
-		importOrder '', '\\#' // Static imports after regular imports, as per mt-server standard and IntelliJ default
-		removeUnusedImports()
-		trimTrailingWhitespace()
-		indentWithTabs()
-		replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
-		replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
-	}
-	format 'misc', {
-		target '**/*.gradle', '**/*.md', '**/.gitignore'
+ext {
+	jdkVersion = 22 // If you bump this, change the CI workflows too
+	minSupportedJavaVersion = 21
+}
 
-		trimTrailingWhitespace()
-		//indentWithTabs() For markdown, we want to align some code examples very carefully, so we use spaces
-		replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
-		replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
-		endWithNewline()
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(jdkVersion)
 	}
 }
 
-allprojects {
+subprojects {
+	repositories {
+		mavenCentral()
+	}
+}
+
+configure(subprojects.findAll {
+	it.name.startsWith("bosk-") || it.name.startsWith("lib-")
+}) {
+	apply plugin: 'java-library'
+	apply plugin: 'jacoco'
+	apply plugin: 'com.github.spotbugs'
+
 	group = 'works.bosk'
 	// version should be set as a property with -Pversion
+
+	java {
+		toolchain {
+			languageVersion = JavaLanguageVersion.of(jdkVersion)
+		}
+	}
+
+	compileJava {
+		options.release = minSupportedJavaVersion
+	}
+
+	compileTestJava {
+		options.release = null // Accept the default from the JDK
+		options.compilerArgs << '-parameters' // For @ParametersByName
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		options.encoding = 'UTF-8'
+		options.compilerArgs << '-Xlint'
+		options.compilerArgs << '-Xlint:-serial'     // Don't care about Java serialization
+		options.compilerArgs << '-Xlint:-try'        // Really annoying bogus "auto-closeable never used" warnings
+		options.compilerArgs << '-Xlint:-processing' // Not all annotations are meant for compile-time "annotation processing"
+	}
+
+	if (name != "bosk-annotations") {
+		dependencies {
+			annotationProcessor libs.lombok
+			compileOnly libs.lombok
+			implementation libs.slf4j.api
+
+			testAnnotationProcessor libs.lombok
+			testCompileOnly libs.lombok
+
+			testImplementation libs.logback.classic
+
+			testImplementation libs.junit.api
+			testImplementation libs.junit.params
+			testRuntimeOnly libs.junit.engine
+
+			testImplementation libs.hamcrest
+			testImplementation libs.hamcrest.library
+
+			testImplementation libs.testcontainers
+			testImplementation libs.testcontainers.junit
+			testImplementation libs.testcontainers.toxiproxy
+
+			testImplementation libs.jmh.core
+			testAnnotationProcessor libs.jmh.apt
+		}
+	}
 
 	tasks.register('smoke', Test) {
 		// A set of tests that should finish in under a minute or so.
@@ -54,6 +98,137 @@ allprojects {
 
 		useJUnitPlatform {
 			excludeTags 'slow'
+		}
+	}
+
+	tasks.withType(Test).configureEach {
+		javaLauncher = javaToolchains.launcherFor {
+			languageVersion = JavaLanguageVersion.of(jdkVersion)
+		}
+		useJUnitPlatform()
+		enableAssertions = true
+		testLogging.showStandardStreams = true
+		reports.junitXml.required = true
+	}
+
+	spotbugs {
+		excludeFilter = file("${rootProject.projectDir}/spotbugsExclude.xml")
+	}
+
+	tasks.matching { it.name == "spotbugsTest" }.configureEach { enabled = false }
+
+}
+
+spotless {
+	enforceCheck false
+	java {
+		importOrder '', '\\#' // Static imports after regular imports, as per mt-server standard and IntelliJ default
+		removeUnusedImports()
+		trimTrailingWhitespace()
+		indentWithTabs()
+		replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
+		replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
+	}
+	format 'gradle', {
+		target '**/*.gradle'
+
+		trimTrailingWhitespace()
+		indentWithTabs()
+		endWithNewline()
+	}
+	format 'misc', {
+		target '**/*.md', '**/.gitignore'
+
+		trimTrailingWhitespace()
+		//indentWithTabs() For markdown, we want to align some code examples very carefully, so we use spaces
+		replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
+		replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
+		endWithNewline()
+	}
+}
+
+// Apply publishing only to published modules
+configure(subprojects.findAll { it.name.startsWith("bosk-") }) {
+	apply plugin: 'maven-publish'
+	apply plugin: 'signing'
+
+	java {
+		withSourcesJar()
+		withJavadocJar()
+	}
+
+	jar {
+		manifest {
+			// https://docs.gradle.org/current/userguide/building_java_projects.html#sec:jar_manifest
+			attributes("Implementation-Version": archiveVersion)
+		}
+	}
+
+	publishing {
+		publications {
+			mavenJava(MavenPublication) {
+				from components.java
+				versionMapping {
+					usage('java-api') { fromResolutionOf('runtimeClasspath') }
+					usage('java-runtime') { fromResolutionResult() }
+				}
+				pom {
+					name = 'Bosk'
+					packaging = 'jar'
+					description = 'Control plane state management library'
+					url = 'http://bosk.works'
+					licenses {
+						license {
+							name = 'The Apache License, Version 2.0'
+							url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+						}
+					}
+					developers {
+						developer {
+							id = 'pdoyle'
+							name = 'Patrick Doyle'
+							email = 'p.r.doyle@gmail.com'
+						}
+						developer {
+							id = 'gjohnson'
+							name = 'Grady Johnson'
+							email = 'gradycsjohnson@gmail.com'
+						}
+					}
+					scm {
+						connection = 'scm:git:git://github.com/boskworks/bosk.git'
+						developerConnection = 'scm:git:ssh://github.com:boskworks/bosk.git'
+						url = 'https://github.com/boskworks/bosk'
+					}
+				}
+			}
+		}
+
+		repositories {
+			maven {
+				def releasesRepoUrl = 'https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/'
+				def snapshotsRepoUrl = 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
+				url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+
+				credentials {
+					username = project.properties['ossrhUsername'] ?: 'bogusUser'
+					password = project.properties['ossrhPassword'] ?: 'bogusPassword'
+				}
+			}
+		}
+	}
+
+	signing {
+		sign publishing.publications.mavenJava
+		def signingKey = findProperty("signingKey")
+		def signingPassword = findProperty("signingPassword")
+		useInMemoryPgpKeys(signingKey, signingPassword)
+	}
+
+	javadoc {
+		failOnError = false
+		if (JavaVersion.current().isJava9Compatible()) {
+			options.addBooleanOption('html5', true)
 		}
 	}
 }

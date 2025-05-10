@@ -1,28 +1,6 @@
 
-plugins {
-	id 'bosk.maven-publish'
-}
-
 dependencies {
 	api project(':bosk-spring-boot')
-}
-
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(jdkVersion)
-	}
-}
-
-compileJava {
-	options.release = prodJavaVersion
-}
-
-compileTestJava {
-	options.release = null
-}
-
-repositories {
-	mavenCentral()
 }
 
 publishing {

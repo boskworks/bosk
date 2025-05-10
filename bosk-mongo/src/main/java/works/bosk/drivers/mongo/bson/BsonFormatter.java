@@ -27,8 +27,8 @@ import works.bosk.BoskInfo;
 import works.bosk.Listing;
 import works.bosk.Path;
 import works.bosk.Reference;
-import works.bosk.StateTreeSerializer;
 import works.bosk.SideTable;
+import works.bosk.StateTreeSerializer;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static works.bosk.Path.validSegment;
