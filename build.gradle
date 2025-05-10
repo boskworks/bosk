@@ -5,6 +5,9 @@ plugins {
 	alias(libs.plugins.spotbugs) apply false
 }
 
+group = 'works.bosk'
+// version should be set as a property with -Pversion
+
 repositories {
 	mavenCentral()
 }
@@ -32,9 +35,6 @@ configure(subprojects.findAll {
 	apply plugin: 'java-library'
 	apply plugin: 'jacoco'
 	apply plugin: 'com.github.spotbugs'
-
-	group = 'works.bosk'
-	// version should be set as a property with -Pversion
 
 	java {
 		toolchain {
