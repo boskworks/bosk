@@ -85,4 +85,3 @@ public class BoskLogFilter extends Filter<ILoggingEvent> {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(BoskLogFilter.class);
 }
-

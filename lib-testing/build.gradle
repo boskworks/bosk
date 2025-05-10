@@ -1,6 +1,6 @@
 
 compileJava {
-    options.release = null // Not a published library
+	options.release = null // Not a published library
 }
 
 dependencies {

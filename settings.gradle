@@ -13,4 +13,3 @@ include 'bosk-sql'
 include 'bosk-testing'
 include 'example-hello'
 include 'lib-testing'
-
