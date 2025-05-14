@@ -34,7 +34,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
  * All instances use the same MongoDB container, so
  * different tests should use different database names.
  * All instances use the same proxy, so network outage tests
- * will disrupt other tests running in parallel.
+ * will disrupt other outage tests running in parallel.
  *
  */
 public class MongoService implements Closeable {
