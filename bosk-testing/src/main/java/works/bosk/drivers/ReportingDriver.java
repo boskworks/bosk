@@ -84,6 +84,9 @@ public class ReportingDriver implements BoskDriver {
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		downstream.flush();
+		FlushOperation op = new FlushOperation(diagnosticContext.getAttributes());
+		flushListener.accept(op);
+		op.submitTo(downstream);
 	}
+
 }
