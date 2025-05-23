@@ -16,6 +16,7 @@ import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
+import works.bosk.drivers.operations.FlushOperation;
 import works.bosk.drivers.operations.UpdateOperation;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
@@ -93,7 +94,7 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 			.addLast(updateOperation);
 	}
 
-	private void incomingFlush() {
+	private void incomingFlush(FlushOperation __) {
 		LOGGER.debug("incomingFlush()");
 	}
 
@@ -151,7 +152,7 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 		}
 	}
 
-	private void outgoingFlush() {
+	private void outgoingFlush(FlushOperation __) {
 		LOGGER.debug("outgoingFlush()");
 		pendingOperationsByThreadName.forEach((thread, q) -> {
 			if (!q.isEmpty()) {

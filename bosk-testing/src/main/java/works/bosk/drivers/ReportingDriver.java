@@ -12,6 +12,8 @@ import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.operations.ConditionalCreation;
+import works.bosk.drivers.operations.DriverOperation;
+import works.bosk.drivers.operations.FlushOperation;
 import works.bosk.drivers.operations.SubmitConditionalDeletion;
 import works.bosk.drivers.operations.SubmitConditionalReplacement;
 import works.bosk.drivers.operations.SubmitDeletion;
@@ -29,11 +31,15 @@ import works.bosk.exceptions.InvalidTypeException;
 public class ReportingDriver implements BoskDriver {
 	final BoskDriver downstream;
 	final BoskDiagnosticContext diagnosticContext;
-	final Consumer<UpdateOperation> updateListener;
-	final Runnable flushListener;
+	final Consumer<? super UpdateOperation> updateListener;
+	final Consumer<? super FlushOperation> flushListener;
 
-	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Consumer<UpdateOperation> listener, Runnable flushListener) {
-		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), listener, flushListener);
+	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Consumer<? super DriverOperation> listener) {
+		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), listener, listener);
+	}
+
+	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Consumer<? super UpdateOperation> updateListener, Consumer<? super FlushOperation> flushListener) {
+		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), updateListener, flushListener);
 	}
 
 	@Override
