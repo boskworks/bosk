@@ -1,5 +1,6 @@
 package works.bosk.hello;
 
+import java.util.Collection;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,5 +30,10 @@ public record APIEndpoints (
 	@PostMapping("/noReadContext")
 	void noReadContext() {
 		bosk.rootReference().value();
+	}
+
+	@GetMapping("/hookRegistrations")
+	Collection<HelloBosk.HookRegistration<?>> getHookRegistrations() {
+		return bosk.allRegisteredHooks();
 	}
 }

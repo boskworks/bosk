@@ -8,7 +8,7 @@ import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
 import works.bosk.Identifier;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.drivers.BufferingDriver;
+import works.bosk.drivers.ForwardingDriver;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.hello.state.BoskState;
 import works.bosk.hello.state.Target;
@@ -27,7 +27,8 @@ public class HelloBosk extends Bosk<BoskState> {
 		return DriverStack.of(
 			BoskLogFilter.withController(logController),
 			OpenTelemetryDriver.wrapping(
-				BufferingDriver.factory() // Defer operations to try to mix up the OTel context
+				ForwardingDriver.factory()
+//				BufferingDriver.factory() // Defer operations to try to mix up the OTel context
 			)
 		);
 	}

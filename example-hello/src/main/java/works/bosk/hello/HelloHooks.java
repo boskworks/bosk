@@ -1,5 +1,6 @@
 package works.bosk.hello;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ public class HelloHooks {
 		bosk.registerHooks(this);
 	}
 
+	@WithSpan
 	@Hook("/targets/-target-")
 	public void targetChanged(Reference<Target> ref) {
 		if (ref.exists()) {
