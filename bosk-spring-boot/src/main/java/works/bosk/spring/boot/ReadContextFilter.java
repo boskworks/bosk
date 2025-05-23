@@ -25,7 +25,7 @@ public class ReadContextFilter extends OncePerRequestFilter {
 
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-		if ("no-cache".equals(request.getHeader(CACHE_CONTROL))) {
+		if ("no-cache".equalsIgnoreCase(request.getHeader(CACHE_CONTROL))) {
 			// Allow the client to specify that they want their read context to have the latest state.
 			// We do this even for requests that don't automatically open a read context because
 			// they might later manually open one.
