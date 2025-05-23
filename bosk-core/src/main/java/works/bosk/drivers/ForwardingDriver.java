@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import lombok.RequiredArgsConstructor;
 import works.bosk.BoskDriver;
+import works.bosk.DriverFactory;
 import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
@@ -21,6 +22,10 @@ import works.bosk.exceptions.InvalidTypeException;
 @RequiredArgsConstructor
 public class ForwardingDriver implements BoskDriver {
 	protected final BoskDriver downstream;
+
+	public static <RR extends StateTreeNode> DriverFactory<RR> factory() {
+		return (b,d) -> new ForwardingDriver(d);
+	}
 
 	@Override
 	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
