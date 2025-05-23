@@ -172,13 +172,11 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 
 	@SuppressWarnings("unchecked")
 	private <T> T hypotheticalStateAfter(UpdateOperation op) throws IOException, InterruptedException {
-		T before;
 		R originalState;
 		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 		stateTrackingBosk.driver().flush();
 		try (var __ = stateTrackingBosk.readContext()) {
 			originalState = stateTrackingBosk.rootReference().value();
-			before = stateTrackingRef.valueIfExists();
 		}
 		op.submitTo(stateTrackingDriver);
 		stateTrackingBosk.driver().flush();
