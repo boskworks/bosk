@@ -16,6 +16,7 @@ import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
+import works.bosk.drivers.operations.FlushOperation;
 import works.bosk.drivers.operations.UpdateOperation;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
@@ -93,7 +94,7 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 			.addLast(updateOperation);
 	}
 
-	private void incomingFlush() {
+	private void incomingFlush(FlushOperation __) {
 		LOGGER.debug("incomingFlush()");
 	}
 
@@ -151,14 +152,35 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 		}
 	}
 
-	private void outgoingFlush() {
+	private void outgoingFlush(FlushOperation __) {
 		LOGGER.debug("outgoingFlush()");
 		pendingOperationsByThreadName.forEach((thread, q) -> {
+			discardLeadingNops(q);
 			if (!q.isEmpty()) {
 				throw new AssertionError(q.size() + " pending operations remain on thread " + thread
 					+ "\n\tFirst is: " + q.getFirst());
 			}
 		});
+	}
+
+	private void discardLeadingNops(Deque<UpdateOperation> q) {
+		try {
+			UpdateOperation op;
+			while ((op = q.peekFirst()) != null) {
+				Object before = currentStateBefore(op);
+				Object after = hypotheticalStateAfter(op);
+				if (Objects.equals(before, after)) {
+					LOGGER.debug("\tDiscarding nop: {}", op);
+					var removed = q.removeFirst();
+					assert op == removed;
+				} else {
+					LOGGER.trace("\tNext operation is not a nop: {}", op);
+					break;
+				}
+			}
+		} catch (InterruptedException | IOException e) {
+			throw new NotYetImplementedException(e);
+		}
 	}
 
 	@SuppressWarnings("unchecked")
@@ -172,13 +194,11 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 
 	@SuppressWarnings("unchecked")
 	private <T> T hypotheticalStateAfter(UpdateOperation op) throws IOException, InterruptedException {
-		T before;
 		R originalState;
 		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 		stateTrackingBosk.driver().flush();
 		try (var __ = stateTrackingBosk.readContext()) {
 			originalState = stateTrackingBosk.rootReference().value();
-			before = stateTrackingRef.valueIfExists();
 		}
 		op.submitTo(stateTrackingDriver);
 		stateTrackingBosk.driver().flush();
