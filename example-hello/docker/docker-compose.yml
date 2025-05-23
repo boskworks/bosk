@@ -1,6 +1,6 @@
 services:
   jaeger:
-    build: jaeger
+    image: jaegertracing/all-in-one
     ports:
       - "16686:16686"  # Jaeger UI
       - "4317:4317"    # OTLP over gRPC

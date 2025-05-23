@@ -14,9 +14,6 @@ import static org.junit.jupiter.api.parallel.ResourceAccessMode.READ_WRITE;
  * Indicates that a test is going to use {@link MongoService},
  * and that it will use {@link MongoService#proxy()} to test
  * network outages and other errors.
- * Use this annotation instead of {@link UsesMongoService} to ensure
- * this test won't be run in parallel with other tests that
- * it might disrupt.
  * Only one {@link DisruptsMongoProxy} test will run at a time.
  *
  * <p>
