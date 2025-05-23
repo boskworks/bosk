@@ -45,8 +45,8 @@ public class ReadContextFilter extends OncePerRequestFilter {
 	}
 
 	/**
-	 * The "safe" HTTP methods won't change server state, so there's no reason not to
-	 * open a
+	 * The "safe" HTTP methods won't change the server state,
+	 * so there's no reason not to open a read context.
 	 */
 	private boolean automaticallyOpenReadContext(HttpServletRequest request) {
 		return switch (request.getMethod()) {
