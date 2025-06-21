@@ -50,7 +50,7 @@ import static org.objectweb.asm.Opcodes.NEW;
 import static org.objectweb.asm.Opcodes.POP;
 import static org.objectweb.asm.Opcodes.RETURN;
 import static org.objectweb.asm.Opcodes.SWAP;
-import static org.objectweb.asm.Opcodes.V1_8;
+import static org.objectweb.asm.Opcodes.V21;
 import static org.objectweb.asm.Type.getMethodDescriptor;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.util.ReflectionHelpers.boxedClass;
@@ -106,7 +106,7 @@ public final class ClassBuilder<T> {
 		this.classWriter = new ClassWriter(COMPUTE_FRAMES);
 		this.classVisitor = classWriter;
 //		this.classVisitor = new TraceClassVisitor(classWriter, new PrintWriter(System.out));
-		classVisitor.visit(V1_8, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, slashyName, null, superClassName, interfaces);
+		classVisitor.visit(V21, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, slashyName, null, superClassName, interfaces);
 		classVisitor.visitSource(sourceFileOrigin.getFileName(), null);
 	}
 

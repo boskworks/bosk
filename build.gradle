@@ -1,12 +1,12 @@
 plugins {
 	id 'java'
-	id "com.diffplug.spotless" version '6.20.0'
+	id 'com.diffplug.spotless' version '6.20.0'
 	alias(libs.plugins.nexus)
 	alias(libs.plugins.spotbugs) apply false
 }
 
 ext {
-	jdkVersion = 22 // If you bump this, change the CI workflows too
+	jdkVersion = 24 // If you bump this, change the CI workflows too
 	minSupportedJavaVersion = 21
 }
 
@@ -30,7 +30,6 @@ configure(subprojects.findAll {
 	it.name.startsWith("bosk-") || it.name.startsWith("lib-")
 }) {
 	apply plugin: 'java-library'
-	apply plugin: 'jacoco'
 	apply plugin: 'com.github.spotbugs'
 
 	java {
