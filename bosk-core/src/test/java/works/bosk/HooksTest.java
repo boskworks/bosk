@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -19,7 +20,11 @@ import works.bosk.exceptions.InvalidTypeException;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class HooksTest extends AbstractBoskTest {
 	Bosk<TestRoot> bosk;
@@ -562,6 +567,90 @@ public class HooksTest extends AbstractBoskTest {
 		}
 	}
 
+	/**
+	 * Also makes sure that the exception messages are sufficiently informative.
+	 */
+	@ParameterizedTest
+	@ValueSource(classes = {
+		InvalidParameterType.class,
+		NonexistentPath.class,
+		PrivateHookMethod.class,
+		StaticHookMethod.class,
+		WrongReferencedType.class,
+	})
+	void registerHooks_invalid_throws(Class<? extends Consumer<Exception>> receiverClass) throws Exception {
+		Consumer<Exception> receiver = receiverClass.getConstructor().newInstance();
+		InvalidTypeException e = assertThrows(InvalidTypeException.class, ()->bosk.registerHooks(receiver));
+		receiver.accept(e);
+	}
+
+	public static class InvalidParameterType implements Consumer<Exception> {
+		@Hook("/id")
+		void hook(String wtf) {
+			fail();
+		}
+
+		@Override
+		public void accept(Exception e) {
+			assertThat(e.getMessage(), containsString("wtf"));
+			assertThat(e.getMessage(), containsString("InvalidParameterType.hook"));
+			assertThat(e.getMessage(), containsString("String"));
+		}
+	}
+
+	public static class NonexistentPath implements Consumer<Exception> {
+		@Hook("/nonexistent")
+		void hook(Reference<String> ref) {
+			fail();
+		}
+
+		@Override
+		public void accept(Exception e) {
+			assertThat(e.getMessage(), containsString("/nonexistent"));
+			assertThat(e.getMessage(), containsString("NonexistentPath.hook"));
+		}
+	}
+
+	public static class PrivateHookMethod implements Consumer<Exception> {
+		@Hook("/id")
+		private void hook(Reference<Identifier> ref) {
+			fail();
+		}
+
+		@Override
+		public void accept(Exception e) {
+			assertThat(e.getMessage(), containsString("private"));
+			assertThat(e.getMessage(), containsString("PrivateHookMethod.hook"));
+		}
+	}
+
+	public static class StaticHookMethod implements Consumer<Exception> {
+		@Hook("/id")
+		static void hook(Reference<Identifier> ref) {
+			fail();
+		}
+
+		@Override
+		public void accept(Exception e) {
+			assertThat(e.getMessage(), containsString("static"));
+			assertThat(e.getMessage(), containsString("StaticHookMethod.hook"));
+		}
+	}
+
+	public static class WrongReferencedType implements Consumer<Exception> {
+		@Hook("/id")
+		void hook(Reference<String> wtf) {
+			fail();
+		}
+
+		@Override
+		public void accept(Exception e) {
+			assertThat(e.getMessage(), containsString("wtf"));
+			assertThat(e.getMessage(), containsString("WrongReferencedType.hook"));
+			assertThat(e.getMessage(), containsString("Identifier")); // expected type
+			assertThat(e.getMessage(), containsString("String"));     // actual type
+		}
+	}
 
 	interface Submit {
 		<T> void replacement(Bosk<?> bosk, Refs refs, Reference<T> target, T newValue);

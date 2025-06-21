@@ -35,7 +35,6 @@ opentelemetry = { module="io.opentelemetry:opentelemetry-sdk", version="1.48.0" 
 pcollections = { module = "org.pcollections:pcollections", version.ref="pcollections" }
 postgresql = { module = "org.postgresql:postgresql", version = "42.7.5" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
-spotbugs-annotations = { module = "com.github.spotbugs:spotbugs-annotations", version="4.8.6" }
 spring-boot-annotation-processor = { module="org.springframework.boot:spring-boot-configuration-processor", version.ref="spring-boot" }
 spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter-web", version.ref="spring-boot" }
 spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
