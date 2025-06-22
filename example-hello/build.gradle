@@ -52,7 +52,7 @@ dependencies {
 tasks.register('run', JavaExec) {
 	// Run the application with the opentelemetry-javaagent attached
 	classpath = sourceSets.main.runtimeClasspath
-	main = 'works.bosk.hello.HelloApplication'
+	mainClass = 'works.bosk.hello.HelloApplication'
 	args = []
 
 	def javaAgentPath = configurations.openTelemetryJavaAgent.find { it.name.contains('opentelemetry-javaagent') }
