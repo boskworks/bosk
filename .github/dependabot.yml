@@ -9,7 +9,16 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
-    groups:
-      all-dependencies:
+    groups: # Separate groups for dependencies that have cause problems in the past
+      spring-boot:
+        patterns:
+          - "org.springframework.boot*"
+      junit:
+        patterns:
+          - "org.junit*"
+      ordinary-dependencies: # Uncontroversial dependencies
         patterns:
           - "*"
+        exclude-patterns:
+          - "org.springframework.boot*"
+          - "org.junit*"
