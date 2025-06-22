@@ -38,7 +38,7 @@ slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 spring-boot-annotation-processor = { module="org.springframework.boot:spring-boot-configuration-processor", version.ref="spring-boot" }
 spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter-web", version.ref="spring-boot" }
 spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
-sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.49.1.0" }
+sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.50.1.0" }
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 testcontainers-mysql = { module = "org.testcontainers:mysql", version.ref="testcontainers" }
