@@ -1,6 +1,6 @@
 [versions]
 asm = "9.8"
-hamcrest = "2.2"
+hamcrest = "3.0"
 jackson = "2.18.1"
 jetbrains-annotations = "24.1.0"
 jmh = "1.37"
