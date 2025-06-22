@@ -1,0 +1,27 @@
+<configuration>
+	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+		<filter class="works.bosk.logback.BoskLogFilter"/>
+		<encoder>
+			<pattern>%d %-5level [%thread] [%X{bosk.name}]%X{bosk.MongoDriver.transaction}%X{bosk.MongoDriver.event} %logger{25}: %msg%n</pattern>
+		</encoder>
+		<immediateFlush>true</immediateFlush>
+	</appender>
+	<root level="WARN">
+		<appender-ref ref="CONSOLE" />
+	</root>
+
+	<!-- This emits warnings that matter in production but not in tests -->
+	<logger name="works.bosk.drivers.mongo.UninitializedCollectionException" level="ERROR"/>
+
+	<!-- How to add more tracing during unit tests
+	<logger name="works.bosk" level="INFO"/>
+	<logger name="works.bosk.drivers.mongo" level="DEBUG"/>
+	<logger name="works.bosk.drivers.sql" level="DEBUG"/>
+	<logger name="works.bosk.drivers.DriverConformanceTest" level="DEBUG"/>
+	<logger name="works.bosk.drivers.mongo.PandoFormatDriver" level="TRACE"/>
+	<logger name="works.bosk.drivers.mongo.MainDriver" level="TRACE"/>
+	<logger name="works.bosk.drivers.mongo.AbstractMongoDriverTest" level="INFO"/>
+	<logger name="works.bosk.logback.BoskLogFilter" level="DEBUG"/>
+	 -->
+
+</configuration>
