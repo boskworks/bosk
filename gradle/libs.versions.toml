@@ -10,7 +10,7 @@ lombok = "1.18.38"
 pcollections = "4.0.2"
 slf4j = "2.0.13"
 spring-boot = "3.4.3"
-testcontainers = "1.20.4"
+testcontainers = "1.21.2"
 
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
