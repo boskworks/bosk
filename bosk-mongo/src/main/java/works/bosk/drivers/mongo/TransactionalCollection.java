@@ -42,6 +42,7 @@ import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
 import org.bson.Document;
@@ -243,6 +244,11 @@ class TransactionalCollection<TDocument> implements MongoCollection<TDocument> {
 		return this.downstream.getReadConcern();
 	}
 
+	@Override
+	public Long getTimeout(TimeUnit timeUnit) {
+		return this.downstream.getTimeout(timeUnit);
+	}
+
 	public <NewTDocument> MongoCollection<NewTDocument> withDocumentClass(Class<NewTDocument> clazz) {
 		return this.downstream.withDocumentClass(clazz);
 	}
@@ -261,6 +267,11 @@ class TransactionalCollection<TDocument> implements MongoCollection<TDocument> {
 
 	public MongoCollection<TDocument> withReadConcern(ReadConcern readConcern) {
 		return this.downstream.withReadConcern(readConcern);
+	}
+
+	@Override
+	public MongoCollection<TDocument> withTimeout(long timeout, TimeUnit timeUnit) {
+		return this.downstream.withTimeout(timeout, timeUnit);
 	}
 
 	public long countDocuments() {
