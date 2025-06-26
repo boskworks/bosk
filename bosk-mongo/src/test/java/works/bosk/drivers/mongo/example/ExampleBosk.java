@@ -10,7 +10,7 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.exceptions.InvalidTypeException;
 
-public class ExampleBosk extends Bosk<ExampleState> {
+public final class ExampleBosk extends Bosk<ExampleState> {
 	public ExampleBosk() throws InvalidTypeException {
 		super(
 			"ExampleBosk",

@@ -545,7 +545,7 @@ public class HooksTest extends AbstractBoskTest {
 		assertEquals(expected, receiver.hookCalls);
 	}
 
-	public static class ReferenceSubclassHooks {
+	public static final class ReferenceSubclassHooks {
 		final List<List<Object>> hookCalls = new ArrayList<>();
 		public ReferenceSubclassHooks(Bosk<?> bosk) throws InvalidTypeException {
 			bosk.registerHooks(this);
