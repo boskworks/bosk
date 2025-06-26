@@ -17,6 +17,7 @@ class DriverStackTest {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
 	void stackedDrivers_correctOrder() {
 		DriverStack<AbstractBoskTest.TestEntity> stack = DriverStack.of(
 			(b,d) -> new TestDriver<>("first", d),
