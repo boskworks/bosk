@@ -120,7 +120,6 @@ public class BoskConstructorTest {
 		}
 	}
 
-	////////////////
 	//
 	//  Helpers
 	//
