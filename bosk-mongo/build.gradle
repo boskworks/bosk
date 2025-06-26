@@ -3,6 +3,8 @@ dependencies {
 	api project(":bosk-core")
 	api libs.mongodb
 
+	compileOnly libs.jsr305 // Mongo client uses nullability annotations
+
 	// Allows us to annotate status objects so they're handy to serialize with jackson
 	implementation libs.jackson.annotations
 

@@ -24,6 +24,7 @@ jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref="jet
 jmh-apt = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
 jooq = { module = "org.jooq:jooq", version = "3.20.5" }
+jsr305 = { module = "com.google.code.findbugs:jsr305", version = "3.0.2" }
 junit-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
 junit-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
 junit-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit" }
