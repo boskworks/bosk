@@ -516,6 +516,7 @@ public class HooksTest extends AbstractBoskTest {
 
 	public static class HookReceiver {
 		final List<List<Object>> hookCalls = new ArrayList<>();
+		@SuppressWarnings("this-escape")
 		public HookReceiver(Bosk<?> bosk) throws InvalidTypeException {
 			bosk.registerHooks(this);
 		}
@@ -545,7 +546,7 @@ public class HooksTest extends AbstractBoskTest {
 		assertEquals(expected, receiver.hookCalls);
 	}
 
-	public static class ReferenceSubclassHooks {
+	public static final class ReferenceSubclassHooks {
 		final List<List<Object>> hookCalls = new ArrayList<>();
 		public ReferenceSubclassHooks(Bosk<?> bosk) throws InvalidTypeException {
 			bosk.registerHooks(this);

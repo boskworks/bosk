@@ -116,7 +116,7 @@ configure(subprojects.findAll {
 }
 
 spotless {
-	enforceCheck false
+	enforceCheck = false
 	java {
 		importOrder '', '\\#' // Static imports after regular imports, as per mt-server standard and IntelliJ default
 		removeUnusedImports()
