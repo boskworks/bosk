@@ -2,6 +2,7 @@
 dependencies {
 	api project(":bosk-core")
 	api libs.mongodb
+	testImplementation libs.testcontainers.mongodb
 
 	compileOnly libs.jsr305 // Mongo client uses nullability annotations
 
