@@ -30,7 +30,7 @@ public class SqlTestService {
 
 	public enum Database {
 		MYSQL(testcontainers("mysql:8.0.36", "/var/lib/mysql")),
-		POSTGRES(testcontainers("postgresql:16", "/var/lib/postgresql/data")),
+		POSTGRES(testcontainers("postgresql:17", "/var/lib/postgresql/data")),
 		SQLITE(dbName -> "jdbc:sqlite:" + TEMP_DIR.resolve(dbName + ".db")),
 		;
 
