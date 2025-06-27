@@ -115,7 +115,7 @@ public class MongoService implements Closeable {
 
 	private static ToxiproxyContainer toxiproxyContainer() {
 		ToxiproxyContainer result = new ToxiproxyContainer(
-			DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.2.0")
+			DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.12.0")
 				.asCompatibleSubstituteFor("shopify/toxiproxy"))
 			.withNetwork(NETWORK);
 		result.start();
