@@ -231,14 +231,14 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			Bosk.simpleRegistrar());
 
 		LOGGER.debug("Cut connection");
-		mongoService.proxy().setConnectionCut(true);
-		tearDownActions.add(()->mongoService.proxy().setConnectionCut(false));
+		mongoService.cutConnection();
+		tearDownActions.add(()->mongoService.restoreConnection());
 
 		assertThrows(FlushFailureException.class, driver::flush);
 		assertThrows(FlushFailureException.class, latecomerBosk.driver()::flush);
 
 		LOGGER.debug("Reestablish connection");
-		mongoService.proxy().setConnectionCut(false);
+		mongoService.restoreConnection();
 
 		LOGGER.debug("Make a change to the bosk and verify that it gets through");
 		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
@@ -286,8 +286,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		driver.flush();
 
 		LOGGER.debug("Cut connection");
-		mongoService.proxy().setConnectionCut(true);
-		tearDownActions.add(()->mongoService.proxy().setConnectionCut(false));
+		mongoService.cutConnection();
+		tearDownActions.add(()->mongoService.restoreConnection());
 
 		assertThrows(FlushFailureException.class, driver::flush);
 
@@ -302,7 +302,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		});
 
 		LOGGER.debug("Reestablish connection");
-		mongoService.proxy().setConnectionCut(false);
+		mongoService.restoreConnection();
 
 		LOGGER.debug("Ensure populateListing hook has been triggered");
 		driver.flush();

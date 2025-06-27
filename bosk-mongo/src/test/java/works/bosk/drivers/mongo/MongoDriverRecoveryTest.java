@@ -77,8 +77,8 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		TestEntity initialState = initializeDatabase("distinctive string");
 
 		LOGGER.debug("Cut mongo connection");
-		mongoService.proxy().setConnectionCut(true);
-		tearDownActions.add(()->mongoService.proxy().setConnectionCut(false));
+		mongoService.cutConnection();
+		tearDownActions.add(()->mongoService.restoreConnection());
 
 		LOGGER.debug("Create a new bosk that can't connect");
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
@@ -99,7 +99,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			"Updates disallowed during outage");
 
 		LOGGER.debug("Restore mongo connection");
-		mongoService.proxy().setConnectionCut(false);
+		mongoService.restoreConnection();
 
 		LOGGER.debug("Flush and check that the state updates");
 		waitFor(driver);

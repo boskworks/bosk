@@ -50,8 +50,12 @@ public class MongoService implements Closeable {
 
 	private final MongoClient mongoClient = MongoClients.create(normalClientSettings);
 
-	public ToxiproxyContainer.ContainerProxy proxy() {
-		return proxy;
+	public void cutConnection() {
+		proxy.setConnectionCut(true);
+	}
+
+	public void restoreConnection() {
+		proxy.setConnectionCut(false);
 	}
 
 	public MongoClientSettings clientSettings(TestInfo testInfo) {
