@@ -6,7 +6,10 @@ import com.mongodb.ServerAddress;
 import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import eu.rekawek.toxiproxy.Proxy;
+import eu.rekawek.toxiproxy.ToxiproxyClient;
 import java.io.Closeable;
+import java.io.IOException;
 import java.util.Map;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.TestInfo;
@@ -19,6 +22,8 @@ import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.utility.DockerImageName;
 
 import static com.mongodb.ReadPreference.secondaryPreferred;
+import static eu.rekawek.toxiproxy.model.ToxicDirection.DOWNSTREAM;
+import static eu.rekawek.toxiproxy.model.ToxicDirection.UPSTREAM;
 import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
@@ -38,28 +43,48 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
  *
  */
 public class MongoService implements Closeable {
+	// We do logging in some static initializers, so this needs to be initialized first
 	private static final Logger LOGGER = LoggerFactory.getLogger(MongoService.class);
-
-	// Expensive stuff shared among instances as much as possible
-	private static final Network NETWORK = Network.newNetwork();
-	private static final GenericContainer<?> MONGO_CONTAINER = mongoContainer();
-	private static final MongoClientSettings normalClientSettings = mongoClientSettings(new ServerAddress(MONGO_CONTAINER.getHost(), MONGO_CONTAINER.getFirstMappedPort()));
-	private static final ToxiproxyContainer TOXIPROXY_CONTAINER = toxiproxyContainer();
-	private static final ToxiproxyContainer.ContainerProxy proxy = TOXIPROXY_CONTAINER.getProxy(MONGO_CONTAINER, 27017);
-	private static final MongoClientSettings disruptableClientSettings = mongoClientSettings(new ServerAddress(proxy.getContainerIpAddress(), proxy.getProxyPort()));
 
 	private final MongoClient mongoClient = MongoClients.create(normalClientSettings);
 
+	// Expensive stuff shared among instances as much as possible, hence static
+	private static final Network NETWORK = Network.newNetwork();
+	private static final GenericContainer<?> MONGO_CONTAINER = mongoContainer();
+	private static final MongoClientSettings normalClientSettings = mongoClientSettings(new ServerAddress(MONGO_CONTAINER.getHost(), MONGO_CONTAINER.getFirstMappedPort()));
+
+	private static final ToxiproxyContainer TOXIPROXY_CONTAINER = toxiproxyContainer();
+	private static final ToxiproxyClient TOXIPROXY_CLIENT = createToxiproxyClient();
+
+	private static final Proxy MONGO_PROXY = createMongoProxy();
+	private static final int PROXY_PORT = 8666;
+	private static final MongoClientSettings disruptableClientSettings = mongoClientSettings(new ServerAddress(TOXIPROXY_CONTAINER.getHost(), TOXIPROXY_CONTAINER.getMappedPort(PROXY_PORT)));
+
+	private static final String CUT_CONNECTION_DOWNSTREAM = "CUT_CONNECTION_DOWNSTREAM";
+	private static final String CUT_CONNECTION_UPSTREAM = "CUT_CONNECTION_UPSTREAM";
+
 	public void cutConnection() {
-		proxy.setConnectionCut(true);
+		try {
+			MONGO_PROXY.toxics().bandwidth(CUT_CONNECTION_DOWNSTREAM, DOWNSTREAM, 0);
+			MONGO_PROXY.toxics().bandwidth(CUT_CONNECTION_UPSTREAM, UPSTREAM, 0);
+		} catch (IOException e) {
+			throw new IllegalStateException("Failed to cut connection", e);
+		}
 	}
 
 	public void restoreConnection() {
-		proxy.setConnectionCut(false);
+		try {
+			MONGO_PROXY.toxics().get(CUT_CONNECTION_DOWNSTREAM).remove();
+			MONGO_PROXY.toxics().get(CUT_CONNECTION_UPSTREAM).remove();
+		} catch (IOException e) {
+			// The proxy offers no way to check if a toxic exists,
+			// and no way to remote it without first getting it.
+			LOGGER.debug("This can happen if the connection was not already cut; ignoring", e);
+		}
 	}
 
 	public MongoClientSettings clientSettings(TestInfo testInfo) {
-		return testInfo.getTags().contains(DisruptsMongoProxy.TAG)? disruptableClientSettings : normalClientSettings;
+		return testInfo.getTags().contains(DisruptsMongoProxy.TAG) ? disruptableClientSettings : normalClientSettings;
 	}
 
 	public MongoClient client() {
@@ -72,7 +97,6 @@ public class MongoService implements Closeable {
 	}
 
 	private static GenericContainer<?> mongoContainer() {
-		// For some reason, creating a MongoDBContainer makes the Hanoi test WAY slower, like 100x
 		GenericContainer<?> result = new GenericContainer<>(
 			new ImageFromDockerfile().withDockerfileFromBuilder(builder -> builder
 				.from("mongo:7.0")
@@ -88,10 +112,30 @@ public class MongoService implements Closeable {
 
 	private static ToxiproxyContainer toxiproxyContainer() {
 		ToxiproxyContainer result = new ToxiproxyContainer(
-			DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.2.0").asCompatibleSubstituteFor("shopify/toxiproxy"))
+			DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.2.0")
+				.asCompatibleSubstituteFor("shopify/toxiproxy"))
 			.withNetwork(NETWORK);
 		result.start();
 		return result;
+	}
+
+	private static ToxiproxyClient createToxiproxyClient() {
+		return new ToxiproxyClient(
+			TOXIPROXY_CONTAINER.getHost(),
+			TOXIPROXY_CONTAINER.getControlPort()
+		);
+	}
+
+	private static Proxy createMongoProxy() {
+		try {
+			return TOXIPROXY_CLIENT.createProxy(
+				"mongo",
+				"0.0.0.0:" + PROXY_PORT,
+				MONGO_CONTAINER.getNetworkAliases().get(0) + ":27017"
+			);
+		} catch (IOException e) {
+			throw new RuntimeException("Failed to create Mongo proxy", e);
+		}
 	}
 
 	@NotNull
