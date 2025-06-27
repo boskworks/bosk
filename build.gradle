@@ -121,7 +121,7 @@ spotless {
 		importOrder '', '\\#' // Static imports after regular imports, as per mt-server standard and IntelliJ default
 		removeUnusedImports()
 		trimTrailingWhitespace()
-		indentWithTabs()
+		leadingSpacesToTabs()
 		replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
 		replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
 	}
@@ -129,14 +129,14 @@ spotless {
 		target '**/*.gradle'
 
 		trimTrailingWhitespace()
-		indentWithTabs()
+		leadingSpacesToTabs()
 		endWithNewline()
 	}
 	format 'misc', {
 		target '**/*.md', '**/.gitignore'
 
 		trimTrailingWhitespace()
-		//indentWithTabs() For markdown, we want to align some code examples very carefully, so we use spaces
+		//leadingSpacesToTabs() For markdown, we want to align some code examples very carefully, so we use spaces
 		replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
 		replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
 		endWithNewline()
