@@ -42,6 +42,7 @@ spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starte
 sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.50.1.0" }
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
+testcontainers-mongodb = { module = "org.testcontainers:mongodb", version.ref = "testcontainers" }
 testcontainers-mysql = { module = "org.testcontainers:mysql", version.ref="testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref="testcontainers" }
 testcontainers-toxiproxy = { module = "org.testcontainers:toxiproxy", version.ref = "testcontainers" }
