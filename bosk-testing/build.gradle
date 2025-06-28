@@ -6,11 +6,11 @@ dependencies {
 	api project(":bosk-core")
 	testImplementation project(":lib-testing")
 
-	// The bosk.development plugin brings these in as test dependencies,
+	// The main build.gradle brings these in as test dependencies,
 	// but we need them as main dependencies.
+	implementation(platform(libs.junit.bom))
 	implementation libs.junit.api
 	implementation libs.junit.params
-	runtimeOnly libs.junit.engine
 }
 
 // SpotBugs warnings on test code are not useful and often counterproductive
