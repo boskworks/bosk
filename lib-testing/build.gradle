@@ -14,11 +14,10 @@ dependencies {
 	implementation project(":bosk-jackson")
 	implementation project(":bosk-mongo")
 
-	// The bosk.development plugin brings these in as test dependencies,
+	// The main build.gradle brings these in as test dependencies,
 	// but we need them as main dependencies.
 	implementation libs.junit.api
 	implementation libs.junit.params
-	runtimeOnly libs.junit.engine
 }
 
 spotbugsMain.enabled = false // Spotbugs is counterproductive on test code
