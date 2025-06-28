@@ -25,9 +25,11 @@ jmh-apt = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
 jooq = { module = "org.jooq:jooq", version = "3.20.5" }
 jsr305 = { module = "com.google.code.findbugs:jsr305", version = "3.0.2" }
-junit-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
-junit-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
-junit-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit" }
+junit-api = { module = "org.junit.jupiter:junit-jupiter-api" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-engine = { module = "org.junit.jupiter:junit-jupiter-engine" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+junit-params = { module = "org.junit.jupiter:junit-jupiter-params" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.5.1" }

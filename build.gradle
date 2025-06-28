@@ -68,6 +68,8 @@ configure(subprojects.findAll {
 
 			testImplementation libs.junit.api
 			testImplementation libs.junit.params
+			testImplementation(platform(libs.junit.bom))
+			testRuntimeOnly libs.junit.launcher
 			testRuntimeOnly libs.junit.engine
 
 			testImplementation libs.hamcrest

@@ -16,6 +16,7 @@ dependencies {
 
 	// The main build.gradle brings these in as test dependencies,
 	// but we need them as main dependencies.
+	implementation(platform(libs.junit.bom))
 	implementation libs.junit.api
 	implementation libs.junit.params
 }
