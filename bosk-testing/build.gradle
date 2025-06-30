@@ -4,7 +4,6 @@ compileJava {
 
 dependencies {
 	api project(":bosk-core")
-	testImplementation project(":lib-testing")
 
 	// The main build.gradle brings these in as test dependencies,
 	// but we need them as main dependencies.

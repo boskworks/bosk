@@ -4,5 +4,4 @@ dependencies {
 	api project(":bosk-core")
 
 	testImplementation project(":bosk-testing")
-	testImplementation project(":lib-testing")
 }

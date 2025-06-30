@@ -5,7 +5,6 @@ dependencies {
 	testImplementation libs.spring.boot.starter.test
 	annotationProcessor libs.spring.boot.annotation.processor
 	testImplementation project(":bosk-testing")
-	testImplementation project(":lib-testing")
 }
 
 repositories {
