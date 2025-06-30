@@ -6,5 +6,4 @@ dependencies {
 	implementation libs.pcollections
 	implementation libs.jetbrains.annotations
 	testImplementation project(':bosk-testing')
-	testImplementation project(':lib-testing')
 }

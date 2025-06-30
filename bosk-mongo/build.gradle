@@ -11,5 +11,4 @@ dependencies {
 
 	testImplementation project(":bosk-logback")
 	testImplementation project(":bosk-testing")
-	testImplementation project(":lib-testing")
 }

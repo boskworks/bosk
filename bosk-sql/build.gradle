@@ -5,7 +5,6 @@ dependencies {
 	implementation libs.jooq
 
 	testImplementation project(':bosk-testing')
-	testImplementation project(':lib-testing')
 
 	testImplementation project(':bosk-logback')
 

@@ -117,6 +117,13 @@ configure(subprojects.findAll {
 
 }
 
+configure(subprojects.findAll { it.name.startsWith("bosk-") }) {
+	dependencies {
+		// Make sure common logging settings are applied
+		testImplementation project(":lib-testing")
+	}
+}
+
 spotless {
 	enforceCheck = false
 	java {
