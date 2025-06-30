@@ -107,6 +107,7 @@ configure(subprojects.findAll {
 		enableAssertions = true
 		testLogging.showStandardStreams = true
 		reports.junitXml.required = true
+		jvmArgs += "-Dslf4j.internal.verbosity=error" // Suppress replay warnings
 	}
 
 	spotbugs {
