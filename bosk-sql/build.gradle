@@ -14,6 +14,10 @@ dependencies {
 	testImplementation libs.testcontainers.mysql
 	testImplementation libs.mysql
 	testImplementation libs.sqlite
+}
 
-
+tasks.withType(Test).configureEach {
+	// https://github.com/xerial/sqlite-jdbc/issues/1289
+	// Unit tests run on the classpath, hence ALL-UNNAMED
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
