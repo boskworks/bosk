@@ -53,6 +53,7 @@ configure(subprojects.findAll {
 		options.compilerArgs << '-Xlint:-serial'     // Don't care about Java serialization
 		options.compilerArgs << '-Xlint:-try'        // Really annoying bogus "auto-closeable never used" warnings
 		options.compilerArgs << '-Xlint:-processing' // Not all annotations are meant for compile-time "annotation processing"
+		options.forkOptions.jvmArgs << '--sun-misc-unsafe-memory-access=allow' // For Lombok
 	}
 
 	if (name != "bosk-annotations") {
