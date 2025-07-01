@@ -20,6 +20,8 @@ import works.bosk.logging.MdcKeys;
 
 import static java.lang.Thread.currentThread;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static works.bosk.logging.MappedDiagnosticContext.MDCScope;
+import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
  * Houses a background thread that repeatedly initializes, processes, and closes a change stream cursor.
@@ -78,7 +80,7 @@ class ChangeReceiver implements Closeable {
 	private void connectionLoop() {
 		String oldThreadName = currentThread().getName();
 		currentThread().setName(getClass().getSimpleName() + " [" + boskName + "]");
-		try (MappedDiagnosticContext.MDCScope __ = MappedDiagnosticContext.setupMDC(boskName, boskID)) {
+		try (MDCScope __ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("Starting connectionLoop task");
 			try {
 				while (!isClosed) {

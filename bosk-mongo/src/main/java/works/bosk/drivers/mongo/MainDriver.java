@@ -30,7 +30,7 @@ import works.bosk.BoskInfo;
 import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
-import works.bosk.drivers.mongo.MappedDiagnosticContext.MDCScope;
+import works.bosk.logging.MappedDiagnosticContext.MDCScope;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode;
 import works.bosk.drivers.mongo.bson.BsonFormatter.DocumentFields;
@@ -44,7 +44,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.drivers.mongo.Formatter.REVISION_ONE;
 import static works.bosk.drivers.mongo.Formatter.REVISION_ZERO;
-import static works.bosk.drivers.mongo.MappedDiagnosticContext.setupMDC;
+import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 
 /**
