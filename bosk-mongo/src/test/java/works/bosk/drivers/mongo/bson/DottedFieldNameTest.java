@@ -3,11 +3,9 @@ package works.bosk.drivers.mongo.bson;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.ArgumentsProvider;
-import org.junit.jupiter.params.provider.ArgumentsSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.Bosk;
 import works.bosk.Path;
 import works.bosk.Reference;
@@ -26,31 +24,26 @@ class DottedFieldNameTest {
 		bosk = new Bosk<>(boskName(), TestEntity.class, AbstractDriverTest::initialRoot, Bosk.simpleDriver(), Bosk.simpleRegistrar());
 	}
 
-	static class PathArgumentProvider implements ArgumentsProvider {
+	static Stream<Arguments> pathArgumentSource() {
+		final String base = "state";
+		return Stream.of(
+			args("/", base),
+			args("/catalog", base + ".catalog"),
+			args("/listing", base + ".listing"),
+			args("/sideTable", base + ".sideTable"),
+			args("/catalog/xyz", base + ".catalog.xyz"),
+			args("/listing/xyz", base + ".listing.ids.xyz"),
+			args("/sideTable/xyz", base + ".sideTable.valuesById.xyz"),
+			args(Path.of("catalog", "$field.with%unusual\uD83D\uDE09characters").toString(), base + ".catalog.%24field%2Ewith%25unusual\uD83D\uDE09characters")
+		);
+	}
 
-		@Override
-		public Stream<? extends Arguments> provideArguments(ExtensionContext context) {
-			final String base = "state";
-			return Stream.of(
-				args("/", base),
-				args("/catalog", base + ".catalog"),
-				args("/listing", base + ".listing"),
-				args("/sideTable", base + ".sideTable"),
-				args("/catalog/xyz", base + ".catalog.xyz"),
-				args("/listing/xyz", base + ".listing.ids.xyz"),
-				args("/sideTable/xyz", base + ".sideTable.valuesById.xyz"),
-				args(Path.of("catalog", "$field.with%unusual\uD83D\uDE09characters").toString(), base + ".catalog.%24field%2Ewith%25unusual\uD83D\uDE09characters")
-
-			);
-		}
-
-		private Arguments args(String boskPath, String dottedFieldName) {
-			return Arguments.of(boskPath, dottedFieldName);
-		}
+	static Arguments args(String boskPath, String dottedFieldName) {
+		return Arguments.of(boskPath, dottedFieldName);
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(PathArgumentProvider.class)
+	@MethodSource("pathArgumentSource")
 	void testDottedFieldNameOf(String boskPath, String dottedFieldName) throws InvalidTypeException {
 		Reference<?> reference = bosk.rootReference().then(Object.class, Path.parse(boskPath));
 		String actual = BsonFormatter.dottedFieldNameOf(reference, bosk.rootReference());
@@ -59,7 +52,7 @@ class DottedFieldNameTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(PathArgumentProvider.class)
+	@MethodSource("pathArgumentSource")
 	void testReferenceTo(String boskPath, String dottedFieldName) throws InvalidTypeException {
 		Reference<?> expected = bosk.rootReference().then(Object.class, Path.parse(boskPath));
 		Reference<?> actual = BsonFormatter.referenceTo(dottedFieldName, bosk.rootReference());
@@ -93,5 +86,4 @@ class DottedFieldNameTest {
 		Reference<?> reference = bosk.rootReference().then(Object.class, Path.parseParameterized(path));
 		return BsonFormatter.dottedFieldNameOf(reference, pathLength, bosk.rootReference());
 	}
-
 }
