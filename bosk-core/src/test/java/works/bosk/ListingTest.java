@@ -15,11 +15,9 @@ import lombok.EqualsAndHashCode;
 import lombok.experimental.FieldNameConstants;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.ArgumentsProvider;
-import org.junit.jupiter.params.provider.ArgumentsSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NonexistentReferenceException;
 
@@ -40,40 +38,32 @@ import static works.bosk.BoskTestUtils.boskName;
  */
 class ListingTest {
 
-	static class ListingArgumentProvider implements ArgumentsProvider {
-		@Override
-		public Stream<? extends Arguments> provideArguments(ExtensionContext context) {
-			Stream<List<TestEntity>> childrenStream = idStreams()
-					.map(Stream::distinct)
-					.map(stream -> stream.map(id -> new TestEntity(Identifier.from(id), Catalog.empty()))
-							.collect(toList()));
-			return childrenStream
-					.map(children -> {
-						TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
-						Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
-						CatalogReference<TestEntity> catalog;
-						try {
-							catalog = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
-						} catch (InvalidTypeException e) {
-							throw new AssertionError(e);
-						}
-						Listing<TestEntity> listing = Listing.of(catalog, children.stream().map(TestEntity::id));
-						return Arguments.of(listing, children, bosk);
-					});
-		}
+	static Stream<Arguments> provideListingArguments() {
+		return idStreams()
+			.map(Stream::distinct)
+			.map(stream -> stream.map(id -> new TestEntity(Identifier.from(id), Catalog.empty()))
+				.collect(toList()))
+			.map(children -> {
+				TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
+				Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
+				CatalogReference<TestEntity> catalog;
+				try {
+					catalog = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
+				} catch (InvalidTypeException e) {
+					throw new AssertionError(e);
+				}
+				Listing<TestEntity> listing = Listing.of(catalog, children.stream().map(TestEntity::id));
+				return Arguments.of(listing, children, bosk);
+			});
 	}
 
-	static class IDListArgumentProvider implements ArgumentsProvider {
-		@Override
-		public Stream<? extends Arguments> provideArguments(ExtensionContext context) throws Exception {
-			TestEntity child = new TestEntity(Identifier.unique("child"), Catalog.empty());
-			List<TestEntity> children = singletonList(child);
-			TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
-			Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
-			CatalogReference<TestEntity> childrenRef = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
-			return idStreams().map(list -> Arguments.of(list.map(Identifier::from).collect(toList()), childrenRef, bosk));
-		}
-
+	static Stream<Arguments> provideIDListArguments() throws InvalidTypeException {
+		TestEntity child = new TestEntity(Identifier.unique("child"), Catalog.empty());
+		List<TestEntity> children = singletonList(child);
+		TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, Bosk.simpleDriver(), Bosk.simpleRegistrar());
+		CatalogReference<TestEntity> childrenRef = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
+		return idStreams().map(list -> Arguments.of(list.map(Identifier::from).collect(toList()), childrenRef, bosk));
 	}
 
 	public static Stream<Stream<String>> idStreams() {
@@ -98,7 +88,7 @@ class ListingTest {
 	) implements Entity { }
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testGet(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) throws InvalidTypeException {
 		try (var _ = bosk.readContext()) {
 			for (TestEntity child: children) {
@@ -118,7 +108,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testValueIterator(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Iterator<TestEntity> expected = children.iterator();
 		Iterator<TestEntity> actual;
@@ -134,7 +124,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testIterator(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Iterator<Reference<TestEntity>> expected = children.stream()
 			.map(TestEntity::id)
@@ -149,7 +139,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testIdStream(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		Iterator<Identifier> expected = children.stream().map(TestEntity::id).iterator();
@@ -158,7 +148,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testStream(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Iterator<TestEntity> expected = children.iterator();
 		Stream<TestEntity> stream;
@@ -170,7 +160,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testAsCollection(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Collection<TestEntity> actual;
 		try (var _ = bosk.readContext()) {
@@ -191,7 +181,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testSpliterator(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		HashMap <Identifier, Integer> countMap = new HashMap<>();
 		HashMap <Identifier, Integer> goodMap = new HashMap<>();
@@ -217,21 +207,21 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testSize(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		assertEquals(distinctEntities(children).size(), listing.size());
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testIsEmpty(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		assertEquals(children.isEmpty(), listing.isEmpty());
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testIds(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		assertEquals(distinctEntityIDs(children), listing.ids());
@@ -258,7 +248,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(IDListArgumentProvider.class)
+	@MethodSource("provideIDListArguments")
 	void testOfReferenceOfCatalogOfTTIdentifierArray(List<Identifier> ids, CatalogReference<TestEntity> childrenRef, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		Listing<TestEntity> actual = Listing.of(childrenRef, ids.toArray(new Identifier[0]));
@@ -266,7 +256,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(IDListArgumentProvider.class)
+	@MethodSource("provideIDListArguments")
 	void testOfReferenceOfCatalogOfTTCollectionOfIdentifier(List<Identifier> ids, CatalogReference<TestEntity> childrenRef, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		Listing<TestEntity> actual = Listing.of(childrenRef, ids);
@@ -274,7 +264,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(IDListArgumentProvider.class)
+	@MethodSource("provideIDListArguments")
 	void testOfReferenceOfCatalogOfTTStreamOfIdentifier(List<Identifier> ids, CatalogReference<TestEntity> childrenRef, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		Listing<TestEntity> actual = Listing.of(childrenRef, ids.stream());
@@ -282,7 +272,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testWithID(Listing<TestEntity> originalListing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		// Should match behaviour of LinkedHashSet
@@ -308,7 +298,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testWithEntity(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		// No ReadContext required
 		// Should match behaviour of testWithIdentifier, and therefore (transitively) LinkedHashMap
@@ -333,7 +323,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testWithAllIDs(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Identifier id1 = Identifier.unique("nonexistent");
 		Identifier id2 = Identifier.unique("nonexistent2");
@@ -346,7 +336,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testWithoutEntity(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		TestEntity newEntity = new TestEntity(Identifier.unique("existent"), Catalog.empty());
 		TestEntity nonexistent = new TestEntity(Identifier.unique("nonexistent"), Catalog.empty());
@@ -360,7 +350,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testWithoutID(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Identifier unique = Identifier.unique("existent");
 		Identifier nonexistent = Identifier.unique("nonexistent");
@@ -374,7 +364,7 @@ class ListingTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ListingArgumentProvider.class)
+	@MethodSource("provideListingArguments")
 	void testScope(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) throws InvalidTypeException {
 		Reference<Catalog<TestEntity>> expected = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
 		assertEquals(expected, listing.domain());

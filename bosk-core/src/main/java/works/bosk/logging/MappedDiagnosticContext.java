@@ -1,12 +1,11 @@
-package works.bosk.drivers.mongo;
+package works.bosk.logging;
 
 import org.slf4j.MDC;
 import works.bosk.Identifier;
-import works.bosk.logging.MdcKeys;
 
-final class MappedDiagnosticContext {
+public final class MappedDiagnosticContext {
 
-	static MDCScope setupMDC(String boskName, Identifier boskID) {
+	public static MDCScope setupMDC(String boskName, Identifier boskID) {
 		MDCScope result = new MDCScope();
 		MDC.put(MdcKeys.BOSK_NAME, boskName);
 		MDC.put(MdcKeys.BOSK_INSTANCE_ID, boskID.toString());
@@ -25,7 +24,7 @@ final class MappedDiagnosticContext {
 	 * and so they won't benefit from the diagnostic context.
 	 * You really want to use this in a try block that has no catch or finally clause.
 	 */
-	static final class MDCScope implements AutoCloseable {
+	public static final class MDCScope implements AutoCloseable {
 		final String oldName = MDC.get(MdcKeys.BOSK_NAME);
 		final String oldID = MDC.get(MdcKeys.BOSK_INSTANCE_ID);
 		@Override public void close() {

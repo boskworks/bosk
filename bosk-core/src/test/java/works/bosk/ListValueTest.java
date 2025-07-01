@@ -8,11 +8,9 @@ import java.util.ListIterator;
 import java.util.NoSuchElementException;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.ArgumentsProvider;
-import org.junit.jupiter.params.provider.ArgumentsSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
@@ -24,53 +22,50 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ListValueTest {
 
-	static class ArrayArgumentProvider implements ArgumentsProvider {
+	static Stream<Arguments> provideArrayArguments() {
+		return Stream.of(
+			strings(),
+			strings("a"),
+			strings("a", null),
+			strings(null, "a"),
+			strings("a", null, "b", null, "c"),
+			strings("a","b","b","a")
+		);
+	}
 
-		@Override
-		public Stream<? extends Arguments> provideArguments(ExtensionContext context) {
-			return Stream.of(
-				strings(),
-				strings("a"),
-				strings("a", null),
-				strings(null, "a"),
-				strings("a", null, "b", null, "c"),
-				strings("a","b","b","a"));
-		}
-
-		private Arguments strings(String...strings) {
-			return Arguments.of((Object)strings);
-		}
+	static Arguments strings(String...strings) {
+		return Arguments.of((Object)strings);
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testOf(String[] contents) {
 		assertEquals(asList(contents), ListValue.of(contents));
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testHashCode(String[] contents) {
 		assertEquals(asList(contents).hashCode(), ListValue.of(contents).hashCode());
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testSize(String[] contents) {
 		assertEquals(contents.length, ListValue.of(contents).size());
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testIsEmpty(String[] contents) {
 		assertEquals(contents.length == 0, ListValue.of(contents).isEmpty());
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testListIterator(String[] contents) {
-		assertThrows(IndexOutOfBoundsException.class, ()->ListValue.of(contents).listIterator(-1));
-		assertThrows(IndexOutOfBoundsException.class, ()->ListValue.of(contents).listIterator(contents.length+1));
+		assertThrows(IndexOutOfBoundsException.class, () -> ListValue.of(contents).listIterator(-1));
+		assertThrows(IndexOutOfBoundsException.class, () -> ListValue.of(contents).listIterator(contents.length + 1));
 
 		checkListIterators(asList(contents).listIterator(), ListValue.of(contents).listIterator());
 		checkListIterators(asList(contents).listIterator(), ListValue.of(contents).listIterator(0));
@@ -113,8 +108,8 @@ class ListValueTest {
 			String e = expected.next();
 			assertSame(a, e);
 			assertThrows(UnsupportedOperationException.class, actual::remove);
-			assertThrows(UnsupportedOperationException.class, ()->actual.set("x"));
-			assertThrows(UnsupportedOperationException.class, ()->actual.add("x"));
+			assertThrows(UnsupportedOperationException.class, () -> actual.set("x"));
+			assertThrows(UnsupportedOperationException.class, () -> actual.add("x"));
 		}
 		assertThrows(NoSuchElementException.class, actual::next);
 		checkListIteratorState(expected, actual);
@@ -136,19 +131,19 @@ class ListValueTest {
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testGet(String[] contents) {
 		List<String> expected = asList(contents);
 		ListValue<String> actual = ListValue.of(contents);
 		for (int i = 0; i < expected.size(); i++) {
 			assertSame(actual.get(i), expected.get(i));
 		}
-		assertThrows(IndexOutOfBoundsException.class, ()->actual.get(-1));
-		assertThrows(IndexOutOfBoundsException.class, ()->actual.get(contents.length));
+		assertThrows(IndexOutOfBoundsException.class, () -> actual.get(-1));
+		assertThrows(IndexOutOfBoundsException.class, () -> actual.get(contents.length));
 	}
 
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testToArray(String[] contents) {
 		ListValue<String> actual = ListValue.of(contents);
 		Object[] copy = actual.toArray();
@@ -165,63 +160,62 @@ class ListValueTest {
 
 	@Test
 	void testAdd() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").add("b"));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").add("b"));
 	}
 
 	@Test
 	void testRemove() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").remove("a"));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").remove("a"));
 	}
 
 	@Test
 	void testAddAllCollectionOfQextendsT() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").addAll(singletonList("b")));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").addAll(singletonList("b")));
 	}
 
 	@Test
 	void testAddAllIntCollectionOfQextendsT() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").addAll(0, singletonList("b")));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").addAll(0, singletonList("b")));
 	}
 
 	@Test
 	void testRemoveAll() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").removeAll(singletonList("a")));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").removeAll(singletonList("a")));
 	}
 
 	@Test
 	void testRetainAll() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").retainAll(singletonList("b")));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").retainAll(singletonList("b")));
 	}
 
 	@Test
 	void testClear() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").clear());
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").clear());
 	}
 
 	@Test
 	void testSet() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").set(0, "b"));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").set(0, "b"));
 	}
 
 	@Test
 	void testAddIntT() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").add(0, "b"));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").add(0, "b"));
 	}
 
 	@Test
 	void testRemoveInt() {
-		assertThrows(UnsupportedOperationException.class, ()->ListValue.of("a").remove(0));
+		assertThrows(UnsupportedOperationException.class, () -> ListValue.of("a").remove(0));
 	}
 
 	@SuppressWarnings("unlikely-arg-type")
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testContains(String[] contents) {
 		ListValue<String> actual = ListValue.of(contents);
 		for (String s: contents) {
 			assertTrue(actual.contains(s));
 			if (s != null) {
-				// Check that it's using equals instead of ==
 				assertTrue(actual.contains(new String(s)));
 			}
 		}
@@ -231,7 +225,7 @@ class ListValueTest {
 
 	@SuppressWarnings("unlikely-arg-type")
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testContainsAll(String[] contents) {
 		ListValue<String> actual = ListValue.of(contents);
 		assertTrue(actual.containsAll(Collections.<String>emptyList()));
@@ -242,7 +236,7 @@ class ListValueTest {
 
 	@SuppressWarnings("unlikely-arg-type")
 	@ParameterizedTest
-	@ArgumentsSource(ArrayArgumentProvider.class)
+	@MethodSource("provideArrayArguments")
 	void testIndexOf(String[] contents) {
 		List<String> expected = asList(contents);
 		ListValue<String> actual = ListValue.of(contents);
@@ -267,5 +261,4 @@ class ListValueTest {
 	void testSubList() {
 		// TODO
 	}
-
 }

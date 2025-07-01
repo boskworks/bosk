@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import works.bosk.Bosk;
+import works.bosk.DriverStack;
 import works.bosk.drivers.AbstractDriverTest;
 import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
@@ -18,7 +19,9 @@ import works.bosk.drivers.state.TestEntity;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.junit.ParametersByName;
+import works.bosk.logback.BoskLogFilter;
 
+import static ch.qos.logback.classic.Level.ERROR;
 import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,6 +36,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 	SqlDriverSettings settings;
 	HikariDataSource dataSource;
 	AtomicInteger dbCounter = new AtomicInteger(0);
+	private BoskLogFilter.LogController logController;
 
 	@ParametersByName
 	SqlDriverDurabilityTest(Database database) {
@@ -48,12 +52,18 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 	void initializeSettings() {
 		settings = new SqlDriverSettings(1000, 100);
 		dataSource = database.dataSourceFor(SqlDriverDurabilityTest.class.getSimpleName() + dbCounter.incrementAndGet());
+		logController = new BoskLogFilter.LogController();
 	}
 
 	@ParametersByName
 	void tablesDropped_recovers() throws SQLException, IOException, InterruptedException {
+		logController.setLogging(ERROR, SqlDriverImpl.class); // We're expecting disruption here
+
 		LOGGER.debug("Initialize database");
-		var factory = sqlDriverFactory(settings, dataSource);
+		var factory = DriverStack.of(
+			BoskLogFilter.withController(logController),
+			sqlDriverFactory(settings, dataSource)
+		);
 
 		// Note that we can't use DriverStateVerifier here because this test
 		// depends on receiving a new state from another bosk, and DriverStateVerifier
