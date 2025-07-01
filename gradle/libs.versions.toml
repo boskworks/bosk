@@ -10,7 +10,7 @@ lombok = "1.18.38"
 pcollections = "4.0.2"
 slf4j = "2.0.17"
 spring-boot = "3.5.3"
-testcontainers = "1.21.2"
+testcontainers = "1.21.3"
 
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
@@ -41,7 +41,7 @@ slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 spring-boot-annotation-processor = { module="org.springframework.boot:spring-boot-configuration-processor", version.ref="spring-boot" }
 spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter-web", version.ref="spring-boot" }
 spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
-sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.50.1.0" }
+sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.50.2.0" }
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 testcontainers-mongodb = { module = "org.testcontainers:mongodb", version.ref = "testcontainers" }
