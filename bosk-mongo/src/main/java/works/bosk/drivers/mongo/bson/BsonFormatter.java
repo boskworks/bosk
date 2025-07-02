@@ -80,9 +80,7 @@ public class BsonFormatter {
 	}
 
 	static {
-		DECODER = s->{
-			return URLDecoder.decode(s, StandardCharsets.UTF_8);
-		};
+		DECODER = s-> URLDecoder.decode(s, StandardCharsets.UTF_8);
 
 		ENCODER = s->{
 			// Selective percent-encoding of characters MongoDB doesn't like.
@@ -95,7 +93,7 @@ public class BsonFormatter {
 				int cp = s.codePointAt(i);
 				switch (cp) {
 					case '%': // For percent-encoding
-					case '+': case ' ': // These two are affected by URLDecoder
+					case '+', ' ': // These two are affected by URLDecoder
 					case '$': // MongoDB treats these specially
 					case '.': // MongoDB separator for dotted field names
 					case 0:   // Can MongoDB handle nulls? Probably. Do we want to find out? Not really.
@@ -252,11 +250,11 @@ public class BsonFormatter {
 		try (BsonDocumentWriter writer = new BsonDocumentWriter(document)) {
 			// To support arbitrary values, not just whole documents, we put the result INSIDE a document.
 			writer.writeStartDocument();
-			writer.writeName("value");
+			writer.writeName(VALUE_FIELD_NAME);
 			objectCodec.encode(writer, object, EncoderContext.builder().build());
 			writer.writeEndDocument();
 		}
-		return document.get("value");
+		return document.get(VALUE_FIELD_NAME);
 	}
 
 	/**
@@ -269,13 +267,13 @@ public class BsonFormatter {
 	public <T> T bsonValue2object(BsonValue bson, Reference<T> target) {
 		Codec<T> objectCodec = (Codec<T>) codecFor(target.targetType());
 		BsonDocument document = new BsonDocument();
-		document.append("value", bson);
+		document.append(VALUE_FIELD_NAME, bson);
 		try (
 			@SuppressWarnings("unused") StateTreeSerializer.DeserializationScope scope = deserializationScopeFunction.apply(target);
 			BsonReader reader = document.asBsonReader()
 		) {
 			reader.readStartDocument();
-			reader.readName("value");
+			reader.readName(VALUE_FIELD_NAME);
 			return objectCodec.decode(reader, DecoderContext.builder().build());
 		}
 	}
@@ -337,4 +335,5 @@ public class BsonFormatter {
 		return elementSegments.subList(0, elementSegments.size()-1); // Trim off the element itself
 	}
 
+	private static final String VALUE_FIELD_NAME = "value";
 }

@@ -15,31 +15,7 @@ public class BsonComparator {
 		// Now we know they have the same bson type
 
 		if (expected instanceof BsonDocument expectedDoc && actual instanceof BsonDocument actualDoc) {
-			var differences = new ArrayList<Difference>();
-			for (String expectedKey: expectedDoc.keySet()) {
-				var expectedValue = expectedDoc.get(expectedKey);
-				var actualValue = actualDoc.get(expectedKey);
-				if (actualValue == null) {
-					differences.add(new NodeMissing(expectedKey));
-				} else {
-					Difference fieldDifference = difference(expectedValue, actualValue);
-					if (!(fieldDifference instanceof NoDifference)) {
-						differences.add(fieldDifference.withPrefix(expectedKey));
-					}
-				}
-				if (differences.size() >= MAX_DIFFERENCES) {
-					break;
-				}
-			}
-			for (Map.Entry<String, BsonValue> entry : actualDoc.entrySet()) {
-				var expectedValue = expectedDoc.get(entry.getKey());
-				if (expectedValue == null) {
-					differences.add(new UnexpectedNode(entry.getKey()));
-				}
-				if (differences.size() >= MAX_DIFFERENCES) {
-					break;
-				}
-			}
+			var differences = findSomeDifferences(expectedDoc, actualDoc);
 			return switch (differences.size()) {
 				case 0 -> new NoDifference();
 				case 1 -> differences.get(0);
@@ -65,6 +41,36 @@ public class BsonComparator {
 		} else {
 			return new PrimitiveDifference("");
 		}
+	}
+
+	private ArrayList<Difference> findSomeDifferences(BsonDocument expectedDoc, BsonDocument actualDoc) {
+		var differences = new ArrayList<Difference>();
+		for (var entry: expectedDoc.entrySet()) {
+			var expectedKey = entry.getKey();
+			var expectedValue = entry.getValue();
+			var actualValue = actualDoc.get(expectedKey);
+			if (actualValue == null) {
+				differences.add(new NodeMissing(expectedKey));
+			} else {
+				Difference fieldDifference = difference(expectedValue, actualValue);
+				if (!(fieldDifference instanceof NoDifference)) {
+					differences.add(fieldDifference.withPrefix(expectedKey));
+				}
+			}
+			if (differences.size() >= MAX_DIFFERENCES) {
+				break;
+			}
+		}
+		for (Map.Entry<String, BsonValue> entry : actualDoc.entrySet()) {
+			var expectedValue = expectedDoc.get(entry.getKey());
+			if (expectedValue == null) {
+				differences.add(new UnexpectedNode(entry.getKey()));
+			}
+			if (differences.size() >= MAX_DIFFERENCES) {
+				break;
+			}
+		}
+		return differences;
 	}
 
 	public static final int MAX_DIFFERENCES = 4;

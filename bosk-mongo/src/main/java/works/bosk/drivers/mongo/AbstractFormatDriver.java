@@ -16,7 +16,7 @@ import works.bosk.drivers.mongo.status.StateStatus;
 import static works.bosk.drivers.mongo.Formatter.REVISION_ZERO;
 
 @RequiredArgsConstructor
-non-sealed abstract class AbstractFormatDriver<R extends StateTreeNode> implements FormatDriver<R> {
+abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implements FormatDriver<R> {
 	final RootReference<R> rootRef;
 	final BoskDiagnosticContext diagnosticContext;
 	final Formatter formatter;
