@@ -46,6 +46,7 @@ public final class Formatter extends BsonFormatter {
 	 * always set the correct context for each downstream operation.
 	 */
 	private volatile MapValue<String> lastEventDiagnosticAttributes = MapValue.empty();
+	private final Codec<?> manifestCodec = codecFor(Manifest.class);
 
 	public Formatter(BoskInfo<?> boskInfo, BsonSerializer bsonSerializer) {
 		super(boskInfo, bsonSerializer);
@@ -129,7 +130,7 @@ public final class Formatter extends BsonFormatter {
 		BsonDocument manifest = manifestDoc.clone();
 		manifest.remove("_id");
 		validateManifest(manifest);
-		return (Manifest) codecFor(Manifest.class)
+		return (Manifest) this.manifestCodec
 			.decode(
 				new BsonDocumentReader(manifest),
 				DecoderContext.builder().build());

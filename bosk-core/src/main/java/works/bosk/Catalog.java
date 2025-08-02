@@ -16,8 +16,8 @@ import static java.util.Arrays.asList;
 import static java.util.Collections.unmodifiableCollection;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableMap;
+import static java.util.LinkedHashMap.newLinkedHashMap;
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toList;
 import static lombok.AccessLevel.PROTECTED;
 
 /**
@@ -84,6 +84,7 @@ public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableB
 		return contents.values().stream();
 	}
 
+	@Override
 	public Spliterator<E> spliterator() {
 		// Note that we could add DISTINCT, IMMUTABLE and NONNULL to the
 		// characteristics if it turns out to be worth the trouble.  Similar for idStream.
@@ -135,11 +136,11 @@ public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableB
 	}
 
 	public static <TT extends Entity> Catalog<TT> of(Stream<TT> entities) {
-		return of(entities.collect(toList()));
+		return of(entities.toList());
 	}
 
 	public static <TT extends Entity> Catalog<TT> of(Collection<TT> entities) {
-		Map<Identifier, TT> newValues = new LinkedHashMap<>(entities.size());
+		Map<Identifier, TT> newValues = newLinkedHashMap(entities.size());
 		for (TT entity: entities) {
 			TT old = newValues.put(requireNonNull(entity.id()), entity);
 			if (old != null) {

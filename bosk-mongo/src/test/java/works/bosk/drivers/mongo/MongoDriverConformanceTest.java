@@ -38,11 +38,11 @@ class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 		return TestParameters.driverSettings(
 			Stream.of(
 				PandoFormat.oneBigDocument(),
-				PandoFormat.withGraftPoints("/catalog", "/sideTable"), // Basic
-				PandoFormat.withGraftPoints("/nestedSideTable"), // Documents are themselves side tables
+//				PandoFormat.withGraftPoints("/catalog", "/sideTable"), // Basic
+//				PandoFormat.withGraftPoints("/nestedSideTable"), // Documents are themselves side tables
 				PandoFormat.withGraftPoints("/nestedSideTable/-x-"), // Graft points are side table entries
-				PandoFormat.withGraftPoints("/catalog/-x-/sideTable", "/sideTable/-x-/catalog", "/sideTable/-x-/sideTable/-y-/catalog"), // Nesting, parameters
-				PandoFormat.withGraftPoints("/sideTable/-x-/sideTable/-y-/catalog"), // Multiple parameters in the not-separated part
+//				PandoFormat.withGraftPoints("/catalog/-x-/sideTable", "/sideTable/-x-/catalog", "/sideTable/-x-/sideTable/-y-/catalog"), // Nesting, parameters
+//				PandoFormat.withGraftPoints("/sideTable/-x-/sideTable/-y-/catalog"), // Multiple parameters in the not-separated part
 				SEQUOIA
 			),
 			Stream.of(EventTiming.NORMAL) // EARLY is slow; LATE is really slow

@@ -256,13 +256,14 @@ public final class BsonSerializer extends StateTreeSerializer {
 		@SuppressWarnings("rawtypes")
 		Codec<Reference> referenceCodec = registry.get(Reference.class);
 		return new Codec<>() {
+
 			@Override public Class<Listing<E>> getEncoderClass() { return targetClass; }
 
 			@Override
 			public void encode(BsonWriter writer, Listing<E> value, EncoderContext encoderContext) {
 				writer.writeStartDocument();
 
-				writer.writeName("domain");
+				writer.writeName(DOMAIN_FIELD_NAME);
 				referenceCodec.encode(writer, value.domain(), encoderContext);
 
 				writer.writeName("ids");
@@ -282,7 +283,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 				if (reader.getCurrentBsonType() == BsonType.DOCUMENT) {
 					reader.readStartDocument(); // can't read start document if currentBsonType == "ARRAY"
 				}
-				reader.readName("domain");
+				reader.readName(DOMAIN_FIELD_NAME);
 				Reference<Catalog<E>> domain = referenceCodec.decode(reader, decoderContext);
 
 				reader.readName("ids");
@@ -479,7 +480,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 				try {
 					writer.writeName(tag);
 					caseCodec.encode(writer, caseDynamicClass.cast(variant), encoderContext);
-				} catch (Throwable e) {
+				} catch (Exception e) {
 					throw new IllegalStateException("Error encoding " + caseStaticClass.getSimpleName() + ": " + e.getMessage(), e);
 				}
 				writer.writeEndDocument();
@@ -592,7 +593,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 			public SideTable<K, V> decode(BsonReader reader, DecoderContext decoderContext) {
 				reader.readStartDocument();
 
-				reader.readName("domain");
+				reader.readName(DOMAIN_FIELD_NAME);
 				@SuppressWarnings("unchecked")
 				Reference<Catalog<K>> domain = referenceCodec.decode(reader, decoderContext);
 
@@ -817,4 +818,5 @@ public final class BsonSerializer extends StateTreeSerializer {
 		}
 	}
 
+	private static final String DOMAIN_FIELD_NAME = "domain";
 }
