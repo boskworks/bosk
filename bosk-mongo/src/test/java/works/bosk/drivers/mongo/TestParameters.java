@@ -25,8 +25,7 @@ public class TestParameters {
 				timing + "," + format,
 				MongoDriverSettings.builder()
 					.preferredDatabaseFormat(format)
-					.recoveryPollingMS(3000) // Note that some tests can take as long as 10x this
-					.flushTimeoutMS(4000) // A little more than recoveryPollingMS
+					.timescaleMS(90_000) // Tests that actually exercise timeouts should use a much shorter value
 					.testing(MongoDriverSettings.Testing.builder()
 						.eventDelayMS(timing.eventDelayMS)
 						.build())

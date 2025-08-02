@@ -10,6 +10,8 @@ import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.drivers.mongo.status.MongoStatus;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+
 /**
  * A {@link BoskDriver} that maintains the bosk state in a MongoDB database.
  * Multiple bosks, potentially in multiple separate processes,
@@ -71,7 +73,19 @@ public sealed interface MongoDriver
 		BsonSerializer bsonSerializer
 	) {
 		driverSettings.validate();
-		return (b, d) -> new MainDriver<>(b, clientSettings, driverSettings, bsonSerializer, d);
+		var actualClientSettings = overrideTimeouts(clientSettings, driverSettings);
+		return (b, d) -> new MainDriver<>(b, actualClientSettings, driverSettings, bsonSerializer, d);
+	}
+
+	/**
+	 * Timeouts from the driver settings take precedence over those from {@code clientSettings}.
+	 * Without this, the driver settings would be ineffective, and we'd end up waiting
+	 * longer than desired for the Mongo client operations.
+	 */
+	static MongoClientSettings overrideTimeouts(MongoClientSettings clientSettings, MongoDriverSettings driverSettings) {
+		return MongoClientSettings.builder(clientSettings)
+			.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS)
+			.build();
 	}
 
 	interface MongoDriverFactory<RR extends StateTreeNode> extends DriverFactory<RR> {

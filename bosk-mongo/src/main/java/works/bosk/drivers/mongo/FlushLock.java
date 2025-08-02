@@ -49,7 +49,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
  * that logic to include an epoch concept without touching other components.
  */
 class FlushLock implements Closeable {
-	private final MongoDriverSettings settings;
+	private final long flushTimeoutMS;
 	private final Lock queueLock = new ReentrantLock();
 	private final PriorityBlockingQueue<Waiter> queue = new PriorityBlockingQueue<>();
 	private volatile long alreadySeen;
@@ -60,9 +60,9 @@ class FlushLock implements Closeable {
 	 * too old, and we'll wait forever for intervening revisions that have already happened;
 	 * too new, and we'll proceed immediately without waiting for revisions that haven't happened yet.
 	 */
-	public FlushLock(MongoDriverSettings settings, long revisionAlreadySeen) {
+	public FlushLock(long revisionAlreadySeen, long flushTimeoutMS) {
 		LOGGER.debug("New flush lock at revision {} [{}]", revisionAlreadySeen, identityHashCode(this));
-		this.settings = settings;
+		this.flushTimeoutMS = flushTimeoutMS;
 		this.alreadySeen = revisionAlreadySeen;
 	}
 
@@ -92,7 +92,7 @@ class FlushLock implements Closeable {
 		}
 		if (revisionValue > past) {
 			LOGGER.debug("Awaiting revision {} > {} [{}]", revisionValue, past, identityHashCode(this));
-			if (!semaphore.tryAcquire(settings.flushTimeoutMS(), MILLISECONDS)) {
+			if (!semaphore.tryAcquire(flushTimeoutMS, MILLISECONDS)) {
 				throw new FlushFailureException("Timed out waiting for revision " + revisionValue + " > " + alreadySeen);
 			}
 			if (isClosed) {
