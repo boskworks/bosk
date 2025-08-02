@@ -13,8 +13,8 @@ import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.EA
 public class MongoDriverSettings {
 	String database;
 
-	@Default long flushTimeoutMS = 30_000;
-	@Default long recoveryPollingMS = 30_000;
+	@Default int timescaleMS = 30_000;
+
 	/**
 	 * @see DatabaseFormat#SEQUOIA
 	 * @see PandoFormat

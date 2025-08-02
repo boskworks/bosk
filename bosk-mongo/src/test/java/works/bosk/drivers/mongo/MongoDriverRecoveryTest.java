@@ -54,16 +54,28 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		return TestParameters.driverSettings(
 			Stream.of(
 				MongoDriverSettings.DatabaseFormat.SEQUOIA,
+				PandoFormat.oneBigDocument(),
 				PandoFormat.withGraftPoints("/catalog", "/sideTable")
 			),
 			Stream.of(TestParameters.EventTiming.NORMAL)
 		).map(b -> b.applyDriverSettings(s -> s
-			.recoveryPollingMS(1500) // Note that some tests can take as long as 10x this
-			.flushTimeoutMS(2000) // A little more than recoveryPollingMS
+			.timescaleMS(100) // Note that some tests can take as long as 25x this
 		));
 	}
 
-	enum FlushOrWait { FLUSH, WAIT }
+	enum FlushOrWait {
+		FLUSH,
+
+		/**
+		 * Technically, these tests should be using {@link BoskDriver#flush()},
+		 * but we also want to exhibit some "liveness" so that users who don't
+		 * call {@code flush} eventually see updates anyway.
+		 * <p>
+		 * This test mode inserts a delay instead of {@code flush} to ensure
+		 * updates eventually arrive.
+		 */
+		WAIT,
+	}
 
 	@SuppressWarnings("unused")
 	static Stream<FlushOrWait> flushOrWait() {
@@ -127,7 +139,11 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				driver.flush();
 				break;
 			case WAIT:
-				Thread.sleep(2 * driverSettings.recoveryPollingMS());
+				// The user really has no business expecting updates to occur promptly.
+				// Let's wait several times the timescale so that the test
+				// can set a short timescale to make FLUSH fast without risking
+				// failures in the WAIT tests.
+				Thread.sleep(5L * driverSettings.timescaleMS());
 				break;
 		}
 	}
@@ -274,7 +290,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before disruption");
 
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
 
 		try (var _ = bosk.readContext()) {
 			assertEquals(beforeState, bosk.rootReference().value());

@@ -69,11 +69,13 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		return TestParameters.driverSettings(
 			Stream.of(
 				MongoDriverSettings.DatabaseFormat.SEQUOIA,
-//				PandoFormat.oneBigDocument(),
+				PandoFormat.oneBigDocument(),
 				PandoFormat.withGraftPoints("/catalog", "/sideTable")
 			),
 			Stream.of(TestParameters.EventTiming.NORMAL)
-		);
+		).map(b -> b.applyDriverSettings(s -> s
+			.timescaleMS(100) // Note that some tests can take as long as 25x this
+		));
 	}
 
 	@ParametersByName
@@ -132,8 +134,9 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Reference<ListingEntry> ref = listingRef.then(entity123);
 		bosk.driver().submitReplacement(ref, LISTING_ENTRY);
 
-		// Give the driver a bit of time to make a mistake, if it's going to
-		long budgetMillis = 2000;
+		// Give the driver a bit of time to make a mistake, if it's going to,
+		// but not so long that we cause a timeout that wouldn't otherwise happen
+		long budgetMillis = (1+driverSettings.timescaleMS()) / 2;
 		while (budgetMillis > 0) {
 			long startTime = currentTimeMillis();
 			Reference<?> updatedRef = replacementsSeen.poll(budgetMillis, MILLISECONDS);

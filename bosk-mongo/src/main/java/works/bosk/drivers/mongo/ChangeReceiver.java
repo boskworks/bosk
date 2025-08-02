@@ -59,7 +59,7 @@ class ChangeReceiver implements Closeable {
 		ex.scheduleWithFixedDelay(
 			this::connectionLoop,
 			0,
-			settings.recoveryPollingMS(),
+			settings.timescaleMS(),
 			MILLISECONDS
 		);
 	}
@@ -73,7 +73,7 @@ class ChangeReceiver implements Closeable {
 
 	/**
 	 * This method has a loop to do immediate reconnections and skip the
-	 * {@link MongoDriverSettings#recoveryPollingMS() recoveryPollingMS} delay,
+	 * {@link MongoDriverSettings#timescaleMS()} delay,
 	 * but besides that, exiting this method has the same effect as continuing
 	 * around the loop.
 	 */
@@ -200,7 +200,7 @@ class ChangeReceiver implements Closeable {
 	private MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> openCursor() {
 		MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> result = collection
 			.watch()
-			.maxAwaitTime(settings.recoveryPollingMS(), MILLISECONDS)
+			.maxAwaitTime(settings.timescaleMS(), MILLISECONDS)
 			.cursor();
 		LOGGER.debug("Cursor is open");
 		return result;

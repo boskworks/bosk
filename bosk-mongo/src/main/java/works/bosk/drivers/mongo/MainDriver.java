@@ -30,7 +30,6 @@ import works.bosk.BoskInfo;
 import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
-import works.bosk.logging.MappedDiagnosticContext.MDCScope;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode;
 import works.bosk.drivers.mongo.bson.BsonFormatter.DocumentFields;
@@ -38,14 +37,15 @@ import works.bosk.drivers.mongo.bson.BsonSerializer;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.logging.MappedDiagnosticContext.MDCScope;
 
 import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.drivers.mongo.Formatter.REVISION_ONE;
 import static works.bosk.drivers.mongo.Formatter.REVISION_ZERO;
-import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
+import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
  * This is the driver returned to the user by {@link MongoDriver#factory}.
@@ -66,6 +66,10 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final TransactionalCollection<BsonDocument> collection;
 	private final Listener listener;
 	final Formatter formatter;
+
+	final long flushTimeout;
+	final long initialRootTimeout;
+	final long driverReinitializeTimeout;
 
 	/**
 	 * {@link MongoClient#close()} throws if called more than once.
@@ -117,6 +121,17 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
 			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, rawCollection);
 		}
+
+		// Flushes work by waiting for the latest version to arrive on the change stream.
+		// If we wait twice as long as that takes, and we don't see the update, something
+		// has gone wrong.
+		flushTimeout = 2L * driverSettings.timescaleMS();
+
+		// TODO: Justify this calculation.
+		initialRootTimeout = 5L * driverSettings.timescaleMS();
+
+		// TODO: Justify this calculation.
+		driverReinitializeTimeout = 5L * driverSettings.timescaleMS();
 	}
 
 	@Override
@@ -421,7 +436,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		private void runInitialRootAction(FutureTask<R> initialRootAction) throws InterruptedException, TimeoutException, InitialRootActionException {
 			initialRootAction.run();
 			try {
-				initialRootAction.get(5 * driverSettings.recoveryPollingMS(), MILLISECONDS);
+				initialRootAction.get(initialRootTimeout, MILLISECONDS);
 				LOGGER.debug("initialRoot action completed successfully");
 			} catch (ExecutionException e) {
 				LOGGER.debug("initialRoot action failed", e);
@@ -541,7 +556,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				collection,
 				driverSettings,
 				bsonSerializer,
-				new FlushLock(driverSettings, revisionAlreadySeen),
+				new FlushLock(revisionAlreadySeen, flushTimeout),
 				downstream);
 		} else if (format instanceof PandoFormat pandoFormat) {
 			return new PandoFormatDriver<>(
@@ -550,7 +565,7 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				driverSettings,
 				pandoFormat,
 				bsonSerializer,
-				new FlushLock(driverSettings, revisionAlreadySeen),
+				new FlushLock(revisionAlreadySeen, flushTimeout),
 				downstream);
 		}
 		throw new IllegalArgumentException("Unexpected database format: " + format);
@@ -621,9 +636,8 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private <X extends Exception, Y extends Exception> void waitAndRetry(RetryableOperation<X, Y> operation, String description, Object... args) throws X, Y {
 		try {
 			formatDriverLock.lock();
-			long waitTimeMS = 5 * driverSettings.recoveryPollingMS();
-			LOGGER.debug("Waiting for new FormatDriver for {} ms", waitTimeMS);
-			boolean success = formatDriverChanged.await(waitTimeMS, MILLISECONDS);
+			LOGGER.debug("Waiting for new FormatDriver for {} ms", driverReinitializeTimeout);
+			boolean success = formatDriverChanged.await(driverReinitializeTimeout, MILLISECONDS);
 			if (!success) {
 				LOGGER.warn("Timed out waiting for MongoDB to recover; will retry anyway, but the operation may fail");
 			}
