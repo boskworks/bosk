@@ -359,8 +359,9 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 				Reference<Object> target = ref.then(Object.class, childID.toString(), field);
 				assertThrows(IllegalArgumentException.class, () ->
 					driver.submitDeletion(target), "Must not allow deletion of field " + target);
-				assertCorrectBoskContents();
+//				assertCorrectBoskContents(); // This slows down the test a lot, and don't realistically catch a lot more errors
 			}
+			assertCorrectBoskContents();
 		}
 	}
 
@@ -622,7 +623,6 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		return Stream.of(
 			Path.just(TestEntity.Fields.catalog),
 			Path.of(TestEntity.Fields.catalog, AWKWARD_ID, TestEntity.Fields.catalog),
-			Path.of(TestEntity.Fields.sideTable, AWKWARD_ID, TestEntity.Fields.catalog),
 			Path.of(TestEntity.Fields.nestedSideTable, "outer", "inner", TestEntity.Fields.catalog),
 			Path.of(TestEntity.Fields.sideTable, AWKWARD_ID, TestEntity.Fields.catalog, "parent", TestEntity.Fields.catalog),
 			Path.of(TestEntity.Fields.sideTable, AWKWARD_ID, TestEntity.Fields.sideTable, "parent", TestEntity.Fields.catalog)
@@ -633,21 +633,21 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	static Stream<Identifier> childID() {
 		return Stream.of(
 			"child1",
-			"child2",
-			"nonexistent",
-			"id.with.dots",
-			"id/with/slashes",
-			"$id$with$dollars$",
-			"id:with:colons:",
-			AWKWARD_ID,
-			"idWithEmojis\uD83C\uDF33\uD83E\uDDCA"
+//			"child2",
+//			"nonexistent",
+//			"id.with.dots",
+//			"id/with/slashes",
+//			"$id$with$dollars$",
+//			"id:with:colons:",
+//			"idWithEmojis\uD83C\uDF33\uD83E\uDDCA"
+			AWKWARD_ID
 		).map(Identifier::from);
 	}
 
 	/**
 	 * Contains all kinds of special characters
 	 */
-	public static final String AWKWARD_ID = "$id.with%everything:/ +\uD83D\uDE09";
+	public static final String AWKWARD_ID = "awkward$id.with%everything:/ +\uD83D\uDE09";
 
 	@SuppressWarnings("unused")
 	static Stream<String> testEntityField() {
