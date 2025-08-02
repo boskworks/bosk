@@ -13,7 +13,26 @@ import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.EA
 public class MongoDriverSettings {
 	String database;
 
-	@Default int timescaleMS = 30_000;
+	/**
+	 * The general responsiveness of the system. Changes to the database will be
+	 * "noticed" in about this many milliseconds, and other time-related behaviours
+	 * will be scaled accordingly. Lower values are more responsive, while higher
+	 * values are more efficient because they'll do less polling.
+	 * <p>
+	 * For test cases,
+	 *
+	 * <ul>
+	 *     <li>
+	 *         If you are exercising timeout conditions, set this to a low value
+	 *         (say, 1/10 of its default) to make your tests run quickly;
+	 *     </li>
+	 *     <li>
+	 *         otherwise, set it to a high value (say, 10x its default)
+	 *         to avoid spurious test failures.
+	 *     </li>
+	 * </ul>
+	 */
+	@Default int timescaleMS = 1000;
 
 	/**
 	 * @see DatabaseFormat#SEQUOIA
