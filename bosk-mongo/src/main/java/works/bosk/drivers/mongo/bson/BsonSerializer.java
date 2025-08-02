@@ -304,8 +304,6 @@ public final class BsonSerializer extends StateTreeSerializer {
 				}
 				return result;
 			}
-
-			public static final String DOMAIN_FIELD_NAME = "domain";
 		};
 	}
 
@@ -595,7 +593,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 			public SideTable<K, V> decode(BsonReader reader, DecoderContext decoderContext) {
 				reader.readStartDocument();
 
-				reader.readName("domain");
+				reader.readName(DOMAIN_FIELD_NAME);
 				@SuppressWarnings("unchecked")
 				Reference<Catalog<K>> domain = referenceCodec.decode(reader, decoderContext);
 
@@ -820,4 +818,5 @@ public final class BsonSerializer extends StateTreeSerializer {
 		}
 	}
 
+	private static final String DOMAIN_FIELD_NAME = "domain";
 }
