@@ -126,49 +126,33 @@ class ChangeReceiver implements Closeable {
 								}
 							}
 						} catch (UnprocessableEventException | UnexpectedEventProcessingException e) {
-							addContextToException(e);
-							LOGGER.warn("Unable to process MongoDB change event; reconnecting ({})", e.getMessage(), e);
-							listener.onDisconnect(e);
+							disconnect("Unable to process MongoDB change event", REMEDY_CONTINUE, e);
 							// Reconnection will skip this event, so it's safe to try it right away
 							continue;
 						} catch (InterruptedException e) {
-							addContextToException(e);
-							LOGGER.warn("Interrupted while processing MongoDB change events; reconnecting", e);
-							listener.onDisconnect(e);
+							disconnect("Interrupted while processing MongoDB change events", REMEDY_CONTINUE, e);
 							continue;
 						} catch (IOException e) {
-							addContextToException(e);
-							LOGGER.warn("Unexpected exception while processing MongoDB change events; will wait and retry", e);
-							listener.onDisconnect(e);
+							disconnect("Unexpected exception while processing MongoDB change events", REMEDY_RETURN, e);
 							return;
 						} catch (UnrecognizedFormatException e) {
-							addContextToException(e);
-							LOGGER.warn("Unrecognized MongoDB database content format; will wait and retry", e);
-							listener.onDisconnect(e);
+							disconnect("Unrecognized MongoDB database content format", REMEDY_RETURN, e);
 							return;
 						} catch (UninitializedCollectionException e) {
-							addContextToException(e);
-							LOGGER.warn("MongoDB collection is not initialized; will wait and retry", e);
-							listener.onDisconnect(e);
+							disconnect("MongoDB collection is not initialized", REMEDY_RETURN, e);
 							return;
 						} catch (InitialRootActionException e) {
-							addContextToException(e);
-							LOGGER.warn("Unable to initialize bosk state; will wait and retry", e);
-							listener.onDisconnect(e);
+							disconnect("Unable to initialize bosk state", REMEDY_RETURN, e);
 							return;
 						} catch (TimeoutException e) {
-							addContextToException(e);
-							LOGGER.warn("Timed out waiting for bosk state to initialize; will wait and retry", e);
-							listener.onDisconnect(e);
+							disconnect("Timed out waiting for bosk state to initialize", REMEDY_RETURN, e);
 							return;
 						} catch (DisconnectedException e) {
 							addContextToException(e);
 							LOGGER.warn("Driver is disconnected; will wait and retry", e);
 							return;
 						} catch (RuntimeException | Error e) {
-							addContextToException(e);
-							LOGGER.warn("Unexpected exception after connecting to MongoDB; will wait and retry", e);
-							listener.onDisconnect(e);
+							disconnect("Unexpected exception after connecting to MongoDB", REMEDY_RETURN, e);
 							return;
 						}
 					} catch (RuntimeException e) {
@@ -192,6 +176,16 @@ class ChangeReceiver implements Closeable {
 			addContextToException(e);
 			LOGGER.warn("connectionLoop task ended with unexpected {}; discarding", e.getClass().getSimpleName(), e);
 		}
+	}
+
+	private void disconnect(String description, String remedy, Throwable e) {
+		addContextToException(e);
+		if (isClosed) {
+			LOGGER.debug("(Driver is already closed) {}", description, e);
+		} else {
+			LOGGER.warn("{}; {}", description, remedy, e);
+		}
+		listener.onDisconnect(e);
 	}
 
 	private void addContextToException(Throwable x) {
@@ -275,4 +269,14 @@ class ChangeReceiver implements Closeable {
 
 	private static final AtomicLong EVENT_COUNTER = new AtomicLong(0);
 	private static final Logger LOGGER = LoggerFactory.getLogger(ChangeReceiver.class);
+
+	/**
+	 * Suitable for {@code continue} in {@link #connectionLoop()}
+	 */
+	private static final String REMEDY_CONTINUE = "reconnecting";
+
+	/**
+	 * Suitable for {@code return} in {@link #connectionLoop()}
+	 */
+	private static final String REMEDY_RETURN = "will wait and retry";
 }

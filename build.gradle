@@ -24,6 +24,9 @@ allprojects {
 	group = 'works.bosk'
 	// version should be set as a property with -Pversion
 
+	tasks.withType(Javadoc).configureEach {
+		options.addStringOption('Xdoclint:-missing', '-quiet')
+	}
 }
 
 configure(subprojects.findAll {
@@ -56,6 +59,7 @@ configure(subprojects.findAll {
 		options.forkOptions.jvmArgs << '--sun-misc-unsafe-memory-access=allow' // For Lombok
 	}
 
+	// It's important that bosk-annotations has no deps so other projects won't hesitate to use it
 	if (name != "bosk-annotations") {
 		dependencies {
 			annotationProcessor libs.lombok
