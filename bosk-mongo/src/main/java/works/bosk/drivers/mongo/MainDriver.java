@@ -362,12 +362,12 @@ final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public void close() {
+		receiver.close();
+		formatDriver.close();
 		if (!isClosed.getAndSet(true)) {
 			// It's important we don't call this twice, or else it will throw
 			mongoClient.close();
 		}
-		receiver.close();
-		formatDriver.close();
 	}
 
 	/**
