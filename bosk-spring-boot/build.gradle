@@ -6,7 +6,3 @@ dependencies {
 	annotationProcessor libs.spring.boot.annotation.processor
 	testImplementation project(":bosk-testing")
 }
-
-repositories {
-	mavenCentral()
-}
