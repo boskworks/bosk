@@ -11,6 +11,6 @@ module works.bosk.core {
 	exports works.bosk.drivers;
 	exports works.bosk.exceptions;
 	exports works.bosk.bytecode to works.bosk.jackson;
-	exports works.bosk.util to works.bosk.jackson;
-	exports works.bosk.logging to works.bosk.logback; // May be ok to export this, but give it a think first
+	exports works.bosk.util to works.bosk.jackson, works.bosk.mongo;
+	exports works.bosk.logging to works.bosk.logback, works.bosk.mongo; // May be ok to export this, but give it a think first
 }
