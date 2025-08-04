@@ -10,4 +10,6 @@ module works.bosk.core {
 	exports works.bosk;
 	exports works.bosk.drivers;
 	exports works.bosk.exceptions;
+	exports works.bosk.bytecode to works.bosk.jackson;
+	exports works.bosk.util to works.bosk.jackson;
 }
