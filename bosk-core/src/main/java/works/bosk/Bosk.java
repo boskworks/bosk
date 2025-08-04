@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import lombok.Getter;
-import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import org.jetbrains.annotations.NotNull;
@@ -662,7 +661,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * Before returning, runs the hook on the current bosk state.
 	 *
 	 */
-	public <T> void registerHook(String name, @NonNull Reference<T> scope, @NonNull BoskHook<T> action) {
+	public <T> void registerHook(String name, @NotNull Reference<T> scope, @NotNull BoskHook<T> action) {
 		hookRegistrar.registerHook(name, scope, action);
 	}
 
