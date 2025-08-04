@@ -9,16 +9,3 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
-    groups:
-      testing-dependencies:
-        # These two interfere and can't be upgraded indepently;
-        # often they can't be upgraded together either.
-        patterns:
-          - "org.springframework.boot*"
-          - "org.junit*"
-      ordinary-dependencies: # Uncontroversial dependencies
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "org.springframework.boot*"
-          - "org.junit*"
