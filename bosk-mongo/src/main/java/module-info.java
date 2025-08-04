@@ -3,7 +3,7 @@ module works.bosk.mongo {
 	requires org.mongodb.bson;
 	requires org.mongodb.driver.core;
 	requires org.slf4j;
-	requires works.bosk.core;
+	requires transitive works.bosk.core;
 
 	requires static lombok;
 
