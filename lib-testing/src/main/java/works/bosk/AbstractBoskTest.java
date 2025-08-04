@@ -10,7 +10,7 @@ import works.bosk.annotations.VariantCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.Arrays.asList;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 public abstract class AbstractBoskTest {
 	@With

@@ -12,10 +12,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import works.bosk.drivers.SharedDriverConformanceTest;
+import works.bosk.testing.drivers.SharedDriverConformanceTest;
 import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
-import works.bosk.junit.ParametersByName;
+import works.bosk.testing.junit.ParametersByName;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static works.bosk.drivers.sql.SqlTestService.Database.MYSQL;

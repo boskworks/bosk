@@ -20,9 +20,9 @@ import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.SideTableReference;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.drivers.AbstractDriverTest;
+import works.bosk.testing.drivers.AbstractDriverTest;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.state.TestEntity;
+import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.Arrays.asList;

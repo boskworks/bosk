@@ -3,10 +3,12 @@ package works.bosk.drivers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import works.bosk.Bosk;
-import works.bosk.drivers.state.TestEntity;
+import works.bosk.testing.drivers.AbstractDriverTest;
+import works.bosk.testing.drivers.DriverConformanceTest;
+import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 class ReplicaSetConformanceTest extends DriverConformanceTest {
 	Bosk<TestEntity> replicaBosk;

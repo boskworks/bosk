@@ -15,7 +15,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import works.bosk.Bosk;
 import works.bosk.StateTreeNode;
-import works.bosk.drivers.ReportingDriver;
+import works.bosk.testing.drivers.ReportingDriver;
 import works.bosk.exceptions.NoReadContextException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

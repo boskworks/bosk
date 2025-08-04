@@ -6,14 +6,14 @@ import java.util.concurrent.Semaphore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.drivers.AbstractDriverTest;
-import works.bosk.drivers.DriverConformanceTest;
-import works.bosk.drivers.state.TestEntity;
+import works.bosk.testing.drivers.AbstractDriverTest;
+import works.bosk.testing.drivers.DriverConformanceTest;
+import works.bosk.testing.drivers.state.TestEntity;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * Note that context propagation for driver operations is tested by {@link DriverConformanceTest}.

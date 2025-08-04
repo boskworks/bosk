@@ -3,11 +3,11 @@ package works.bosk.drivers.mongo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import works.bosk.Bosk;
-import works.bosk.drivers.state.TestEntity;
+import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL;
 
 /**

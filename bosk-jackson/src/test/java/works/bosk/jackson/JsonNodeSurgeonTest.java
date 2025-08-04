@@ -33,7 +33,7 @@ import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.ObjectMember;
 import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.Root;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 
 // TODO: Test mutation methods too

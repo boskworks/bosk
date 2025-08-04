@@ -1,8 +1,8 @@
 package works.bosk.jackson;
 
 import java.util.stream.Stream;
-import works.bosk.drivers.DriverConformanceTest;
-import works.bosk.junit.ParametersByName;
+import works.bosk.testing.drivers.DriverConformanceTest;
+import works.bosk.testing.junit.ParametersByName;
 
 import static works.bosk.AbstractRoundTripTest.jacksonRoundTripFactory;
 

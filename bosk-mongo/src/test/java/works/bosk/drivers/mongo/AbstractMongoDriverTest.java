@@ -28,8 +28,8 @@ import works.bosk.TaggedUnion;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriverSettings.MongoDriverSettingsBuilder;
 import works.bosk.drivers.mongo.bson.BsonSerializer;
-import works.bosk.drivers.state.TestEntity;
-import works.bosk.drivers.state.TestValues;
+import works.bosk.testing.drivers.state.TestEntity;
+import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.logback.BoskLogFilter;
 

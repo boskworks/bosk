@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 public class ReferenceErrorTest {
 	Bosk<?> bosk;

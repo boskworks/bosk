@@ -12,12 +12,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.DriverFactory;
 import works.bosk.StateTreeNode;
-import works.bosk.drivers.SharedDriverConformanceTest;
+import works.bosk.testing.drivers.SharedDriverConformanceTest;
 import works.bosk.drivers.mongo.TestParameters.EventTiming;
 import works.bosk.drivers.mongo.TestParameters.ParameterSet;
 import works.bosk.drivers.mongo.bson.BsonSerializer;
-import works.bosk.junit.ParametersByName;
-import works.bosk.junit.Slow;
+import works.bosk.testing.junit.ParametersByName;
+import works.bosk.testing.junit.Slow;
 
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 

@@ -7,7 +7,7 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * To get complete coverage of Bosk.java, include these:
