@@ -2,7 +2,6 @@ package works.bosk.bytecode;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandles;
@@ -15,14 +14,12 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
-import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.util.TraceClassVisitor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.exceptions.NotYetImplementedException;
@@ -355,9 +352,10 @@ public final class ClassBuilder<T> {
 
 		byte[] bytes = classWriter.toByteArray();
 		if (TRACE_BYTECODE_TO_STDOUT) {
-			ClassReader reader = new ClassReader(bytes);
-			TraceClassVisitor visitor = new TraceClassVisitor(new PrintWriter(System.out));
-			reader.accept(visitor, 0);
+			throw new UnsupportedOperationException("This requires asm-util");
+//			ClassReader reader = new ClassReader(bytes);
+//			TraceClassVisitor visitor = new TraceClassVisitor(new PrintWriter(System.out));
+//			reader.accept(visitor, 0);
 		}
 		if (DUMP_BYTECODE_TO_FILE) {
 			try (FileOutputStream out = new FileOutputStream("out.class")) {
