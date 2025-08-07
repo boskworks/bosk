@@ -7,7 +7,7 @@ import works.bosk.Reference;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.mongo.bson.BsonSerializer;
+import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.exceptions.InvalidTypeException;
 
 public final class ExampleBosk extends Bosk<ExampleState> {
