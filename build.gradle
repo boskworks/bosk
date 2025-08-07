@@ -58,6 +58,11 @@ configure(subprojects.findAll {
 		options.compilerArgs << '-Xlint:-processing' // Not all annotations are meant for compile-time "annotation processing"
 		options.compilerArgs << '-Xlint:-missing-explicit-ctor' // We probably ought to fix this instead of suppressing it
 		options.compilerArgs << '-Xlint:-module' // We probably ought to fix this instead of suppressing it
+
+		// TODO: Eliminate these. These are legit module problems
+		options.compilerArgs << '-Xlint:-requires-automatic'
+		options.compilerArgs << '-Xlint:-requires-transitive-automatic'
+
 		options.forkOptions.jvmArgs << '--sun-misc-unsafe-memory-access=allow' // For Lombok
 	}
 
