@@ -28,7 +28,7 @@ import org.bson.codecs.configuration.CodecRegistries;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.drivers.mongo.bson.BsonSerializer;
+import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.jackson.JacksonSerializer;
 import works.bosk.jackson.JacksonSerializerConfiguration;
