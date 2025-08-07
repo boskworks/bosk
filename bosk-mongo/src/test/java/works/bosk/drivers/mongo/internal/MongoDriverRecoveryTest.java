@@ -146,7 +146,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				// Let's wait several times the timescale so that the test
 				// can set a short timescale to make FLUSH fast without risking
 				// failures in the WAIT tests.
-				Thread.sleep(5L * driverSettings.timescaleMS());
+				Thread.sleep(10L * driverSettings.timescaleMS());
 				break;
 		}
 	}
