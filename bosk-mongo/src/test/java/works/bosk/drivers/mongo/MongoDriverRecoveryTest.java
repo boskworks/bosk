@@ -17,16 +17,16 @@ import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskDriver;
 import works.bosk.Listing;
-import works.bosk.drivers.state.TestEntity;
+import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.junit.ParametersByName;
-import works.bosk.junit.Slow;
+import works.bosk.testing.junit.ParametersByName;
+import works.bosk.testing.junit.Slow;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.drivers.mongo.MainDriver.COLLECTION_NAME;
 

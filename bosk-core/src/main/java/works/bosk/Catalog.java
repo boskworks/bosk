@@ -18,7 +18,7 @@ import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.LinkedHashMap.newLinkedHashMap;
 import static java.util.Objects.requireNonNull;
-import static lombok.AccessLevel.PROTECTED;
+import static lombok.AccessLevel.PRIVATE;
 
 /**
  * An ordered collection of entities included by value. Mainly useful to represent
@@ -36,7 +36,7 @@ import static lombok.AccessLevel.PROTECTED;
  * @author pdoyle
  *
  */
-@RequiredArgsConstructor(access=PROTECTED)
+@RequiredArgsConstructor(access=PRIVATE)
 @EqualsAndHashCode
 public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableByIdentifier<E> {
 	private final OrderedPMap<Identifier, E> contents;

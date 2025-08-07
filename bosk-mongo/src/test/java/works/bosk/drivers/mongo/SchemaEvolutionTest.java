@@ -13,12 +13,12 @@ import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.Reference;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.drivers.state.TestEntity;
-import works.bosk.junit.ParametersByName;
-import works.bosk.junit.Slow;
+import works.bosk.testing.drivers.state.TestEntity;
+import works.bosk.testing.junit.ParametersByName;
+import works.bosk.testing.junit.Slow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static works.bosk.BoskTestUtils.boskName;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Slow
 public class SchemaEvolutionTest {

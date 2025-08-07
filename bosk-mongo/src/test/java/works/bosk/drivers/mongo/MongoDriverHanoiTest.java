@@ -8,10 +8,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import works.bosk.DriverStack;
-import works.bosk.drivers.HanoiTest;
+import works.bosk.testing.drivers.HanoiTest;
 import works.bosk.drivers.mongo.bson.BsonSerializer;
-import works.bosk.junit.ParametersByName;
-import works.bosk.junit.Slow;
+import works.bosk.testing.junit.ParametersByName;
+import works.bosk.testing.junit.Slow;
 
 import static works.bosk.drivers.mongo.MainDriver.COLLECTION_NAME;
 

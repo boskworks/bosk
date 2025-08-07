@@ -4,6 +4,6 @@ dependencies {
 	implementation libs.asm
 //	implementation libs.asm.util // Useful for dumping bytecode
 	implementation libs.pcollections
-	implementation libs.jetbrains.annotations
+	api libs.jetbrains.annotations
 	testImplementation project(':bosk-testing')
 }
