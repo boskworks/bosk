@@ -2,8 +2,6 @@ package works.bosk.drivers.mongo;
 
 import com.mongodb.MongoClientSettings;
 import java.io.IOException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
@@ -104,5 +102,5 @@ public sealed interface MongoDriver
 	 * We publicize the name of this logger so users can choose to set it to {@code ERROR}
 	 * to suppress the warnings.
 	 */
-	Logger UNINITIALIZED_COLLECTION_LOGGER = LoggerFactory.getLogger(MongoDriver.class.getName() + ".uninitializedCollection");
+	String UNINITIALIZED_COLLECTION_LOGGER_NAME = MongoDriver.class.getName() + ".uninitializedCollection";
 }
