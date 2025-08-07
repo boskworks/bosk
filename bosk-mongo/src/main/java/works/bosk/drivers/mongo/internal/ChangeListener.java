@@ -12,7 +12,7 @@ interface ChangeListener {
 		InterruptedException,
 		IOException,
 		InitialRootActionException,
-		TimeoutException;
+		TimeoutException, FailedSessionException;
 
 	/**
 	 * @param event is a document-specific event, with a non-null {@link ChangeStreamDocument#getDocumentKey() document key}.

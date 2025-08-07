@@ -1,14 +1,13 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.MongoClient;
-import java.io.IOException;
 
 /**
  * Indicates a call to {@link MongoClient#startSession()} threw an exception,
  * leaving us unable to interact with the database. This is often a transient
  * failure that could be remedied by retrying.
  */
-class FailedSessionException extends IOException {
+class FailedSessionException extends Exception {
 	public FailedSessionException(String message) {
 		super(message);
 	}

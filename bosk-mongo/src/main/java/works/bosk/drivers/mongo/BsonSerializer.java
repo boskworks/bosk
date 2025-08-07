@@ -49,7 +49,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
 import works.bosk.VariantCase;
-import works.bosk.drivers.mongo.internal.BsonFormatException;
+import works.bosk.drivers.mongo.exceptions.BsonFormatException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.UnexpectedPathException;
 

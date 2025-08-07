@@ -8,6 +8,7 @@ import org.bson.BsonInt64;
 import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
+import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.status.MongoStatus;
 
 @RequiredArgsConstructor

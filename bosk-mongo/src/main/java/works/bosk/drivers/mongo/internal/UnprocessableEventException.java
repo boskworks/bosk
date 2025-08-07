@@ -10,7 +10,7 @@ import com.mongodb.client.model.changestream.OperationType;
  *
  * @see UnexpectedEventProcessingException
  */
-public class UnprocessableEventException extends Exception {
+class UnprocessableEventException extends Exception {
 	final OperationType operationType;
 
 	UnprocessableEventException(String message, OperationType operationType) {

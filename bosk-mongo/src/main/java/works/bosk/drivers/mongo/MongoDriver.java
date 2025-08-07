@@ -2,6 +2,8 @@ package works.bosk.drivers.mongo;
 
 import com.mongodb.MongoClientSettings;
 import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
@@ -92,4 +94,15 @@ public sealed interface MongoDriver
 	interface MongoDriverFactory<RR extends StateTreeNode> extends DriverFactory<RR> {
 		@Override MongoDriver build(BoskInfo<RR> boskInfo, BoskDriver downstream);
 	}
+
+	/**
+	 * A logger used to warn when we determine that the bosk collection is absent from the database
+	 * and respond by automatically initializing it. In production, this is a noteworthy event that's
+	 * expected to happen just once per database (so, essentially, once ever).
+	 * <p>
+	 * In tests, this is a very common occurrence, so the warnings would be counterproductive.
+	 * We publicize the name of this logger so users can choose to set it to {@code ERROR}
+	 * to suppress the warnings.
+	 */
+	Logger UNINITIALIZED_COLLECTION_LOGGER = LoggerFactory.getLogger(MongoDriver.class.getName() + ".uninitializedCollection");
 }

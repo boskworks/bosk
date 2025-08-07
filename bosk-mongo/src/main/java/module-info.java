@@ -9,5 +9,6 @@ module works.bosk.mongo {
 	requires static lombok;
 
 	exports works.bosk.drivers.mongo;
+	exports works.bosk.drivers.mongo.exceptions;
 	exports works.bosk.drivers.mongo.status;
 }

@@ -37,6 +37,8 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.drivers.mongo.exceptions.DisconnectedException;
+import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.exceptions.FlushFailureException;
@@ -213,8 +215,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			detectedDriver.onRevisionToSkip(loadedState.revision());
 		} catch (UninitializedCollectionException e) {
 			// We log this at warn because, in production, this is a big deal.
-			// Annoying in tests, so we log it with UninitializedCollectionException so we can selectively disable it.
-			UninitializedCollectionException.LOGGER.warn("Database collection is uninitialized; initializing now. (" + e.getMessage() + ")");
+			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
+			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. (" + e.getMessage() + ")");
 			root = callDownstreamInitialRoot(rootType);
 			try (var session = collection.newSession()) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
@@ -223,11 +225,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// We can now publish the driver knowing that the transaction, if there is one, has committed
 				publishFormatDriver(preferredDriver);
 				preferredDriver.onRevisionToSkip(REVISION_ONE); // initialRoot handles REVISION_ONE; downstream only needs to know about changes after that
-			} catch (RuntimeException | IOException e2) {
+			} catch (RuntimeException | IOException | FailedSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2);
 			}
-		} catch (RuntimeException | UnrecognizedFormatException | IOException e) {
+		} catch (RuntimeException | UnrecognizedFormatException | IOException | FailedSessionException e) {
 			switch (driverSettings.initialDatabaseUnavailableMode()) {
 				case FAIL:
 					LOGGER.debug("Unable to load initial root from database; aborting initialization", e);
@@ -340,7 +342,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.<InterruptedException, IOException>doRetryableDriverOperation(() -> {
 				formatDriver.flush();
 			}, "flush");
-		} catch (DisconnectedException | FailedSessionException e) {
+		} catch (DisconnectedException | IOException e) {
 			// Callers are expecting a FlushFailureException in these cases
 			throw new FlushFailureException(e);
 		}
@@ -389,6 +391,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		public void onConnectionSucceeded() throws
 			UnrecognizedFormatException,
 			UninitializedCollectionException,
+			FailedSessionException,
 			InterruptedException,
 			IOException,
 			InitialRootActionException,

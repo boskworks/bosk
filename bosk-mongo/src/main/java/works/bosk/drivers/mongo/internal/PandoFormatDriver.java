@@ -44,6 +44,7 @@ import works.bosk.drivers.mongo.Manifest;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;

@@ -37,6 +37,7 @@ import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.testing.drivers.state.UpgradeableEntity;

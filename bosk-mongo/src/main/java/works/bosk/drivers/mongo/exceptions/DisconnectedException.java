@@ -1,6 +1,10 @@
-package works.bosk.drivers.mongo.internal;
+package works.bosk.drivers.mongo.exceptions;
 
-class DisconnectedException extends RuntimeException {
+/**
+ * Thrown from {@link works.bosk.BoskDriver} methods
+ * if we've lost the ability to update the database.
+ */
+public class DisconnectedException extends RuntimeException {
 	public DisconnectedException(String message) {
 		super(message);
 	}

@@ -1,4 +1,4 @@
-package works.bosk.drivers.mongo.internal;
+package works.bosk.drivers.mongo.exceptions;
 
 import works.bosk.BoskDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
@@ -8,7 +8,7 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
  * can't be loaded from the database and {@link MongoDriverSettings.InitialDatabaseUnavailableMode#FAIL}
  * is in effect.
  */
-class InitialRootFailureException extends RuntimeException {
+public class InitialRootFailureException extends RuntimeException {
 	public InitialRootFailureException(String message) {
 		super(message);
 	}

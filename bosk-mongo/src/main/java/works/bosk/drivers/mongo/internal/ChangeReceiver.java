@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import works.bosk.Identifier;
 import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.logging.MdcKeys;
 
 import static java.lang.Thread.currentThread;
@@ -133,7 +134,7 @@ class ChangeReceiver implements Closeable {
 						} catch (InterruptedException e) {
 							disconnect("Interrupted while processing MongoDB change events", REMEDY_CONTINUE, e);
 							continue;
-						} catch (IOException e) {
+						} catch (IOException | FailedSessionException e) {
 							disconnect("Unexpected exception while processing MongoDB change events", REMEDY_RETURN, e);
 							return;
 						} catch (UnrecognizedFormatException e) {

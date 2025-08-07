@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import works.bosk.Bosk;
 import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;

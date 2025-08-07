@@ -55,7 +55,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * This signals to {@link MainDriver} that it may, if appropriate,
 	 * automatically initialize the collection.
 	 */
-	StateAndMetadata<R> loadAllState() throws IOException, UninitializedCollectionException;
+	StateAndMetadata<R> loadAllState() throws IOException, UninitializedCollectionException, works.bosk.drivers.mongo.internal.UninitializedCollectionException;
 
 	/**
 	 * Can assume that the collection is empty or nonexistent,

@@ -8,6 +8,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.bson.BsonInt64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.exceptions.FlushFailureException;
 
 import static java.lang.System.identityHashCode;

@@ -1,4 +1,4 @@
-package works.bosk.drivers.mongo.internal;
+package works.bosk.drivers.mongo.exceptions;
 
 import works.bosk.drivers.mongo.MongoDriverSettings;
 
@@ -6,7 +6,7 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
  * Indicates that an error was found in a
  * {@link MongoDriverSettings.DatabaseFormat DatabaseFormat} object.
  */
-class FormatMisconfigurationException extends IllegalArgumentException {
+public class FormatMisconfigurationException extends IllegalArgumentException {
 	public FormatMisconfigurationException(String s) {
 		super(s);
 	}
