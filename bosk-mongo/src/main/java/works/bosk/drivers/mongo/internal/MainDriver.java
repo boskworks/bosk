@@ -486,6 +486,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					runInitialRootAction(initialRootAction);
 				} catch (InitialRootActionException e2) {
 					LOGGER.debug("Predictably, initialRootAction failed", e2);
+					// Simply by running the initialRootAction, we've already
+					// handled this error condition. Discard the exception.
 				}
 			}
 		}
