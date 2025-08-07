@@ -216,7 +216,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		} catch (UninitializedCollectionException e) {
 			// We log this at warn because, in production, this is a big deal.
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
-			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. (" + e.getMessage() + ")");
+			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. ({})", e.getMessage());
 			root = callDownstreamInitialRoot(rootType);
 			try (var session = collection.newSession()) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
@@ -486,6 +486,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					runInitialRootAction(initialRootAction);
 				} catch (InitialRootActionException e2) {
 					LOGGER.debug("Predictably, initialRootAction failed", e2);
+					// Simply by running the initialRootAction, we've already
+					// handled this error condition. Discard the exception.
 				}
 			}
 		}
@@ -550,7 +552,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				return formatter.decodeManifest(cursor.next());
 			} else {
 				// For legacy databases with no manifest
-				LOGGER.debug("Manifest is missing; checking for Sequoia format in " + driverSettings.database());
+				LOGGER.debug("Manifest is missing; checking for Sequoia format in {}", driverSettings.database());
 				return Manifest.forSequoia();
 			}
 		}
