@@ -44,6 +44,24 @@ public class BuildReferencesTest extends AbstractBoskTest {
 	}
 
 	@Test
+	void bindingEnvironment() {
+		var env = BindingEnvironment.Builder.empty()
+			.bind("entity", parentID)
+			.bind("child", childID)
+			.build();
+		assertEquals(teb.childrenRef(parentID).then(childID), refs.child(env));
+	}
+
+	@Test
+	void mixIdAndBindingEnvironment() {
+		var env = BindingEnvironment.Builder.empty()
+			.bind("entity", Identifier.from("INVALID"))
+			.bind("child", childID)
+			.build();
+		assertEquals(teb.childrenRef(parentID).then(childID), refs.child(parentID, env));
+	}
+
+	@Test
 	void catalogReference() {
 		assertEquals(teb.childrenRef(parentID), refs.children(parentID));
 	}
@@ -70,6 +88,12 @@ public class BuildReferencesTest extends AbstractBoskTest {
 
 		@ReferencePath("/entities/-entity-/children/-child-")
 		Reference<TestChild> child(Identifier entity, Identifier child);
+
+		@ReferencePath("/entities/-entity-/children/-child-")
+		Reference<TestChild> child(BindingEnvironment env);
+
+		@ReferencePath("/entities/-entity-/children/-child-")
+		Reference<TestChild> child(Identifier entity, BindingEnvironment env);
 
 		@ReferencePath("/entities/-entity-/children")
 		CatalogReference<TestChild> children(Identifier entity);

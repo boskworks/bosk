@@ -66,6 +66,9 @@ class ReferenceBuilder {
 				} else if (Identifier[].class.isAssignableFrom(p.getType())) {
 					cb.pushLocal(cb.parameter(parameterIndex));
 					cb.invoke(REFERENCE_BOUND_TO_ARRAY);
+				} else if (BindingEnvironment.class.isAssignableFrom(p.getType())) {
+					cb.pushLocal(cb.parameter(parameterIndex));
+					cb.invoke(REFERENCE_BOUND_BY);
 				} else {
 					throw new InvalidTypeException("Unexpected parameter type " + p.getType().getSimpleName() + " on " + methodName(method));
 				}
@@ -82,11 +85,13 @@ class ReferenceBuilder {
 
 	static final Method REFERENCE_BOUND_TO_ARRAY;
 	static final Method REFERENCE_BOUND_TO_ID;
+	static final Method REFERENCE_BOUND_BY;
 
 	static {
 		try {
 			REFERENCE_BOUND_TO_ARRAY = Reference.class.getDeclaredMethod("boundTo", Identifier[].class);
 			REFERENCE_BOUND_TO_ID = Runtime.class.getDeclaredMethod("boundTo", Reference.class, Identifier.class);
+			REFERENCE_BOUND_BY = Reference.class.getDeclaredMethod("boundBy", BindingEnvironment.class);
 		} catch (NoSuchMethodException e) {
 			throw new AssertionError(e);
 		}
