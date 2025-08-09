@@ -3,12 +3,13 @@ package works.bosk.bytecode;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.invoke.CallSite;
-import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,13 +28,16 @@ import works.bosk.exceptions.NotYetImplementedException;
 import static java.lang.System.identityHashCode;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.joining;
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
 import static org.objectweb.asm.Opcodes.ACC_FINAL;
+import static org.objectweb.asm.Opcodes.ACC_PRIVATE;
 import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
 import static org.objectweb.asm.Opcodes.ACC_SUPER;
 import static org.objectweb.asm.Opcodes.ALOAD;
 import static org.objectweb.asm.Opcodes.CHECKCAST;
 import static org.objectweb.asm.Opcodes.DUP;
+import static org.objectweb.asm.Opcodes.GETFIELD;
 import static org.objectweb.asm.Opcodes.H_INVOKESTATIC;
 import static org.objectweb.asm.Opcodes.IFEQ;
 import static org.objectweb.asm.Opcodes.IFNE;
@@ -45,6 +49,7 @@ import static org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
 import static org.objectweb.asm.Opcodes.ISTORE;
 import static org.objectweb.asm.Opcodes.NEW;
 import static org.objectweb.asm.Opcodes.POP;
+import static org.objectweb.asm.Opcodes.PUTFIELD;
 import static org.objectweb.asm.Opcodes.RETURN;
 import static org.objectweb.asm.Opcodes.SWAP;
 import static org.objectweb.asm.Opcodes.V21;
@@ -69,6 +74,8 @@ public final class ClassBuilder<T> {
 	private ClassWriter classWriter = null;
 	private MethodBuilder currentMethod = null;
 	private int currentLineNumber = -1;
+
+	private final List<CurriedField> curriedFields = new ArrayList<>();
 
 	/**
 	 * @param className The simple name of the generated class;
@@ -108,13 +115,21 @@ public final class ClassBuilder<T> {
 	}
 
 	private void generateConstructor(StackWalker.StackFrame sourceFileOrigin) {
-		MethodVisitor ctor = classVisitor.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
+		String ctorParameterDescriptor = curriedFields.stream()
+			.map(CurriedField::typeDescriptor)
+			.collect(joining());
+		MethodVisitor ctor = classVisitor.visitMethod(ACC_PUBLIC, "<init>", "(" + ctorParameterDescriptor + ")V", null, null);
 		ctor.visitCode();
 		Label label = new Label();
 		ctor.visitLabel(label);
 		ctor.visitLineNumber(sourceFileOrigin.getLineNumber(), label);
 		ctor.visitVarInsn(ALOAD, 0);
 		ctor.visitMethodInsn(INVOKESPECIAL, superClassName, "<init>", "()V", false);
+		for (CurriedField field: curriedFields) {
+			ctor.visitVarInsn(ALOAD, 0);
+			ctor.visitVarInsn(ALOAD, field.slot());
+			ctor.visitFieldInsn(PUTFIELD, slashyName, field.name(), field.typeDescriptor());
+		}
 		ctor.visitInsn(RETURN);
 		ctor.visitMaxs(0, 0); // Computed automatically
 		ctor.visitEnd();
@@ -196,8 +211,36 @@ public final class ClassBuilder<T> {
 	 *             be accessible from the generated class)
 	 */
 	public void pushObject(String name, Object object, Class<?> type) {
+		CurriedField field = curry(name, object, type);
+		beginPush();
+		methodVisitor().visitVarInsn(ALOAD, 0);
+		methodVisitor().visitFieldInsn(GETFIELD, slashyName, field.name(), field.typeDescriptor());
+	}
+
+	private CurriedField curry(String name, Object object, Class<?> type) {
 		type.cast(object);
-		invokeDynamic(name, new ConstantCallSite(MethodHandles.constant(type, object)));
+		for (CurriedField candidate: curriedFields) {
+			if (candidate.value() == object) {
+				return candidate;
+			}
+		}
+
+		int ctorParameterSlot = 1 + curriedFields.size();
+		CurriedField result = new CurriedField(
+			ctorParameterSlot,
+			"CURRIED" + ctorParameterSlot + "_" + name,
+			Type.getDescriptor(type),
+			object);
+		curriedFields.add(result);
+
+		classVisitor.visitField(
+			ACC_PRIVATE | ACC_FINAL,
+			result.name(),
+			result.typeDescriptor(),
+			null, null
+		).visitEnd();
+
+		return result;
 	}
 
 	public void invokeDynamic(String name, CallSite callSite) {
@@ -367,8 +410,9 @@ public final class ClassBuilder<T> {
 		Constructor<?> ctor = new CustomClassLoader()
 			.loadThemBytes(dottyName, bytes)
 			.getConstructors()[0];
+		Object[] args = curriedFields.stream().map(CurriedField::value).toArray();
 		try {
-			return supertype.cast(ctor.newInstance());
+			return supertype.cast(ctor.newInstance(args));
 		} catch (InstantiationException | IllegalAccessException | VerifyError | InvocationTargetException e) {
 			throw new AssertionError("Should be able to instantiate the generated class", e);
 		}
