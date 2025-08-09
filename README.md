@@ -241,6 +241,9 @@ In the long run, we'll use the usual semantic versioning.
 
 For 0.x.y releases, all bets are off, and no backward compatibility is guaranteed.
 
+Releases with four numbers, like a.b.c.d, are "tail" releases containing
+important fixes to old releases.
+
 ### Logo
 
 Logo was derived from this public-domain image: https://openclipart.org/detail/44023/small-trees-bushes
