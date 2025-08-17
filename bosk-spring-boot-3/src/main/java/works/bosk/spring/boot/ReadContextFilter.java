@@ -15,6 +15,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import works.bosk.Bosk;
 import works.bosk.exceptions.NoReadContextException;
 
+import static org.springframework.http.HttpHeaders.CACHE_CONTROL;
+
 @Component
 @ControllerAdvice
 @RequiredArgsConstructor
@@ -23,6 +25,16 @@ public class ReadContextFilter extends OncePerRequestFilter {
 
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+		if ("no-cache".equalsIgnoreCase(request.getHeader(CACHE_CONTROL))) {
+			// Allow the client to specify that they want their read context to have the latest state.
+			// We do this even for requests that don't automatically open a read context because
+			// they might later manually open one.
+			try {
+				bosk.driver().flush();
+			} catch (InterruptedException e) {
+				throw new ServletException(e);
+			}
+		}
 		if (automaticallyOpenReadContext(request)) {
 			try (var __ = bosk.readContext()) {
 				filterChain.doFilter(request, response);
@@ -33,8 +45,8 @@ public class ReadContextFilter extends OncePerRequestFilter {
 	}
 
 	/**
-	 * The "safe" HTTP methods won't change server state, so there's no reason not to
-	 * open a
+	 * The "safe" HTTP methods won't change the server state,
+	 * so there's no reason not to open a read context.
 	 */
 	private boolean automaticallyOpenReadContext(HttpServletRequest request) {
 		return switch (request.getMethod()) {
