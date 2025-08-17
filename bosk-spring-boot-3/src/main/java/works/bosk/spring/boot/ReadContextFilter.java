@@ -32,6 +32,9 @@ public class ReadContextFilter extends OncePerRequestFilter {
 			try {
 				bosk.driver().flush();
 			} catch (InterruptedException e) {
+				// Assume the user wanted to interrupt the entire request,
+				// not just the flush operation.
+				Thread.currentThread().interrupt();
 				throw new ServletException(e);
 			}
 		}
