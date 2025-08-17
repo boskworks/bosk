@@ -33,12 +33,6 @@ public class BoskLogFilter extends Filter<ILoggingEvent> {
 		}
 	}
 
-	public static <R extends StateTreeNode> DriverFactory<R> withOverrides(Level level, Class<?>... loggers) {
-		LogController controller = new LogController();
-		controller.setLogging(level, loggers);
-		return withController(controller);
-	}
-
 	/**
 	 * Causes the given <code>controller</code> to control logs emitted for any bosk
 	 * configured to use the returned factory.

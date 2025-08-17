@@ -183,7 +183,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 
 			@Override
 			public String toString() {
-				return StreamSupport.stream(spliterator(), false).collect(toList()).toString();
+				return StreamSupport.stream(spliterator(), false).toList().toString();
 			}
 		};
 	}

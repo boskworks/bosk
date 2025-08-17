@@ -11,7 +11,6 @@ import java.lang.reflect.Type;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Objects;
-import java.util.OptionalLong;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -442,10 +441,10 @@ class SqlDriverImpl implements SqlDriver {
 	}
 
 	/**
-	 * @param state may be mutated!
+	 * @param state    may be mutated!
 	 * @param newValue if null, this is a delete
 	 */
-	private <T> OptionalLong replaceAndCommit(JsonNode state, Reference<T> target, T newValue, Connection connection) throws SQLException {
+	private <T> void replaceAndCommit(JsonNode state, Reference<T> target, T newValue, Connection connection) throws SQLException {
 		NodeInfo node = surgeon.nodeInfo(state, target);
 		switch (node.replacementLocation()) {
 			case Root __ -> {
@@ -465,12 +464,10 @@ class SqlDriverImpl implements SqlDriver {
 					.execute();
 				connection.commit();
 				LOGGER.debug("{}: replaced root", revision);
-				return OptionalLong.of(revision);
 			}
 			case NonexistentParent __ -> {
 				// Modifying a node with a nonexistent parent is a no-op
 				LOGGER.debug("--: nonexistent parent for {}", target);
-				return OptionalLong.empty();
 			}
 			default -> {
 				JsonNode newNode;
@@ -495,7 +492,6 @@ class SqlDriverImpl implements SqlDriver {
 					.execute();
 				connection.commit();
 				LOGGER.debug("--: replaced {}", target);
-				return OptionalLong.of(revision);
 			}
 		}
 	}

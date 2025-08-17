@@ -149,7 +149,7 @@ public abstract class Path implements Iterable<String> {
 	 * @throws MalformedPathException if <code>segments</code> contains an invalid path segment.
 	 */
 	public final Path then(List<String> segments) {
-		if (segments.size() == 0) {
+		if (segments.isEmpty()) {
 			return this;
 		} else {
 			String firstSegment = validSegment(segments.get(0));
@@ -372,7 +372,7 @@ public abstract class Path implements Iterable<String> {
 	}
 
 	public static boolean isValidParameterName(String name) {
-		if (name.length() == 0) {
+		if (name.isEmpty()) {
 			return false;
 		} else if (!isValidFirstCharacter(name.codePointAt(0))) {
 			return false;

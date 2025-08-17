@@ -171,11 +171,6 @@ provide integrations with other technologies.
 
 The subprojects are listed in [settings.gradle](settings.gradle), and each has its own `README.md` describing what it is.
 
-### Gradle setup
-
-Each project has its own `build.gradle`.
-Common settings across projects are in custom plugins under the [buildSrc directory](buildSrc/src/main/groovy).
-
 ### Versioning
 
 In the long run, we'll use the usual semantic versioning.

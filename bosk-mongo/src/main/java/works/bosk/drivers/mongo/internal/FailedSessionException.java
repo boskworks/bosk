@@ -7,16 +7,16 @@ import com.mongodb.client.MongoClient;
  * leaving us unable to interact with the database. This is often a transient
  * failure that could be remedied by retrying.
  */
-class FailedSessionException extends Exception {
-	public FailedSessionException(String message) {
+public class FailedSessionException extends Exception {
+	FailedSessionException(String message) {
 		super(message);
 	}
 
-	public FailedSessionException(String message, Throwable cause) {
+	FailedSessionException(String message, Throwable cause) {
 		super(message, cause);
 	}
 
-	public FailedSessionException(Throwable cause) {
+	FailedSessionException(Throwable cause) {
 		super(cause);
 	}
 }

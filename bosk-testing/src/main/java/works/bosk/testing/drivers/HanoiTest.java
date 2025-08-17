@@ -72,7 +72,8 @@ public abstract class HanoiTest {
 		int numDiscs = 6;
 		bosk.driver().submitReplacement(refs.puzzle(PUZZLE_1),
 			newPuzzle(PUZZLE_1, numDiscs));
-		while (numSolved.poll(1, MINUTES) != 1) {}
+		Integer one = 1;
+		while (!one.equals(numSolved.poll(1, MINUTES))) {}
 		try (var __ = bosk.readContext()) {
 			assertEquals(new HanoiState(
 				Catalog.of(solvedPuzzle(PUZZLE_1, numDiscs)),

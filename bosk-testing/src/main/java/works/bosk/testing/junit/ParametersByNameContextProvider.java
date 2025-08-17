@@ -39,7 +39,7 @@ class ParametersByNameContextProvider implements TestTemplateInvocationContextPr
 		parameterNames.forEach(name ->
 			valueListsByName.put(name, invokeCorrespondingMethod(name, testClass).collect(toList())));
 		Stream<Map<String, ?>> parameterBindings = cartesianProduct(valueListsByName);
-		List<Map<String, ?>> debug = parameterBindings.collect(toList());
+		List<Map<String, ?>> debug = parameterBindings.toList();
 
 		if (annotationFromMethod != null && annotationFromMethod.singleInvocationIndex() != 0) {
 			int singleInvocationIndex = annotationFromMethod.singleInvocationIndex(); // counts from 1

@@ -109,13 +109,13 @@ final class JacksonCompiler {
 		 *
 		 * @return Nothing. {@link ClassBuilder} does not yet support void methods.
 		 */
-		Object writeFields(Object node, JsonGenerator jsonGenerator, SerializerProvider serializers) throws IOException;
+		Object writeFields(Object node, JsonGenerator jsonGenerator, SerializerProvider serializers);
 
 		/**
 		 * A faster version of {@link Constructor#newInstance} without the overhead
 		 * of checking for errors that we know can't happen.
 		 */
-		Object instantiateFrom(List<Object> parameterValues) throws IOException;
+		Object instantiateFrom(List<Object> parameterValues);
 	}
 
 	/**

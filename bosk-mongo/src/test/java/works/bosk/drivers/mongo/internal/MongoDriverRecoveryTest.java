@@ -96,7 +96,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		tearDownActions.add(()->mongoService.restoreConnection());
 
 		LOGGER.debug("Create a new bosk that can't connect");
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
+		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
 
 		MongoDriverSpecialTest.Refs refs = bosk.buildReferences(MongoDriverSpecialTest.Refs.class);
 		BoskDriver driver = bosk.driver();
@@ -146,46 +146,49 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				// Let's wait several times the timescale so that the test
 				// can set a short timescale to make FLUSH fast without risking
 				// failures in the WAIT tests.
+				//
+				// Unfortunately, this makes these tests inevitably slow.
+				//
 				Thread.sleep(10L * driverSettings.timescaleMS());
 				break;
 		}
 	}
 
 	@ParametersByName
-	void databaseDropped_recovers() throws InvalidTypeException, InterruptedException, IOException {
+	void databaseDropped_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Drop database");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
 				.getCollection(COLLECTION_NAME)
 				.drop();
-		}, (b) -> initializeDatabase("after drop"));
+		}, (_) -> initializeDatabase("after drop"));
 	}
 
 	@ParametersByName
-	void collectionDropped_recovers() throws InvalidTypeException, InterruptedException, IOException {
+	void collectionDropped_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Drop collection");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
 				.getCollection(COLLECTION_NAME)
 				.drop();
-		}, (b) -> initializeDatabase("after drop"));
+		}, (_) -> initializeDatabase("after drop"));
 	}
 
 	@ParametersByName
-	void documentDeleted_recovers() throws InvalidTypeException, InterruptedException, IOException {
+	void documentDeleted_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Delete document");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
 				.getCollection(COLLECTION_NAME)
 				.deleteMany(new BsonDocument());
-		}, (b) -> initializeDatabase("after deletion"));
+		}, (_) -> initializeDatabase("after deletion"));
 	}
 
 	@ParametersByName
-	void documentReappears_recovers() throws InvalidTypeException, InterruptedException, IOException {
+	void documentReappears_recovers() throws InterruptedException, IOException {
 		MongoCollection<Document> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
 			.getCollection(COLLECTION_NAME);
@@ -212,7 +215,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 	}
 
 	@ParametersByName
-	void revisionDeleted_recovers() throws InvalidTypeException, InterruptedException, IOException {
+	void revisionDeleted_recovers() throws InterruptedException, IOException {
 		// It's not clear that this is a valid test. If this test is a burden to support,
 		// we can consider removing it.
 		//
@@ -225,7 +228,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before deletion");
 
-		Bosk<TestEntity> bosk = new Bosk<TestEntity>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
 
 		try (var _ = bosk.readContext()) {
 			assertEquals(beforeState, bosk.rootReference().value());
@@ -289,7 +292,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	private void testRecovery(Runnable disruptiveAction, Function<TestEntity, TestEntity> recoveryAction) throws IOException, InterruptedException, InvalidTypeException {
+	private void testRecovery(Runnable disruptiveAction, Function<TestEntity, TestEntity> recoveryAction) throws IOException, InterruptedException {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before disruption");
 

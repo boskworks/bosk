@@ -210,7 +210,7 @@ public class MaintenanceEndpoints {
 		return value;
 	}
 
-	private void checkForMismatchedID(Reference<?> ref, Object newValue) throws InvalidTypeException {
+	private void checkForMismatchedID(Reference<?> ref, Object newValue) {
 		if (newValue instanceof Entity e && !ref.path().isEmpty()) {
 			Reference<?> enclosingRef = ref.enclosingReference(Object.class);
 			if (EnumerableByIdentifier.class.isAssignableFrom(enclosingRef.targetClass())) {

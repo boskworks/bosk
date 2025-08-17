@@ -161,8 +161,8 @@ class ChangeReceiver implements Closeable {
 						addContextToException(e);
 						LOGGER.warn("Unable to connect to MongoDB database; will wait and retry", e);
 						try {
-							listener.onConnectionFailed(e);
-						} catch (InterruptedException | InitialRootActionException | TimeoutException e2) {
+							listener.onConnectionFailed();
+						} catch (InterruptedException | TimeoutException e2) {
 							addContextToException(e);
 							LOGGER.error("Error while running MongoDB connection failure handler; will wait and reconnect", e2);
 						}

@@ -152,7 +152,6 @@ final class Formatter extends BsonFormatter {
 		return result;
 	}
 
-	@SuppressWarnings("unchecked")
 	long bsonValueBinarySize(BsonValue bson) {
 		Codec<BsonValue> codec = new BsonValueCodec();
 		try (

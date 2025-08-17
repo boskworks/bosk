@@ -14,7 +14,6 @@ testcontainers = "1.21.3"
 
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
-asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
 hamcrest = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
 hamcrest-library = { module = "org.hamcrest:hamcrest-library", version.ref = "hamcrest" }
 hikari = { module = "com.zaxxer:HikariCP", version = "7.0.0" }

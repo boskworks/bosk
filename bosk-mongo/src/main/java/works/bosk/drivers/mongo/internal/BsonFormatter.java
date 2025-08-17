@@ -210,7 +210,7 @@ public class BsonFormatter {
 	}
 
 	/**
-	 * @return list of field names suitable for {@link #lookup} to find the document corresponding
+	 * @return list of field names suitable for {@code BsonSurgeon.lookup} to find the document corresponding
 	 * to <code>docRef</code> inside a document corresponding to <code>rootRef</code>
 	 */
 	private static List<String> docSegments(Reference<?> docRef, Reference<?> rootRef) {
