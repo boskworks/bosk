@@ -1,6 +1,5 @@
 package works.bosk;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -14,7 +13,6 @@ import org.pcollections.OrderedPMap;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.unmodifiableCollection;
-import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.LinkedHashMap.newLinkedHashMap;
 import static java.util.Objects.requireNonNull;
@@ -52,7 +50,7 @@ public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableB
 
 	@Override
 	public List<Identifier> ids() {
-		return unmodifiableList(new ArrayList<>(contents.keySet()));
+		return List.copyOf(contents.keySet());
 	}
 
 	/**

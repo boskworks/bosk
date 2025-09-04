@@ -152,7 +152,7 @@ public abstract class Path implements Iterable<String> {
 		if (segments.isEmpty()) {
 			return this;
 		} else {
-			String firstSegment = validSegment(segments.get(0));
+			String firstSegment = validSegment(segments.getFirst());
 			if (isParameterSegment(firstSegment)) {
 				if (segmentStream().anyMatch(firstSegment::equals)) {
 					throw new MalformedPathException("Duplicate path parameter \"" + firstSegment + "\"");

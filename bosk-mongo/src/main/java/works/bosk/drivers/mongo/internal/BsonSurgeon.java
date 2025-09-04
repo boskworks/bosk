@@ -224,7 +224,7 @@ class BsonSurgeon {
 
 		Set<BsonString> alreadySeen = new HashSet<>();
 
-		BsonDocument rootRecipe = partsList.get(0);
+		BsonDocument rootRecipe = partsList.getFirst();
 		List<String> prefix = bsonPathSegments(rootRecipe.getString(BSON_PATH_FIELD));
 
 		BsonDocument whole = rootRecipe.getDocument(STATE_FIELD);
@@ -237,7 +237,7 @@ class BsonSurgeon {
 			if (!bsonSegments.subList(0, prefix.size()).equals(prefix)) {
 				throw new IllegalArgumentException("Part doc is not contained within the root doc. Part: " + bsonSegments + " Root:" + prefix);
 			}
-			String key = bsonSegments.get(bsonSegments.size()-1);
+			String key = bsonSegments.getLast();
 			BsonValue value = requireNonNull(entry.get(STATE_FIELD));
 
 			BsonDocument container = lookup(whole, bsonSegments.subList(prefix.size(), bsonSegments.size() - 1));

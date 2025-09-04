@@ -18,7 +18,7 @@ public class BsonComparator {
 			var differences = findSomeDifferences(expectedDoc, actualDoc);
 			return switch (differences.size()) {
 				case 0 -> new NoDifference();
-				case 1 -> differences.get(0);
+				case 1 -> differences.getFirst();
 				default -> {
 					// To prevent exponential fan-out, permit only max one compound inside another compound
 					int numCompounds = 0;

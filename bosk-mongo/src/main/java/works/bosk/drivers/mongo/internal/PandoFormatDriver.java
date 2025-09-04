@@ -203,7 +203,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		} catch (NoSuchElementException e) {
 			throw new UninitializedCollectionException("No existing document", e);
 		}
-		BsonDocument mainPart = allParts.get(allParts.size()-1);
+		BsonDocument mainPart = allParts.getLast();
 		if (!ROOT_DOCUMENT_ID.equals(mainPart.get("_id"))) {
 			throw new IllegalStateException("Cannot locate root document");
 		}
@@ -288,7 +288,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	private void processTransaction(List<ChangeStreamDocument<BsonDocument>> events) throws UnprocessableEventException {
-		ChangeStreamDocument<BsonDocument> finalEvent = events.get(events.size() - 1);
+		ChangeStreamDocument<BsonDocument> finalEvent = events.getLast();
 		switch (finalEvent.getOperationType()) {
 			case INSERT: case REPLACE: {
 				BsonDocument fullDocument = finalEvent.getFullDocument();

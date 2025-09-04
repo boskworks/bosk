@@ -82,7 +82,7 @@ class ParametersByNameContextProvider implements TestTemplateInvocationContextPr
 			case 0:
 				break;
 			case 1:
-				Collections.addAll(parameters, annotatedConstructors.get(0).getParameters());
+				Collections.addAll(parameters, annotatedConstructors.getFirst().getParameters());
 				break;
 			default:
 				throw new ParameterResolutionException("Multiple constructors annotated with " + ParametersByName.class.getSimpleName() + ": " + annotatedConstructors);
@@ -121,13 +121,9 @@ class ParametersByNameContextProvider implements TestTemplateInvocationContextPr
 		return result;
 	}
 
-	private static class ParameterBinder implements ParameterResolver {
-		private final Map<String, ?> binding;
-
-		public ParameterBinder(Map<String, ?> binding) {
-			this.binding = binding;
-		}
-
+	private record ParameterBinder(
+		Map<String, ?> binding
+	) implements ParameterResolver {
 		@Override
 		public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext) throws ParameterResolutionException {
 			return binding.containsKey(parameterContext.getParameter().getName());

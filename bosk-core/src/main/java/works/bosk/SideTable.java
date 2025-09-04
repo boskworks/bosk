@@ -1,7 +1,6 @@
 package works.bosk;
 
 import java.util.AbstractMap.SimpleImmutableEntry;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,7 +20,6 @@ import lombok.RequiredArgsConstructor;
 import org.pcollections.OrderedPMap;
 import org.pcollections.OrderedPSet;
 
-import static java.util.Collections.unmodifiableList;
 import static java.util.Objects.requireNonNull;
 
 @EqualsAndHashCode
@@ -39,7 +37,7 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 
 	public boolean isEmpty() { return valuesById.isEmpty(); }
 	public int size() { return valuesById.size(); }
-	public List<Identifier> ids() { return unmodifiableList(new ArrayList<>(valuesById.keySet())); }
+	public List<Identifier> ids() { return List.copyOf(valuesById.keySet()); }
 	public Listing<K> keys() { return new Listing<>(domain, OrderedPSet.from(valuesById.keySet())); }
 	public Collection<V> values() { return valuesById.values(); }
 	public Set<Entry<Identifier, V>> idEntrySet() { return valuesById.entrySet(); }

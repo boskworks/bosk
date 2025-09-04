@@ -284,7 +284,7 @@ C&lt;String> someField;
 			throw new IllegalArgumentException("Ambiguous constructor list for " + nodeClass.getSimpleName() + ": " + constructors);
 		}
 		@SuppressWarnings("unchecked")
-		Constructor<T> theConstructor = (Constructor<T>) constructors.get(0);
+		Constructor<T> theConstructor = (Constructor<T>) constructors.getFirst();
 		return theConstructor;
 	}
 
