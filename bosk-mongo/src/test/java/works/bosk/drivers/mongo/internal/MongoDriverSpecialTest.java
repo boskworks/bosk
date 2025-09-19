@@ -56,6 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 
@@ -78,7 +79,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			),
 			Stream.of(TestParameters.EventTiming.NORMAL)
 		).map(b -> b.applyDriverSettings(s -> s
-			.timescaleMS(100) // Note that some tests can take as long as 25x this
+			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
 		));
 	}
 

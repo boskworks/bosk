@@ -29,6 +29,7 @@ import works.bosk.testing.junit.Slow;
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
@@ -62,7 +63,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			),
 			Stream.of(TestParameters.EventTiming.NORMAL)
 		).map(b -> b.applyDriverSettings(s -> s
-			.timescaleMS(100) // Note that some tests can take as long as 25x this
+			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
 		));
 	}
 
