@@ -485,7 +485,7 @@ class SqlDriverImpl implements SqlDriver {
 				} catch (JsonProcessingException e) {
 					throw new NotYetImplementedException(e);
 				}
-				long revision = insertChange(connection, target, nodeJson);
+				insertChange(connection, target, nodeJson);
 				using(connection)
 					.update(BOSK)
 					.set(STATE, stateJson)
