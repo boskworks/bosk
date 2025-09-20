@@ -7,6 +7,7 @@ dependencies {
 	compileOnly libs.jsr305 // Mongo client uses nullability annotations
 
 	// Allows us to annotate status objects so they're handy to serialize with jackson
+	implementation platform(libs.jackson.bom)
 	implementation libs.jackson.annotations
 
 	testImplementation project(":bosk-logback")
