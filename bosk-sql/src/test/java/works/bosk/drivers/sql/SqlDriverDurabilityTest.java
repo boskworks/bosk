@@ -12,23 +12,23 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import works.bosk.Bosk;
 import works.bosk.DriverStack;
-import works.bosk.testing.drivers.AbstractDriverTest;
 import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
-import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.testing.junit.ParametersByName;
 import works.bosk.logback.BoskLogFilter;
+import works.bosk.testing.drivers.AbstractDriverTest;
+import works.bosk.testing.drivers.state.TestEntity;
+import works.bosk.testing.junit.ParametersByName;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.drivers.sql.SqlTestService.Database.POSTGRES;
 import static works.bosk.drivers.sql.SqlTestService.Database.SQLITE;
 import static works.bosk.drivers.sql.SqlTestService.sqlDriverFactory;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Testcontainers
 public class SqlDriverDurabilityTest extends AbstractDriverTest {

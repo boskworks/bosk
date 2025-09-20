@@ -9,8 +9,8 @@ import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * Tests the functionality of {@link MongoDriverSettings.InitialDatabaseUnavailableMode#FAIL FAIL} mode.

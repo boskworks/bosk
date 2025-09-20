@@ -15,8 +15,8 @@ import works.bosk.exceptions.InvalidTypeException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.TypeValidationTest.SimpleTypes.MyEnum.LEFT;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * These tests don't use @{@link org.junit.jupiter.api.BeforeEach}

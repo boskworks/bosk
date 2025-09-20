@@ -21,10 +21,10 @@ import works.bosk.Reference;
 import works.bosk.SideTableReference;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.BsonSerializer;
-import works.bosk.testing.drivers.AbstractDriverTest;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.testing.drivers.AbstractDriverTest;
+import works.bosk.testing.drivers.state.TestEntity;
 
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;

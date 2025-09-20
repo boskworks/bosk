@@ -20,19 +20,19 @@ import works.bosk.Listing;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
-import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.junit.ParametersByName;
 import works.bosk.testing.junit.Slow;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
-import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
+import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * Tests the kinds of recovery actions a human operator might take to try to get a busted service running again.
