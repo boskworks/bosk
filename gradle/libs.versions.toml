@@ -22,7 +22,7 @@ jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", ver
 jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref="jetbrains-annotations" }
 jmh-apt = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
-jooq = { module = "org.jooq:jooq", version = "3.20.5" }
+jooq = { module = "org.jooq:jooq", version = "3.20.7" }
 jsr305 = { module = "com.google.code.findbugs:jsr305", version = "3.0.2" }
 junit-api = { module = "org.junit.jupiter:junit-jupiter-api" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
