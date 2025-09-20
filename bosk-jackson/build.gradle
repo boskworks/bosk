@@ -1,5 +1,6 @@
 
 dependencies {
+	api platform(libs.jackson.bom)
 	api libs.jackson.databind
 	api project(":bosk-core")
 
