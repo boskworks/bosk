@@ -16,7 +16,7 @@ testcontainers = "1.21.3"
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
 hamcrest = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
 hamcrest-library = { module = "org.hamcrest:hamcrest-library", version.ref = "hamcrest" }
-hikari = { module = "com.zaxxer:HikariCP", version = "7.0.0" }
+hikari = { module = "com.zaxxer:HikariCP", version = "7.0.2" }
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref="jackson" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref="jetbrains-annotations" }
