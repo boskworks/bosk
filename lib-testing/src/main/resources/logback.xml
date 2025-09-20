@@ -1,6 +1,6 @@
 <configuration>
+	<turboFilter class="works.bosk.logback.BoskLogFilter"/>
 	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-		<filter class="works.bosk.logback.BoskLogFilter"/>
 		<encoder>
 			<pattern>%d %-5level [%thread] [%X{bosk.name}]%X{bosk.MongoDriver.transaction}%X{bosk.MongoDriver.event} %logger{25}: %msg%n</pattern>
 		</encoder>
