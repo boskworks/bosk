@@ -11,6 +11,7 @@ import org.bson.BsonString;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static com.mongodb.client.model.changestream.NamespaceType.COLLECTION;
 import static java.lang.System.identityHashCode;
 import static java.util.Arrays.asList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -105,7 +106,7 @@ class DemultiplexerTest {
 		return new ChangeStreamDocument<>(
 			OperationType.OTHER.getValue(),
 			new BsonDocument("_id", new BsonString("resumeToken")),
-			ns, ns,
+			ns, COLLECTION.getValue(), ns,
 			null, null, null, null, null,
 			new BsonInt64(txnNumber),
 			lsid,
