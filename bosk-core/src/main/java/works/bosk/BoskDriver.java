@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import works.bosk.drivers.ForwardingDriver;
 import works.bosk.exceptions.FlushFailureException;
-import works.bosk.exceptions.InitializationFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
 /**
@@ -43,8 +42,6 @@ public interface BoskDriver {
 	 * an initial root. Such a driver cannot be used on its own to initialize a Bosk,
 	 * but it can be used downstream of a {@link ForwardingDriver} provided there is
 	 * another downstream driver that can provide the initial root instead.
-	 *
-	 * @see InitializationFailureException
 	 */
 	StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException;
 

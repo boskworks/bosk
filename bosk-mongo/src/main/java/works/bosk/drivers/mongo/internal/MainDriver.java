@@ -225,7 +225,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// We can now publish the driver knowing that the transaction, if there is one, has committed
 				publishFormatDriver(preferredDriver);
 				preferredDriver.onRevisionToSkip(REVISION_ONE); // initialRoot handles REVISION_ONE; downstream only needs to know about changes after that
-			} catch (RuntimeException | IOException | FailedSessionException e2) {
+			} catch (RuntimeException | FailedSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2);
 			}
@@ -473,7 +473,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 
 		@Override
-		public void onConnectionFailed(Exception e) throws InterruptedException, InitialRootActionException, TimeoutException {
+		public void onConnectionFailed() throws InterruptedException, TimeoutException {
 			LOGGER.debug("onConnectionFailed");
 			// If there's an initialRootAction, the main thread is waiting for us.
 			// Execute the initialRootAction just to communicate the failure.

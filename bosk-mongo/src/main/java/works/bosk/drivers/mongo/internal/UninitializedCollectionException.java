@@ -10,7 +10,7 @@ package works.bosk.drivers.mongo.internal;
  * rather than overwrite the database contents.
  * Rather, we must have a fairly high degree of certainty that we're ok to start fresh.
  */
-class UninitializedCollectionException extends Exception {
+public class UninitializedCollectionException extends Exception {
 	UninitializedCollectionException() {
 	}
 

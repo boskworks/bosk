@@ -13,7 +13,6 @@ import works.bosk.SideTable;
 import works.bosk.SideTableReference;
 import works.bosk.TaggedUnion;
 import works.bosk.VariantCase;
-import works.bosk.exceptions.InvalidTypeException;
 
 /**
  * An imperfect, non-idiomatic way to describe complex parameterized types.
@@ -64,7 +63,7 @@ public final class Classes {
 		return (Class)MapValue.class;
 	}
 
-	public static <V extends VariantCase> Class<TaggedUnion<V>> taggedUnion(Class<V> variantCaseClass, String... segments) throws InvalidTypeException {
+	public static <V extends VariantCase> Class<TaggedUnion<V>> taggedUnion(Class<V> variantCaseClass, String... segments) {
 		return (Class)TaggedUnion.class;
 	}
 }

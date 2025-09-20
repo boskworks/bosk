@@ -39,7 +39,7 @@ public class HelloBosk extends Bosk<BoskState> {
 		@ReferencePath("/targets") CatalogReference<Target> targets();
 	}
 
-	private static BoskState defaultRoot(Bosk<BoskState> bosk) {
+	private static BoskState defaultRoot(Bosk<BoskState> __) {
 		return new BoskState(
 			Catalog.of(new Target(Identifier.from("world")))
 		);

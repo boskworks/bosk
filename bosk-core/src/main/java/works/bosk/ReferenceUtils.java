@@ -180,18 +180,7 @@ C&lt;String> someField;
 			// interfaces must have consistent types, so any occurrence of the
 			// interface will serve.
 			//
-			Type supertype = actualClass.getGenericSuperclass();
-			if (supertype == null || !genericClass.isAssignableFrom(rawClass(supertype))) {
-				// Must come from interface inheritance
-				supertype = null; // Help catch errors
-				for (Type candidate: actualClass.getGenericInterfaces()) {
-					if (genericClass.isAssignableFrom(rawClass(candidate))) {
-						supertype = candidate;
-						break;
-					}
-				}
-				assert supertype != null: "If genericClass isAssignableFrom actualClass, and they're not equal, then it must be assignable from something actualClass inherits";
-			}
+			Type supertype = lowestCompatibleSupertype(genericClass, actualClass);
 
 			// Recurse with supertype
 			Type returned = parameterType(supertype, genericClass, index);
@@ -201,6 +190,22 @@ C&lt;String> someField;
 			// Help diagnose assertion errors from recursive calls
 			throw new AssertionError(format("parameterType(%s, %s, %s): %s", parameterizedType, genericClass, index, e.getMessage()), e);
 		}
+	}
+
+	private static Type lowestCompatibleSupertype(Class<?> requiredSupertype, Class<?> givenClass) {
+		Type supertype = givenClass.getGenericSuperclass();
+		if (supertype == null || !requiredSupertype.isAssignableFrom(rawClass(supertype))) {
+			// Must come from interface inheritance
+			supertype = null; // Help catch errors
+			for (Type candidate: givenClass.getGenericInterfaces()) {
+				if (requiredSupertype.isAssignableFrom(rawClass(candidate))) {
+					supertype = candidate;
+					break;
+				}
+			}
+			assert supertype != null: "If requiredSupertype isAssignableFrom givenClass, and they're not equal, then it must be assignable from something givenClass inherits";
+		}
+		return supertype;
 	}
 
 	/**
@@ -244,10 +249,6 @@ C&lt;String> someField;
 		}
 	}
 
-	public static Type referenceTypeFor(Type targetType) {
-		return Types.parameterizedType(Reference.class, targetType);
-	}
-
 	public static Method getterMethod(Class<?> objectClass, String fieldName) throws InvalidTypeException {
 		String methodName = fieldName; // fluent
 		for (Class<?> c = objectClass; c != Object.class; c = c.getSuperclass()) {
@@ -283,7 +284,7 @@ C&lt;String> someField;
 			throw new IllegalArgumentException("Ambiguous constructor list for " + nodeClass.getSimpleName() + ": " + constructors);
 		}
 		@SuppressWarnings("unchecked")
-		Constructor<T> theConstructor = (Constructor<T>) constructors.get(0);
+		Constructor<T> theConstructor = (Constructor<T>) constructors.getFirst();
 		return theConstructor;
 	}
 

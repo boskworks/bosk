@@ -120,7 +120,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 	@Override
 	public Iterator<Reference<E>> iterator() {
 		Iterator<Identifier> idIter = ids.iterator();
-		return new Iterator<Reference<E>>() {
+		return new Iterator<>() {
 			@Override
 			public boolean hasNext() {
 				return idIter.hasNext();
@@ -170,7 +170,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 		// we know a Listing qualifies for Spliterator.IMMUTABLE. And let's give
 		// a nice toString too, for debugging.
 		AddressableByIdentifier<E> domain = this.domain.value();
-		return new Iterable<E>() {
+		return new Iterable<>() {
 			@Override
 			public Iterator<E> iterator() {
 				return valueIteratorImpl(domain);
@@ -183,7 +183,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 
 			@Override
 			public String toString() {
-				return StreamSupport.stream(spliterator(), false).collect(toList()).toString();
+				return StreamSupport.stream(spliterator(), false).toList().toString();
 			}
 		};
 	}
@@ -248,9 +248,16 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 
 	private Iterator<E> valueIteratorImpl(AddressableByIdentifier<E> domain) {
 		Iterator<Identifier> iter = ids.iterator();
-		return new Iterator<E>() {
-			@Override public boolean hasNext() { return iter.hasNext(); }
-			@Override public E next() { return getOrThrow(domain, iter.next()); }
+		return new Iterator<>() {
+			@Override
+			public boolean hasNext() {
+				return iter.hasNext();
+			}
+
+			@Override
+			public E next() {
+				return getOrThrow(domain, iter.next());
+			}
 		};
 	}
 

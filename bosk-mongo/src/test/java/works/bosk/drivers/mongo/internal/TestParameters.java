@@ -12,6 +12,18 @@ import static java.util.stream.Collectors.toList;
 public class TestParameters {
 	private static final AtomicInteger dbCounter = new AtomicInteger(0);
 
+	/**
+	 * For tests that are expecting timeouts. A short value makes the tests run faster.
+	 * Too short, and the tests might not be testing the right thing.
+	 * This should be much larger than the expected latency of MongoDB and the network.
+	 */
+	public static final int SHORT_TIMESCALE = 100;
+
+	/**
+	 * For tests that are not expecting timeouts. A nice long value makes spurious test failures unlikely.
+	 */
+	public static final int LONG_TIMESCALE = 90_000;
+
 	@Value
 	public static class ParameterSet {
 		String name;
@@ -26,7 +38,7 @@ public class TestParameters {
 				timing + "," + format,
 				MongoDriverSettings.builder()
 					.preferredDatabaseFormat(format)
-					.timescaleMS(90_000) // Tests that actually exercise timeouts should use a much shorter value
+					.timescaleMS(LONG_TIMESCALE)
 					.testing(MongoDriverSettings.Testing.builder()
 						.eventDelayMS(timing.eventDelayMS)
 						.build())

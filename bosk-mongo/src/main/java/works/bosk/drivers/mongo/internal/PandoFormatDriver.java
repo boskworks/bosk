@@ -203,7 +203,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		} catch (NoSuchElementException e) {
 			throw new UninitializedCollectionException("No existing document", e);
 		}
-		BsonDocument mainPart = allParts.get(allParts.size()-1);
+		BsonDocument mainPart = allParts.getLast();
 		if (!ROOT_DOCUMENT_ID.equals(mainPart.get("_id"))) {
 			throw new IllegalStateException("Cannot locate root document");
 		}
@@ -288,7 +288,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	private void processTransaction(List<ChangeStreamDocument<BsonDocument>> events) throws UnprocessableEventException {
-		ChangeStreamDocument<BsonDocument> finalEvent = events.get(events.size() - 1);
+		ChangeStreamDocument<BsonDocument> finalEvent = events.getLast();
 		switch (finalEvent.getOperationType()) {
 			case INSERT: case REPLACE: {
 				BsonDocument fullDocument = finalEvent.getFullDocument();
@@ -890,10 +890,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	/**
 	 * @param value is mutated to stub-out the parts written to the database
-	 * @return the <em>main part</em> document, representing the root of the tree of part-documents
-	 * (which is not the root of the bosk state tree, unless of course <code>target</code> is the root reference)
 	 */
-	private <T> BsonDocument upsertAndRemoveSubParts(Reference<T> target, BsonDocument value) {
+	private <T> void upsertAndRemoveSubParts(Reference<T> target, BsonDocument value) {
 		List<BsonDocument> allParts = bsonSurgeon.scatter(target, value);
 		// NOTE: `value` has now been mutated so the parts have been stubbed out
 
@@ -909,7 +907,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			LOGGER.debug("| Insert result: {}", result);
 		}
 
-		return allParts.get(allParts.size()-1);
 	}
 
 	private void logNonexistentField(String dottedName, InvalidTypeException e) {

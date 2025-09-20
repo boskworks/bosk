@@ -1,7 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
-import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
@@ -40,7 +39,7 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 	}
 
 	@Override
-	public void flush() throws IOException, InterruptedException {
+	public void flush() {
 		throw disconnected();
 	}
 

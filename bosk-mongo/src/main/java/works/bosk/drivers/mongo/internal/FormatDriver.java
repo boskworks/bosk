@@ -10,7 +10,6 @@ import org.bson.BsonInt64;
 import works.bosk.BoskDiagnosticContext;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriver;
-import works.bosk.exceptions.InitializationFailureException;
 
 /**
  * Additional {@link MongoDriver} functionality that the format-specific drivers must implement.
@@ -55,7 +54,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * This signals to {@link MainDriver} that it may, if appropriate,
 	 * automatically initialize the collection.
 	 */
-	StateAndMetadata<R> loadAllState() throws IOException, UninitializedCollectionException, works.bosk.drivers.mongo.internal.UninitializedCollectionException;
+	StateAndMetadata<R> loadAllState() throws IOException, UninitializedCollectionException;
 
 	/**
 	 * Can assume that the collection is empty or nonexistent,
@@ -66,7 +65,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * "prior" state of the database; in particular, the revision number should be incremented
 	 * so that a {@link #flush} after a {@link #refurbish} succeeds in waiting for the new state.
 	 */
-	void initializeCollection(StateAndMetadata<R> priorContents) throws InitializationFailureException;
+	void initializeCollection(StateAndMetadata<R> priorContents);
 
 	@Override
 	default StateTreeNode initialRoot(Type rootType) {
