@@ -15,6 +15,7 @@ import static com.mongodb.client.model.changestream.NamespaceType.COLLECTION;
 import static java.lang.System.identityHashCode;
 import static java.util.Arrays.asList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class DemultiplexerTest {
 	Demultiplexer dem;
@@ -47,13 +48,25 @@ class DemultiplexerTest {
 			dem.add(list3.get(i));
 		}
 
-		assertSameElements(list1, dem.pop(list1.get(0)));
-		assertSameElements(list2, dem.pop(list2.get(0)));
-		assertSameElements(list3, dem.pop(list3.get(0)));
+		assertSameElements(list1, dem.pop(list1.getFirst()));
+		assertSameElements(list2, dem.pop(list2.getFirst()));
+		assertSameElements(list3, dem.pop(list3.getFirst()));
 	}
 
 	private void assertSameElements(List<ChangeStreamDocument<BsonDocument>> expected, List<ChangeStreamDocument<BsonDocument>> actual) {
 		assertEquals(new IdentityList<>(expected), actual);
+	}
+
+	@Test
+	void metaTestIdentityList() {
+		Object a = new Object();
+		Object b = new Object();
+		List<Object> list1 = asList(a, b);
+		List<Object> list2 = asList(a, b);
+		List<Object> list3 = asList(b, a);
+
+		assertEquals(new IdentityList<>(list1), new IdentityList<>(list2));
+		assertNotEquals(new IdentityList<>(list1), new IdentityList<>(list3));
 	}
 
 	/**

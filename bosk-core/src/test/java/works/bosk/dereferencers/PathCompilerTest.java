@@ -38,8 +38,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
-import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 public class PathCompilerTest extends AbstractBoskTest {
 	PathCompiler pathCompiler;

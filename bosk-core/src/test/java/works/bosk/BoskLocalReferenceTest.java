@@ -28,9 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
-import static works.bosk.testing.BoskTestUtils.boskName;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.ReferenceUtils.rawClass;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * Tests that the Bosk can supply references that point to the right things, and

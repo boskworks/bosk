@@ -33,16 +33,16 @@ import works.bosk.SideTable;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
 import works.bosk.drivers.BufferingDriver;
+import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
+import works.bosk.exceptions.FlushFailureException;
+import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.testing.drivers.state.UpgradeableEntity;
-import works.bosk.exceptions.FlushFailureException;
-import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.testing.junit.ParametersByName;
 import works.bosk.testing.junit.Slow;
 import works.bosk.util.Classes;
@@ -56,9 +56,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
-import static works.bosk.ListingEntry.LISTING_ENTRY;
 
 /**
  * Tests {@link MongoDriver}-specific functionality not covered by {@link MongoDriverConformanceTest}.

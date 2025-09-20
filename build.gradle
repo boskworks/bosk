@@ -137,6 +137,7 @@ configure(subprojects.findAll { it.name.startsWith("bosk-") }) {
 	}
 }
 
+// TODO: Spotless currently isn't doing anything and I can't figure out why
 spotless {
 	enforceCheck = false
 	java {

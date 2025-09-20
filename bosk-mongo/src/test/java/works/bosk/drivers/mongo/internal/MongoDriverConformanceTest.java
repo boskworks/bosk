@@ -12,13 +12,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.DriverFactory;
 import works.bosk.StateTreeNode;
+import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
-import works.bosk.testing.drivers.SharedDriverConformanceTest;
 import works.bosk.drivers.mongo.internal.TestParameters.EventTiming;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
-import works.bosk.drivers.mongo.BsonSerializer;
+import works.bosk.testing.drivers.SharedDriverConformanceTest;
 import works.bosk.testing.junit.ParametersByName;
 import works.bosk.testing.junit.Slow;
 

@@ -9,9 +9,9 @@ import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.Bosk;
 import works.bosk.Path;
 import works.bosk.Reference;
+import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.testing.drivers.AbstractDriverTest;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.testing.BoskTestUtils.boskName;
