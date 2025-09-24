@@ -1,0 +1,6 @@
+
+dependencies {
+	implementation platform(libs.junit.bom)
+	api libs.junit.api
+	testImplementation project(':bosk-testing')
+}
