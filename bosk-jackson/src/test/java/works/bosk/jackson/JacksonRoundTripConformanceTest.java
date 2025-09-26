@@ -1,19 +1,28 @@
 package works.bosk.jackson;
 
-import java.util.stream.Stream;
+import java.lang.reflect.Parameter;
+import java.util.List;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.DriverConformanceTest;
-import works.bosk.testing.junit.ParametersByName;
 
 import static works.bosk.AbstractRoundTripTest.jacksonRoundTripFactory;
 
+@InjectFrom(JacksonRoundTripConformanceTest.Injector.class)
 public class JacksonRoundTripConformanceTest extends DriverConformanceTest {
-	@ParametersByName
 	JacksonRoundTripConformanceTest(JacksonSerializerConfiguration config) {
 		driverFactory = jacksonRoundTripFactory(config);
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<JacksonSerializerConfiguration> config() {
-		return Stream.of(JacksonSerializerConfiguration.defaultConfiguration());
+	record Injector() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.getType() == JacksonSerializerConfiguration.class;
+		}
+
+		@Override
+		public List<Object> values() {
+			return List.of(JacksonSerializerConfiguration.defaultConfiguration());
+		}
 	}
 }

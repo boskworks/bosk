@@ -20,7 +20,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.annotations.Hook;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.testing.junit.ParametersByName;
+import works.bosk.junit.InjectedTest;
 
 import static java.lang.Thread.currentThread;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -67,7 +67,7 @@ public abstract class HanoiTest {
 		bosk.registerHooks(this);
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void onePuzzle() throws InterruptedException {
 		int numDiscs = 6;
 		bosk.driver().submitReplacement(refs.puzzle(PUZZLE_1),
@@ -83,7 +83,7 @@ public abstract class HanoiTest {
 		}
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void threePuzzles() throws InterruptedException {
 		if (LOGGER.isDebugEnabled()) {
 			LOGGER.debug("Registered hooks:{}",

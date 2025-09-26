@@ -2,9 +2,10 @@ package works.bosk.drivers.sql;
 
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
+import java.lang.reflect.Parameter;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
@@ -16,10 +17,12 @@ import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.InjectedTest;
+import works.bosk.junit.ParameterInjector;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.AbstractDriverTest;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.testing.junit.ParametersByName;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.jooq.impl.DSL.using;
@@ -31,6 +34,7 @@ import static works.bosk.drivers.sql.SqlTestService.sqlDriverFactory;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Testcontainers
+@InjectFrom(SqlDriverDurabilityTest.DatabaseInjector.class)
 public class SqlDriverDurabilityTest extends AbstractDriverTest {
 	private final Database database;
 	SqlDriverSettings settings;
@@ -38,14 +42,20 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 	AtomicInteger dbCounter = new AtomicInteger(0);
 	private BoskLogFilter.LogController logController;
 
-	@ParametersByName
 	SqlDriverDurabilityTest(Database database) {
 		this.database = database;
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<Database> database() {
-		return Stream.of(POSTGRES, SQLITE);
+	record DatabaseInjector() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.getType() == Database.class;
+		}
+
+		@Override
+		public java.util.List<Object> values() {
+			return List.of(POSTGRES, SQLITE);
+		}
 	}
 
 	@BeforeEach
@@ -55,7 +65,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		logController = new BoskLogFilter.LogController();
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void tablesDropped_recovers() throws SQLException, IOException, InterruptedException {
 		logController.setLogging(ERROR, SqlDriverImpl.class); // We're expecting disruption here
 
