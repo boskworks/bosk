@@ -593,7 +593,6 @@ public class HooksTest extends AbstractBoskTest {
 
 		@Override
 		public void accept(Exception e) {
-			assertThat(e.getMessage(), containsString("wtf"));
 			assertThat(e.getMessage(), containsString("InvalidParameterType.hook"));
 			assertThat(e.getMessage(), containsString("String"));
 		}
@@ -646,7 +645,6 @@ public class HooksTest extends AbstractBoskTest {
 
 		@Override
 		public void accept(Exception e) {
-			assertThat(e.getMessage(), containsString("wtf"));
 			assertThat(e.getMessage(), containsString("WrongReferencedType.hook"));
 			assertThat(e.getMessage(), containsString("Identifier")); // expected type
 			assertThat(e.getMessage(), containsString("String"));     // actual type

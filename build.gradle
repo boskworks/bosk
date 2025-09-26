@@ -47,7 +47,6 @@ configure(subprojects.findAll {
 
 	compileTestJava {
 		options.release = null // Accept the default from the JDK
-		options.compilerArgs << '-parameters' // For @ParametersByName
 	}
 
 	tasks.withType(JavaCompile).configureEach {

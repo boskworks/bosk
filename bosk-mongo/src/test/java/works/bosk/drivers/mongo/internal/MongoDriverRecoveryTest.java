@@ -2,6 +2,8 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.MongoCollection;
 import java.io.IOException;
+import java.lang.reflect.Parameter;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -22,8 +24,10 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.InjectedTest;
+import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.testing.junit.ParametersByName;
 import works.bosk.testing.junit.Slow;
 
 import static ch.qos.logback.classic.Level.ERROR;
@@ -38,6 +42,10 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * Tests the kinds of recovery actions a human operator might take to try to get a busted service running again.
  */
 @Slow
+@InjectFrom({
+	MongoDriverRecoveryTest.FlushOrWaitInjector.class,
+	MongoDriverRecoveryTest.TestParameterInjector.class
+})
 public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 	FlushOrWait flushOrWait;
 
@@ -47,24 +55,31 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 	}
 
-	@ParametersByName
 	MongoDriverRecoveryTest(FlushOrWait flushOrWait, TestParameters.ParameterSet parameters) {
 		super(parameters.driverSettingsBuilder());
 		this.flushOrWait = flushOrWait;
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<TestParameters.ParameterSet> parameters() {
-		return TestParameters.driverSettings(
-			Stream.of(
-				MongoDriverSettings.DatabaseFormat.SEQUOIA,
-				PandoFormat.oneBigDocument(),
-				PandoFormat.withGraftPoints("/catalog", "/sideTable")
-			),
-			Stream.of(TestParameters.EventTiming.NORMAL)
-		).map(b -> b.applyDriverSettings(s -> s
-			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
-		));
+	record TestParameterInjector() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.getType() == TestParameters.ParameterSet.class;
+		}
+
+		@Override
+		public List<Object> values() {
+			return TestParameters.driverSettings(
+				Stream.of(
+					MongoDriverSettings.DatabaseFormat.SEQUOIA,
+					PandoFormat.oneBigDocument(),
+					PandoFormat.withGraftPoints("/catalog", "/sideTable")
+				),
+				Stream.of(TestParameters.EventTiming.NORMAL)
+			).map(b -> b.applyDriverSettings(s -> s
+				.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
+			)).map(x -> (Object)x)
+			.toList();
+		}
 	}
 
 	enum FlushOrWait {
@@ -81,12 +96,20 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		WAIT,
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<FlushOrWait> flushOrWait() {
-		return Stream.of(FlushOrWait.values());
+	record FlushOrWaitInjector() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.getType() == FlushOrWait.class;
+		}
+
+		@Override
+		public List<Object> values() {
+			return List.of(FlushOrWait.values());
+		}
 	}
 
-	@ParametersByName
+
+	@InjectedTest
 	@DisruptsMongoProxy
 	void initialOutage_recovers() throws InvalidTypeException, InterruptedException, IOException {
 		LOGGER.debug("Set up the database contents to be different from initialRoot");
@@ -155,7 +178,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void databaseDropped_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Drop database");
@@ -166,7 +189,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}, (_) -> initializeDatabase("after drop"));
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void collectionDropped_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Drop collection");
@@ -177,7 +200,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}, (_) -> initializeDatabase("after drop"));
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void documentDeleted_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Delete document");
@@ -188,7 +211,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}, (_) -> initializeDatabase("after deletion"));
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void documentReappears_recovers() throws InterruptedException, IOException {
 		MongoCollection<Document> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
@@ -215,7 +238,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		});
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void revisionDeleted_recovers() throws InterruptedException, IOException {
 		// It's not clear that this is a valid test. If this test is a burden to support,
 		// we can consider removing it.

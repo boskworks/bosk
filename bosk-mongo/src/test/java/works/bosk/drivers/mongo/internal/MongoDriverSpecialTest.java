@@ -3,6 +3,8 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import java.io.IOException;
+import java.lang.reflect.Parameter;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -38,12 +40,15 @@ import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
+import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.InjectedTest;
+import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.testing.drivers.state.UpgradeableEntity;
-import works.bosk.testing.junit.ParametersByName;
 import works.bosk.testing.junit.Slow;
 import works.bosk.util.Classes;
 
@@ -63,27 +68,34 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 /**
  * Tests {@link MongoDriver}-specific functionality not covered by {@link MongoDriverConformanceTest}.
  */
+@InjectFrom(MongoDriverSpecialTest.TestParameterInjector.class)
 class MongoDriverSpecialTest extends AbstractMongoDriverTest {
-	@ParametersByName
-	public MongoDriverSpecialTest(TestParameters.ParameterSet parameters) {
+	public MongoDriverSpecialTest(ParameterSet parameters) {
 		super(parameters.driverSettingsBuilder());
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<TestParameters.ParameterSet> parameters() {
-		return TestParameters.driverSettings(
-			Stream.of(
-				MongoDriverSettings.DatabaseFormat.SEQUOIA,
-				PandoFormat.oneBigDocument(),
-				PandoFormat.withGraftPoints("/catalog", "/sideTable")
-			),
-			Stream.of(TestParameters.EventTiming.NORMAL)
-		).map(b -> b.applyDriverSettings(s -> s
-			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
-		));
+	record TestParameterInjector() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.getType().equals(ParameterSet.class);
+		}
+
+		@Override
+		public List<Object> values() {
+			return TestParameters.driverSettings(
+				Stream.of(
+					MongoDriverSettings.DatabaseFormat.SEQUOIA,
+					PandoFormat.oneBigDocument(),
+					PandoFormat.withGraftPoints("/catalog", "/sideTable")
+				),
+				Stream.of(TestParameters.EventTiming.NORMAL)
+			).map(b -> b.applyDriverSettings(s -> s
+				.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
+			)).map(x->(Object)x).toList();
+		}
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void warmStart_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
 		Bosk<TestEntity> setupBosk = new Bosk<>(
 			boskName("Setup"),
@@ -112,7 +124,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void flush_localStateUpdated() throws InvalidTypeException, InterruptedException, IOException {
 		// Set up MongoDriver writing to a modified BufferingDriver that lets us
 		// have tight control over all the comings and goings from MongoDriver.
@@ -171,7 +183,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void listing_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),
@@ -213,7 +225,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@ParametersByName
+	@InjectedTest
 	@DisruptsMongoProxy
 	void networkOutage_boskRecovers() throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
@@ -269,7 +281,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected, latecomerActual);
 	}
 
-	@ParametersByName
+	@InjectedTest
 	@DisruptsMongoProxy
 	void hookRegisteredDuringNetworkOutage_works() throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
@@ -330,7 +342,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void initialStateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException {
 		setLogging(ERROR, BsonSerializer.class);
 
@@ -359,7 +371,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void updateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, StateTreeSerializer.class);
 
@@ -394,7 +406,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(oldEntity, actual);
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void updateNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class, StateTreeSerializer.class);
 
@@ -430,7 +442,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void deleteNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class);
 
@@ -462,7 +474,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(oldEntity, actual);
 	}
 
-	@ParametersByName
+	@InjectedTest
 	@Slow
 	void databaseMissingField_fallsBackToDefaultState(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, ChangeReceiver.class);
@@ -516,18 +528,18 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected2, actual2, "Reconnected bosk should see the state from the database");
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void unrelatedDatabase_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		tearDownActions.addFirst(mongoService.client().getDatabase("unrelated")::drop);
 		doUnrelatedChangeTest("unrelated", MainDriver.COLLECTION_NAME, rootDocumentID().getValue());
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void unrelatedCollection_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		doUnrelatedChangeTest(driverSettings.database(), "unrelated", rootDocumentID().getValue());
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void unrelatedDoc_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		doUnrelatedChangeTest(driverSettings.database(), MainDriver.COLLECTION_NAME, "unrelated");
 	}
@@ -564,7 +576,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void refurbish_createsField(TestInfo testInfo) throws IOException, InterruptedException {
 		// We'll use this as an honest observer of the actual state
 		LOGGER.debug("Create Original bosk");
@@ -602,7 +614,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(Optional.of(TestValues.blank()), after); // Now it's there
 	}
 
-	@ParametersByName
+	@InjectedTest
 	@Slow
 	void manifestVersionBump_disconnects(TestInfo testInfo) throws IOException, InterruptedException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
@@ -637,7 +649,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Finished");
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void refurbish_fixesMetadata(TestInfo testInfo) throws IOException, InterruptedException {
 		// Set up the database so it looks basically right
 		Bosk<TestEntity> initialBosk = new Bosk<>(

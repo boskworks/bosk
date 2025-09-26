@@ -2,8 +2,11 @@ package works.bosk.drivers.mongo.internal;
 
 import ch.qos.logback.classic.Level;
 import java.io.IOException;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+import java.lang.reflect.Parameter;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,21 +19,28 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.InjectedTest;
+import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.testing.junit.ParametersByName;
 import works.bosk.testing.junit.Slow;
 
+import static java.lang.annotation.ElementType.PARAMETER;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Slow
+@InjectFrom({
+	SchemaEvolutionTest.FromConfigs.class,
+	SchemaEvolutionTest.ToConfigs.class
+})
 public class SchemaEvolutionTest {
 
 	private final Helper fromHelper;
 	private final Helper toHelper;
 
-	@ParametersByName
-	SchemaEvolutionTest(Configuration fromConfig, Configuration toConfig) {
+	SchemaEvolutionTest(@From Configuration fromConfig, @To Configuration toConfig) {
 		int dbCounter = DB_COUNTER.incrementAndGet();
 		this.fromHelper = new Helper(fromConfig, dbCounter);
 		this.toHelper = new Helper(toConfig, dbCounter);
@@ -60,21 +70,51 @@ public class SchemaEvolutionTest {
 		toHelper  .runTearDown(testInfo);
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<Configuration> fromConfig() {
-		return Stream.of(
+	@Target(PARAMETER)
+	@Retention(RUNTIME)
+	@interface From {}
+
+	record FromConfigs() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.isAnnotationPresent(From.class)
+				&& parameter.getType() == Configuration.class;
+		}
+
+		@Override
+		public List<Object> values() {
+			return configs();
+		}
+	}
+
+	@Target(PARAMETER)
+	@Retention(RUNTIME)
+	@interface To {}
+
+	record ToConfigs() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.isAnnotationPresent(To.class)
+				&& parameter.getType() == Configuration.class;
+		}
+
+		@Override
+		public List<Object> values() {
+			return configs();
+		}
+	}
+
+	static List<Object> configs() {
+		return List.of(
 			new Configuration(MongoDriverSettings.DatabaseFormat.SEQUOIA),
 			new Configuration(PandoFormat.oneBigDocument()),
 			new Configuration(PandoFormat.withGraftPoints("/catalog", "/sideTable"))
 		);
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<Configuration> toConfig() {
-		return fromConfig();
-	}
 
-	@ParametersByName
+
+	@InjectedTest
 	void pairwise_readCompatible() throws Exception {
 		LOGGER.debug("Create fromBosk [{}]", fromHelper.name);
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
@@ -110,7 +150,7 @@ public class SchemaEvolutionTest {
 //		System.out.println("Status: " + ((MongoDriver<?>)toBosk.driver()).readStatus());
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void pairwise_writeCompatible() throws Exception {
 		LOGGER.debug("Create fromBosk [{}]", fromHelper.name);
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);

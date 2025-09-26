@@ -7,11 +7,11 @@ import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.DriverFactory;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectedTest;
 import works.bosk.testing.BoskTestUtils;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.testing.drivers.state.UpgradeableEntity;
-import works.bosk.testing.junit.ParametersByName;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.testing.BoskTestUtils.boskName;
@@ -40,7 +40,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 		assertEquals(expected, actual);
 	}
 
-	@ParametersByName
+	@InjectedTest
 	void updateInsidePolyfill_works() throws IOException, InterruptedException, InvalidTypeException {
 		// We'll use this as an honest observer of the actual state
 		LOGGER.debug("Create Original bosk");

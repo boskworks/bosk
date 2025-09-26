@@ -1,26 +1,63 @@
 package works.bosk;
 
-import java.util.stream.Stream;
-import works.bosk.testing.junit.ParametersByName;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+import java.lang.reflect.Parameter;
+import java.util.List;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.InjectedTest;
+import works.bosk.junit.ParameterInjector;
 
+import static java.lang.annotation.ElementType.PARAMETER;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@InjectFrom({IdentifierTest.ValidInjector.class, IdentifierTest.InvalidInjector.class})
 class IdentifierTest {
 
-	@ParametersByName
+	@InjectedTest
 	void validString_survivesRoundTrip(String validString) {
 		assertEquals(validString, Identifier.from(validString).toString());
 	}
 
-	@ParametersByName
-	void invalidString_throws(String invalidString) {
+	@InjectedTest
+	void invalidString_throws(@Invalid String invalidString) {
 		assertThrows(IllegalArgumentException.class, () -> Identifier.from(invalidString));
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<String> validString() {
-		return Stream.of(
+	@Retention(RUNTIME)
+	@Target(PARAMETER)
+	@interface Invalid {}
+
+	record ValidInjector() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.getType().equals(String.class)
+				&& !parameter.isAnnotationPresent(Invalid.class);
+		}
+
+		@Override
+		public List<Object> values() {
+			return validStrings();
+		}
+	}
+
+	record InvalidInjector() implements ParameterInjector {
+		@Override
+		public boolean supportsParameter(Parameter parameter) {
+			return parameter.getType().equals(String.class)
+				&& parameter.isAnnotationPresent(Invalid.class);
+		}
+
+		@Override
+		public List<Object> values() {
+			return invalidStrings();
+		}
+	}
+
+	static List<Object> validStrings() {
+		return List.of(
 			"test",
 			"unicode\uD83C\uDF33",
 			"name with spaces",
@@ -31,9 +68,8 @@ class IdentifierTest {
 		);
 	}
 
-	@SuppressWarnings("unused")
-	static Stream<String> invalidString() {
-		return Stream.of(
+	static List<Object> invalidStrings() {
+		return List.of(
 			"",
 			"-startsWithDash",
 			"endsWithDash-",
