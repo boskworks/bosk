@@ -104,7 +104,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		@Override
 		public List<Object> values() {
-			return List.of(FlushOrWait.values());
+			return List.of((Object[])FlushOrWait.values());
 		}
 	}
 
