@@ -1,5 +1,6 @@
 package works.bosk.bytecode;
 
+import java.lang.classfile.TypeKind;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import org.objectweb.asm.ClassVisitor;
@@ -41,8 +42,8 @@ final class MethodBuilder {
 		pushSlots(-numSlots);
 	}
 
-	LocalVariable newLocal(Type type) {
-		return new LocalVariable(type, ++numLocals);
+	LocalVariable newLocal(TypeKind typeKind) {
+		return new LocalVariable(typeKind, ++numLocals);
 	}
 
 }

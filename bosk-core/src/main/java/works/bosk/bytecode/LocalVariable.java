@@ -1,8 +1,8 @@
 package works.bosk.bytecode;
 
-import org.objectweb.asm.Type;
+import java.lang.classfile.TypeKind;
 
 public record LocalVariable(
-	Type type,
+	TypeKind type,
 	int slot
 ) { }
