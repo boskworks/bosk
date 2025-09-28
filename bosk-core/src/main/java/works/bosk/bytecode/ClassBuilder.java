@@ -2,6 +2,7 @@ package works.bosk.bytecode;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.classfile.TypeKind;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -26,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import works.bosk.exceptions.NotYetImplementedException;
 
 import static java.lang.System.identityHashCode;
+import static java.lang.classfile.TypeKind.REFERENCE;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
@@ -171,7 +173,7 @@ public final class ClassBuilder<T> {
 	 */
 	public LocalVariable parameter(int index) {
 		if (0 <= index && index < currentMethod.numParameters) {
-			return new LocalVariable(OBJECT_TYPE, index);
+			return new LocalVariable(REFERENCE, index);
 		} else {
 			throw new IllegalStateException("No parameter #" + index);
 		}
@@ -182,24 +184,39 @@ public final class ClassBuilder<T> {
 	 */
 	public void pushLocal(LocalVariable var) {
 		beginPush();
-		methodVisitor().visitVarInsn(var.type().getOpcode(ILOAD), var.slot());
+		methodVisitor().visitVarInsn(asmType(var.type()).getOpcode(ILOAD), var.slot());
+	}
+
+	static Type asmType(TypeKind kind) {
+		return switch (kind) {
+			case BOOLEAN -> Type.BOOLEAN_TYPE;
+			case BYTE -> Type.BYTE_TYPE;
+			case CHAR -> Type.CHAR_TYPE;
+			case SHORT -> Type.SHORT_TYPE;
+			case INT -> Type.INT_TYPE;
+			case LONG -> Type.LONG_TYPE;
+			case FLOAT -> Type.FLOAT_TYPE;
+			case DOUBLE -> Type.DOUBLE_TYPE;
+			case VOID -> Type.VOID_TYPE;
+			case REFERENCE -> Type.getType(Object.class);
+		};
 	}
 
 	/**
 	 * Emit ASTORE: <a href="https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-6.html#jvms-6.5.astore">...</a>
 	 */
 	public LocalVariable popToLocal() {
-		return popToLocal(OBJECT_TYPE);
+		return popToLocal(REFERENCE);
 	}
 
 	/**
-	 * Emit the appropriate store opcode for the given type, which can be either
-	 * {@link #OBJECT_TYPE} or else one of the primitive types ({@link Type#INT_TYPE} etc.).
+	 * Emit the appropriate store opcode for the given type.
 	 */
-	public LocalVariable popToLocal(Type type) {
-		LocalVariable result = currentMethod.newLocal(type);
-		methodVisitor().visitVarInsn(type.getOpcode(ISTORE), result.slot());
-		endPop(type.getSize());
+	public LocalVariable popToLocal(TypeKind typeKind) {
+		LocalVariable result = currentMethod.newLocal(typeKind);
+		Type asmType = asmType(typeKind);
+		methodVisitor().visitVarInsn(asmType.getOpcode(ISTORE), result.slot());
+		endPop(asmType.getSize());
 		return result;
 	}
 
@@ -474,8 +491,6 @@ public final class ClassBuilder<T> {
 			return defineClass(dottyName, b, 0, b.length);
 		}
 	}
-
-	public static final Type OBJECT_TYPE = Type.getType(Object.class);
 
 	// MethodHandle map
 
