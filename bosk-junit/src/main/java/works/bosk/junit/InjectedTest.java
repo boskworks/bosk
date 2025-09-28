@@ -22,6 +22,11 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  * If you use {@link org.junit.jupiter.api.TestInstance.Lifecycle#PER_CLASS PER_CLASS},
  * and try to inject parameters into the constructor,
  * you'll get a somewhat confusing {@link ParameterResolutionException}.
+ * <p>
+ * <em>Note</em>: this doesn't currently work with {@code @ParameterizedTest}.
+ * You don't get a cartesian product of the injected and parameterized values;
+ * instead, you get a cartesian sum of contexts that are missing one or the other.
+ * TODO: See if this is fixable.
  *
  * @see InjectFrom
  */

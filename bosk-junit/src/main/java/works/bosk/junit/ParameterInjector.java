@@ -17,6 +17,8 @@ import java.util.List;
  */
 public interface ParameterInjector {
 	/**
+	 * Note: if this method returns different results for the same parameter
+	 * at different times, strange behaviour may result.
 	 * @return true if this injector provides values for the given parameter.
 	 */
 	boolean supportsParameter(Parameter parameter);
