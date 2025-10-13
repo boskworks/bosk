@@ -1,11 +1,11 @@
 [versions]
-asm = "9.8"
+asm = "9.9"
 hamcrest = "3.0"
 jackson = "2.20.0"
 jetbrains-annotations = "26.0.2-1"
 jmh = "1.37"
-junit = "5.13.4"
-logback = "1.5.18"
+junit = "6.0.0"
+logback = "1.5.19"
 lombok = "1.18.42"
 pcollections = "5.0.0"
 slf4j = "2.0.17"
@@ -23,7 +23,7 @@ jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref="jetbrains-annotations" }
 jmh-apt = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
-jooq = { module = "org.jooq:jooq", version = "3.20.7" }
+jooq = { module = "org.jooq:jooq", version = "3.20.8" }
 jsr305 = { module = "com.google.code.findbugs:jsr305", version = "3.0.2" }
 junit-api = { module = "org.junit.jupiter:junit-jupiter-api" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
@@ -32,7 +32,7 @@ junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 junit-params = { module = "org.junit.jupiter:junit-jupiter-params" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
-mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.6.0" }
+mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.6.1" }
 mysql = { module = "com.mysql:mysql-connector-j", version = "9.4.0" }
 opentelemetry = { module="io.opentelemetry:opentelemetry-sdk", version="1.54.1" }
 pcollections = { module = "org.pcollections:pcollections", version.ref="pcollections" }
