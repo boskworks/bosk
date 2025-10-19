@@ -58,6 +58,7 @@ import works.bosk.boson.mapping.spec.SpecNode;
 import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.TypeRefNode;
 import works.bosk.boson.mapping.spec.UniformMapNode;
+import works.bosk.boson.types.KnownType;
 import works.bosk.boson.types.PrimitiveType;
 
 import static java.lang.StackWalker.Option.RETAIN_CLASS_REFERENCE;
@@ -111,6 +112,16 @@ public class SpecCompiler {
 				Set<JsonValueSpec> specsToEmit = new HashSet<>(typeMap.knownSpecs());
 				specsToEmit.addAll(List.of(extraNodes));
 				specsToEmit.forEach(node -> emitParseMethod(classBuilder, node, currier));
+
+				// Auto-generate nullable versions of known types
+				typeMap.knownTypes().forEach(t -> {
+					if (t instanceof KnownType kt && !kt.rawClass().isPrimitive()) {
+						emitParseMethod(
+							classBuilder,
+							new MaybeNullSpec(new TypeRefNode(kt)),
+							currier);
+					}
+				});
 
 				classBuilder.withMethod("<init>",
 					MethodTypeDesc.of(VOID, cd(JsonReader.class)),
@@ -188,6 +199,11 @@ public class SpecCompiler {
 					return parserFor(referencedSpec);
 				}
 				MethodRef parseMethodRef = PARSE_METHODS_BY_NODE.get(spec);
+				if (parseMethodRef == null && spec instanceof MaybeNullSpec(var child)) {
+					// We auto-generate MaybeNullSpecs whose child is a TypeRefNode,
+					// so try that before giving up.
+					parseMethodRef = PARSE_METHODS_BY_NODE.get(new MaybeNullSpec(new TypeRefNode(child.dataType())));
+				}
 				if (parseMethodRef == null) {
 					throw new IllegalArgumentException("Codec cannot parse spec: " + spec);
 				}
