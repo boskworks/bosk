@@ -21,6 +21,7 @@ import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
+import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
@@ -184,9 +185,27 @@ public class CodecHappyParseTest {
 		// Do the parsing
 		var typeMap = scanner.scan(STRING).build();
 		Codec codec = CodecBuilder.using(typeMap).build(spec);
-		codec.parserFor(spec).parse(JsonReader.create("\"parsed value\""));
+		var actual = codec.parserFor(spec).parse(JsonReader.create("\"parsed value\""));
+		assertEquals("parsed value", actual);
 
 		// Make sure exactly the right callbacks happened
 		assertEquals(List.of(new Event("before result", "parsed value")), eventRecord);
+	}
+
+	@InjectedTest
+	void representAs() throws IOException {
+		record TestRecord(String value) {}
+		var typeMap = scanner
+			.specify(DataType.of(TestRecord.class), RepresentAsSpec.as(
+				new StringNode(),
+				DataType.known(TestRecord.class),
+				TestRecord::value,
+				TestRecord::new
+			))
+			.build();
+		var codec = CodecBuilder.using(typeMap).build();
+		assertEquals(new TestRecord("test value"),
+			codec.parserFor(typeMap.get(DataType.of(TestRecord.class)))
+				.parse(JsonReader.create("\"test value\"")));
 	}
 }
