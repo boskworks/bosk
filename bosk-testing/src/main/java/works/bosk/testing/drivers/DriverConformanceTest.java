@@ -726,7 +726,8 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 
 		@Override
 		public List<Object> values() {
-			return List.of(Primitives.class.getRecordComponents());
+			// IntelliJ may tell you this cast is redundant, but it's not in Java 25
+			return List.of((Object[])Primitives.class.getRecordComponents());
 		}
 	}
 
