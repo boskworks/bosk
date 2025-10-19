@@ -2,6 +2,7 @@ package works.bosk.boson.mapping;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
@@ -173,10 +174,24 @@ public class TypeScanner {
 	}
 
 	/**
-	 * @param directives * are considered in order. The first matching directive is used.
+	 * When scanning types, uses the given {@link Lookup} object to find {@link MethodHandle}s
+	 * for any class in the same package as the {@link Lookup}'s {@linkplain Lookup#lookupClass() lookup class}.
+	 *
+	 * @return {@code this}
+	 */
+	public TypeScanner use(Lookup lookup) {
+		inProgress.add(lookup);
+		return this;
+	}
+
+	/**
+	 * @param types to scan even if not encountered during normal scanning
+	 * @param lookups to use for {@link MethodHandle} operations on types that would otherwise be inaccessible
+	 * @param directives are considered in order. The first matching directive is used.
 	 */
 	public record Bundle(
 		List<DataType> types,
+		List<Lookup> lookups,
 		List<Directive> directives
 	) { }
 
@@ -190,6 +205,7 @@ public class TypeScanner {
 	 */
 	public TypeScanner addFirst(Bundle bundle) {
 		bundles.addFirst(bundle);
+		bundle.lookups().forEach(this::use);
 		return this;
 	}
 
@@ -199,6 +215,7 @@ public class TypeScanner {
 	 */
 	public TypeScanner addLast(Bundle bundle) {
 		bundles.addLast(bundle);
+		bundle.lookups().forEach(this::use);
 		return this;
 	}
 
@@ -527,7 +544,7 @@ public class TypeScanner {
 			.toArray(Class<?>[]::new);
 		MethodHandle constructor;
 		try {
-			constructor = MethodHandles.lookup().unreflectConstructor(recordClass.getConstructor(ctorParameterTypes));
+			constructor = lookupFor(recordClass).unreflectConstructor(recordClass.getDeclaredConstructor(ctorParameterTypes));
 		} catch (NoSuchMethodException | IllegalAccessException e) {
 			throw new IllegalStateException("Unexpected error accessing record constructor for " + recordClass, e);
 		}
@@ -544,7 +561,7 @@ public class TypeScanner {
 		}
 		MethodHandle mh;
 		try {
-			mh = MethodHandles.lookup().unreflect(c.getAccessor());
+			mh = lookupFor(c.getDeclaringRecord()).unreflect(c.getAccessor());
 		} catch (IllegalAccessException e) {
 			throw new IllegalStateException("Unexpected error accessing record component accessor for " + c, e);
 		}
@@ -566,6 +583,10 @@ public class TypeScanner {
 
 	public TypeMap.Settings settings() {
 		return inProgress.settings();
+	}
+
+	private Lookup lookupFor(Class<?> c) {
+		return inProgress.lookupFor(c);
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(TypeScanner.class);

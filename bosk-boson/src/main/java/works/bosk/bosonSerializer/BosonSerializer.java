@@ -134,7 +134,9 @@ public class BosonSerializer extends StateTreeSerializer {
 		// We call this the "pre-scan", and it benefits from having the simple types above available.
 		TypeScanner.Bundle simpleScanBundle = new TypeScanner.Bundle(
 			List.of(DataType.of(ListingEntry.class)),
-			List.copyOf(directives));
+			List.of(MethodHandles.lookup()),
+			List.copyOf(directives)
+		);
 
 		directives.add(new Directive(
 			DataType.of(new TypeReference<Catalog<? extends Entity>>(){}),
@@ -348,7 +350,9 @@ public class BosonSerializer extends StateTreeSerializer {
 
 		return new TypeScanner.Bundle(
 			List.of(DataType.of(ListingEntry.class)),
-			List.copyOf(directives));
+			List.of(MethodHandles.lookup()),
+			List.copyOf(directives)
+		);
 	}
 
 	private static char stringToChar(String s) {
@@ -379,7 +383,7 @@ public class BosonSerializer extends StateTreeSerializer {
 			.get(dataType);
 	}
 
-	public record SideTableRepresentation<K extends Entity, V>(CatalogReference<K> domain, Map<Identifier, V> valuesById){
+	record SideTableRepresentation<K extends Entity, V>(CatalogReference<K> domain, Map<Identifier, V> valuesById){
 		public static <KK extends Entity, VV> SideTableRepresentation<KK,VV> fromSideTable(SideTable<KK,VV> sideTable) {
 			return new SideTableRepresentation<>(
 				sideTable.domain(),

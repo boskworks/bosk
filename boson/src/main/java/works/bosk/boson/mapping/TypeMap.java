@@ -1,5 +1,8 @@
 package works.bosk.boson.mapping;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodHandles.Lookup;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -12,18 +15,29 @@ import works.bosk.boson.types.DataType;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
 
+/**
+ * The ultimate product of a {@link TypeScanner}.
+ * Gives a mapping from {@link DataType} to {@link JsonValueSpec}.
+ * Once {@link #freeze frozen}, can be considered immutable.
+ * <p>
+ * Also tells the {@link Lookup} to use for accessing members of a given class,
+ * since users of this often need to do reflection,
+ * and there's no other obvious home for the lookups.
+ */
 public class TypeMap {
 	private final Settings settings;
 	private final Map<DataType, JsonValueSpec> memo;
+	private final Map<Package, Lookup> lookups;
 	private final AtomicBoolean isFrozen = new AtomicBoolean(false);
 
-	private TypeMap(Settings settings, Map<DataType, JsonValueSpec> memo) {
+	private TypeMap(Settings settings, Map<DataType, JsonValueSpec> memo, Map<Package, Lookup> lookups) {
 		this.settings = settings;
+		this.lookups = lookups;
 		this.memo = memo;
 	}
 
 	public TypeMap(Settings settings) {
-		this(settings, new LinkedHashMap<>());
+		this(settings, new LinkedHashMap<>(), new HashMap<>());
 	}
 
 	public void freeze() {
@@ -31,11 +45,11 @@ public class TypeMap {
 	}
 
 	public static TypeMap copyOf(TypeMap other) {
-		return new TypeMap(other.settings, new LinkedHashMap<>(other.memo));
+		return new TypeMap(other.settings, new LinkedHashMap<>(other.memo), new HashMap<>(other.lookups));
 	}
 
 	public static TypeMap empty(Settings settings) {
-		TypeMap typeMap = new TypeMap(settings, Map.of());
+		TypeMap typeMap = new TypeMap(settings, Map.of(), Map.of());
 		typeMap.freeze();
 		return typeMap;
 	}
@@ -71,6 +85,14 @@ public class TypeMap {
 			throw new IllegalStateException("TypeMap is frozen");
 		}
 		return memo.put(type, requireNonNull(newValue));
+	}
+
+	/**
+	 * @return true if {@code lookup} wasn't already registered
+	 */
+	public boolean add(Lookup lookup) {
+		var old = lookups.put(requireNonNull(lookup.lookupClass().getPackage()), lookup);
+		return old != lookup;
 	}
 
 	public void forEach(BiConsumer<DataType, JsonValueSpec> action) {
@@ -112,6 +134,14 @@ public class TypeMap {
 	 */
 	public Settings settings() {
 		return settings;
+	}
+
+	/**
+	 * @return a {@link Lookup} suitable for accessing members of the given class;
+	 * if none has been configured, returns {@link MethodHandles#publicLookup()}
+	 */
+	public Lookup lookupFor(Class<?> c) {
+		return lookups.getOrDefault(c.getPackage(), MethodHandles.publicLookup());
 	}
 
 	public String contentDescription() {

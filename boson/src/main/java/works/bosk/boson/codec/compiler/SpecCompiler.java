@@ -15,7 +15,6 @@ import java.lang.constant.ClassDesc;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.AccessFlag;
 import java.math.BigDecimal;
@@ -79,7 +78,6 @@ import static works.bosk.boson.mapping.spec.PrimitiveNumberNode.PRIMITIVE_NUMBER
 
 public class SpecCompiler {
 	final TypeMap typeMap;
-	final Map<Package, Lookup> lookups;
 	final String className;
 	static final Path tempDir;
 
@@ -92,9 +90,8 @@ public class SpecCompiler {
 		}
 	}
 
-	public SpecCompiler(TypeMap typeMap, Map<Package, Lookup> lookups) {
+	public SpecCompiler(TypeMap typeMap) {
 		this.typeMap = typeMap;
-		this.lookups = lookups;
 		this.className = "GeneratedCodec_" + CLASS_COUNTER.incrementAndGet();
 	}
 
@@ -216,10 +213,6 @@ public class SpecCompiler {
 				return new SpecInterpretingGenerator(spec, typeMap);
 			}
 		};
-	}
-
-	private Lookup lookupFor(Class<?> c) {
-		return lookups.getOrDefault(c.getPackage(), MethodHandles.publicLookup());
 	}
 
 	private void lineInfo(CodeBuilder cb) {
@@ -467,7 +460,7 @@ public class SpecCompiler {
 			MethodType type = MethodType.methodType(node.enumType(), String.class);
 			MethodHandle valueOf;
 			try {
-				valueOf = lookupFor(node.enumType()).findStatic(node.enumType(), "valueOf", type);
+				valueOf = typeMap.lookupFor(node.enumType()).findStatic(node.enumType(), "valueOf", type);
 			} catch (NoSuchMethodException | IllegalAccessException e) {
 				throw new IllegalStateException(e);
 			}
