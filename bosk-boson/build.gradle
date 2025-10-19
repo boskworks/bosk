@@ -1,0 +1,8 @@
+dependencies {
+	api project(":boson")
+	api project(":bosk-core")
+
+	testImplementation project(":bosk-testing")
+}
+
+spotbugsMain.enabled = false // https://github.com/spotbugs/spotbugs/issues/3564

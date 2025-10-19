@@ -30,7 +30,7 @@ allprojects {
 }
 
 configure(subprojects.findAll {
-	it.name.startsWith("bosk-") || it.name.startsWith("lib-")
+	it.name.startsWith("bosk-") || it.name.startsWith("lib-") || it.name == "boson"
 }) {
 	apply plugin: 'java-library'
 	apply plugin: 'com.github.spotbugs'
@@ -129,7 +129,7 @@ configure(subprojects.findAll {
 
 }
 
-configure(subprojects.findAll { it.name.startsWith("bosk-") }) {
+configure(subprojects.findAll { it.name.startsWith("bosk-") || it.name == "boson" }) {
 	dependencies {
 		// Make sure common logging settings are applied
 		testImplementation project(":lib-testing")
@@ -166,7 +166,7 @@ spotless {
 }
 
 // Apply publishing only to published modules
-configure(subprojects.findAll { it.name.startsWith("bosk-") }) {
+configure(subprojects.findAll { it.name.startsWith("bosk-") || it.name == "boson" }) {
 	apply plugin: 'maven-publish'
 	apply plugin: 'signing'
 
