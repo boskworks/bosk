@@ -63,6 +63,16 @@ public class CodecHappyParseTest {
 	}
 
 	@InjectedTest
+	void bareString() throws IOException {
+		var typeMap = scanner
+			.scan(STRING)
+			.build();
+		var codec = CodecBuilder.using(typeMap).build();
+		assertEquals("TEST_VALUE",
+			codec.parserFor(new StringNode()).parse(JsonReader.create("\"TEST_VALUE\"")));
+	}
+
+	@InjectedTest
 	void primitiveNumber(Primitive numberCase) throws IOException {
 		var typeMap = scanner
 			.scan(DataType.of(numberCase.type()))
@@ -127,16 +137,15 @@ public class CodecHappyParseTest {
 	}
 
 	@InjectedTest
-	void fixedMapWithOptionalField() throws IOException {
+	void optionalField() throws IOException {
 		record TestRecord(int intField, String strField) {}
-		var mandatory = FixedMapMember.forComponent(TestRecord.class.getRecordComponents()[1], MethodHandles.lookup());
 		var optional = new FixedMapMember(
 			new MaybeAbsentSpec(
 				new StringNode(),
 				new ComputedSpec(TypedHandle.ofSupplier(STRING, () -> "TEST_DEFAULT")),
 				MemberPresenceCondition.always()
 			),
-			mandatory.accessor()
+			TypedHandle.ofComponentAccessor(TestRecord.class.getRecordComponents()[1], MethodHandles.lookup())
 		);
 		var typeMap = scanner
 			.specifyRecordFields(TestRecord.class, Map.of("strField", optional))
