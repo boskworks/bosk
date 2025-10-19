@@ -81,7 +81,7 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 					.enable(INDENT_OUTPUT);
 
 				@Override
-				<T> T preprocess(Reference<T> reference, T newValue) {
+				protected <T> T preprocess(Reference<T> reference, T newValue) {
 					try {
 						JavaType targetType = javaType(reference.targetType());
 						String json = objectMapper.writerFor(targetType).writeValueAsString(newValue);
@@ -128,7 +128,7 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 				 * @author pdoyle
 				 */
 				@Override
-				<T> T preprocess(Reference<T> reference, T newValue) {
+				protected <T> T preprocess(Reference<T> reference, T newValue) {
 					Codec<T> codec = bp.getCodec(reference.targetType(), reference.targetClass(), codecRegistry, boskInfo);
 					BsonDocument document = new BsonDocument();
 					try (BsonDocumentWriter writer = new BsonDocumentWriter(document)) {
@@ -208,10 +208,10 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 		}
 	}
 
-	private static abstract class PreprocessingDriver implements BoskDriver {
+	public static abstract class PreprocessingDriver implements BoskDriver {
 		private final BoskDriver downstream;
 
-		private PreprocessingDriver(BoskDriver downstream) {
+		protected PreprocessingDriver(BoskDriver downstream) {
 			this.downstream = downstream;
 		}
 
@@ -235,7 +235,7 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 			downstream.submitConditionalCreation(target, preprocess(target, newValue));
 		}
 
-		abstract <T> T preprocess(Reference<T> reference, T newValue);
+		protected abstract <T> T preprocess(Reference<T> reference, T newValue);
 
 		@Override
 		public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
