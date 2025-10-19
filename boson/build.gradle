@@ -1,0 +1,10 @@
+
+dependencies {
+	api project(":bosk-core")
+
+	testImplementation project(":bosk-testing")
+	testImplementation platform(libs.jackson.bom)
+	testImplementation libs.jackson.databind
+}
+
+spotbugsMain.enabled = false // https://github.com/spotbugs/spotbugs/issues/3564
