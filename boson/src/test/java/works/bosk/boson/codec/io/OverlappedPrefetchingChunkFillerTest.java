@@ -3,14 +3,17 @@ package works.bosk.boson.codec.io;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static works.bosk.boson.codec.io.ByteChunkJsonReader.CARRYOVER_BYTES;
 
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class OverlappedPrefetchingChunkFillerTest {
 
 	@Test
