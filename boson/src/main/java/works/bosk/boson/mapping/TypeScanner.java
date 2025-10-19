@@ -195,7 +195,7 @@ public class TypeScanner {
 		List<Directive> directives
 	) { }
 
-	// TODO: A variant of Directive that takes a Supplier. Then we know we can use the same JsonValueSpec every time
+	// TODO: A variant of Directive that takes a JsonValueSpec. Then we know we can use the same JsonValueSpec every time
 	// rather than being required to ask this spec function to generate a new one each time
 	public record Directive(DataType pattern, Function<KnownType, JsonValueSpec> spec) {}
 
