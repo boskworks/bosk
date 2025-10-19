@@ -21,11 +21,11 @@ import static works.bosk.boson.codec.compiler.SpecCompilerTest.testTypeMap;
 
 @InjectFrom(SettingsInjector.class)
 @TestInstance(PER_METHOD)
-class CodecTest {
+class BasicCodecTest {
 	final TypeMap typeMap;
 	private final JsonValueSpec spec;
 
-	CodecTest(TypeMap.Settings settings) throws NoSuchMethodException, IllegalAccessException {
+	BasicCodecTest(TypeMap.Settings settings) throws NoSuchMethodException, IllegalAccessException {
 		DataType type = DataType.of(OneOfEach.class);
 		typeMap = testTypeMap(type, settings);
 		spec = typeMap.get(type);
@@ -48,5 +48,5 @@ class CodecTest {
 		assertEquals(expectedOneOfEach(), actual);
 	}
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(CodecTest.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(BasicCodecTest.class);
 }
