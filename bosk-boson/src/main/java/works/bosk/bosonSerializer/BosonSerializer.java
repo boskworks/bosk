@@ -310,7 +310,8 @@ public class BosonSerializer extends StateTreeSerializer {
 			listValueType -> switch (listValueType) {
 				case BoundType bt -> {
 					KnownType elementType = (KnownType) bt.parameterType(ListValue.class, 0);
-					Function<Object[], ? extends ListValue<Object>> factory = listValueFactory((Class<ListValue<Object>>)listValueType.rawClass());
+					@SuppressWarnings("unchecked")
+					var factory = listValueFactory((Class<ListValue<Object>>)listValueType.rawClass());
 					Object[] arrayArchetype = (Object[]) Array.newInstance(elementType.rawClass(), 0);
 					var listSpec = preScan(new BoundType(List.class, List.of(elementType)), simpleScanBundle);
 					yield RepresentAsSpec.<ListValue<?>,List<?>>as(

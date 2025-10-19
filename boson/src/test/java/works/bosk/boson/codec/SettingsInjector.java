@@ -13,13 +13,13 @@ record SettingsInjector() implements ParameterInjector {
 	}
 
 	@Override
-	public List values() {
+	public List<Object> values() {
 		return Stream.of(
 			new TypeMap.Settings(false, false, false, false, false),
 			new TypeMap.Settings(true, false, false, false, false),
 			new TypeMap.Settings(true, false, false, true, false),
 			new TypeMap.Settings(true, false, true, false, false),
 			new TypeMap.Settings(true, true, true, true, false)
-		).toList();
+		).<Object>map(x->x).toList();
 	}
 }

@@ -178,7 +178,7 @@ public record RoundTripTest(Settings settings) {
 		}
 
 		@Override
-		public List values() {
+		public List<Object> values() {
 			return Stream.of(
 				new Escape("\"", "\\\""),
 				new Escape("\\", "\\\\"),
@@ -189,7 +189,7 @@ public record RoundTripTest(Settings settings) {
 				new Escape("\r", "\\r"),
 				new Escape("\t", "\\t"),
 				new Escape("👍", "\\ud83d\\udc4d")
-			).limit(1).toList();
+			).<Object>map(x->x).toList();
 		}
 	}
 

@@ -1,8 +1,6 @@
 package works.bosk.boson.codec;
 
 import java.io.InputStream;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import works.bosk.boson.codec.io.ByteArrayChunkFiller;
 import works.bosk.boson.codec.io.ByteChunkJsonReader;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
@@ -213,6 +211,4 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 * @return some notion of the current offset in the input. Useful for diagnostics.
 	 */
 	long currentOffset();
-
-	Logger LOGGER = LoggerFactory.getLogger(JsonReader.class);
 }
