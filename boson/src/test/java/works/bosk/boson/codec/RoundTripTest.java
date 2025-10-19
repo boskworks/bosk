@@ -145,10 +145,12 @@ public record RoundTripTest(Settings settings) {
 
 	private void testRoundTrip(Class<? extends Record> recordClass, String json, Object value) throws IOException {
 		DataType type = DataType.of(recordClass);
-		TypeScanner typeScanner = new TypeScanner(settings);
+		TypeScanner typeScanner = new TypeScanner(settings)
+			.use(MethodHandles.lookup());
 		TypeMap typeMap = typeScanner.scan(type).build();
 		JsonValueSpec spec = typeMap.get(type);
-		Codec codec = CodecBuilder.using(typeMap).using(MethodHandles.lookup()).build();
+		CodecBuilder codecBuilder = CodecBuilder.using(typeMap);
+		Codec codec = codecBuilder.build();
 		var parsed = codec.parserFor(spec).parse(CharArrayJsonReader.forString(json));
 		assertEquals(value, parsed);
 		assertEquals(json, generateJson(codec, parsed, spec));
@@ -178,7 +180,7 @@ public record RoundTripTest(Settings settings) {
 		}
 
 		@Override
-		public List values() {
+		public List<Object> values() {
 			return Stream.of(
 				new Escape("\"", "\\\""),
 				new Escape("\\", "\\\\"),
@@ -189,7 +191,7 @@ public record RoundTripTest(Settings settings) {
 				new Escape("\r", "\\r"),
 				new Escape("\t", "\\t"),
 				new Escape("👍", "\\ud83d\\udc4d")
-			).limit(1).toList();
+			).<Object>map(x->x).toList();
 		}
 	}
 

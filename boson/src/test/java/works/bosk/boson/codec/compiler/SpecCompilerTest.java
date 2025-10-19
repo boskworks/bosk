@@ -83,12 +83,13 @@ public class SpecCompilerTest {
 		KnownType type = DataType.known(TestEnum.class);
 		TypeRefNode typeRefNode = new TypeRefNode(type);
 		TypeMap typeMap = new TypeScanner(DEFAULT)
+			.use(MethodHandles.lookup())
 			.scan(type)
 			.build();
 
 		// Compiling a reference node should work exactly the same as
 		// whatever node the typeScanner would return for TestEnum.
-		Parser parser = new SpecCompiler(typeMap, LOOKUP_MAP).compile().parserFor(typeRefNode);
+		Parser parser = new SpecCompiler(typeMap).compile().parserFor(typeRefNode);
 		TestEnum actual = (TestEnum) parser.parse(CharArrayJsonReader.forString("\"TEST1\""));
 		assertEquals(TestEnum.TEST1, actual);
 	}
@@ -119,7 +120,7 @@ public class SpecCompilerTest {
 
 	private Parser compiledParser(DataType dataType) throws NoSuchMethodException, IllegalAccessException {
 		var typeMap = testTypeMap(dataType, new TypeMap.Settings(true, true, true, true, false));
-		return new SpecCompiler(typeMap, LOOKUP_MAP).compile().parserFor(typeMap.get(dataType));
+		return new SpecCompiler(typeMap).compile().parserFor(typeMap.get(dataType));
 	}
 
 	public static TypeMap testTypeMap(DataType dataType, TypeMap.Settings settings) throws NoSuchMethodException, IllegalAccessException {
@@ -132,6 +133,7 @@ public class SpecCompilerTest {
 		);
 		MemberPresenceCondition isPresent = memberValue(notEquals(constant(STRING, ABSENT_FIELD_VALUE)));
 		return new TypeScanner(settings)
+			.use(MethodHandles.lookup())
 			.specify(DataType.known(Month.class), Month.specNode())
 			.specifyRecordFields(OneOfEach.class, Map.of(
 				"computedField", new FixedMapMember(new ComputedSpec(computedFieldValue), computedFieldValue),

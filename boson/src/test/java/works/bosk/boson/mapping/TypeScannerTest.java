@@ -31,7 +31,7 @@ class TypeScannerTest {
 
 	@Test
 	void testSimpleDirective() throws IOException {
-		scanner.addLast(new Bundle(List.of(), List.of(
+		scanner.addLast(new Bundle(List.of(), List.of(), List.of(
 			new Directive(
 				DataType.FLOAT,
 				_ -> RepresentAsSpec.as(
@@ -62,7 +62,7 @@ class TypeScannerTest {
 
 	@Test
 	void testTypeBound() throws IOException {
-		scanner.addLast(new Bundle(List.of(), List.of(
+		scanner.addLast(new Bundle(List.of(), List.of(), List.of(
 			new Directive(
 				WildcardType.extends_(Overridden.class),
 				t -> RepresentAsSpec.asInt(

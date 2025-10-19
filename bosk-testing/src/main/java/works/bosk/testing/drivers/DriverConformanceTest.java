@@ -679,9 +679,8 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		}
 
 		@Override
-		@SuppressWarnings({"rawtypes","unchecked"})
-		public List values() {
-			return childIDs();
+		public List<Object> values() {
+			return childIDs().stream().<Object>map(x->x).toList();
 		}
 	}
 
@@ -709,9 +708,8 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		}
 
 		@Override
-		@SuppressWarnings({"rawtypes","unchecked"})
-		public List values() {
-			return testEntityFields();
+		public List<Object> values() {
+			return testEntityFields().stream().<Object>map(x->x).toList();
 		}
 	}
 
@@ -727,9 +725,9 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		}
 
 		@Override
-		@SuppressWarnings({"rawtypes","unchecked"})
-		public List values() {
-			return List.of(Primitives.class.getRecordComponents());
+		public List<Object> values() {
+			// IntelliJ may tell you this cast is redundant, but it's not in Java 25
+			return List.of((Object[])Primitives.class.getRecordComponents());
 		}
 	}
 
