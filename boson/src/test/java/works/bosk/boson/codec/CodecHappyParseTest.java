@@ -3,6 +3,8 @@ package works.bosk.boson.codec;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.TestInstance;
@@ -17,6 +19,7 @@ import works.bosk.boson.mapping.spec.EnumByNameNode;
 import works.bosk.boson.mapping.spec.FixedMapMember;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
+import works.bosk.boson.mapping.spec.ParseCallbackSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
@@ -28,6 +31,7 @@ import works.bosk.junit.InjectedTest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD;
+import static works.bosk.boson.types.DataType.BOOLEAN;
 import static works.bosk.boson.types.DataType.STRING;
 
 /**
@@ -47,7 +51,7 @@ public class CodecHappyParseTest {
 	@InjectedTest
 	void bareLiterals() throws IOException {
 		var typeMap = scanner
-			.scan(DataType.BOOLEAN)
+			.scan(BOOLEAN)
 			.scan(STRING)
 			.build();
 		var codec = CodecBuilder.using(typeMap).build();
@@ -155,5 +159,25 @@ public class CodecHappyParseTest {
 						"intField": 456
 					}
 					""")));
+	}
+
+	@InjectedTest
+	void parseCallback() throws IOException {
+		// Set up the callback
+		record Event(String beforeResult, String parsedValue) {}
+		var eventRecord = new ArrayList<Event>();
+		TypedHandle before = TypedHandle.ofSupplier(STRING, () ->
+			"before result");
+		TypedHandle after = TypedHandle.<String, String>ofBiConsumer(STRING, STRING, (br, pv) ->
+			eventRecord.add(new Event(br, pv)));
+		var spec = new ParseCallbackSpec(before, new StringNode(), after);
+
+		// Do the parsing
+		var typeMap = scanner.scan(STRING).build();
+		Codec codec = CodecBuilder.using(typeMap).build(spec);
+		codec.parserFor(spec).parse(JsonReader.create("\"parsed value\""));
+
+		// Make sure exactly the right callbacks happened
+		assertEquals(List.of(new Event("before result", "parsed value")), eventRecord);
 	}
 }
