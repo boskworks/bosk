@@ -29,8 +29,10 @@ import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
 import works.bosk.boson.mapping.spec.handles.ObjectAccumulator;
 import works.bosk.boson.mapping.spec.handles.ObjectEmitter;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
+import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
+import works.bosk.boson.types.TypeReference;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
 
@@ -213,6 +215,39 @@ public class CodecHappyParseTest {
 		assertEquals(new TestRecord("test value"),
 			codec.parserFor(typeMap.get(DataType.of(TestRecord.class)))
 				.parse(JsonReader.create("\"test value\"")));
+	}
+
+	@InjectedTest
+	void uniformMapNode() throws IOException, NoSuchMethodException, IllegalAccessException {
+		BoundType mapType = (BoundType) DataType.known(new TypeReference<LinkedHashMap<String, BigDecimal>>() { });
+		var spec = new UniformMapNode(
+			new StringNode(),
+			new BigNumberNode(BigDecimal.class),
+			TypeScanner.mapAccumulator(mapType),
+			TypeScanner.mapEmitter(mapType)
+		);
+
+		var typeMap = scanner
+			.scan(mapType)
+			.build();
+		var codec = CodecBuilder.using(typeMap).build(spec);
+		var json = """
+			{
+				"member1": 10,
+				"member2": 20,
+				"member3": 30
+			}
+			""";
+		var expected = new LinkedHashMap<String, BigDecimal>();
+		expected.put("member1", new BigDecimal("10"));
+		expected.put("member2", new BigDecimal("20"));
+		expected.put("member3", new BigDecimal("30"));
+
+		Map<?,?> actual = (Map<?, ?>) codec.parserFor(spec).parse(JsonReader.create(json));
+		assertEquals(expected, actual);
+
+		assertEquals(List.copyOf(expected.keySet()), List.copyOf(actual.keySet()),
+			"Keys are in the expected order");
 	}
 
 	/**
