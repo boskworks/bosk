@@ -3,6 +3,7 @@ package works.bosk.boson.mapping.spec;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.RecordComponent;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
+import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
 
@@ -23,7 +24,7 @@ public record FixedMapMember(
 	public static FixedMapMember forComponent(RecordComponent rc, MethodHandles.Lookup lookup) {
 		return new FixedMapMember(
 			new TypeRefNode(DataType.known(rc.getType())),
-			TypedHandle.ofComponentAccessor(rc, lookup)
+			TypedHandles.componentAccessor(rc, lookup)
 		);
 	}
 

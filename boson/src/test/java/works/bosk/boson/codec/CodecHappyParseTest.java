@@ -29,6 +29,7 @@ import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
 import works.bosk.boson.mapping.spec.handles.ObjectAccumulator;
 import works.bosk.boson.mapping.spec.handles.ObjectEmitter;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
+import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
@@ -151,10 +152,10 @@ public class CodecHappyParseTest {
 		var optional = new FixedMapMember(
 			new MaybeAbsentSpec(
 				new StringNode(),
-				new ComputedSpec(TypedHandle.ofSupplier(STRING, () -> "TEST_DEFAULT")),
+				new ComputedSpec(TypedHandles.supplier(STRING, () -> "TEST_DEFAULT")),
 				MemberPresenceCondition.always()
 			),
-			TypedHandle.ofComponentAccessor(TestRecord.class.getRecordComponents()[1], MethodHandles.lookup())
+			TypedHandles.componentAccessor(TestRecord.class.getRecordComponents()[1], MethodHandles.lookup())
 		);
 		var typeMap = scanner
 			.specifyRecordFields(TestRecord.class, Map.of("strField", optional))
@@ -184,9 +185,9 @@ public class CodecHappyParseTest {
 		// Set up the callback
 		record Event(String beforeResult, String parsedValue) {}
 		var eventRecord = new ArrayList<Event>();
-		TypedHandle before = TypedHandle.ofSupplier(STRING, () ->
+		TypedHandle before = TypedHandles.supplier(STRING, () ->
 			"before result");
-		TypedHandle after = TypedHandle.<String, String>ofBiConsumer(STRING, STRING, (br, pv) ->
+		TypedHandle after = TypedHandles.<String,String>biConsumer(STRING, STRING, (br, pv) ->
 			eventRecord.add(new Event(br, pv)));
 		var spec = new ParseCallbackSpec(before, new StringNode(), after);
 
@@ -264,7 +265,7 @@ public class CodecHappyParseTest {
 			new StringNode(),
 			new PrimitiveNumberNode(int.class),
 			new ObjectAccumulator(
-				TypedHandle.ofConstant(INT, 0),
+				TypedHandles.constant(INT, 0),
 				new TypedHandle(
 					MethodHandles.lookup().findStatic(
 						CodecHappyParseTest.class,

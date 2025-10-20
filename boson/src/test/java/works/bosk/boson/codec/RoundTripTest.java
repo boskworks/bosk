@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.TestInstance;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeMap.Settings;
@@ -28,6 +29,7 @@ import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
+import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.DataType;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
@@ -35,12 +37,12 @@ import works.bosk.junit.ParameterInjector;
 
 import static java.time.DayOfWeek.WEDNESDAY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD;
 import static works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.enclosingObject;
 import static works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.memberValue;
 import static works.bosk.boson.mapping.spec.handles.TypedHandles.canonicalConstructor;
 import static works.bosk.boson.mapping.spec.handles.TypedHandles.constant;
 import static works.bosk.boson.mapping.spec.handles.TypedHandles.notEquals;
-import static works.bosk.boson.mapping.spec.handles.TypedHandles.recordComponent;
 import static works.bosk.boson.types.DataType.STRING;
 
 @InjectFrom({
@@ -49,7 +51,14 @@ import static works.bosk.boson.types.DataType.STRING;
 	RoundTripTest.PrimitiveInjector.class,
 	RoundTripTest.PresenceConditionInjector.class
 })
-public record RoundTripTest(Settings settings) {
+@TestInstance(PER_METHOD)
+public final class RoundTripTest {
+	final Settings settings;
+	final MethodHandles.Lookup lookup = MethodHandles.lookup();
+
+	public RoundTripTest(Settings settings) {
+		this.settings = settings;
+	}
 
 	@InjectedTest
 	void bigNumber() throws IOException {
@@ -81,9 +90,9 @@ public record RoundTripTest(Settings settings) {
 			new LinkedHashMap<>(Map.of(
 				"field", new FixedMapMember(
 					maybeAbsent,
-					recordComponent(RecordWithOptionalField.class.getRecordComponents()[0], MethodHandles.lookup()))
+					TypedHandles.componentAccessor(RecordWithOptionalField.class.getRecordComponents()[0], lookup))
 			)),
-			canonicalConstructor(RecordWithOptionalField.class, MethodHandles.lookup())
+			canonicalConstructor(RecordWithOptionalField.class, lookup)
 		);
 		testRoundTrip(node, "{}", new RecordWithOptionalField("default"));
 		testRoundTrip(node, "{\"field\":\"hello\"}", new RecordWithOptionalField("hello"));
@@ -146,7 +155,7 @@ public record RoundTripTest(Settings settings) {
 	private void testRoundTrip(Class<? extends Record> recordClass, String json, Object value) throws IOException {
 		DataType type = DataType.of(recordClass);
 		TypeScanner typeScanner = new TypeScanner(settings)
-			.use(MethodHandles.lookup());
+			.use(lookup);
 		TypeMap typeMap = typeScanner.scan(type).build();
 		JsonValueSpec spec = typeMap.get(type);
 		CodecBuilder codecBuilder = CodecBuilder.using(typeMap);
@@ -228,7 +237,7 @@ public record RoundTripTest(Settings settings) {
 			return List.of(
 				memberValue(notEquals(constant(STRING, "default"))),
 				enclosingObject(notEquals(constant(STRING, "default"))
-					.bind(0, recordComponent(component, MethodHandles.lookup()))
+					.bind(0, TypedHandles.componentAccessor(component, MethodHandles.lookup()))
 				)
 			);
 		}

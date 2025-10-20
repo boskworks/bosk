@@ -61,7 +61,7 @@ public sealed interface MemberPresenceCondition {
 
 		public static MemberValue ifNonNull(KnownType argType) {
 			return new MemberValue(
-				TypedHandle.ofPredicate(argType, Objects::nonNull)
+				TypedHandles.predicate(argType, Objects::nonNull)
 			);
 		}
 	}
