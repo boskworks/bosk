@@ -5,6 +5,8 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.TestInstance;
 import works.bosk.boson.codec.RoundTripTest.Primitive;
 import works.bosk.boson.mapping.TypeMap.Settings;
 import works.bosk.boson.mapping.TypeScanner;
+import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.BigNumberNode;
 import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
@@ -25,6 +28,8 @@ import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.UniformMapNode;
+import works.bosk.boson.mapping.spec.handles.ArrayAccumulator;
+import works.bosk.boson.mapping.spec.handles.ArrayEmitter;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
 import works.bosk.boson.mapping.spec.handles.ObjectAccumulator;
 import works.bosk.boson.mapping.spec.handles.ObjectEmitter;
@@ -126,6 +131,62 @@ public class CodecHappyParseTest {
 		var codec = CodecBuilder.using(typeMap).build();
 		assertEquals(TimeUnit.DAYS,
 			codec.parserFor(new EnumByNameNode(TimeUnit.class)).parse(JsonReader.create("\"DAYS\"")));
+	}
+
+	/**
+	 * As a demonstration of flexibility, we represent the array as a pipe-separated string,
+	 * rather than the more obvious List<String>.
+	 */
+	@InjectedTest
+	void array() throws IOException {
+		var spec = new ArrayNode(
+			new StringNode(),
+			ArrayAccumulator.of(new ArrayAccumulator.Handler<StringBuilder, String, String>() {
+				@Override
+				public StringBuilder create() {
+					return new StringBuilder();
+				}
+
+				@Override
+				public StringBuilder integrate(StringBuilder accumulator, String element) {
+					if (!accumulator.isEmpty()) {
+						accumulator.append('|');
+					}
+					accumulator.append(element);
+					return accumulator;
+				}
+
+				@Override
+				public String finish(StringBuilder accumulator) {
+					return accumulator.toString();
+				}
+			}),
+			ArrayEmitter.of(new ArrayEmitter.Handler<String, Iterator<String>, String>() {
+				@Override
+				public Iterator<String> start(String representation) {
+					String[] parts = representation.split("\\|", -1);
+					return List.of(parts).iterator();
+				}
+
+				@Override
+				public boolean hasNext(Iterator<String> iterator) {
+					return iterator.hasNext();
+				}
+
+				@Override
+				public String next(Iterator<String> iterator) {
+					return iterator.next();
+				}
+			})
+		);
+		var json = """
+			[ "first", "second", "third" ]
+			""";
+		var codec = CodecBuilder
+			.using(scanner.scan(STRING).build())
+			.build(spec);
+		assertEquals("first|second|third",
+			codec.parserFor(spec).parse(JsonReader.create(json)));
 	}
 
 	@InjectedTest

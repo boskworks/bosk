@@ -19,6 +19,7 @@ import works.bosk.boson.types.KnownType;
 import static java.lang.invoke.MethodType.methodType;
 import static works.bosk.boson.types.DataType.BOOLEAN;
 import static works.bosk.boson.types.DataType.OBJECT;
+import static works.bosk.boson.types.DataType.VOID;
 
 public final class TypedHandles {
 	private TypedHandles(){}
