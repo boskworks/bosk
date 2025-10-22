@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.TestInstance;
-import works.bosk.boson.codec.RoundTripTest.Primitive;
+import works.bosk.boson.codec.PrimitiveInjector.PrimitiveNumber;
 import works.bosk.boson.mapping.TypeMap.Settings;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.spec.ArrayNode;
@@ -53,7 +53,7 @@ import static works.bosk.boson.types.DataType.STRING;
 /**
  * Tests that {@link Codec} parses valid JSON correctly.
  */
-@InjectFrom({SettingsInjector.class, RoundTripTest.PrimitiveInjector.class})
+@InjectFrom({SettingsInjector.class, PrimitiveInjector.class})
 @TestInstance(PER_METHOD)
 public class CodecHappyParseTest {
 	final Settings settings;
@@ -89,7 +89,7 @@ public class CodecHappyParseTest {
 	}
 
 	@InjectedTest
-	void primitiveNumber(Primitive numberCase) throws IOException {
+	void primitiveNumber(PrimitiveNumber numberCase) throws IOException {
 		var typeMap = scanner
 			.scan(DataType.of(numberCase.type()))
 			.build();
@@ -101,7 +101,7 @@ public class CodecHappyParseTest {
 	}
 
 	@InjectedTest
-	void boxedNumber(Primitive numberCase) throws IOException {
+	void boxedNumber(PrimitiveNumber numberCase) throws IOException {
 		var typeMap = scanner
 			.scan(DataType.of(numberCase.boxedType()))
 			.build();

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.TestInstance;
+import works.bosk.boson.codec.PrimitiveInjector.PrimitiveNumber;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeMap.Settings;
@@ -48,7 +49,7 @@ import static works.bosk.boson.types.DataType.STRING;
 @InjectFrom({
 	SettingsInjector.class,
 	RoundTripTest.EscapeInjector.class,
-	RoundTripTest.PrimitiveInjector.class,
+	PrimitiveInjector.class,
 	RoundTripTest.PresenceConditionInjector.class
 })
 @TestInstance(PER_METHOD)
@@ -117,8 +118,8 @@ public final class RoundTripTest {
 	}
 
 	@InjectedTest
-	void primitiveNumber(Primitive p) throws IOException {
-		testRoundTrip(new PrimitiveNumberNode(p.type), p.json, p.value);
+	void primitiveNumber(PrimitiveNumber p) throws IOException {
+		testRoundTrip(new PrimitiveNumberNode(p.type()), p.json(), p.value());
 	}
 
 	/**
@@ -138,8 +139,8 @@ public final class RoundTripTest {
 	}
 
 	@InjectedTest
-	void boxedPrimitive(Primitive p) throws IOException {
-		testRoundTrip(new BoxedPrimitiveSpec(new PrimitiveNumberNode(p.type)), p.json, p.value);
+	void boxedPrimitive(PrimitiveNumber p) throws IOException {
+		testRoundTrip(new BoxedPrimitiveSpec(new PrimitiveNumberNode(p.type())), p.json(), p.value());
 	}
 
 	@InjectedTest
@@ -201,25 +202,6 @@ public final class RoundTripTest {
 				new Escape("\t", "\\t"),
 				new Escape("👍", "\\ud83d\\udc4d")
 			).<Object>map(x->x).toList();
-		}
-	}
-
-	record Primitive(String name, Class<?> type, Class<?> boxedType, Object value, String json) {}
-
-	record PrimitiveInjector() implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(Primitive.class);
-		}
-
-		@Override
-		public List<Object> values() {
-			return List.of(
-				new Primitive("int", int.class, Integer.class, 123, "123"),
-				new Primitive("long", long.class, Long.class, 123L, "123"),
-				new Primitive("float", float.class, Float.class, 123.0F, "123.0"),
-				new Primitive("double", double.class, Double.class, 123.0D, "123.0")
-			);
 		}
 	}
 
