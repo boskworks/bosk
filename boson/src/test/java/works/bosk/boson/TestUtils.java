@@ -202,7 +202,7 @@ public class TestUtils {
 	private static final AtomicLong callbackCounter = new AtomicLong(123);
 
 	static void main() throws IOException {
-		Path targetDir = Path.of("bosonSerializer/build/bigfiles");
+		Path targetDir = Path.of("boson/build/bigfiles");
 		targetDir.toFile().mkdirs();
 		writeRandomToFile(targetDir.resolve("1k.json"), 1_000);
 		writeRandomToFile(targetDir.resolve("10k.json"), 10_000);
