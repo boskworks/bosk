@@ -33,4 +33,9 @@ public record UniformMapNode(
 	public KnownType dataType() {
 		return accumulator.resultType();
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return "Uniform_" + dataType().rawClass().getSimpleName();
+	}
 }

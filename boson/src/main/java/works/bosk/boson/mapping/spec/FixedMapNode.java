@@ -63,4 +63,9 @@ public record FixedMapNode(
 		return finisher.returnType();
 	}
 
+	@Override
+	public String briefIdentifier() {
+		return "Fixed_" + dataType().rawClass().getSimpleName();
+	}
+
 }

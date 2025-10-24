@@ -15,4 +15,9 @@ public record StringNode() implements ScalarSpec {
 	public KnownType dataType() {
 		return DataType.STRING;
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return "String";
+	}
 }

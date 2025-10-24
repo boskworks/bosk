@@ -23,4 +23,9 @@ public record EnumByNameNode(
 	public KnownType dataType() {
 		return DataType.known(enumType());
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return enumType.getSimpleName() + "_ByName";
+	}
 }

@@ -25,4 +25,9 @@ public record MaybeAbsentSpec(
 	public KnownType dataType() {
 		return this.ifPresent().dataType();
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return "Maybe_" + ifPresent.briefIdentifier();
+	}
 }

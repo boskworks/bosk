@@ -272,7 +272,7 @@ public class SpecCompiler {
 	private MethodRef computeParseMethod(SpecNode valueSpec) {
 		var returnType = valueSpec.dataType();
 		return new MethodRef(
-			"parse_" + valueSpec.getClass().getSimpleName() + "_" + PARSE_METHODS_BY_NODE.size(),
+			"parse_" + valueSpec.briefIdentifier() + "_" + PARSE_METHODS_BY_NODE.size(),
 			ClassDesc.of(className),
 			mtd(ParserCodeBuilder.sanitized(returnType.rawClass())),
 			Set.of(PUBLIC, FINAL));

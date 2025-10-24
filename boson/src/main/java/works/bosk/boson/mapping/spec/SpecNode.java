@@ -25,6 +25,12 @@ public sealed interface SpecNode permits JsonValueSpec, ComputedSpec, MaybeAbsen
 	KnownType dataType();
 
 	/**
+	 * @return a short string suitable for including in a method name.
+	 * There are no uniqueness requirements; it's only a troubleshooting hint.
+	 */
+	String briefIdentifier();
+
+	/**
 	 * Helper to produce a modified node of the same type as a given
 	 * node but with different field values.
 	 * <p>
