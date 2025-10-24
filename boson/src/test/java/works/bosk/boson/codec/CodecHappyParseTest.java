@@ -2,6 +2,7 @@ package works.bosk.boson.codec;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,9 +24,13 @@ import works.bosk.boson.mapping.spec.ParseCallbackSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.StringNode;
+import works.bosk.boson.mapping.spec.UniformMapNode;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
+import works.bosk.boson.mapping.spec.handles.ObjectAccumulator;
+import works.bosk.boson.mapping.spec.handles.ObjectEmitter;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.types.DataType;
+import works.bosk.boson.types.KnownType;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
 
@@ -33,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD;
 import static works.bosk.boson.types.DataType.BOOLEAN;
+import static works.bosk.boson.types.DataType.INT;
 import static works.bosk.boson.types.DataType.STRING;
 
 /**
@@ -207,5 +213,125 @@ public class CodecHappyParseTest {
 		assertEquals(new TestRecord("test value"),
 			codec.parserFor(typeMap.get(DataType.of(TestRecord.class)))
 				.parse(JsonReader.create("\"test value\"")));
+	}
+
+	/**
+	 * This is a silly test, but it demonstrates the expressiveness of UniformMapNode
+	 * by directly summing the map values during parsing, entirely with primitives.
+	 */
+	@InjectedTest
+	void primitiveUniformMapNode() throws IOException, NoSuchMethodException, IllegalAccessException {
+		TypedHandle intIdentity = new TypedHandle(
+			MethodHandles.identity(int.class),
+			INT, List.of(INT)
+		);
+		var spec = new UniformMapNode(
+			new StringNode(),
+			new PrimitiveNumberNode(int.class),
+			new ObjectAccumulator(
+				TypedHandle.ofConstant(INT, 0),
+				new TypedHandle(
+					MethodHandles.lookup().findStatic(
+						CodecHappyParseTest.class,
+						"sumIntegrator",
+						MethodType.methodType(int.class, int.class, String.class, int.class)
+					),
+					INT, List.of(INT, STRING, INT)),
+				intIdentity
+			),
+			// The emitter isn't used here, but it needs to be realistic enough
+			// to satisfy the validation assertions.
+			Unsummer.emitter()
+		);
+
+		var typeMap = scanner
+			.scan(INT)
+			.build();
+		var codec = CodecBuilder.using(typeMap).build(spec);
+		var json = """
+			{
+				"member1": 10,
+				"member2": 20,
+				"member3": 30
+			}
+			""";
+		assertEquals(60, codec.parserFor(spec).parse(JsonReader.create(json)));
+	}
+
+	static int sumIntegrator(int accumulator, String key, int value) {
+		return accumulator + value;
+	}
+
+	/**
+	 * This is a lot of effort for code that never runs...
+	 * but hopefully it pays off when we write the generator tests!
+	 */
+	static final class Unsummer {
+
+		static ObjectEmitter emitter() throws NoSuchMethodException, IllegalAccessException {
+			KnownType unsummer = DataType.known(Unsummer.class);
+			KnownType member = DataType.known(Member.class);
+			return new ObjectEmitter(
+				new TypedHandle(
+					MethodHandles.lookup().findConstructor(
+						Unsummer.class,
+						MethodType.methodType(void.class, int.class)
+					),
+					unsummer, List.of(INT)
+				),
+				new TypedHandle(
+					MethodHandles.lookup().findVirtual(
+						Unsummer.class,
+						"hasNext",
+						MethodType.methodType(boolean.class)
+					),
+					DataType.BOOLEAN, List.of(unsummer)
+				),
+				new TypedHandle(
+					MethodHandles.lookup().findVirtual(
+						Unsummer.class,
+						"next",
+						MethodType.methodType(Member.class)
+					),
+					member, List.of(unsummer)
+				),
+				new TypedHandle(
+					MethodHandles.lookup().findVirtual(
+						Member.class,
+						"key",
+						MethodType.methodType(String.class)
+					),
+					STRING, List.of(member)
+				),
+				new TypedHandle(
+					MethodHandles.lookup().findVirtual(
+						Member.class,
+						"value",
+						MethodType.methodType(int.class)
+					),
+					INT, List.of(member)
+				)
+			);
+		}
+
+		int numMembersEmitted = 0;
+		int remainingValue;
+
+		Unsummer(int targetValue) {
+			this.remainingValue = targetValue;
+		}
+
+		boolean hasNext() {
+			return remainingValue > 0;
+		}
+
+		record Member(String key, int value) {}
+
+		Member next() {
+			int value = Math.min(10 * (++numMembersEmitted), remainingValue);
+			remainingValue -= value;
+			return new Member("member" + numMembersEmitted, value);
+		}
+
 	}
 }
