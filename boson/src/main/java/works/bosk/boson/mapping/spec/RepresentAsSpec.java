@@ -48,6 +48,11 @@ public record RepresentAsSpec(
 		return fromRepresentation().returnType();
 	}
 
+	@Override
+	public String briefIdentifier() {
+		return "RepresentAs_" + dataType().rawClass().getSimpleName();
+	}
+
 	/**
 	 * Convenience method using {@link Function} instead of {@link TypedHandle}.
 	 */

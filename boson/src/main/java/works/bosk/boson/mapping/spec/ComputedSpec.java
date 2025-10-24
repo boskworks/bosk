@@ -25,4 +25,9 @@ public record ComputedSpec(
 	public KnownType dataType() {
 		return supplier().returnType();
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return "Computed_" + dataType().rawClass().getSimpleName();
+	}
 }

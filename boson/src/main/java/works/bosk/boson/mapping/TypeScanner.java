@@ -195,7 +195,7 @@ public class TypeScanner {
 		List<Directive> directives
 	) { }
 
-	// TODO: A variant of Directive that takes a Supplier. Then we know we can use the same JsonValueSpec every time
+	// TODO: A variant of Directive that takes a JsonValueSpec. Then we know we can use the same JsonValueSpec every time
 	// rather than being required to ask this spec function to generate a new one each time
 	public record Directive(DataType pattern, Function<KnownType, JsonValueSpec> spec) {}
 
@@ -445,18 +445,17 @@ public class TypeScanner {
 		try {
 			creator = MethodHandles.lookup().unreflectConstructor(LinkedHashMap.class.getConstructor());
 			mapPut = MethodHandles.lookup().unreflect(Map.class.getDeclaredMethod("put", Object.class, Object.class));
-			finisher = MethodHandles.lookup().unreflect(Collections.class.getMethod("unmodifiableMap", Map.class));
+			finisher = MethodHandles.identity(Map.class).asType(methodType(linkedHashMapType.rawClass(), Map.class));
 		} catch (IllegalAccessException | NoSuchMethodException e) {
 			throw new IllegalStateException("Unexpected error doing reflection on List", e);
 		}
 		var upcastCreator = creator.asType(creator.type().changeReturnType(Map.class));
 		var integrator = mapPut.asType(mapPut.type().changeReturnType(void.class));
-		var upcastFinisher = finisher.asType(finisher.type().changeReturnType(linkedHashMapType.rawClass()));
 		var mapType = new BoundType(Map.class, linkedHashMapType.bindings());
 		return new ObjectAccumulator(
 			new TypedHandle(upcastCreator, mapType, List.of()),
 			new TypedHandle(integrator, DataType.VOID, List.of(mapType, DataType.OBJECT, DataType.OBJECT)),
-			new TypedHandle(upcastFinisher, linkedHashMapType, List.of(mapType))
+			new TypedHandle(finisher, linkedHashMapType, List.of(mapType))
 		);
 	}
 
@@ -469,7 +468,6 @@ public class TypeScanner {
 		Method getIteratorMethod;
 		MethodHandle start, hasNext, next, getKey, getValue;
 		try {
-			getIteratorMethod = TypeScanner.class.getDeclaredMethod("getIterator", Map.class);
 			start = MethodHandles.lookup().unreflect(TypeScanner.class.getDeclaredMethod("getIterator", Map.class));
 			hasNext = MethodHandles.lookup().unreflect(Iterator.class.getMethod("hasNext"));
 			next = MethodHandles.lookup().unreflect(Iterator.class.getMethod("next"));
@@ -478,13 +476,14 @@ public class TypeScanner {
 		} catch (IllegalAccessException | NoSuchMethodException e) {
 			throw new IllegalStateException("Unexpected error doing reflection on List", e);
 		}
+		var upcastStart = start.asType(start.type().changeParameterType(0, mapType.rawClass()));
 		var downcastGetKey = getKey.asType(getKey.type().changeReturnType(keyType.rawClass()));
 		var downcastGetValue = getValue.asType(getValue.type().changeReturnType(valueType.rawClass()));
 		var downcastNext = next.asType(next.type().changeReturnType(Map.Entry.class));
 		var mapEntryType = new BoundType(Map.Entry.class, mapType.bindings());
-		var iteratorType = DataType.known(getIteratorMethod.getGenericReturnType()); // HEY this is wrong, it's Iterator<?>
+		var iteratorType = new BoundType(Iterator.class, mapEntryType);
 		return new ObjectEmitter(
-			new TypedHandle(start, iteratorType, List.of(mapType)),
+			new TypedHandle(upcastStart, iteratorType, List.of(mapType)),
 			new TypedHandle(hasNext, DataType.BOOLEAN, List.of(iteratorType)),
 			new TypedHandle(downcastNext, mapEntryType, List.of(iteratorType)),
 			new TypedHandle(downcastGetKey, keyType, List.of(mapEntryType)),

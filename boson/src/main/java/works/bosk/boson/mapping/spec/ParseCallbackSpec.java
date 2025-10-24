@@ -41,4 +41,9 @@ public record ParseCallbackSpec(
 	public KnownType dataType() {
 		return child.dataType();
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return "ParseCallback";
+	}
 }

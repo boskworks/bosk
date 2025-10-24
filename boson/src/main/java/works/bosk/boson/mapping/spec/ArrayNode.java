@@ -25,4 +25,9 @@ public record ArrayNode(
 	public KnownType dataType() {
 		return accumulator.resultType();
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return elementNode().briefIdentifier() + "_Array";
+	}
 }

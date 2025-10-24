@@ -19,4 +19,9 @@ public record MaybeNullSpec(JsonValueSpec child) implements JsonValueSpec {
 	public KnownType dataType() {
 		return this.child().dataType();
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return "NullOr_" + child().briefIdentifier();
+	}
 }

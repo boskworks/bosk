@@ -30,4 +30,9 @@ public record PrimitiveNumberNode(
 	public KnownType dataType() {
 		return DataType.known(targetClass());
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return targetClass.getSimpleName();
+	}
 }

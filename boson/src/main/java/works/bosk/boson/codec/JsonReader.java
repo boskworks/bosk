@@ -43,6 +43,10 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 		return new CharArrayJsonReader(utf16Chars);
 	}
 
+	static JsonReader create(String string) {
+		return new CharArrayJsonReader(string.toCharArray());
+	}
+
 	/**
 	 * Start by calling this.
 	 * Skips insignificant characters and returns the next token encountered.

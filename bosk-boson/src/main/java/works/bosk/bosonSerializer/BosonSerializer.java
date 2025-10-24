@@ -31,7 +31,6 @@ import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
 import works.bosk.VariantCase;
-import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.TypeScanner.Directive;
@@ -46,11 +45,13 @@ import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.TypeRefNode;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
+import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
 import works.bosk.boson.types.TypeReference;
 import works.bosk.boson.types.UpperBoundedWildcardType;
+import works.bosk.exceptions.InvalidTypeException;
 
 import static java.lang.invoke.MethodType.methodType;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
@@ -59,6 +60,8 @@ import static works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.memb
 public class BosonSerializer extends StateTreeSerializer {
 
 	public TypeScanner.Bundle bundleFor(BoskInfo<?> bosk) {
+		MethodHandles.Lookup lookup = MethodHandles.lookup();
+
 		var directives = new ArrayList<Directive>();
 
 		directives.add(new Directive(
@@ -134,7 +137,7 @@ public class BosonSerializer extends StateTreeSerializer {
 		// We call this the "pre-scan", and it benefits from having the simple types above available.
 		TypeScanner.Bundle simpleScanBundle = new TypeScanner.Bundle(
 			List.of(DataType.of(ListingEntry.class)),
-			List.of(MethodHandles.lookup()),
+			List.of(lookup),
 			List.copyOf(directives)
 		);
 
@@ -169,14 +172,14 @@ public class BosonSerializer extends StateTreeSerializer {
 					var domainRefType = new BoundType(
 						Reference.class,
 						new BoundType(Catalog.class, entryType));
-					TypedHandle domainAccessor = TypedHandle.<Listing<?>, Reference<?>>ofFunction(
+					TypedHandle domainAccessor = TypedHandles.<Listing<?>, Reference<?>>function(
 						DataType.known(Listing.class),
 						domainRefType,
 						Listing::domain);
 					memberSpecs.put("domain", new FixedMapMember(new TypeRefNode(domainRefType), domainAccessor));
 
 					var idsType = new BoundType(List.class, DataType.known(Identifier.class));
-					TypedHandle idsAccessor = TypedHandle.<Listing<?>, List<?>>ofFunction(
+					TypedHandle idsAccessor = TypedHandles.<Listing<?>, List<?>>function(
 						DataType.known(Listing.class),
 						idsType,
 						listing -> List.copyOf(listing.ids()));
@@ -229,15 +232,15 @@ public class BosonSerializer extends StateTreeSerializer {
 					SequencedMap<String, FixedMapMember> members = new LinkedHashMap<>();
 					variantCaseMap.forEach((name, caseType) -> {
 						var ifPresent = preScan(caseType, simpleScanBundle);
-						var ifAbsent = new ComputedSpec(TypedHandle.ofSupplier(
+						var ifAbsent = new ComputedSpec(TypedHandles.supplier(
 							DataType.known(caseType),
 							() -> null)); // This is a signal to the finisher that the case is absent
 						var presenceCondition = MemberPresenceCondition.enclosingObject(
-							TypedHandle.<TaggedUnion<?>, Boolean>ofFunction(
+							TypedHandles.<TaggedUnion<?>, Boolean>function(
 								taggedUnionType,
 								DataType.BOOLEAN,
 								tu -> name.equals(tu.variant().tag())));
-						var accessor = TypedHandle.<TaggedUnion<?>, Object>ofFunction(
+						var accessor = TypedHandles.<TaggedUnion<?>, Object>function(
 							taggedUnionType,
 							DataType.known(caseType),
 							TaggedUnion::variant);
@@ -282,16 +285,19 @@ public class BosonSerializer extends StateTreeSerializer {
 								Optional::get,
 								Optional::of
 							);
-							var ifAbsent = new ComputedSpec(TypedHandle.ofSupplier(DataType.known(rc.getGenericType()), Optional::empty));
-							var presenceCondition = memberValue(TypedHandle.<Optional<?>>ofPredicate(DataType.known(rc.getGenericType()), Optional::isPresent));
+							var ifAbsent = new ComputedSpec(TypedHandles.supplier(DataType.known(rc.getGenericType()),
+								Optional::empty));
+							var presenceCondition = memberValue(TypedHandles.<Optional<?>>predicate(DataType.known(rc.getGenericType()),
+								Optional::isPresent));
 							componentsByName.put(rc.getName(), new FixedMapMember(
 								new MaybeAbsentSpec(ifPresent, ifAbsent, presenceCondition),
-								TypedHandle.ofComponentAccessor(rc)
+								TypedHandles.componentAccessor(rc, lookup)
 							));
 						} else if (Phantom.class.isAssignableFrom(rc.getType())) {
 							componentsByName.put(rc.getName(), new FixedMapMember(
-								new ComputedSpec(TypedHandle.ofSupplier(DataType.known(rc.getGenericType()), Phantom::empty)),
-								TypedHandle.ofComponentAccessor(rc)
+								new ComputedSpec(TypedHandles.supplier(DataType.known(rc.getGenericType()),
+									Phantom::empty)),
+								TypedHandles.componentAccessor(rc, lookup)
 							));
 						}
 					}
@@ -350,7 +356,7 @@ public class BosonSerializer extends StateTreeSerializer {
 
 		return new TypeScanner.Bundle(
 			List.of(DataType.of(ListingEntry.class)),
-			List.of(MethodHandles.lookup()),
+			List.of(lookup),
 			List.copyOf(directives)
 		);
 	}

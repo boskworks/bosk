@@ -30,4 +30,9 @@ public record TypeRefNode (
 	public KnownType dataType() {
 		return type();
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return "Ref_" + type().rawClass().getSimpleName();
+	}
 }

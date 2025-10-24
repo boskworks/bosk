@@ -23,4 +23,9 @@ public record BigNumberNode(
 	public KnownType dataType() {
 		return DataType.known(numberClass());
 	}
+
+	@Override
+	public String briefIdentifier() {
+		return numberClass.getSimpleName();
+	}
 }

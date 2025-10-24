@@ -4,6 +4,7 @@ import java.util.Iterator;
 import java.util.SequencedMap;
 import java.util.function.Function;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
+import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
 import works.bosk.boson.types.TypeReference;
@@ -33,7 +34,7 @@ public record FixedMapNode(
 		Function<Object[], ?> arrayFinisher
 	) {
 		KnownType objectArray = DataType.known(new TypeReference<Object[]>() {});
-		var finisherHandle = TypedHandle.ofFunction(
+		var finisherHandle = TypedHandles.function(
 			objectArray,
 			DataType.OBJECT,
 			arrayFinisher);
@@ -61,6 +62,11 @@ public record FixedMapNode(
 	@Override
 	public KnownType dataType() {
 		return finisher.returnType();
+	}
+
+	@Override
+	public String briefIdentifier() {
+		return "Fixed_" + dataType().rawClass().getSimpleName();
 	}
 
 }

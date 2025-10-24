@@ -1,7 +1,9 @@
 package works.bosk.boson.mapping.opt;
 
-import java.util.HashSet;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.SequencedMap;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -23,6 +25,7 @@ import works.bosk.boson.mapping.spec.SpecNode;
 import works.bosk.boson.mapping.spec.TypeRefNode;
 import works.bosk.boson.mapping.spec.UniformMapNode;
 
+import static java.util.Collections.newSetFromMap;
 import static works.bosk.boson.mapping.spec.SpecNode.transform;
 
 /**
@@ -33,19 +36,28 @@ import static works.bosk.boson.mapping.spec.SpecNode.transform;
  */
 public class InlineScalarRefs {
 	final TypeMap typeMap;
-	final Set<JsonValueSpec> memo = new HashSet<>();
+	final Set<JsonValueSpec> inProgress = newSetFromMap(new IdentityHashMap<>());
+	final Map<JsonValueSpec, JsonValueSpec> memo = new HashMap<>();
 
 	public InlineScalarRefs(TypeMap typeMap) {
 		this.typeMap = typeMap;
 	}
 
 	JsonValueSpec optimize(JsonValueSpec node) {
-		if (memo.add(node)) {
+		JsonValueSpec memoized = memo.get(node);
+		if (memoized != null) {
+			LOGGER.debug("Reusing {}", node);
+			return memoized;
+		}
+		if (inProgress.add(node)) {
 			LOGGER.debug("Optimize {}", node);
 			JsonValueSpec result = switch (node) {
-				case TypeRefNode n -> maybeInline(n);
+				case TypeRefNode n -> maybeInline(n); // Here's where an optimization might happen
+				case MaybeNullSpec(MaybeNullSpec n) -> optimize(n); // Okay, this is an optimization too
+
+				// The rest of these cases just recurse to scan the whole graph.
+				// TODO: Extract this sort of logic so every optimization doesn't have to reimplement it.
 				case ScalarSpec n -> n;
-				case MaybeNullSpec(MaybeNullSpec n) -> optimize(n); // Redundant nested MaybeNull
 				case MaybeNullSpec n -> transform(n, x ->
 					new MaybeNullSpec(optimize(x.child())));
 				case ParseCallbackSpec n -> transform(n, x ->
@@ -55,14 +67,18 @@ public class InlineScalarRefs {
 				case ArrayNode n -> transform(n, x ->
 					new ArrayNode(optimize(x.elementNode()), x.accumulator(), x.emitter()));
 				case UniformMapNode n -> transform(n, x ->
-					new UniformMapNode(x.keyNode(), optimize(x.valueNode()), x.accumulator(), x.emitter())); // TODO: optimize keyNode?
+					new UniformMapNode(optimize(x.keyNode()), optimize(x.valueNode()), x.accumulator(), x.emitter())); // TODO: optimize keyNode?
 				case FixedMapNode n -> transform(n, x ->
 					new FixedMapNode(optimizeMembers(x.memberSpecs()), x.finisher()));
 			};
 			LOGGER.debug("Optimized {}", result);
+			inProgress.remove(node);
+			memo.put(node, result);
 			return result;
 		} else {
-			LOGGER.debug("Skipping {}", node);
+			LOGGER.debug("Skipping recursive node {}", node);
+			// We don't store it in memo, because the caller
+			// is already processing it and may produce a better result.
 			return node;
 		}
 	}
@@ -76,28 +92,47 @@ public class InlineScalarRefs {
 		};
 	}
 
-	private SequencedMap<String, FixedMapMember> optimizeMembers(SequencedMap<String, FixedMapMember> stringSpecNodeMap) {
+	private SequencedMap<String, FixedMapMember> optimizeMembers(SequencedMap<String, FixedMapMember> memberSpecs) {
 		var result = new LinkedHashMap<String, FixedMapMember>();
-		stringSpecNodeMap.forEach((k,v) -> result.put(k, new FixedMapMember(optimize(v.valueSpec()), v.accessor())));
+		memberSpecs.forEach((k,v) ->
+			result.put(k, new FixedMapMember(optimize(v.valueSpec()), v.accessor())));
 		return result;
 	}
 
 	/**
-	 * The actual transformation
+	 * The actual transformation.
+	 * <p>
+	 * At this point, we have identified a TypeRefNode and we're considering
+	 * replacing it with the spec associated with its type in the {@link #typeMap}.
+	 * Whether we do so depends on what that spec is:
+	 *
+	 * <ul>
+	 *     <li>
+	 *         For a {@link ScalarSpec}, we inline it; after all, that's what this optimization is for.
+	 *     </li>
+	 *     <li>
+	 *         For structured types like {@link ArraySpec} and {@link ObjectSpec},
+	 *         we leave the TypeRefNode in place to avoid quadratic code explosion.
+	 *     </li>
+	 *     <li>
+	 *         For other types like {@link MaybeNullSpec} that have no code explosion risk,
+	 *         we recursively optimize them and inline the result.
+	 *         Same for {@link TypeRefNode}, which would represent a reference to a reference;
+	 *         we can rely on {@link #optimize} to handle that.
+	 *     </li>
+	 * </ul>
+	 *
+	 * In all cases, we're safe when we call {@link #optimize} here,
+	 * because that handles any cycles and memoization.
 	 */
 	private JsonValueSpec maybeInline(TypeRefNode original) {
 		return switch (typeMap.get(original.type())) {
+			case ScalarSpec target -> target;
+			case ArraySpec _, ObjectSpec _ -> original; // Could cause quadratic code growth
+			case TypeRefNode target -> optimize(target);
 			case MaybeNullSpec target -> optimize(target);
 			case ParseCallbackSpec target -> optimize(target);
 			case RepresentAsSpec target -> optimize(target);
-			case ScalarSpec target -> target;
-			case ArraySpec _, ObjectSpec _ -> original;
-			case TypeRefNode _ -> {
-				// If the typeMap takes us to a TypeRefMode, we're in danger of
-				// infinite recursion. Let's bail out for now until we have more
-				// sophisticated cycle detection.
-				yield original;
-			}
 		};
 	}
 

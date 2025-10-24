@@ -16,6 +16,11 @@ public record BoxedPrimitiveSpec(PrimitiveNumberNode child) implements ScalarSpe
 		return DataType.known(targetClass());
 	}
 
+	@Override
+	public String briefIdentifier() {
+		return "Boxed_" + child.briefIdentifier();
+	}
+
 	public Class<? extends Number> targetClass() {
 		return PRIMITIVE_NUMBER_CLASSES.get(child.targetClass());
 	}
