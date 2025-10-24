@@ -59,6 +59,8 @@ import static works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.memb
 public class BosonSerializer extends StateTreeSerializer {
 
 	public TypeScanner.Bundle bundleFor(BoskInfo<?> bosk) {
+		MethodHandles.Lookup lookup = MethodHandles.lookup();
+
 		var directives = new ArrayList<Directive>();
 
 		directives.add(new Directive(
@@ -134,7 +136,7 @@ public class BosonSerializer extends StateTreeSerializer {
 		// We call this the "pre-scan", and it benefits from having the simple types above available.
 		TypeScanner.Bundle simpleScanBundle = new TypeScanner.Bundle(
 			List.of(DataType.of(ListingEntry.class)),
-			List.of(MethodHandles.lookup()),
+			List.of(lookup),
 			List.copyOf(directives)
 		);
 
@@ -286,12 +288,12 @@ public class BosonSerializer extends StateTreeSerializer {
 							var presenceCondition = memberValue(TypedHandle.<Optional<?>>ofPredicate(DataType.known(rc.getGenericType()), Optional::isPresent));
 							componentsByName.put(rc.getName(), new FixedMapMember(
 								new MaybeAbsentSpec(ifPresent, ifAbsent, presenceCondition),
-								TypedHandle.ofComponentAccessor(rc)
+								TypedHandle.ofComponentAccessor(rc, lookup)
 							));
 						} else if (Phantom.class.isAssignableFrom(rc.getType())) {
 							componentsByName.put(rc.getName(), new FixedMapMember(
 								new ComputedSpec(TypedHandle.ofSupplier(DataType.known(rc.getGenericType()), Phantom::empty)),
-								TypedHandle.ofComponentAccessor(rc)
+								TypedHandle.ofComponentAccessor(rc, lookup)
 							));
 						}
 					}
@@ -350,7 +352,7 @@ public class BosonSerializer extends StateTreeSerializer {
 
 		return new TypeScanner.Bundle(
 			List.of(DataType.of(ListingEntry.class)),
-			List.of(MethodHandles.lookup()),
+			List.of(lookup),
 			List.copyOf(directives)
 		);
 	}

@@ -141,10 +141,10 @@ public record TypedHandle(
 		);
 	}
 
-	public static TypedHandle ofComponentAccessor(RecordComponent rc) {
+	public static TypedHandle ofComponentAccessor(RecordComponent rc, MethodHandles.Lookup lookup) {
 		MethodHandle handle;
 		try {
-			handle = MethodHandles.lookup().unreflect(rc.getAccessor());
+			handle = lookup.unreflect(rc.getAccessor());
 		} catch (IllegalAccessException e) {
 			throw new IllegalStateException(e);
 		}
