@@ -128,13 +128,13 @@ public final class TypedHandles {
 		);
 	}
 
-	public static <T> TypedHandle callable(KnownType argType, Callable<T> callable) {
+	public static <T> TypedHandle callable(KnownType returnType, Callable<T> callable) {
 		return new TypedHandle(
 			CALLABLE_CALL
 				.bindTo(callable)
-				.asType(methodType(void.class, argType.rawClass())),
-			VOID,
-			List.of(argType)
+				.asType(methodType(returnType.rawClass())),
+			returnType,
+			List.of()
 		);
 	}
 
