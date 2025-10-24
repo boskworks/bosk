@@ -21,6 +21,7 @@ import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.EnumByNameNode;
 import works.bosk.boson.mapping.spec.FixedMapMember;
+import works.bosk.boson.mapping.spec.FixedMapNode;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;
@@ -189,22 +190,45 @@ public class CodecHappyParseTest {
 			codec.parserFor(spec).parse(JsonReader.create(json)));
 	}
 
+	/**
+	 * As a demonstration of flexibility, we represent the map as a colon-separated string,
+	 * rather than the more obvious record or map.
+	 */
 	@InjectedTest
 	void fixedMap() throws IOException {
-		record TestRecord(int intField, String strField) {}
-		var typeMap = scanner
-			.scan(DataType.of(TestRecord.class))
-			.build();
-		var codec = CodecBuilder.using(typeMap).build();
+		var memberSpecs = new LinkedHashMap<String, FixedMapMember>();
+		memberSpecs.put("intField",
+			new FixedMapMember(
+				new PrimitiveNumberNode(int.class),
+				TypedHandles.<String,Integer>function(STRING, INT, s ->
+					Integer.parseInt(s.split(":", 2)[0]))
+			)
+		);
+		memberSpecs.put("strField",
+			new FixedMapMember(
+				new StringNode(),
+				TypedHandles.<String,String>function(STRING, STRING, s ->
+					s.split(":", 2)[1])
+			)
+		);
+		var spec = new FixedMapNode(
+			memberSpecs,
+			TypedHandles.<Integer, String, String>biFunction(INT, STRING, STRING,
+				(i, s) -> i + ":" + s
+			)
+		);
+
+		var codec = CodecBuilder
+			.using(scanner.scan(INT).scan(STRING).build())
+			.build(spec);
 		var json = """
 			{
 				"intField": 123,
 				"strField": "Hello, World!"
 			}
 			""";
-		assertEquals(new TestRecord(123, "Hello, World!"),
-			codec.parserFor(typeMap.get(DataType.of(TestRecord.class)))
-				.parse(JsonReader.create(json)));
+		assertEquals("123:Hello, World!",
+			codec.parserFor(spec).parse(JsonReader.create(json)));
 	}
 
 	@InjectedTest
