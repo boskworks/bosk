@@ -544,7 +544,7 @@ public class SpecCompiler {
 
 				_skipToken(START_OBJECT);
 
-				LocalVariable accumulator = locals.allocate(REFERENCE);
+				LocalVariable accumulator = locals.allocate(nodeReturnTypeKind(node));
 				_invokeExact(curryAndLoad(acc.creator().handle(), "acc_creator"));
 				accumulator.store(codeBuilder);
 
