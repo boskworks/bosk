@@ -142,7 +142,7 @@ public class CodecHappyParseTest {
 	void array() throws IOException {
 		var spec = new ArrayNode(
 			new StringNode(),
-			ArrayAccumulator.of(new ArrayAccumulator.Handler<StringBuilder, String, String>() {
+			ArrayAccumulator.of(new ArrayAccumulator.Wrangler<StringBuilder, String, String>() {
 				@Override
 				public StringBuilder create() {
 					return new StringBuilder();
@@ -162,7 +162,7 @@ public class CodecHappyParseTest {
 					return accumulator.toString();
 				}
 			}),
-			ArrayEmitter.of(new ArrayEmitter.Handler<String, Iterator<String>, String>() {
+			ArrayEmitter.of(new ArrayEmitter.Wrangler<String, Iterator<String>, String>() {
 				@Override
 				public Iterator<String> start(String representation) {
 					String[] parts = representation.split("\\|", -1);

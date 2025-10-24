@@ -73,21 +73,21 @@ public record ArrayEmitter(
 	 * @param <I> the iterator type
 	 * @param <E> the element type
 	 */
-	public interface Handler<A, I, E> {
+	public interface Wrangler<A, I, E> {
 		I start(A representation);
 		boolean hasNext(I iterator);
 		E next(I iterator);
 	}
 
-	public static ArrayEmitter of(Handler<?,?,?> handler) {
-		BoundType handlerType = (BoundType) DataType.of(handler.getClass());
-		KnownType arrayType = (KnownType) handlerType.parameterType(Handler.class, 0);
-		KnownType iteratorType = (KnownType) handlerType.parameterType(Handler.class, 1);
-		KnownType elementType = (KnownType) handlerType.parameterType(Handler.class, 2);
+	public static ArrayEmitter of(Wrangler<?,?,?> wrangler) {
+		BoundType wranglerType = (BoundType) DataType.of(wrangler.getClass());
+		KnownType arrayType = (KnownType) wranglerType.parameterType(Wrangler.class, 0);
+		KnownType iteratorType = (KnownType) wranglerType.parameterType(Wrangler.class, 1);
+		KnownType elementType = (KnownType) wranglerType.parameterType(Wrangler.class, 2);
 
 		return new ArrayEmitter(
 			new TypedHandle(
-				HANDLER_START.bindTo(handler)
+				WRANGLER_START.bindTo(wrangler)
 					.asType(MethodType.methodType(
 						iteratorType.rawClass(),
 						arrayType.rawClass()
@@ -95,7 +95,7 @@ public record ArrayEmitter(
 				iteratorType, List.of(arrayType)
 			),
 			new TypedHandle(
-				HANDLER_HAS_NEXT.bindTo(handler)
+				WRANGLER_HAS_NEXT.bindTo(wrangler)
 					.asType(MethodType.methodType(
 						boolean.class,
 						iteratorType.rawClass()
@@ -103,7 +103,7 @@ public record ArrayEmitter(
 				BOOLEAN, List.of(iteratorType)
 			),
 			new TypedHandle(
-				HANDLER_NEXT.bindTo(handler)
+				WRANGLER_NEXT.bindTo(wrangler)
 					.asType(MethodType.methodType(
 						elementType.rawClass(),
 						iteratorType.rawClass()
@@ -113,25 +113,25 @@ public record ArrayEmitter(
 		);
 	}
 
-	private static final MethodHandle HANDLER_START;
-	private static final MethodHandle HANDLER_HAS_NEXT;
-	private static final MethodHandle HANDLER_NEXT;
+	private static final MethodHandle WRANGLER_START;
+	private static final MethodHandle WRANGLER_HAS_NEXT;
+	private static final MethodHandle WRANGLER_NEXT;
 
 	static {
 		MethodHandles.Lookup lookup = MethodHandles.lookup();
 		try {
-			HANDLER_START = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_START = lookup.findVirtual(
+				Wrangler.class,
 				"start",
 				MethodType.methodType(Object.class, Object.class)
 			);
-			HANDLER_HAS_NEXT = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_HAS_NEXT = lookup.findVirtual(
+				Wrangler.class,
 				"hasNext",
 				MethodType.methodType(boolean.class, Object.class)
 			);
-			HANDLER_NEXT = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_NEXT = lookup.findVirtual(
+				Wrangler.class,
 				"next",
 				MethodType.methodType(Object.class, Object.class)
 			);

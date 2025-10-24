@@ -73,26 +73,26 @@ public record ArrayAccumulator(
 	 * @param <E> the element type
 	 * @param <T> the result type
 	 */
-	public interface Handler<A,E,T> {
+	public interface Wrangler<A,E,T> {
 		A create();
 		A integrate(A accumulator, E element);
 		T finish(A accumulator);
 	}
 
-	public static ArrayAccumulator of(Handler<?,?,?> handler) {
-		BoundType handlerType = (BoundType) DataType.of(handler.getClass());
-		KnownType accumulatorType = (KnownType) handlerType.parameterType(Handler.class, 0);
-		KnownType elementType = (KnownType) handlerType.parameterType(Handler.class, 1);
-		KnownType resultType = (KnownType) handlerType.parameterType(Handler.class, 2);
+	public static ArrayAccumulator of(Wrangler<?,?,?> wrangler) {
+		BoundType wranglerType = (BoundType) DataType.of(wrangler.getClass());
+		KnownType accumulatorType = (KnownType) wranglerType.parameterType(Wrangler.class, 0);
+		KnownType elementType = (KnownType) wranglerType.parameterType(Wrangler.class, 1);
+		KnownType resultType = (KnownType) wranglerType.parameterType(Wrangler.class, 2);
 
 		return new ArrayAccumulator(
 			new TypedHandle(
-				HANDLER_CREATE.bindTo(handler)
+				WRANGLER_CREATE.bindTo(wrangler)
 					.asType(MethodType.methodType(accumulatorType.rawClass())),
 				accumulatorType, List.of()
 			),
 			new TypedHandle(
-				HANDLER_INTEGRATE.bindTo(handler)
+				WRANGLER_INTEGRATE.bindTo(wrangler)
 					.asType(MethodType.methodType(
 						accumulatorType.rawClass(),
 						accumulatorType.rawClass(),
@@ -101,7 +101,7 @@ public record ArrayAccumulator(
 				accumulatorType, List.of(accumulatorType, elementType)
 			),
 			new TypedHandle(
-				HANDLER_FINISH.bindTo(handler)
+				WRANGLER_FINISH.bindTo(wrangler)
 					.asType(MethodType.methodType(
 						resultType.rawClass(),
 						accumulatorType.rawClass()
@@ -111,25 +111,25 @@ public record ArrayAccumulator(
 		);
 	}
 
-	private static final MethodHandle HANDLER_CREATE;
-	private static final MethodHandle HANDLER_INTEGRATE;
-	private static final MethodHandle HANDLER_FINISH;
+	private static final MethodHandle WRANGLER_CREATE;
+	private static final MethodHandle WRANGLER_INTEGRATE;
+	private static final MethodHandle WRANGLER_FINISH;
 
 	static {
 		try {
 			MethodHandles.Lookup lookup = MethodHandles.lookup();
-			HANDLER_CREATE = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_CREATE = lookup.findVirtual(
+				Wrangler.class,
 				"create",
 				MethodType.methodType(Object.class)
 			);
-			HANDLER_INTEGRATE = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_INTEGRATE = lookup.findVirtual(
+				Wrangler.class,
 				"integrate",
 				MethodType.methodType(Object.class, Object.class, Object.class)
 			);
-			HANDLER_FINISH = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_FINISH = lookup.findVirtual(
+				Wrangler.class,
 				"finish",
 				MethodType.methodType(Object.class, Object.class)
 			);
