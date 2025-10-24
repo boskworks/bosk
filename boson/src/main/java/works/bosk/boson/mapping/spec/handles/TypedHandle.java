@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -81,6 +82,14 @@ public record TypedHandle(
 		return "(" + String.join(", ", parameterTypes.stream().map(KnownType::toString).toList()) + ")->" + returnType;
 	}
 
+	public static <T> TypedHandle ofConstant(KnownType returnType, T value) {
+		return new TypedHandle(
+			MethodHandles.constant(returnType.rawClass(), value),
+			returnType,
+			List.of()
+		);
+	}
+
 	public static <R> TypedHandle ofSupplier(KnownType returnType, Supplier<R> supplier) {
 		return new TypedHandle(
 			SUPPLIER_GET
@@ -131,6 +140,21 @@ public record TypedHandle(
 		);
 	}
 
+	public static <T1,T2,R> TypedHandle ofBiFunction(
+		KnownType argType1,
+		KnownType argType2,
+		KnownType returnType,
+		BiFunction<T1,T2,R> biFunction
+	) {
+		return new TypedHandle(
+			BI_FUNCTION_APPLY
+				.bindTo(biFunction)
+				.asType(methodType(returnType.rawClass(), argType1.rawClass(), argType2.rawClass())),
+			returnType,
+			List.of(argType1, argType2)
+		);
+	}
+
 	public static <T> TypedHandle ofPredicate(KnownType argType, Predicate<T> predicate) {
 		return new TypedHandle(
 			PREDICATE_TEST
@@ -154,6 +178,7 @@ public record TypedHandle(
 	}
 
 	private static final MethodHandle FUNCTION_APPLY;
+	private static final MethodHandle BI_FUNCTION_APPLY;
 	private static final MethodHandle PREDICATE_TEST;
 	private static final MethodHandle SUPPLIER_GET;
 	private static final MethodHandle CONSUMER_ACCEPT;
@@ -163,6 +188,7 @@ public record TypedHandle(
 	static {
 		try {
 			FUNCTION_APPLY = MethodHandles.lookup().findVirtual(Function.class, "apply", methodType(Object.class, Object.class));
+			BI_FUNCTION_APPLY = MethodHandles.lookup().findVirtual(BiFunction.class, "apply", methodType(Object.class, Object.class, Object.class));
 			PREDICATE_TEST = MethodHandles.lookup().findVirtual(Predicate.class, "test", methodType(boolean.class, Object.class));
 			SUPPLIER_GET = MethodHandles.lookup().findVirtual(Supplier.class, "get", methodType(Object.class));
 			CONSUMER_ACCEPT = MethodHandles.lookup().findVirtual(java.util.function.Consumer.class, "accept", methodType(void.class, Object.class));
