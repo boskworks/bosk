@@ -19,8 +19,12 @@ public record FixedMapNode(
 	public FixedMapNode {
 		assert finisher.parameterTypes().size() == memberSpecs.size();
 		Iterator<KnownType> iter = finisher.parameterTypes().iterator();
-		memberSpecs.values().forEach(member -> {
-			assert iter.next().isAssignableFrom(member.valueSpec().dataType());
+		memberSpecs.forEach((name, member) -> {
+			KnownType finisherParameter = iter.next();
+			assert finisherParameter.isAssignableFrom(member.valueSpec().dataType()):
+				"Finisher parameter type " + finisherParameter +
+				" is not assignable from member '" + name +
+				"' value type " + member.valueSpec().dataType();
 		});
 	}
 
