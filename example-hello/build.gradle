@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.5.6'
+	id 'org.springframework.boot' version '3.5.7'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -39,9 +39,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-	openTelemetryJavaAgent 'io.opentelemetry.javaagent:opentelemetry-javaagent:2.20.1'
+	openTelemetryJavaAgent 'io.opentelemetry.javaagent:opentelemetry-javaagent:2.21.0'
 	implementation 'io.opentelemetry:opentelemetry-exporter-jaeger:1.34.1'
-	implementation('io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:2.20.1')
+	implementation('io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:2.21.0')
 
 	// A real project would pull these like any other library
 	implementation project(':bosk-spring-boot')
