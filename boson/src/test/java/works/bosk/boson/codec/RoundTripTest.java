@@ -194,7 +194,6 @@ public final class RoundTripTest {
 			return Stream.of(
 				new Escape("\"", "\\\""),
 				new Escape("\\", "\\\\"),
-				new Escape("/", "\\/"),
 				new Escape("\b", "\\b"),
 				new Escape("\f", "\\f"),
 				new Escape("\n", "\\n"),

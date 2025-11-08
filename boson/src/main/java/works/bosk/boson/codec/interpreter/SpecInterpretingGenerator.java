@@ -189,7 +189,6 @@ public class SpecInterpretingGenerator implements Generator {
 				switch (cp) {
 					case '"': sb.append("\\\""); break;
 					case '\\': sb.append("\\\\"); break;
-					case '/': sb.append("\\/"); break;
 					case '\b': sb.append("\\b"); break;
 					case '\f': sb.append("\\f"); break;
 					case '\n': sb.append("\\n"); break;
