@@ -4,11 +4,11 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Gatherer;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
-import works.bosk.boson.types.KnownType;
 
 import static works.bosk.boson.types.DataType.VOID;
 
@@ -55,12 +55,20 @@ public record ArrayAccumulator(
 		assert finisher.parameterTypes().getFirst().isAssignableFrom(creator.returnType());
 	}
 
-	public KnownType elementType() {
+	public DataType elementType() {
 		return integrator.parameterTypes().getLast();
 	}
 
-	public KnownType resultType() {
+	public DataType resultType() {
 		return finisher.returnType();
+	}
+
+	public ArrayAccumulator substitute(Map<String, DataType> actualArguments) {
+		return new ArrayAccumulator(
+			creator.substitute(actualArguments),
+			integrator.substitute(actualArguments),
+			finisher.substitute(actualArguments)
+		);
 	}
 
 	@Override
@@ -73,63 +81,63 @@ public record ArrayAccumulator(
 	 * @param <E> the element type
 	 * @param <T> the result type
 	 */
-	public interface Handler<A,E,T> {
+	public interface Wrangler<A,E,T> {
 		A create();
 		A integrate(A accumulator, E element);
 		T finish(A accumulator);
 	}
 
-	public static ArrayAccumulator of(Handler<?,?,?> handler) {
-		BoundType handlerType = (BoundType) DataType.of(handler.getClass());
-		KnownType accumulatorType = (KnownType) handlerType.parameterType(Handler.class, 0);
-		KnownType elementType = (KnownType) handlerType.parameterType(Handler.class, 1);
-		KnownType resultType = (KnownType) handlerType.parameterType(Handler.class, 2);
+	public static ArrayAccumulator of(Wrangler<?,?,?> wrangler) {
+		BoundType wranglerType = (BoundType) DataType.of(wrangler.getClass());
+		var accumulatorType = wranglerType.parameterType(Wrangler.class, 0);
+		var elementType = wranglerType.parameterType(Wrangler.class, 1);
+		var resultType = wranglerType.parameterType(Wrangler.class, 2);
 
 		return new ArrayAccumulator(
 			new TypedHandle(
-				HANDLER_CREATE.bindTo(handler)
-					.asType(MethodType.methodType(accumulatorType.rawClass())),
+				WRANGLER_CREATE.bindTo(wrangler)
+					.asType(MethodType.methodType(accumulatorType.leastUpperBoundClass())),
 				accumulatorType, List.of()
 			),
 			new TypedHandle(
-				HANDLER_INTEGRATE.bindTo(handler)
+				WRANGLER_INTEGRATE.bindTo(wrangler)
 					.asType(MethodType.methodType(
-						accumulatorType.rawClass(),
-						accumulatorType.rawClass(),
-						elementType.rawClass()
+						accumulatorType.leastUpperBoundClass(),
+						accumulatorType.leastUpperBoundClass(),
+						elementType.leastUpperBoundClass()
 					)),
 				accumulatorType, List.of(accumulatorType, elementType)
 			),
 			new TypedHandle(
-				HANDLER_FINISH.bindTo(handler)
+				WRANGLER_FINISH.bindTo(wrangler)
 					.asType(MethodType.methodType(
-						resultType.rawClass(),
-						accumulatorType.rawClass()
+						resultType.leastUpperBoundClass(),
+						accumulatorType.leastUpperBoundClass()
 					)),
 				resultType, List.of(accumulatorType)
 			)
 		);
 	}
 
-	private static final MethodHandle HANDLER_CREATE;
-	private static final MethodHandle HANDLER_INTEGRATE;
-	private static final MethodHandle HANDLER_FINISH;
+	private static final MethodHandle WRANGLER_CREATE;
+	private static final MethodHandle WRANGLER_INTEGRATE;
+	private static final MethodHandle WRANGLER_FINISH;
 
 	static {
 		try {
 			MethodHandles.Lookup lookup = MethodHandles.lookup();
-			HANDLER_CREATE = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_CREATE = lookup.findVirtual(
+				Wrangler.class,
 				"create",
 				MethodType.methodType(Object.class)
 			);
-			HANDLER_INTEGRATE = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_INTEGRATE = lookup.findVirtual(
+				Wrangler.class,
 				"integrate",
 				MethodType.methodType(Object.class, Object.class, Object.class)
 			);
-			HANDLER_FINISH = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_FINISH = lookup.findVirtual(
+				Wrangler.class,
 				"finish",
 				MethodType.methodType(Object.class, Object.class)
 			);

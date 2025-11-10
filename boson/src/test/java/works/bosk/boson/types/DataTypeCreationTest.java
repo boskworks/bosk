@@ -37,7 +37,7 @@ class DataTypeCreationTest {
 		assertEquals(new ArrayType(INT), DataType.of(int[].class));
 		assertEquals(new ArrayType(DataType.known(String.class)), DataType.of(String[].class));
 		assertEquals(new ArrayType(new ArrayType(INT)), DataType.of(int[][].class));
-		assertEquals(new UnknownArrayType(new TypeVariable("T")), DataType.of(new TypeReference<T[]>(){}));
+		assertEquals(new UnknownArrayType(TypeVariable.unbounded("T")), DataType.of(new TypeReference<T[]>(){}));
 	}
 
 	@Test
@@ -51,8 +51,7 @@ class DataTypeCreationTest {
 		);
 
 		{
-			var ref = new TypeReference<List<T>>() {
-			};
+			var ref = new TypeReference<List<T>>() {};
 			DataType genericListType = DataType.of(ref);
 			assertEquals(
 				new BoundType(List.class, DataType.of(getActualTypeArguments(ref)[0])),
@@ -60,15 +59,17 @@ class DataTypeCreationTest {
 			);
 		}
 
-		var ref = new TypeReference<Map<String, List<Integer>>>() { };
-		DataType mapType = DataType.of(ref);
-		assertEquals(
-			new BoundType(Map.class, Stream.of(
-				String.class,
-				getActualTypeArguments(ref)[1]
-			).map(DataType::of).toList()),
-			mapType
-		);
+		{
+			var ref = new TypeReference<Map<String, List<Integer>>>() { };
+			DataType mapType = DataType.of(ref);
+			assertEquals(
+				new BoundType(Map.class, Stream.of(
+					String.class,
+					getActualTypeArguments(ref)[1]
+				).map(DataType::of).toList()),
+				mapType
+			);
+		}
 	}
 
 	private static Type[] getActualTypeArguments(TypeReference<?> ref) {
@@ -83,10 +84,12 @@ class DataTypeCreationTest {
 			Generic<V, W> generic
 		) { }
 		ParameterizedType genericType = (ParameterizedType) Holder.class.getRecordComponents()[0].getGenericType();
+		Type vBound = Holder.class.getTypeParameters()[0].getBounds()[0];
+		Type wBound = Holder.class.getTypeParameters()[1].getBounds()[0];
 		var actual = (BoundType)DataType.of(genericType);
-		assertEquals(new TypeVariable("V"),
+		assertEquals(new TypeVariable("V", List.of(vBound)),
 			actual.typeArgument(0));
-		assertEquals(new TypeVariable("W"),
+		assertEquals(new TypeVariable("W", List.of(wBound)),
 			actual.typeArgument(1));
 	}
 

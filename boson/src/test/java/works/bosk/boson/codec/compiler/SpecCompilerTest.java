@@ -83,7 +83,7 @@ public class SpecCompilerTest {
 		KnownType type = DataType.known(TestEnum.class);
 		TypeRefNode typeRefNode = new TypeRefNode(type);
 		TypeMap typeMap = new TypeScanner(DEFAULT)
-			.use(MethodHandles.lookup())
+			.useLookup(MethodHandles.lookup())
 			.scan(type)
 			.build();
 
@@ -133,7 +133,7 @@ public class SpecCompilerTest {
 		);
 		MemberPresenceCondition isPresent = memberValue(notEquals(constant(STRING, ABSENT_FIELD_VALUE)));
 		return new TypeScanner(settings)
-			.use(MethodHandles.lookup())
+			.useLookup(MethodHandles.lookup())
 			.specify(DataType.known(Month.class), Month.specNode())
 			.specifyRecordFields(OneOfEach.class, Map.of(
 				"computedField", new FixedMapMember(new ComputedSpec(computedFieldValue), computedFieldValue),

@@ -2,7 +2,6 @@ package works.bosk.boson.mapping.spec;
 
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.types.DataType;
-import works.bosk.boson.types.KnownType;
 
 /**
  * Represents a portion of the in-memory structure that is returned by {@code supplier}
@@ -22,12 +21,13 @@ public record ComputedSpec(
 		assert !supplier.returnType().equals(DataType.VOID);
 	}
 
-	public KnownType dataType() {
+	@Override
+	public DataType dataType() {
 		return supplier().returnType();
 	}
 
 	@Override
 	public String briefIdentifier() {
-		return "Computed_" + dataType().rawClass().getSimpleName();
+		return "Computed_" + dataType().leastUpperBoundClass().getSimpleName();
 	}
 }

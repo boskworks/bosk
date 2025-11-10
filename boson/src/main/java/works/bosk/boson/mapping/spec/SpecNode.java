@@ -2,7 +2,7 @@ package works.bosk.boson.mapping.spec;
 
 import java.util.function.UnaryOperator;
 import works.bosk.boson.mapping.TypeMap;
-import works.bosk.boson.types.KnownType;
+import works.bosk.boson.types.DataType;
 
 import static java.util.Objects.requireNonNull;
 
@@ -22,7 +22,7 @@ public sealed interface SpecNode permits JsonValueSpec, ComputedSpec, MaybeAbsen
 	/**
 	 * @return the type of in-memory representation for this node
 	 */
-	KnownType dataType();
+	DataType dataType();
 
 	/**
 	 * @return a short string suitable for including in a method name.

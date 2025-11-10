@@ -20,6 +20,7 @@ public record EnumByNameNode(
 		return "Enum:" + enumType.getSimpleName();
 	}
 
+	@Override
 	public KnownType dataType() {
 		return DataType.known(enumType());
 	}

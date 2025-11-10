@@ -7,6 +7,8 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.boson.codec.Generator;
+import works.bosk.boson.exceptions.JsonException;
+import works.bosk.boson.exceptions.JsonProcessingException;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.BigNumberNode;
@@ -28,6 +30,7 @@ import works.bosk.boson.mapping.spec.UniformMapNode;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.EnclosingObject;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.MemberValue;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.Nullary;
+import works.bosk.boson.mapping.spec.handles.TypedHandle;
 
 import static works.bosk.boson.mapping.Token.END_ARRAY;
 import static works.bosk.boson.mapping.Token.END_OBJECT;
@@ -68,27 +71,32 @@ public class SpecInterpretingGenerator implements Generator {
 		}
 
 		public void generateAny(JsonValueSpec spec, Object value) {
-			switch (spec) {
-				case BigNumberNode _,
-					 BooleanNode _,
-					 BoxedPrimitiveSpec _,
-					 PrimitiveNumberNode _ -> out.print(value);
+			LOGGER.debug("Generate {} using {}", (value == null)? "null" : value.getClass().getSimpleName(), spec);
+			try {
+				switch (spec) {
+					case BigNumberNode _,
+						 BooleanNode _,
+						 BoxedPrimitiveSpec _,
+						 PrimitiveNumberNode _ -> out.print(value);
 
-				case EnumByNameNode _ -> generateEnumByName(value);
-				case ArrayNode node -> generateArray(node, value);
-				case MaybeNullSpec maybeNullSpec -> {
-					if (value == null) {
-						out.print("null");
-					} else {
-						generateAny(maybeNullSpec.child(), value);
+					case EnumByNameNode _ -> generateEnumByName(value);
+					case ArrayNode node -> generateArray(node, value);
+					case MaybeNullSpec maybeNullSpec -> {
+						if (value == null) {
+							out.print("null");
+						} else {
+							generateAny(maybeNullSpec.child(), value);
+						}
 					}
+					case UniformMapNode node -> generateUniformMap(node, value);
+					case ParseCallbackSpec node -> generateAny(node.child(), value);
+					case FixedMapNode node -> generateFixedMap(node, value);
+					case RepresentAsSpec node -> convertAndGenerate(node, value);
+					case StringNode _ -> generateString(value);
+					case TypeRefNode node -> generateAny(typeMap.get(node.type()), value);
 				}
-				case UniformMapNode node -> generateUniformMap(node, value);
-				case ParseCallbackSpec node -> generateAny(node.child(), value);
-				case FixedMapNode node -> generateFixedMap(node, value);
-				case RepresentAsSpec node -> convertAndGenerate(node, value);
-				case StringNode _ -> generateString(value);
-				case TypeRefNode node -> generateAny(typeMap.get(node.type()), value);
+			} catch (JsonException e) {
+				throw JsonException.wrap(e, spec.briefIdentifier() + ": ");
 			}
 		}
 
@@ -97,9 +105,9 @@ public class SpecInterpretingGenerator implements Generator {
 			try {
 				representation = node.toRepresentation().handle().invoke(value);
 			} catch (WrongMethodTypeException | ClassCastException e) {
-				throw new IllegalStateException(e);
+				throw new JsonProcessingException(e);
 			} catch (Throwable e) {
-				throw new IllegalStateException("Unexpected exception", e);
+				throw new JsonProcessingException("Unexpected exception", e);
 			}
 			generateAny(node.representation(), representation);
 		}
@@ -124,16 +132,48 @@ public class SpecInterpretingGenerator implements Generator {
 		}
 
 		private void generateUniformMap(UniformMapNode node, Object value) {
-			Map<?,?> map = (Map<?, ?>) value;
+			// Unpack the handles
+			TypedHandle start = node.emitter().start();
+			TypedHandle hasNext = node.emitter().hasNext();
+			TypedHandle next = node.emitter().next();
+			TypedHandle getKey = node.emitter().getKey();
+			TypedHandle getValue = node.emitter().getValue();
+
 			out.print(START_OBJECT.fixedRepresentation());
 			String sep = "";
-			for (var entry : map.entrySet()) {
-				if (node.valueNode() instanceof JsonValueSpec v) {
+			if (next.parameterTypes().size() == 1) {
+				// Mutable iterator form
+				Object iterator = start.invoke(value);
+				while (Boolean.TRUE.equals(hasNext.invoke(iterator))) {
+					var member = next.invoke(iterator);
+					var memberKey = getKey.invoke(member);
+					var memberValue = getValue.invoke(member);
 					out.print(sep);
 					sep = ",";
-					generateAny(node.keyNode(), entry.getKey());
+					generateAny(node.keyNode(), memberKey);
 					out.print(":");
-					generateAny(v, entry.getValue());
+					generateAny(node.valueNode(), memberValue);
+				}
+			} else {
+				// For-loop form
+				assert next.parameterTypes().size() == 2;
+				for (var iter = start.invoke(value);
+					 Boolean.TRUE.equals((hasNext.parameterTypes().size() == 1)
+						 ? hasNext.invoke(iter)
+						 : hasNext.invoke(iter, value));
+					 iter = next.invoke(iter, value)
+				) {
+					var memberKey = (getKey.parameterTypes().size() == 1)
+						? getKey.invoke(iter)
+						: getKey.invoke(iter, value);
+					var memberValue = (getValue.parameterTypes().size() == 1)
+						? getValue.invoke(iter)
+						: getValue.invoke(iter, value);
+					out.print(sep);
+					sep = ",";
+					generateAny(node.keyNode(), memberKey);
+					out.print(":");
+					generateAny(node.valueNode(), memberValue);
 				}
 			}
 			out.print(END_OBJECT.fixedRepresentation());
@@ -189,7 +229,6 @@ public class SpecInterpretingGenerator implements Generator {
 				switch (cp) {
 					case '"': sb.append("\\\""); break;
 					case '\\': sb.append("\\\\"); break;
-					case '/': sb.append("\\/"); break;
 					case '\b': sb.append("\\b"); break;
 					case '\f': sb.append("\\f"); break;
 					case '\n': sb.append("\\n"); break;

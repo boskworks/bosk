@@ -2,8 +2,9 @@ package works.bosk.boson.mapping.spec;
 
 import java.lang.invoke.MethodHandle;
 import java.util.List;
+import java.util.Map;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
-import works.bosk.boson.types.KnownType;
+import works.bosk.boson.types.DataType;
 
 import static works.bosk.boson.types.DataType.VOID;
 
@@ -26,8 +27,8 @@ public record ParseCallbackSpec(
 		assert before.parameterTypes().isEmpty();
 		assert after.returnType() == VOID;
 
-		KnownType parsedValueType = child.dataType();
-		List<KnownType> expected;
+		DataType parsedValueType = child.dataType();
+		List<DataType> expected;
 		if (before.returnType() == VOID) {
 			expected = List.of(parsedValueType);
 		} else {
@@ -38,12 +39,21 @@ public record ParseCallbackSpec(
 	}
 
 	@Override
-	public KnownType dataType() {
+	public DataType dataType() {
 		return child.dataType();
 	}
 
 	@Override
 	public String briefIdentifier() {
 		return "ParseCallback";
+	}
+
+	@Override
+	public ParseCallbackSpec substitute(Map<String, DataType> actualArguments) {
+		return new ParseCallbackSpec(
+			before.substitute(actualArguments),
+			child.substitute(actualArguments),
+			after.substitute(actualArguments)
+		);
 	}
 }

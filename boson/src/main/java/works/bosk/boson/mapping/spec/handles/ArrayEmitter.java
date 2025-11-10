@@ -4,10 +4,10 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.List;
+import java.util.Map;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
-import works.bosk.boson.types.KnownType;
 
 import static works.bosk.boson.types.DataType.BOOLEAN;
 
@@ -52,15 +52,23 @@ public record ArrayEmitter(
 	/**
 	 * @return static type of the value being emitted
 	 */
-	public KnownType dataType() {
+	public DataType dataType() {
 		return start.parameterTypes().getFirst();
 	}
 
 	/**
 	 * @return static type of the elements
 	 */
-	public KnownType elementType() {
+	public DataType elementType() {
 		return next.returnType();
+	}
+
+	public ArrayEmitter substitute(Map<String, DataType> actualArguments) {
+		return new ArrayEmitter(
+			start.substitute(actualArguments),
+			hasNext.substitute(actualArguments),
+			next.substitute(actualArguments)
+		);
 	}
 
 	@Override
@@ -73,65 +81,65 @@ public record ArrayEmitter(
 	 * @param <I> the iterator type
 	 * @param <E> the element type
 	 */
-	public interface Handler<A, I, E> {
+	public interface Wrangler<A, I, E> {
 		I start(A representation);
 		boolean hasNext(I iterator);
 		E next(I iterator);
 	}
 
-	public static ArrayEmitter of(Handler<?,?,?> handler) {
-		BoundType handlerType = (BoundType) DataType.of(handler.getClass());
-		KnownType arrayType = (KnownType) handlerType.parameterType(Handler.class, 0);
-		KnownType iteratorType = (KnownType) handlerType.parameterType(Handler.class, 1);
-		KnownType elementType = (KnownType) handlerType.parameterType(Handler.class, 2);
+	public static ArrayEmitter of(Wrangler<?,?,?> wrangler) {
+		BoundType wranglerType = (BoundType) DataType.of(wrangler.getClass());
+		var arrayType = wranglerType.parameterType(Wrangler.class, 0);
+		var iteratorType = wranglerType.parameterType(Wrangler.class, 1);
+		var elementType = wranglerType.parameterType(Wrangler.class, 2);
 
 		return new ArrayEmitter(
 			new TypedHandle(
-				HANDLER_START.bindTo(handler)
+				WRANGLER_START.bindTo(wrangler)
 					.asType(MethodType.methodType(
-						iteratorType.rawClass(),
-						arrayType.rawClass()
+						iteratorType.leastUpperBoundClass(),
+						arrayType.leastUpperBoundClass()
 					)),
 				iteratorType, List.of(arrayType)
 			),
 			new TypedHandle(
-				HANDLER_HAS_NEXT.bindTo(handler)
+				WRANGLER_HAS_NEXT.bindTo(wrangler)
 					.asType(MethodType.methodType(
 						boolean.class,
-						iteratorType.rawClass()
+						iteratorType.leastUpperBoundClass()
 					)),
 				BOOLEAN, List.of(iteratorType)
 			),
 			new TypedHandle(
-				HANDLER_NEXT.bindTo(handler)
+				WRANGLER_NEXT.bindTo(wrangler)
 					.asType(MethodType.methodType(
-						elementType.rawClass(),
-						iteratorType.rawClass()
+						elementType.leastUpperBoundClass(),
+						iteratorType.leastUpperBoundClass()
 					)),
 				elementType, List.of(iteratorType)
 			)
 		);
 	}
 
-	private static final MethodHandle HANDLER_START;
-	private static final MethodHandle HANDLER_HAS_NEXT;
-	private static final MethodHandle HANDLER_NEXT;
+	private static final MethodHandle WRANGLER_START;
+	private static final MethodHandle WRANGLER_HAS_NEXT;
+	private static final MethodHandle WRANGLER_NEXT;
 
 	static {
 		MethodHandles.Lookup lookup = MethodHandles.lookup();
 		try {
-			HANDLER_START = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_START = lookup.findVirtual(
+				Wrangler.class,
 				"start",
 				MethodType.methodType(Object.class, Object.class)
 			);
-			HANDLER_HAS_NEXT = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_HAS_NEXT = lookup.findVirtual(
+				Wrangler.class,
 				"hasNext",
 				MethodType.methodType(boolean.class, Object.class)
 			);
-			HANDLER_NEXT = lookup.findVirtual(
-				Handler.class,
+			WRANGLER_NEXT = lookup.findVirtual(
+				Wrangler.class,
 				"next",
 				MethodType.methodType(Object.class, Object.class)
 			);

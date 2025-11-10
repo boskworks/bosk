@@ -23,7 +23,6 @@ import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.DataType;
-import works.bosk.boson.types.KnownType;
 
 import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
 import static java.lang.Math.min;
@@ -184,9 +183,9 @@ public class TestUtils {
 			assertEquals(expected, actual);
 		}
 
-		static TypedHandle from(long expected, KnownType parsedObjectType) {
+		static TypedHandle from(long expected, DataType parsedObjectType) {
 			MethodType actualVirtualType = MethodType.methodType(void.class, long.class, Object.class);
-			MethodType requiredMethodType = MethodType.methodType(void.class, CallbackChecker.class, long.class, parsedObjectType.rawClass());
+			MethodType requiredMethodType = MethodType.methodType(void.class, CallbackChecker.class, long.class, parsedObjectType.leastUpperBoundClass());
 			MethodHandle assertCorrect;
 			try {
 				assertCorrect = MethodHandles.lookup().findVirtual(CallbackChecker.class, "assertCorrect", actualVirtualType);

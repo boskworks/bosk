@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
+import works.bosk.boson.mapping.spec.TypeRefNode;
 import works.bosk.boson.types.DataType;
 
 import static java.util.Objects.requireNonNull;
@@ -83,6 +84,9 @@ public class TypeMap {
 	public JsonValueSpec put(DataType type, JsonValueSpec newValue) {
 		if (isFrozen.get()) {
 			throw new IllegalStateException("TypeMap is frozen");
+		}
+		if (newValue instanceof TypeRefNode(DataType referencedType) && referencedType.equals(type)) {
+			throw new IllegalArgumentException("Attempting to map a type " + type + " to a self-referential TypeRefNode. Do you have a TypeScanner directive that is not matching as it should?");
 		}
 		return memo.put(type, requireNonNull(newValue));
 	}

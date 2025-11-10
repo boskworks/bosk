@@ -3,6 +3,7 @@ dependencies {
 	api project(":bosk-core")
 
 	testImplementation project(":bosk-testing")
+	testImplementation project(":bosk-jackson") // For compatibility tests
 }
 
 spotbugsMain.enabled = false // https://github.com/spotbugs/spotbugs/issues/3564
