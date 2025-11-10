@@ -173,6 +173,32 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 		return new SideTable<>(CatalogReference.from(domain), OrderedPMap.from(map));
 	}
 
+	public static <KK extends Entity, VV> Builder<KK, VV> builder(Reference<Catalog<KK>> domain) {
+		return new Builder<>(CatalogReference.from(domain));
+	}
+
+	public static class Builder<KK extends Entity, VV> {
+		private final CatalogReference<KK> domain;
+		private OrderedPMap<Identifier, VV> map = OrderedPMap.empty();
+
+		public Builder(CatalogReference<KK> domain) {
+			this.domain = domain;
+		}
+
+		public Builder<KK, VV> put(Identifier id, VV value) {
+			map = map.plus(id, value);
+			return this;
+		}
+
+		public Builder<KK, VV> put(KK key, VV value) {
+			return put(key.id(), value);
+		}
+
+		public SideTable<KK, VV> build() {
+			return new SideTable<>(domain, map);
+		}
+	}
+
 	@Override
 	public String toString() {
 		return domain + "/" + valuesById;
