@@ -169,19 +169,19 @@ public abstract class StateTreeSerializer {
 		}
 	}
 
-	public static <V> Function<Object[], ? extends ListValue<V>> listValueFactory(Class<ListValue<V>> targetClass) {
+	public static <V> Function<Object[], ? extends ListValue<V>> listValueFactory(Class<? extends ListValue<V>> targetClass) {
 		Function<Object[], ? extends ListValue<V>> factory;
 		if (ListValue.class.equals(targetClass)) {
 			factory = StateTreeSerializer::listValueOf;
 		} else {
 			// User-supplied subclass needs a public constructor
-			Constructor<ListValue<V>> ctor = ReferenceUtils.theOnlyConstructorFor(targetClass);
+			Constructor<? extends ListValue<V>> ctor = ReferenceUtils.theOnlyConstructorFor(targetClass);
 			factory = args -> newInstance(ctor, args);
 		}
 		return factory;
 	}
 
-	private static <V> ListValue<V> newInstance(Constructor<ListValue<V>> listValueConstructor, Object[] args) {
+	private static <V> ListValue<V> newInstance(Constructor<? extends ListValue<V>> listValueConstructor, Object[] args) {
 		try {
 			return listValueConstructor.newInstance((Object)args);
 		} catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
