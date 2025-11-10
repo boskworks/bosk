@@ -7,4 +7,5 @@ module works.bosk.boson {
 	exports works.bosk.boson.mapping.spec;
 	exports works.bosk.boson.mapping.spec.handles;
 	exports works.bosk.boson.types;
+	exports works.bosk.boson.exceptions;
 }

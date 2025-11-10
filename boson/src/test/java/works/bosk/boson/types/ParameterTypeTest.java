@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ParameterTypeTest {
 	public static final DataType STRING = DataType.of(String.class);
 	public static final DataType INTEGER = DataType.of(Integer.class);
-	public static final TypeVariable VARIABLE_V = new TypeVariable("V");
+	public static final TypeVariable VARIABLE_V = TypeVariable.unbounded("V");
 
 	@Test
 	void directSuper_interface_inheritedConcrete() {

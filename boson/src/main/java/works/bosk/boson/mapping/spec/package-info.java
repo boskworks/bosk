@@ -27,5 +27,19 @@
  * Insignificant syntax such as whitespace and delimiters are not specified.
  * Any operation that wishes to process insignificant syntax is free to do so,
  * but such processing is not specified in the spec nodes.
+ *
+ * <h3>Wranglers</h3>
+ *
+ * Spec nodes that accept {@code TypedHandle}s are powerful but cumbersome.
+ * To help, we've adopted a design pattern called "wranglers".
+ * A <em>wrangler</em> is an interface that you can implement, usually
+ * with an anonymous inner class, from which
+ * all the required handles and type information can be derived automatically.
+ * Wranglers codify best practices in the sense that
+ * the resulting spec node is as efficient as possible.
+ * There's no performance penalty for using wranglers,
+ * besides type casts that the jit compiler can often optimize away;
+ * and their implementation can be used as a guide to how to implement
+ * the underlying handles directly, if you need to.
  */
 package works.bosk.boson.mapping.spec;

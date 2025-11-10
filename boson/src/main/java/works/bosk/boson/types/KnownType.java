@@ -9,5 +9,10 @@ sealed public interface KnownType extends DataType permits ArrayType, InstanceTy
 	Class<?> rawClass();
 
 	@Override
+	default Class<?> leastUpperBoundClass() {
+		return rawClass();
+	}
+
+	@Override
 	KnownType substitute(Map<String, DataType> actualArguments);
 }

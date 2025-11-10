@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.TestInstance;
 import works.bosk.boson.codec.PrimitiveInjector.PrimitiveNumber;
 import works.bosk.boson.mapping.TypeMap.Settings;
@@ -61,7 +62,7 @@ public class CodecHappyParseTest {
 
 	public CodecHappyParseTest(Settings settings) {
 		this.settings = settings;
-		scanner = new TypeScanner(settings).use(MethodHandles.lookup());
+		scanner = new TypeScanner(settings).useLookup(MethodHandles.lookup());
 	}
 
 	@InjectedTest
@@ -84,8 +85,12 @@ public class CodecHappyParseTest {
 			.scan(STRING)
 			.build();
 		var codec = CodecBuilder.using(typeMap).build();
-		assertEquals("TEST_VALUE",
-			codec.parserFor(new StringNode()).parse(JsonReader.create("\"TEST_VALUE\"")));
+		String everyAsciiCharacter = IntStream.range(32, 127)
+			.filter(i -> i != '"' && i != '\\') // Exclude " and \
+			.mapToObj(i -> String.valueOf((char) i))
+			.reduce("", (a, b) -> a + b);
+		assertEquals(everyAsciiCharacter,
+			codec.parserFor(new StringNode()).parse(JsonReader.create("\"" + everyAsciiCharacter +"\"")));
 	}
 
 	@InjectedTest
@@ -314,7 +319,8 @@ public class CodecHappyParseTest {
 		);
 
 		var typeMap = scanner
-			.scan(mapType)
+			.scan(STRING)
+			.scan(DataType.of(BigDecimal.class))
 			.build();
 		var codec = CodecBuilder.using(typeMap).build(spec);
 		var json = """

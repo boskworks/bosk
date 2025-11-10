@@ -3,10 +3,12 @@ package works.bosk.boson.mapping.spec;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.ToIntFunction;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
+import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
 
@@ -44,13 +46,44 @@ public record RepresentAsSpec(
 	}
 
 	@Override
-	public KnownType dataType() {
+	public DataType dataType() {
 		return fromRepresentation().returnType();
 	}
 
 	@Override
 	public String briefIdentifier() {
-		return "RepresentAs_" + dataType().rawClass().getSimpleName();
+		return "RepresentAs_" + dataType().leastUpperBoundClass().getSimpleName();
+	}
+
+	@Override
+	public RepresentAsSpec substitute(Map<String, DataType> actualArguments) {
+		return new RepresentAsSpec(
+			representation.substitute(actualArguments),
+			toRepresentation.substitute(actualArguments),
+			fromRepresentation.substitute(actualArguments)
+		);
+	}
+
+	public interface Wrangler<V,R> {
+		R toRepresentation(V value);
+		V fromRepresentation(R representation);
+	}
+
+	public static RepresentAsSpec of(Wrangler<?,?> wrangler) {
+		BoundType wranglerType = (BoundType) DataType.known(wrangler.getClass());
+		DataType valueType = wranglerType.parameterType(Wrangler.class, 0);
+		DataType representationType = wranglerType.parameterType(Wrangler.class, 1);
+		return new RepresentAsSpec(
+			new TypeRefNode(representationType),
+			new TypedHandle(
+				WRANGLER_TO_REPRESENTATION.bindTo(wrangler).asType(methodType(representationType.leastUpperBoundClass(), valueType.leastUpperBoundClass())),
+				representationType, List.of(valueType)
+			),
+			new TypedHandle(
+				WRANGLER_FROM_REPRESENTATION.bindTo(wrangler).asType(methodType(valueType.leastUpperBoundClass(), representationType.leastUpperBoundClass())),
+				valueType, List.of(representationType)
+			)
+		);
 	}
 
 	/**
@@ -58,15 +91,15 @@ public record RepresentAsSpec(
 	 */
 	public static <V,R> RepresentAsSpec as(
 		JsonValueSpec representation,
-		KnownType dataType,
+		DataType dataType,
 		Function<V,R> toRepresentation,
 		Function<R,V> fromRepresentation
 	) {
-		KnownType representationType = representation.dataType();
+		DataType representationType = representation.dataType();
 		MethodHandle toHandle = FUNCTION_APPLY.bindTo(toRepresentation).asType(
-			methodType(representationType.rawClass(), dataType.rawClass()));
+			methodType(representationType.leastUpperBoundClass(), dataType.leastUpperBoundClass()));
 		MethodHandle fromHandle = FUNCTION_APPLY.bindTo(fromRepresentation).asType(
-			methodType(dataType.rawClass(), representationType.rawClass()));
+			methodType(dataType.leastUpperBoundClass(), representationType.leastUpperBoundClass()));
 		return new RepresentAsSpec(
 			representation,
 			new TypedHandle(toHandle, representationType, List.of(dataType)),
@@ -81,15 +114,15 @@ public record RepresentAsSpec(
 	 * (Other primitives could be supported similarly if a need arises.)
 	 */
 	public static <V> RepresentAsSpec asInt(
-		KnownType dataType,
+		DataType dataType,
 		ToIntFunction<V> toRepresentation,
 		IntFunction<V> fromRepresentation
 	) {
 		KnownType representationType = DataType.INT;
 		MethodHandle toHandle = TO_INT_FUNCTION_APPLY.bindTo(toRepresentation).asType(
-			methodType(representationType.rawClass(), dataType.rawClass()));
+			methodType(representationType.rawClass(), dataType.leastUpperBoundClass()));
 		MethodHandle fromHandle = INT_FUNCTION_APPLY.bindTo(fromRepresentation).asType(
-			methodType(dataType.rawClass(), representationType.rawClass()));
+			methodType(dataType.leastUpperBoundClass(), representationType.rawClass()));
 		return new RepresentAsSpec(
 			new PrimitiveNumberNode(int.class),
 			new TypedHandle(toHandle, representationType, List.of(dataType)),
@@ -100,12 +133,16 @@ public record RepresentAsSpec(
 	private static final MethodHandle FUNCTION_APPLY;
 	private static final MethodHandle TO_INT_FUNCTION_APPLY;
 	private static final MethodHandle INT_FUNCTION_APPLY;
+	private static final MethodHandle WRANGLER_TO_REPRESENTATION;
+	private static final MethodHandle WRANGLER_FROM_REPRESENTATION;
 
 	static {
 		try {
 			FUNCTION_APPLY = MethodHandles.lookup().unreflect(Function.class.getMethod("apply", Object.class));
 			TO_INT_FUNCTION_APPLY = MethodHandles.lookup().unreflect(ToIntFunction.class.getMethod("applyAsInt", Object.class));
 			INT_FUNCTION_APPLY = MethodHandles.lookup().unreflect(IntFunction.class.getMethod("apply", int.class));
+			WRANGLER_TO_REPRESENTATION = MethodHandles.lookup().unreflect(Wrangler.class.getMethod("toRepresentation", Object.class));
+			WRANGLER_FROM_REPRESENTATION = MethodHandles.lookup().unreflect(Wrangler.class.getMethod("fromRepresentation", Object.class));
 		} catch (IllegalAccessException | NoSuchMethodException e) {
 			throw new IllegalStateException("Unexpected error looking up Function.apply", e);
 		}

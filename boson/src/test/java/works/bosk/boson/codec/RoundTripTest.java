@@ -3,6 +3,7 @@ package works.bosk.boson.codec;
 import java.io.CharArrayWriter;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Parameter;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
@@ -29,9 +30,15 @@ import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.StringNode;
+import works.bosk.boson.mapping.spec.UniformMapNode;
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
+import works.bosk.boson.mapping.spec.handles.ObjectAccumulator;
+import works.bosk.boson.mapping.spec.handles.ObjectEmitter;
+import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.mapping.spec.handles.TypedHandles;
+import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
+import works.bosk.boson.types.TypeReference;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
 import works.bosk.junit.ParameterInjector;
@@ -44,6 +51,8 @@ import static works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.memb
 import static works.bosk.boson.mapping.spec.handles.TypedHandles.canonicalConstructor;
 import static works.bosk.boson.mapping.spec.handles.TypedHandles.constant;
 import static works.bosk.boson.mapping.spec.handles.TypedHandles.notEquals;
+import static works.bosk.boson.types.DataType.BOOLEAN;
+import static works.bosk.boson.types.DataType.INT;
 import static works.bosk.boson.types.DataType.STRING;
 
 @InjectFrom({
@@ -153,10 +162,84 @@ public final class RoundTripTest {
 		testRoundTrip(node, "\"WEDNESDAY\"", WEDNESDAY);
 	}
 
+	@InjectedTest
+	void uniformMapUsingIterator() throws IOException {
+		BoundType linkedHashMapType = (BoundType) DataType.of(new TypeReference<LinkedHashMap<String, Integer>>() {});
+		var node = new UniformMapNode(
+			new StringNode(),
+			new BoxedPrimitiveSpec(new PrimitiveNumberNode(int.class)),
+			TypeScanner.mapAccumulator(linkedHashMapType),
+			TypeScanner.mapEmitter(linkedHashMapType)
+		);
+		testRoundTrip(node, """
+			{"one":1,"two":2,"three":3}""",
+			new LinkedHashMap<>(Map.of(
+				"one", 1,
+				"two", 2,
+				"three", 3
+			))
+		);
+	}
+
+	@InjectedTest
+	void uniformMapUsingForLoop() throws IOException, NoSuchMethodException, IllegalAccessException {
+		// This one is contrived: we represent an integer (say 3) as a map of the form:
+		// {"1":1,"2":2,"3":3}
+		// While parsing, the int is simply taken to be the greatest member value.
+
+		ObjectAccumulator accumulator = new ObjectAccumulator(
+			constant(INT, 0),
+			new TypedHandle(
+				MethodHandles.lookup().findStatic(RoundTripTest.class, "accumulateMax", MethodType.methodType(int.class, int.class, String.class, int.class)),
+				INT, List.of(INT, STRING, INT)
+			),
+			TypedHandles.identity(INT)
+		);
+		ObjectEmitter emitter = new ObjectEmitter(
+			constant(INT, 1).dropArguments(0, INT),
+			new TypedHandle(
+				MethodHandles.lookup().findStatic(RoundTripTest.class, "emitterHasNext", MethodType.methodType(boolean.class, int.class, int.class)),
+				BOOLEAN, List.of(INT, INT)
+			),
+			new TypedHandle(
+				MethodHandles.lookup().findStatic(RoundTripTest.class, "emitterNext", MethodType.methodType(int.class, int.class, int.class)),
+				INT, List.of(INT, INT)
+			),
+			new TypedHandle(
+				MethodHandles.lookup().findStatic(Integer.class, "toString", MethodType.methodType(String.class, int.class)),
+				STRING, List.of(INT)
+			),
+			TypedHandles.identity(INT)
+		);
+		var node = new UniformMapNode(
+			new StringNode(),
+			new PrimitiveNumberNode(int.class),
+			accumulator,
+			emitter
+		);
+		testRoundTrip(node, """
+			{"1":1,"2":2,"3":3}""",
+			3
+		);
+		testRoundTrip(node, "{}", 0);
+	}
+
+	private static int accumulateMax(int currentMax, String key, int value) {
+		return Math.max(currentMax, value);
+	}
+
+	private static boolean emitterHasNext(int currentValue, int maxValue) {
+		return currentValue <= maxValue;
+	}
+
+	private static int emitterNext(int currentValue, int maxValue) {
+		return currentValue + 1;
+	}
+
 	private void testRoundTrip(Class<? extends Record> recordClass, String json, Object value) throws IOException {
 		DataType type = DataType.of(recordClass);
 		TypeScanner typeScanner = new TypeScanner(settings)
-			.use(lookup);
+			.useLookup(lookup);
 		TypeMap typeMap = typeScanner.scan(type).build();
 		JsonValueSpec spec = typeMap.get(type);
 		CodecBuilder codecBuilder = CodecBuilder.using(typeMap);

@@ -12,6 +12,7 @@ public record BooleanNode() implements ScalarSpec {
 		return "boolean";
 	}
 
+	@Override
 	public KnownType dataType() {
 		return DataType.BOOLEAN;
 	}

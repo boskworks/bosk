@@ -1,5 +1,8 @@
 package works.bosk.boson.mapping.spec;
 
+import java.util.Map;
+import works.bosk.boson.types.DataType;
+
 /**
  * Describes how a particular JSON <em>value</em> corresponds to an in-memory representation.
  * <p>
@@ -18,4 +21,13 @@ public sealed interface JsonValueSpec extends SpecNode permits
 	RepresentAsSpec,
 	ScalarSpec,
 	TypeRefNode
-{ }
+{
+	/**
+	 * Subtypes are encouraged to redefine the return type covariantly.
+	 *
+	 * @return a new {@link JsonValueSpec} of the same type as {@code this} with the same semantics,
+	 * but with type variables in any {@link DataType}s substituted for the given types.
+	 */
+	JsonValueSpec substitute(Map<String, DataType> actualArguments);
+
+}

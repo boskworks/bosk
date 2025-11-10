@@ -290,7 +290,7 @@ public class SpecCompiler {
 		return new MethodRef(
 			"parse_" + valueSpec.briefIdentifier() + "_" + PARSE_METHODS_BY_NODE.size(),
 			ClassDesc.of(className),
-			mtd(ParserCodeBuilder.sanitized(returnType.rawClass())),
+			mtd(ParserCodeBuilder.sanitized(returnType.leastUpperBoundClass())),
 			Set.of(PUBLIC, FINAL));
 	}
 
@@ -303,7 +303,7 @@ public class SpecCompiler {
 	}
 
 	public TypeKind nodeReturnTypeKind(SpecNode node) {
-		return TypeKind.fromDescriptor(node.dataType().rawClass().descriptorString());
+		return TypeKind.fromDescriptor(node.dataType().leastUpperBoundClass().descriptorString());
 	}
 
 	record CurriedValue(
@@ -732,7 +732,7 @@ public class SpecCompiler {
 					var local = componentLocalsByName.get(name);
 					local.load(codeBuilder);
 					if (local.typeKind() == REFERENCE) {
-						Class<?> expectedType = node.dataType().rawClass();
+						Class<?> expectedType = node.dataType().leastUpperBoundClass();
 						LOGGER.trace("typeKind is {} for {}", local.typeKind(), expectedType);
 						codeBuilder.checkcast(cd(expectedType));
 					}

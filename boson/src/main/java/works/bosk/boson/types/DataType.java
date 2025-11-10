@@ -3,6 +3,7 @@ package works.bosk.boson.types;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -53,7 +54,13 @@ public sealed interface DataType permits KnownType, UnknownType {
 				(Class<?>) pt.getRawType(),
 				Stream.of(pt.getActualTypeArguments()).map(DataType::of).toList());
 		} else if (type instanceof java.lang.reflect.TypeVariable<?> tv) {
-			return new TypeVariable(tv.getName());
+			Type[] bounds = tv.getBounds();
+			if (bounds.length == 1 && bounds[0].equals(Object.class)) {
+				// Prefer to represent as unbounded
+				return new TypeVariable(tv.getName(), List.of());
+			} else {
+				return new TypeVariable(tv.getName(), Arrays.asList(bounds));
+			}
 		} else if (type instanceof java.lang.reflect.WildcardType w) {
 			return ofWildcard(w);
 		} else if (type instanceof GenericArrayType t) {
@@ -82,8 +89,26 @@ public sealed interface DataType permits KnownType, UnknownType {
 		return of(ref.reflectionType());
 	}
 
-	// TODO: I think we also want a kind of unification-match, where subtyping is not considered outside of type bounds
+	/**
+	 * {@code A.isAssignableFrom(B)} if a value of type B can be assigned to
+	 * a variable of type A.
+	 * <p>
+	 * Note that this is neither weaker nor stronger than {@link #isBindableFrom(DataType)}.
+	 * Type variables will only accept themselves or other type variables
+	 * that are nominally subtypes of them,
+	 * but concrete types can be assigned from subtypes.
+	 */
 	boolean isAssignableFrom(DataType other);
+
+	/**
+	 * {@code A.isBindableFrom(B)} if a value of type List<B>
+	 * can be passed to a method expecting List<A>.
+	 * <p>
+	 * Note that this is neither weaker nor stronger than {@link #isAssignableFrom(DataType)}.
+	 * Type variables will accept types that conform to their bounds,
+	 * but concrete types cannot be assigned from subtypes.
+	 */
+	boolean isBindableFrom(DataType other);
 
 	default boolean isAssignableFrom(Type type) {
 		return isAssignableFrom(DataType.of(type));
@@ -93,5 +118,18 @@ public sealed interface DataType permits KnownType, UnknownType {
 		return isAssignableFrom(DataType.of(ref));
 	}
 
+	/**
+	 * @return The most specific common supertype of all possible types
+	 * represented by this DataType.
+	 */
+	Class<?> leastUpperBoundClass();
+
 	DataType substitute(Map<String, DataType> actualArguments);
+
+	Map<String, DataType> bindingsFor(DataType other);
+
+	/**
+	 * @return true if this type contains any {@link WildcardType} or {@link ErasedType}.
+	 */
+	boolean hasWildcards();
 }

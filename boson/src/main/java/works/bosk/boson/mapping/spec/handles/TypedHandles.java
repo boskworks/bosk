@@ -35,19 +35,12 @@ public final class TypedHandles {
 		} catch (IllegalAccessException e) {
 			throw new IllegalArgumentException("Can't access canonical constructor of " + recordType);
 		}
-		KnownType recordDataType = DataType.known(recordType); // Records can have unknown types! But we don't support that here.
+		DataType recordDataType = DataType.of(recordType);
 		return new TypedHandle(
 			mh,
 			recordDataType,
 			Stream.of(recordType.getRecordComponents())
-				.map(rc -> {
-					var dt = DataType.of(rc.getType());
-					if (dt instanceof KnownType kt) {
-						return kt;
-					} else {
-						throw new IllegalArgumentException("Record component " + rc + " has unknown type " + dt);
-					}
-				})
+				.map(rc -> DataType.of(rc.getType()))
 				.toList()
 		);
 	}
@@ -68,8 +61,18 @@ public final class TypedHandles {
 		return new TypedHandle(NOT_EQUALS_HANDLE, BOOLEAN, List.of(OBJECT, OBJECT));
 	}
 
+	/**
+	 * @return a handle accepting an argument of the same type as returned by {@code argument}
+	 */
 	public static TypedHandle notEquals(TypedHandle argument) {
-		return notEquals().bind(0, argument);
+		return new TypedHandle(
+			NOT_EQUALS_HANDLE.asType(MethodType.methodType(
+				boolean.class,
+				argument.returnType().leastUpperBoundClass(),
+				argument.returnType().leastUpperBoundClass()
+			)),
+			BOOLEAN, List.of(argument.returnType(), argument.returnType())
+		).bind(0, argument);
 	}
 
 	private static boolean notEquals(Object a, Object b) {
@@ -90,84 +93,91 @@ public final class TypedHandles {
 		}
 	}
 
-	public static <T> TypedHandle constant(KnownType returnType, T value) {
+	public static <T> TypedHandle constant(DataType returnType, T value) {
 		return new TypedHandle(
-			MethodHandles.constant(returnType.rawClass(), value),
+			MethodHandles.constant(returnType.leastUpperBoundClass(), value),
 			returnType,
 			List.of()
 		);
 	}
 
-	public static <R> TypedHandle supplier(KnownType returnType, Supplier<R> supplier) {
+	public static <R> TypedHandle supplier(DataType returnType, Supplier<R> supplier) {
 		return new TypedHandle(
 			SUPPLIER_GET
 				.bindTo(supplier)
-				.asType(methodType(returnType.rawClass())),
+				.asType(methodType(returnType.leastUpperBoundClass())),
 			returnType,
 			List.of()
 		);
 	}
 
-	public static <T> TypedHandle consumer(KnownType argType, Consumer<T> consumer) {
+	public static <T> TypedHandle consumer(DataType argType, Consumer<T> consumer) {
 		return new TypedHandle(
 			CONSUMER_ACCEPT
 				.bindTo(consumer)
-				.asType(methodType(void.class, argType.rawClass())),
+				.asType(methodType(void.class, argType.leastUpperBoundClass())),
 			VOID,
 			List.of(argType)
 		);
 	}
 
-	public static <T1,T2> TypedHandle biConsumer(KnownType argType1, KnownType argType2, BiConsumer<T1,T2> biConsumer) {
+	public static <T1,T2> TypedHandle biConsumer(DataType argType1, DataType argType2, BiConsumer<T1,T2> biConsumer) {
 		return new TypedHandle(
 			BICONSUMER_ACCEPT
 				.bindTo(biConsumer)
-				.asType(methodType(void.class, argType1.rawClass(), argType2.rawClass())),
+				.asType(methodType(void.class, argType1.leastUpperBoundClass(), argType2.leastUpperBoundClass())),
 			VOID,
 			List.of(argType1, argType2)
 		);
 	}
 
-	public static <T> TypedHandle callable(KnownType returnType, Callable<T> callable) {
+	public static <T> TypedHandle callable(DataType returnType, Callable<T> callable) {
 		return new TypedHandle(
 			CALLABLE_CALL
 				.bindTo(callable)
-				.asType(methodType(returnType.rawClass())),
+				.asType(methodType(returnType.leastUpperBoundClass())),
 			returnType,
 			List.of()
 		);
 	}
 
-	public static <T,R> TypedHandle function(KnownType argType, KnownType returnType, Function<T,R> function) {
+	public static <T,R> TypedHandle function(DataType argType, DataType returnType, Function<T,R> function) {
 		return new TypedHandle(
 			FUNCTION_APPLY
 				.bindTo(function)
-				.asType(methodType(returnType.rawClass(), argType.rawClass())),
+				.asType(methodType(returnType.leastUpperBoundClass(), argType.leastUpperBoundClass())),
 			returnType,
 			List.of(argType)
 		);
 	}
 
 	public static <T1,T2,R> TypedHandle biFunction(
-		KnownType argType1,
-		KnownType argType2,
-		KnownType returnType,
+		DataType argType1,
+		DataType argType2,
+		DataType returnType,
 		BiFunction<T1,T2,R> biFunction
 	) {
 		return new TypedHandle(
 			BI_FUNCTION_APPLY
 				.bindTo(biFunction)
-				.asType(methodType(returnType.rawClass(), argType1.rawClass(), argType2.rawClass())),
+				.asType(methodType(returnType.leastUpperBoundClass(), argType1.leastUpperBoundClass(), argType2.leastUpperBoundClass())),
 			returnType,
 			List.of(argType1, argType2)
 		);
 	}
 
-	public static <T> TypedHandle predicate(KnownType argType, Predicate<T> predicate) {
+	public static TypedHandle identity(DataType type) {
+		return new TypedHandle(
+			MethodHandles.identity(type.leastUpperBoundClass()),
+			type, List.of(type)
+		);
+	}
+
+	public static <T> TypedHandle predicate(DataType argType, Predicate<T> predicate) {
 		return new TypedHandle(
 			PREDICATE_TEST
 				.bindTo(predicate)
-				.asType(methodType(boolean.class, argType.rawClass())),
+				.asType(methodType(boolean.class, argType.leastUpperBoundClass())),
 			DataType.BOOLEAN,
 			List.of(argType)
 		);

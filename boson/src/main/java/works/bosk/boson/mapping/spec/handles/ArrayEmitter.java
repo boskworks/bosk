@@ -4,10 +4,10 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.List;
+import java.util.Map;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
-import works.bosk.boson.types.KnownType;
 
 import static works.bosk.boson.types.DataType.BOOLEAN;
 
@@ -52,15 +52,23 @@ public record ArrayEmitter(
 	/**
 	 * @return static type of the value being emitted
 	 */
-	public KnownType dataType() {
+	public DataType dataType() {
 		return start.parameterTypes().getFirst();
 	}
 
 	/**
 	 * @return static type of the elements
 	 */
-	public KnownType elementType() {
+	public DataType elementType() {
 		return next.returnType();
+	}
+
+	public ArrayEmitter substitute(Map<String, DataType> actualArguments) {
+		return new ArrayEmitter(
+			start.substitute(actualArguments),
+			hasNext.substitute(actualArguments),
+			next.substitute(actualArguments)
+		);
 	}
 
 	@Override
@@ -81,16 +89,16 @@ public record ArrayEmitter(
 
 	public static ArrayEmitter of(Wrangler<?,?,?> wrangler) {
 		BoundType wranglerType = (BoundType) DataType.of(wrangler.getClass());
-		KnownType arrayType = (KnownType) wranglerType.parameterType(Wrangler.class, 0);
-		KnownType iteratorType = (KnownType) wranglerType.parameterType(Wrangler.class, 1);
-		KnownType elementType = (KnownType) wranglerType.parameterType(Wrangler.class, 2);
+		var arrayType = wranglerType.parameterType(Wrangler.class, 0);
+		var iteratorType = wranglerType.parameterType(Wrangler.class, 1);
+		var elementType = wranglerType.parameterType(Wrangler.class, 2);
 
 		return new ArrayEmitter(
 			new TypedHandle(
 				WRANGLER_START.bindTo(wrangler)
 					.asType(MethodType.methodType(
-						iteratorType.rawClass(),
-						arrayType.rawClass()
+						iteratorType.leastUpperBoundClass(),
+						arrayType.leastUpperBoundClass()
 					)),
 				iteratorType, List.of(arrayType)
 			),
@@ -98,15 +106,15 @@ public record ArrayEmitter(
 				WRANGLER_HAS_NEXT.bindTo(wrangler)
 					.asType(MethodType.methodType(
 						boolean.class,
-						iteratorType.rawClass()
+						iteratorType.leastUpperBoundClass()
 					)),
 				BOOLEAN, List.of(iteratorType)
 			),
 			new TypedHandle(
 				WRANGLER_NEXT.bindTo(wrangler)
 					.asType(MethodType.methodType(
-						elementType.rawClass(),
-						iteratorType.rawClass()
+						elementType.leastUpperBoundClass(),
+						iteratorType.leastUpperBoundClass()
 					)),
 				elementType, List.of(iteratorType)
 			)

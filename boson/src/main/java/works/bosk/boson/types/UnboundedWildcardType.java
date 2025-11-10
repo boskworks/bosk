@@ -10,7 +10,17 @@ public record UnboundedWildcardType() implements WildcardType {
 
 	@Override
 	public boolean isAssignableFrom(DataType other) {
-		return other instanceof KnownType;
+		return true;
+	}
+
+	@Override
+	public boolean isBindableFrom(DataType other) {
+		return true;
+	}
+
+	@Override
+	public Class<?> leastUpperBoundClass() {
+		return Object.class;
 	}
 
 	@Override

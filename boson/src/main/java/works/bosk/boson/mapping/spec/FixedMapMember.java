@@ -2,10 +2,10 @@ package works.bosk.boson.mapping.spec;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.RecordComponent;
+import java.util.Map;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.DataType;
-import works.bosk.boson.types.KnownType;
 
 /**
  * Specifies a member of a {@link FixedMapNode}.
@@ -28,7 +28,15 @@ public record FixedMapMember(
 		);
 	}
 
-	public KnownType dataType() {
+	public DataType dataType() {
 		return valueSpec.dataType();
+	}
+
+	public FixedMapMember substitute(Map<String, DataType> actualArguments) {
+		SpecNode valueSpec = (this.valueSpec instanceof JsonValueSpec j)? j.substitute(actualArguments) : this.valueSpec;
+		return new FixedMapMember(
+			valueSpec,
+			this.accessor.substitute(actualArguments)
+		);
 	}
 }

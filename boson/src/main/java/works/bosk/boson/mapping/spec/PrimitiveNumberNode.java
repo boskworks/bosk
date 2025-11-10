@@ -27,6 +27,7 @@ public record PrimitiveNumberNode(
 		return "Primitive:" + targetClass.getSimpleName();
 	}
 
+	@Override
 	public KnownType dataType() {
 		return DataType.known(targetClass());
 	}

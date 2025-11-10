@@ -3,12 +3,10 @@ package works.bosk.boson.mapping;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
-import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -66,7 +64,7 @@ import static works.bosk.boson.mapping.spec.PrimitiveNumberNode.PRIMITIVE_NUMBER
  * and then {@link #build() builds} an optimized {@link TypeMap}.
  */
 public class TypeScanner {
-	final Map<KnownType, TypeRefNode> refs = new LinkedHashMap<>();
+	final Map<DataType, TypeRefNode> refs = new LinkedHashMap<>();
 	final TypeMap inProgress;
 	final Deque<Bundle> bundles = new ArrayDeque<>();
 	final Map<Class<? extends Record>, Map<String, FixedMapMember>> recordComponentOverrides = new HashMap<>();
@@ -90,6 +88,8 @@ public class TypeScanner {
 	 */
 	public TypeScanner scan(DataType type) {
 		var node = inProgress.computeIfAbsent(type, this::computeSpecNode);
+		assert type.equals(node.dataType()):
+			"Node must have datatype " + type + " but has " + node.dataType() + ": " + node;
 
 		// TODO: The following happens every time we scan a type, even if we've scanned it before.
 
@@ -155,22 +155,32 @@ public class TypeScanner {
 	}
 
 	/**
-	 * Indicates that the given {@code type} is to be associated with the given {@code spec}.
+	 * Indicates that types matching the given {@code type}
+	 * are to be associated with the given {@code spec}.
 	 * <p>
+	 * Equivalent to adding a {@link Bundle} with a single type
+	 * and a single {@link Directive}, like this:
+	 *
+	 * <pre>
+	 *  addBundle(new Bundle(
+	 *      List.of(type),
+	 *      List.of(),
+	 *      List.of(Directive.fixed(spec))
+	 *  ));
+	 * </pre>
 	 * <em>Note</em>: this can only specify handling for whole types. If you want to override
 	 * handling for one particular record field, or for the keys or values of a particular map,
 	 * or even the entries of a particular list, that can't be done here.
 	 *
 	 * @return this
-	 * @throws IllegalArgumentException if {@code type} is already associated with a different {@link JsonValueSpec}.
 	 */
 	public TypeScanner specify(DataType type, JsonValueSpec spec) {
-		var old = inProgress.put(type, spec);
-		if (old == null || old == spec) {
-			return this;
-		} else {
-			throw new IllegalArgumentException("Multiple specifications for the same type " + type + ": " + old + " and " + spec);
-		}
+		addBundle(new Bundle(
+			List.of(type),
+			List.of(),
+			List.of(Directive.fixed(spec)
+		)));
+		return this;
 	}
 
 	/**
@@ -179,7 +189,7 @@ public class TypeScanner {
 	 *
 	 * @return {@code this}
 	 */
-	public TypeScanner use(Lookup lookup) {
+	public TypeScanner useLookup(Lookup lookup) {
 		inProgress.add(lookup);
 		return this;
 	}
@@ -195,27 +205,112 @@ public class TypeScanner {
 		List<Directive> directives
 	) { }
 
-	// TODO: A variant of Directive that takes a JsonValueSpec. Then we know we can use the same JsonValueSpec every time
-	// rather than being required to ask this spec function to generate a new one each time
-	public record Directive(DataType pattern, Function<KnownType, JsonValueSpec> spec) {}
+	public record Directive(DataType pattern, Function<DataType, JsonValueSpec> spec) {
+		public Directive {
+			assert !pattern.hasWildcards():
+				"Directive pattern must not have wildcards; use type variables instead: " + pattern;
+		}
+
+		/**
+		 * @return a {@link Directive} that always returns the given {@code spec}
+		 * regardless of the actual type.
+		 */
+		public static Directive fixed(JsonValueSpec spec) {
+			// TODO: We could optimize this knowing that the spec function always returns the same value
+			return new Directive(
+				spec.dataType(),
+				_ -> spec
+			);
+		}
+	}
 
 	/**
 	 * Adds a new configuration bundle that takes precedence over previously added bundles.
+	 * <p>
+	 * When in doubt between this and {@link #addFallbackBundle(Bundle)}, pick this.
+	 * Generally, when you add a bundle, you want it to do what it's designed to do,
+	 * and adding it last risks having some of its directives ignored.
+	 *
 	 * @return {@code this}
+	 * @see #addFallbackBundle(Bundle)
 	 */
-	public TypeScanner addFirst(Bundle bundle) {
+	public TypeScanner addBundle(Bundle bundle) {
 		bundles.addFirst(bundle);
-		bundle.lookups().forEach(this::use);
+		bundle.lookups().forEach(this::useLookup);
 		return this;
 	}
 
 	/**
 	 * Adds a new configuration bundle that applies only if no directives from existing bundles match.
+	 * Allows adding "fallback" bundles that supply default handling for types not covered
+	 * by other bundles.
+	 * <p>
+	 * <strong>TL;DR: it might actually be fine after all.</strong>
+	 * TODO: This is likely too simplistic, especially once we have built-in bundles.
+	 * We can imagine four use cases for adding bundles:
+	 * <ol>
+	 *     <li>
+	 *         No overlap with other bundles. This is probably the most common.
+	 *     </li>
+	 *     <li>
+	 *         Override some or all types from existing bundles.
+	 *     </li>
+	 *     <li>
+	 *         Supply defaults that override built-in functionality but not user-added bundles.
+	 *     </li>
+	 *     <li>
+	 *         Supply defaults that only apply if no other bundle (including built-in) applies.
+	 *     </li>
+	 * </ol>
+	 *
+	 * These options are a matter of how pairs of bundles interact, so it's not necessarily
+	 * feasible to require this to be specified in the bundles themselves, since
+	 * separately developed bundles wouldn't know of each other.
+	 * <p>
+	 * I'm picturing that, when we add bundles, we also specify types whose directives
+	 * should be overridden by the new bundle, and types whose directives should
+	 * be overridden by existing bundles.
+	 * This means that we can't implement this by resolving the bundles into a single
+	 * linear order, since the user might want A to override B for some types and B to
+	 * override A for others. This probably entails a topological sort of directives
+	 * rather than a simple list of bundles.
+	 * <p>
+	 * This could get very complicated if the
+	 * types don't exactly match those of the directives, because a particular directive
+	 * might be partially overridden. Perhaps we'd need to implement this by
+	 * generating new directives in this case. For example, if the existing directive
+	 * and the new directive both match {@code CharSequence} but we want to override
+	 * it only for {@code String}, we'd have a sequence of three directives:
+	 *
+	 * <ol>
+	 *     <li>
+	 *         A synthetic directive for {@code String} using the new bundle's handling,
+	 *     </li>
+	 *     <li>
+	 *         The existing directive matching {@code CharSequence} and finally
+	 *     </li>
+	 *     <li>
+	 *         The new directive matching {@code CharSequence}.
+	 *     </li>
+	 * </ol>
+	 *
+	 * A problem with the "no overlap" approach is that the natural interpretation of it,
+	 * where two directives overlap if there exists a type that matches both, would mean
+	 * that all (non-sealed) interfaces would conflict. This would likely cause more problems
+	 * than it solves. We probably need a less aggressive concept of "conflict". Perhaps
+	 * the notion would be that new bundles override existing ones, but if they add
+	 * directives that "dominate" existing ones (ie. the new type {@link DataType#isBindableFrom isBindableFrom}
+	 * the existing one), then it must declare that this is deliberate.
+	 * Again, it's not clear that this has value: the surprise occurs when you add
+	 * a bundle that does nothing, and that is not a risk if "override existing bundles"
+	 * is the contract.
+	 *
 	 * @return {@code this}
+	 * @see #addBundle(Bundle)
 	 */
-	public TypeScanner addLast(Bundle bundle) {
+	public TypeScanner addFallbackBundle(Bundle bundle) {
 		bundles.addLast(bundle);
-		bundle.lookups().forEach(this::use);
+		bundle.lookups().forEach(this::useLookup);
 		return this;
 	}
 
@@ -228,7 +323,9 @@ public class TypeScanner {
 	}
 
 	public TypeMap build() {
-		scanRefs();
+		if (!settings().shallowScan()) {
+			scanRefs();
+		}
 		scanBundleTypes();
 		inProgress.freeze();
 		LOGGER.debug("Initial TypeMap:\n{}", inProgress.knownTypes().stream()
@@ -265,10 +362,25 @@ public class TypeScanner {
 	}
 
 	private JsonValueSpec computeSpecNode(DataType type) {
-		if (type instanceof KnownType kt && findDirective(kt) instanceof Directive(var pattern, var specFunction)) {
+		if (type instanceof DataType // Work around JDK 25 bug
+				&& findDirective(type) instanceof Directive(var pattern, var specFunction)) {
 			LOGGER.debug("Type {} matched directive {}", type, pattern);
-			JsonValueSpec spec = specFunction.apply(kt);
-			LOGGER.debug("Type {} using {}", type, spec);
+			var spec = specFunction.apply(type);
+
+			// This assertion rules out matching on lower bounds, which is unfortunate,
+			// but I can't figure out how to make `substitute` work with wildcards.
+			assert !spec.dataType().hasWildcards():
+				"Spec produced by directive must not have wildcards: " + spec;
+
+			LOGGER.debug("Directive returned {}", spec);
+			var specialized = spec.substitute(pattern.bindingsFor(type));
+			if (!specialized.equals(spec)) {
+				spec = specialized;
+				LOGGER.debug("Specialized: {}", spec);
+			}
+			assert type.equals(spec.dataType()):
+				"Expected directive to produce a spec of type " + type
+				+ "; got " + spec.dataType();
 			return scrapeRefs(spec);
 		}
 		return switch (type) {
@@ -285,7 +397,7 @@ public class TypeScanner {
 		switch (spec) {
 			case TypeRefNode n -> {
 				LOGGER.debug("Found type reference to {}", n.type());
-				if (n.type().rawClass().equals(Map.class)) {
+				if (n.type().leastUpperBoundClass().equals(Map.class)) {
 					LOGGER.trace("IT'S A MAP");
 				}
 				refs.putIfAbsent(n.type(), n);
@@ -310,10 +422,10 @@ public class TypeScanner {
 		return spec;
 	}
 
-	private Directive findDirective(KnownType type) {
+	private Directive findDirective(DataType type) {
 		for (var bundle : bundles) {
 			for (var directive : bundle.directives()) {
-				if (directive.pattern().isAssignableFrom(type)) {
+				if (directive.pattern().isBindableFrom(type)) {
 					return directive;
 				}
 			}
@@ -373,14 +485,14 @@ public class TypeScanner {
 				.orElseThrow(() -> new IllegalStateException("Unsupported number class: " + clazz));
 			return new BoxedPrimitiveSpec(new PrimitiveNumberNode(primitiveClass));
 		}
-		if (Collection.class.isAssignableFrom(clazz) && clazz.isAssignableFrom(List.class)) {
+		if (Iterable.class.isAssignableFrom(clazz) && clazz.isAssignableFrom(List.class)) {
 			return new ArrayNode(
-				refNode(type.parameterType(Collection.class, 0)),
+				refNode(type.parameterType(Iterable.class, 0)),
 				listAccumulator(type),
 				listEmitter(type)
 			);
 		}
-		if (Map.class.isAssignableFrom(clazz) && clazz.isAssignableFrom(Map.class)) {
+		if (Map.class.isAssignableFrom(clazz) && clazz.isAssignableFrom(LinkedHashMap.class)) {
 			var keySpec = refNode(type.parameterType(Map.class, 0));
 			var valueSpec = refNode(type.parameterType(Map.class, 1));
 			return new UniformMapNode(
@@ -393,11 +505,20 @@ public class TypeScanner {
 		if (isStringParsingClass(type)) {
 			return scanStringParsingClass(type);
 		}
+		// At this point, we have a type that simply won't work unless
+		// it's handled by a directive. If anyone relies on the value
+		// we return here, they're wrong. Unfortunately, returning
+		// this TypeRefNode, while not incorrect on its own, can cause
+		// a StackOverflowError if no directives override this.
+		// TODO: Handle this case more cleanly
 		return new TypeRefNode(type);
 	}
 
 	public static ArrayAccumulator listAccumulator(BoundType arrayListType) {
 		assert arrayListType.rawClass().isAssignableFrom(ArrayList.class);
+		if (!(arrayListType.parameterType(Iterable.class, 0) instanceof KnownType elementType)) {
+			throw new IllegalStateException("Can't accumulate into a list of unknown element type: " + arrayListType);
+		}
 		MethodHandle creator, listAdd, finisher;
 		try {
 			creator = MethodHandles.lookup().unreflectConstructor(ArrayList.class.getConstructor());
@@ -407,33 +528,35 @@ public class TypeScanner {
 			throw new IllegalStateException("Unexpected error doing reflection on List", e);
 		}
 		var upcastCreator = creator.asType(creator.type().changeReturnType(List.class));
-		var integrator = listAdd.asType(listAdd.type().changeReturnType(void.class));
+		var integrator = listAdd.asType(listAdd.type()
+			.changeReturnType(void.class)
+			.changeParameterType(1, elementType.rawClass()));
 		var upcastFinisher = finisher.asType(finisher.type().changeReturnType(arrayListType.rawClass()));
 		var listType = new BoundType(List.class, arrayListType.bindings());
 		return new ArrayAccumulator(
 			new TypedHandle(upcastCreator, listType, List.of()),
-			new TypedHandle(integrator, DataType.VOID, List.of(listType, DataType.OBJECT)),
+			new TypedHandle(integrator, DataType.VOID, List.of(listType, elementType)),
 			new TypedHandle(upcastFinisher, arrayListType, List.of(listType))
 		);
 	}
 
-	public static ArrayEmitter listEmitter(BoundType listType) {
-		assert List.class.isAssignableFrom(listType.rawClass());
-		if (!(listType.parameterType(List.class, 0) instanceof KnownType elementType)) {
-			throw new IllegalStateException("Can't emit from a list of unknown element type: " + listType);
+	public static ArrayEmitter listEmitter(BoundType iterableType) {
+		assert Iterable.class.isAssignableFrom(iterableType.rawClass());
+		if (!(iterableType.parameterType(Iterable.class, 0) instanceof KnownType elementType)) {
+			throw new IllegalStateException("Can't emit from a list of unknown element type: " + iterableType);
 		}
 		MethodHandle iterator, hasNext, next;
 		try {
-			iterator = MethodHandles.lookup().unreflect(List.class.getMethod("iterator"));
+			iterator = MethodHandles.lookup().unreflect(iterableType.rawClass().getMethod("iterator"));
 			hasNext = MethodHandles.lookup().unreflect(Iterator.class.getMethod("hasNext"));
 			next = MethodHandles.lookup().unreflect(Iterator.class.getMethod("next"));
 		} catch (IllegalAccessException | NoSuchMethodException e) {
-			throw new IllegalStateException("Unexpected error doing reflection on List", e);
+			throw new IllegalStateException("Unexpected error doing reflection on Iterable", e);
 		}
 		var downcastNext = next.asType(next.type().changeReturnType(elementType.rawClass()));
-		var iteratorType = new BoundType(Iterator.class, listType.bindings());
+		var iteratorType = new BoundType(Iterator.class, iterableType.bindings());
 		return new ArrayEmitter(
-			new TypedHandle(iterator, iteratorType, List.of(listType)),
+			new TypedHandle(iterator, iteratorType, List.of(iterableType)),
 			new TypedHandle(hasNext, DataType.BOOLEAN, List.of(iteratorType)),
 			new TypedHandle(downcastNext, elementType, List.of(iteratorType))
 		);
@@ -441,6 +564,10 @@ public class TypeScanner {
 
 	public static ObjectAccumulator mapAccumulator(BoundType linkedHashMapType) {
 		assert linkedHashMapType.rawClass().isAssignableFrom(LinkedHashMap.class);
+		if (!(linkedHashMapType.parameterType(Map.class, 0) instanceof KnownType keyType) ||
+			!(linkedHashMapType.parameterType(Map.class, 1) instanceof KnownType valueType)) {
+			throw new IllegalStateException("Can't accumulate into a map of unknown key or value type: " + linkedHashMapType);
+		}
 		MethodHandle creator, mapPut, finisher;
 		try {
 			creator = MethodHandles.lookup().unreflectConstructor(LinkedHashMap.class.getConstructor());
@@ -450,11 +577,15 @@ public class TypeScanner {
 			throw new IllegalStateException("Unexpected error doing reflection on List", e);
 		}
 		var upcastCreator = creator.asType(creator.type().changeReturnType(Map.class));
-		var integrator = mapPut.asType(mapPut.type().changeReturnType(void.class));
+		var integrator = mapPut.asType(mapPut.type()
+			.changeReturnType(void.class)
+			.changeParameterType(1, keyType.rawClass())
+			.changeParameterType(2, valueType.rawClass())
+		);
 		var mapType = new BoundType(Map.class, linkedHashMapType.bindings());
 		return new ObjectAccumulator(
 			new TypedHandle(upcastCreator, mapType, List.of()),
-			new TypedHandle(integrator, DataType.VOID, List.of(mapType, DataType.OBJECT, DataType.OBJECT)),
+			new TypedHandle(integrator, DataType.VOID, List.of(mapType, keyType, valueType)),
 			new TypedHandle(finisher, linkedHashMapType, List.of(mapType))
 		);
 	}
@@ -465,7 +596,6 @@ public class TypeScanner {
 			!(mapType.parameterType(Map.class, 1) instanceof KnownType valueType)) {
 			throw new IllegalStateException("Can't emit from a map of unknown key or value type: " + mapType);
 		}
-		Method getIteratorMethod;
 		MethodHandle start, hasNext, next, getKey, getValue;
 		try {
 			start = MethodHandles.lookup().unreflect(TypeScanner.class.getDeclaredMethod("getIterator", Map.class));
@@ -527,11 +657,12 @@ public class TypeScanner {
 			);
 		return new FixedMapNode(
 			collect,
-			recordFinisher(recordClass, collect)
+			recordFinisher(recordType, collect)
 		);
 	}
 
-	private TypedHandle recordFinisher(Class<?> recordClass, Map<String, FixedMapMember> componentsByName) {
+	private TypedHandle recordFinisher(KnownType recordType, Map<String, FixedMapMember> componentsByName) {
+		Class<?> recordClass = recordType.rawClass();
 		assert Record.class.isAssignableFrom(recordClass);
 		assert componentsByName.keySet().equals(
 			Stream.of(recordClass.getRecordComponents())
@@ -547,10 +678,10 @@ public class TypeScanner {
 		} catch (NoSuchMethodException | IllegalAccessException e) {
 			throw new IllegalStateException("Unexpected error accessing record constructor for " + recordClass, e);
 		}
-		List<KnownType> memberTypes = componentsByName.values().stream().map(FixedMapMember::dataType).toList();
+		List<DataType> memberTypes = componentsByName.values().stream().map(FixedMapMember::dataType).toList();
 		return new TypedHandle(
-			constructor.asType(methodType(recordClass, memberTypes.stream().map(KnownType::rawClass).toArray(Class<?>[]::new))),
-			DataType.known(recordClass),
+			constructor.asType(methodType(recordClass, memberTypes.stream().map(DataType::leastUpperBoundClass).toArray(Class<?>[]::new))),
+			recordType,
 			memberTypes);
 	}
 

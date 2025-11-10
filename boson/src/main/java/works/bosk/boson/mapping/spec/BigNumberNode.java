@@ -20,6 +20,7 @@ public record BigNumberNode(
 		return "BigNumber:" + numberClass.getSimpleName();
 	}
 
+	@Override
 	public KnownType dataType() {
 		return DataType.known(numberClass());
 	}

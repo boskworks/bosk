@@ -1,6 +1,7 @@
 package works.bosk.boson.mapping;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,7 @@ import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.TypeRefNode;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.TypeReference;
-import works.bosk.boson.types.WildcardType;
+import works.bosk.boson.types.TypeVariable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -31,7 +32,7 @@ class TypeScannerTest {
 
 	@Test
 	void testSimpleDirective() throws IOException {
-		scanner.addLast(new Bundle(List.of(), List.of(), List.of(
+		scanner.addBundle(new Bundle(List.of(), List.of(), List.of(
 			new Directive(
 				DataType.FLOAT,
 				_ -> RepresentAsSpec.as(
@@ -62,9 +63,9 @@ class TypeScannerTest {
 
 	@Test
 	void testTypeBound() throws IOException {
-		scanner.addLast(new Bundle(List.of(), List.of(), List.of(
+		scanner.addBundle(new Bundle(List.of(), List.of(), List.of(
 			new Directive(
-				WildcardType.extends_(Overridden.class),
+				new TypeVariable("T", Overridden.class),
 				t -> RepresentAsSpec.asInt(
 					t,
 					Overridden::value,
@@ -83,5 +84,21 @@ class TypeScannerTest {
 			[ 123, 456 ]
 			"""));
 		assertEquals(List.of(new OverriddenImpl(123), new OverriddenImpl(456)), actual);
+	}
+
+	@Test
+	void testIterable() throws IOException {
+		record TestRecord(Iterable<String> items) {}
+		var typeMap = scanner
+			.useLookup(MethodHandles.lookup())
+			.scan(DataType.of(TestRecord.class))
+			.build();
+		JsonValueSpec spec = typeMap.get(DataType.of(TestRecord.class));
+		Codec codec = CodecBuilder.using(typeMap).build();
+		Object actual = codec.parserFor(spec).parse(CharArrayJsonReader.forString(
+			"""
+			{ "items": [ "a", "b", "c" ] }
+			"""));
+		assertEquals(new TestRecord(List.of("a", "b", "c")), actual);
 	}
 }

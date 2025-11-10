@@ -9,9 +9,10 @@ import works.bosk.boson.types.KnownType;
 public record StringNode() implements ScalarSpec {
 	@Override
 	public String toString() {
-		return "String";
+		return "StringNode";
 	}
 
+	@Override
 	public KnownType dataType() {
 		return DataType.STRING;
 	}
