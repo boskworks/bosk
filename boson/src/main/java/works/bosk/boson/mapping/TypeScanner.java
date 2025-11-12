@@ -485,7 +485,7 @@ public class TypeScanner {
 				.orElseThrow(() -> new IllegalStateException("Unsupported number class: " + clazz));
 			return new BoxedPrimitiveSpec(new PrimitiveNumberNode(primitiveClass));
 		}
-		if (Iterable.class.isAssignableFrom(clazz) && clazz.isAssignableFrom(List.class)) {
+		if (Iterable.class.isAssignableFrom(clazz) && clazz.isAssignableFrom(ArrayList.class)) {
 			return new ArrayNode(
 				refNode(type.parameterType(Iterable.class, 0)),
 				listAccumulator(type),
