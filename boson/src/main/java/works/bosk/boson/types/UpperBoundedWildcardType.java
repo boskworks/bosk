@@ -9,16 +9,6 @@ public record UpperBoundedWildcardType(DataType upperBound) implements WildcardT
 	}
 
 	@Override
-	public boolean isAssignableFrom(DataType other) {
-		return upperBound.isAssignableFrom(other);
-	}
-
-	@Override
-	public boolean isBindableFrom(DataType other) {
-		return upperBound.isAssignableFrom(other);
-	}
-
-	@Override
 	public UpperBoundedWildcardType substitute(Map<String, DataType> actualArguments) {
 		return new UpperBoundedWildcardType(upperBound.substitute(actualArguments));
 	}
@@ -26,5 +16,10 @@ public record UpperBoundedWildcardType(DataType upperBound) implements WildcardT
 	@Override
 	public String toString() {
 		return "? extends " + upperBound;
+	}
+
+	@Override
+	public CapturedType capture() {
+		return new CapturedType(new NullType(), upperBound);
 	}
 }

@@ -16,6 +16,13 @@ sealed public interface WildcardType extends UnknownType permits LowerBoundedWil
 		return new LowerBoundedWildcardType(DataType.of(lowerBound));
 	}
 
+	CapturedType capture();
+
+	@Override
+	default boolean isBindableFrom(DataType other, BindableOptions options, Map<String, DataType> bindingsSoFar) {
+		return capture().isBindableFrom(other, options, bindingsSoFar);
+	}
+
 	@Override
 	default Map<String, DataType> bindingsFor(DataType other) {
 		return Map.of();

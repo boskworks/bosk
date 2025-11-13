@@ -3,6 +3,7 @@ package works.bosk.boson.types;
 import java.io.Serializable;
 import java.lang.constant.Constable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.boson.types.DataType.INT;
+import static works.bosk.boson.types.DataType.OBJECT;
 
 public class DataTypeAssignableTest {
 
@@ -77,6 +79,20 @@ public class DataTypeAssignableTest {
 			.isAssignableFrom(mapSI));
 		assertFalse(mapTT
 			.isBindableFrom(mapSI));
+
+		var mapTListT = DataType.of(new TypeReference<Map<T, List<T>>>() { });
+		var mapSListS = DataType.of(new TypeReference<Map<String, List<String>>>() { });
+		var mapSListI = DataType.of(new TypeReference<Map<String, List<Integer>>>() { });
+
+		assertFalse(mapTListT
+			.isAssignableFrom(mapSListS));
+		assertTrue(mapTListT
+			.isBindableFrom(mapSListS));
+
+		assertFalse(mapTListT
+			.isAssignableFrom(mapSListI));
+		assertFalse(mapTListT
+			.isBindableFrom(mapSListI));
 	}
 
 	@Test
@@ -152,19 +168,19 @@ public class DataTypeAssignableTest {
 		assertTrue(listString
 			.isBindableFrom(listErased));
 
-		var listT = DataType.of(new TypeReference<T>() { });
-
-		assertFalse(listErased
-			.isAssignableFrom(listT));
-		assertFalse(listErased
-			.isBindableFrom(listT));
-
-		var listL = DataType.of(new TypeReference<L>() { });
+		var listT = DataType.of(new TypeReference<List<T>>() { });
 
 		assertTrue(listErased
-			.isAssignableFrom(listL));
+			.isAssignableFrom(listT));
+		assertTrue(listErased
+			.isBindableFrom(listT));
+
+		var extendsListL = DataType.of(new TypeReference<L>() { });
+
+		assertTrue(listErased
+			.isAssignableFrom(extendsListL));
 		assertFalse(listErased
-			.isBindableFrom(listL));
+			.isBindableFrom(extendsListL));
 	}
 
 	@Test
@@ -266,9 +282,9 @@ public class DataTypeAssignableTest {
 
 	@Test
 	<X extends CharSequence & Constable> void objectMatchesTypeVariableBoundedToMultipleSubtypes() {
-		assertTrue(DataType.OBJECT
+		assertTrue(OBJECT
 			.isAssignableFrom(DataType.of(new TypeReference<X>() { })));
-		assertFalse(DataType.OBJECT
+		assertFalse(OBJECT
 				.isBindableFrom(DataType.of(new TypeReference<X>() { })),
 			"Type argument assignability is not covariant");
 	}
@@ -391,6 +407,22 @@ public class DataTypeAssignableTest {
 		assertTrue(DataType.of(String[].class).isAssignableFrom(new UpperBoundedWildcardType(DataType.of(String[].class))));
 		assertTrue(DataType.of(Object[].class).isAssignableFrom(new UpperBoundedWildcardType(DataType.of(String[].class))));
 		assertFalse(DataType.of(String[].class).isAssignableFrom(new UpperBoundedWildcardType(DataType.of(Object[].class))));
+
+		assertTrue(new LowerBoundedWildcardType(DataType.of(Object[].class))
+			.isAssignableFrom(DataType.of(String[].class)));
+		assertFalse(new LowerBoundedWildcardType(DataType.of(Object[].class))
+			.isBindableFrom(DataType.of(String[].class)));
+
+		assertTrue(new LowerBoundedWildcardType(DataType.of(String[].class))
+			.isAssignableFrom(DataType.of(Object[].class)));
+		assertTrue(new LowerBoundedWildcardType(DataType.of(String[].class))
+			.isBindableFrom(DataType.of(Object[].class)));
+
+		assertTrue(new LowerBoundedWildcardType(DataType.of(String[].class))
+			.isAssignableFrom(OBJECT),
+			"Object conforms to ? super String[]");
+		assertTrue(new LowerBoundedWildcardType(DataType.of(String[].class))
+				.isBindableFrom(OBJECT));
 	}
 
 	@Test
@@ -540,11 +572,12 @@ public class DataTypeAssignableTest {
 		assertTrue(arrayOfWildcard
 			.isBindableFrom(arrayOfCharSequence));
 
-		var arrayofString = DataType.of(new TypeReference<String[]>() { });
+		var arrayOfString = DataType.of(new TypeReference<String[]>() { });
+		assertTrue(arrayOfWildcard
+			.isAssignableFrom(arrayOfString),
+			"Arrays are covariant, so the lower bound is not relevant");
 		assertFalse(arrayOfWildcard
-			.isAssignableFrom(arrayofString));
-		assertFalse(arrayOfWildcard
-			.isBindableFrom(arrayofString));
+			.isBindableFrom(arrayOfString));
 	}
 
 	@Test
@@ -576,4 +609,12 @@ public class DataTypeAssignableTest {
 	    assertTrue(listT.isBindableFrom(listString),
 	      "List<T>.isBindableFrom(List<String>) should be true (type-argument/bounds semantics)");
 	}
+
+	@Test
+	<T, I extends Iterable<T>> void nestedTypeParameter() {
+		var collectionOfString = DataType.of(new TypeReference<Collection<String>>() { });
+		var i = DataType.of(new TypeReference<I>() { });
+		assertTrue(i.isBindableFrom(collectionOfString));
+	}
+
 }
