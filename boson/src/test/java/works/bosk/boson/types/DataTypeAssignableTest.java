@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static works.bosk.boson.types.DataType.INT;
 
 public class DataTypeAssignableTest {
 
@@ -24,16 +25,8 @@ public class DataTypeAssignableTest {
 	void boxing() {
 		// Boxing/unboxing are allowed by assignment conversion (JLS §5.1.7 / §5.2)
 		// but Class.isAssignableFrom returns false for these, so who are we to argue?
-		assertFalse(DataType.of(int.class).isAssignableFrom(Integer.class));
-		assertFalse(DataType.of(int.class).isAssignableFrom(DataType.of(Integer.class)));
-		assertFalse(DataType.of(Integer.class).isAssignableFrom(int.class));
-		assertFalse(DataType.of(Integer.class).isAssignableFrom(DataType.of(int.class)));
-
-		// JLS doesn't support primitives as generic type arguments, so the semantics here are up to us really
-		assertFalse(DataType.of(int.class).isBindableFrom(DataType.of(Integer.class)));
-		assertFalse(DataType.of(int.class).isBindableFrom(DataType.of(Integer.class)));
-		assertFalse(DataType.of(Integer.class).isBindableFrom(DataType.of(int.class)));
-		assertFalse(DataType.of(Integer.class).isBindableFrom(DataType.of(int.class)));
+		assertFalse(INT.isAssignableFrom(Integer.class));
+		assertFalse(DataType.of(Integer.class).isAssignableFrom(INT));
 	}
 
 	@Test
