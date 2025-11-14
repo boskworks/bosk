@@ -1,6 +1,7 @@
 package works.bosk.boson.types;
 
 import java.lang.reflect.Type;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -92,9 +93,28 @@ public record TypeVariable(String name, List<Type> bounds) implements UnknownTyp
 
 	@Override
 	public Map<String, DataType> bindingsFor(DataType other) {
+		var map = new LinkedHashMap<String, DataType>();
+
 		// This is where the rubber meets the road:
 		// we're binding this variable to `other`.
-		return Map.of(name, other);
+		map.put(name, other);
+
+		if (other instanceof BoundType otherBoundType) {
+			// We may be able to infer more bindings from how this variable's bounds
+			// match up with other.
+			bounds.forEach(bound -> {
+				if (DataType.of(bound) instanceof BoundType bt) {
+					var bindings = bt.bindings();
+					for (int i = 0; i < bindings.size(); i++) {
+						if (bindings.get(i) instanceof TypeVariable tv) {
+							map.put(tv.name, otherBoundType.parameterType(bt.rawClass(), i));
+						}
+					}
+				}
+			});
+		}
+
+		return Map.copyOf(map);
 	}
 
 	@Override
