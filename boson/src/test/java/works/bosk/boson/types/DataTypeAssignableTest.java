@@ -473,6 +473,9 @@ public class DataTypeAssignableTest {
 
 		assertFalse(arrayOfC.isAssignableFrom(arrayOfString));
 		assertTrue(arrayOfC.isBindableFrom(arrayOfString));
+
+		assertTrue(arrayOfC.isAssignableFrom(arrayOfC));
+		assertTrue(arrayOfC.isBindableFrom(arrayOfC));
 	}
 
 	@Test

@@ -31,7 +31,7 @@ public record UnknownArrayType(UnknownType elementType) implements UnknownType {
 
 	@Override
 	public Map<String, DataType> bindingsFor(DataType other) {
-		assert this.isAssignableFrom(other);
+		assert this.isBindableFrom(other);
 		return switch (other) {
 			case ArrayType(var e) -> elementType.bindingsFor(e);
 			case UnknownArrayType(var e) -> elementType.bindingsFor(e);
