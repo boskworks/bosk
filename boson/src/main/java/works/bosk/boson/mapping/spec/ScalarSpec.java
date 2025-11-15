@@ -18,7 +18,7 @@ public sealed interface ScalarSpec extends JsonValueSpec permits
 	StringNode
 {
 	@Override
-	default ScalarSpec substitute(Map<String, DataType> actualArguments) {
+	default ScalarSpec specialize(Map<String, DataType> actualArguments) {
 		return this;
 	}
 }

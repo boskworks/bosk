@@ -33,7 +33,7 @@ public record FixedMapMember(
 	}
 
 	public FixedMapMember substitute(Map<String, DataType> actualArguments) {
-		SpecNode valueSpec = (this.valueSpec instanceof JsonValueSpec j)? j.substitute(actualArguments) : this.valueSpec;
+		SpecNode valueSpec = (this.valueSpec instanceof JsonValueSpec j)? j.specialize(actualArguments) : this.valueSpec;
 		return new FixedMapMember(
 			valueSpec,
 			this.accessor.substitute(actualArguments)

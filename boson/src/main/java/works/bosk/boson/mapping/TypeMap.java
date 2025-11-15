@@ -45,6 +45,10 @@ public class TypeMap {
 		isFrozen.set(true);
 	}
 
+	public boolean isFrozen() {
+		return isFrozen.get();
+	}
+
 	public static TypeMap copyOf(TypeMap other) {
 		return new TypeMap(other.settings, new LinkedHashMap<>(other.memo), new HashMap<>(other.lookups));
 	}

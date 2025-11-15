@@ -23,8 +23,8 @@ public record MaybeNullSpec(JsonValueSpec child) implements JsonValueSpec {
 	}
 
 	@Override
-	public MaybeNullSpec substitute(Map<String, DataType> actualArguments) {
-		return new MaybeNullSpec(child.substitute(actualArguments));
+	public MaybeNullSpec specialize(Map<String, DataType> actualArguments) {
+		return new MaybeNullSpec(child.specialize(actualArguments));
 	}
 
 	@Override

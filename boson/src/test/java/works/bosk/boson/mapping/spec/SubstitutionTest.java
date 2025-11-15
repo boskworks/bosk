@@ -40,7 +40,7 @@ public class SubstitutionTest {
 		DataType knownType   = DataType.of(new TypeReference<List<List<String>>>() { });
 		TypeMap typeMap = scanner.scan(unknownType).build();
 		var original = typeMap.get(unknownType);
-		var actual = (ArrayNode) original.substitute(Map.of("T", STRING));
+		var actual = (ArrayNode) original.specialize(Map.of("T", STRING));
 
 		// It's tricky to construct the expected node exactly, since its MethodHandles
 		// don't implement the kind of equals we'd need, so we check the properties
@@ -63,7 +63,7 @@ public class SubstitutionTest {
 			.scan(unknownType)
 			.build()
 			.get(unknownType);
-		FixedMapNode actual = (FixedMapNode) original.substitute(Map.of("T", STRING));
+		FixedMapNode actual = (FixedMapNode) original.specialize(Map.of("T", STRING));
 		assertEquals(knownType, actual.dataType());
 		assertEquals(LIST_OF_STRING, actual.finisher().parameterTypes().getFirst());
 	}
@@ -77,7 +77,7 @@ public class SubstitutionTest {
 			.scan(unknownType)
 			.build()
 			.get(unknownType);
-		UniformMapNode actual = (UniformMapNode) original.substitute(Map.of("T", STRING));
+		UniformMapNode actual = (UniformMapNode) original.specialize(Map.of("T", STRING));
 		assertEquals(knownType, actual.dataType());
 		assertEquals(knownType, actual.accumulator().resultType());
 		assertEquals(knownType, actual.emitter().dataType());

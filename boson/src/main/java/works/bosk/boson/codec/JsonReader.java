@@ -5,7 +5,6 @@ import works.bosk.boson.codec.io.ByteArrayChunkFiller;
 import works.bosk.boson.codec.io.ByteChunkJsonReader;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.codec.io.SynchronousChunkFiller;
-import works.bosk.boson.mapping.Token;
 
 /**
  * A streaming JSON reader abstraction for high-performance parsing.

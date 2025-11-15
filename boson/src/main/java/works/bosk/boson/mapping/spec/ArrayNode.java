@@ -44,9 +44,9 @@ public record ArrayNode(
 	}
 
 	@Override
-	public ArrayNode substitute(Map<String, DataType> actualArguments) {
+	public ArrayNode specialize(Map<String, DataType> actualArguments) {
 		return new ArrayNode(
-			elementNode.substitute(actualArguments),
+			elementNode.specialize(actualArguments),
 			accumulator.substitute(actualArguments),
 			emitter.substitute(actualArguments)
 		);

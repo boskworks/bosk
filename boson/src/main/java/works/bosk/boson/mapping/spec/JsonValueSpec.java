@@ -28,6 +28,6 @@ public sealed interface JsonValueSpec extends SpecNode permits
 	 * @return a new {@link JsonValueSpec} of the same type as {@code this} with the same semantics,
 	 * but with type variables in any {@link DataType}s substituted for the given types.
 	 */
-	JsonValueSpec substitute(Map<String, DataType> actualArguments);
+	JsonValueSpec specialize(Map<String, DataType> actualArguments);
 
 }

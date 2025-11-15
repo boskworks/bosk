@@ -1,10 +1,15 @@
 package works.bosk.boson.codec.io;
 
 import works.bosk.boson.codec.JsonReader;
-import works.bosk.boson.mapping.Token;
+import works.bosk.boson.codec.Token;
 
 import static java.lang.Math.min;
 
+/**
+ * A {@link JsonReader} that reads from a char array.
+ * Useful for reading JSON text that is small enough to have been
+ * fully loaded into memory already, like when reading from a String.
+ */
 public final class CharArrayJsonReader implements JsonReader {
 	final char[] chars;
 	int pos = 0;

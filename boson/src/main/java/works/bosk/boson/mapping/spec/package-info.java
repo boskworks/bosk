@@ -24,13 +24,18 @@
  * as to decode it. How much validation is actually performed is a tunable trade-off
  * between performance and error detection.
  * <p>
+ * Fine-grained behaviour that is not JSON-specific is represented by {@link works.bosk.boson.mapping.spec.handles.TypedHandle TypedHandle}
+ * objects, which are {@link java.lang.invoke.MethodHandle MethodHandle}s with additional generic type information.
+ * Specifying behaviour this way allows for high flexibility and performance
+ * while keeping the JSON-related aspects declarative.
+ * <p>
  * Insignificant syntax such as whitespace and delimiters are not specified.
  * Any operation that wishes to process insignificant syntax is free to do so,
  * but such processing is not specified in the spec nodes.
  *
  * <h3>Wranglers</h3>
  *
- * Spec nodes that accept {@code TypedHandle}s are powerful but cumbersome.
+ * Spec nodes that accept {@link works.bosk.boson.mapping.spec.handles.TypedHandle TypedHandle}s are powerful but cumbersome.
  * To help, we've adopted a design pattern called "wranglers".
  * A <em>wrangler</em> is an interface that you can implement, usually
  * with an anonymous inner class, from which
@@ -38,7 +43,7 @@
  * Wranglers codify best practices in the sense that
  * the resulting spec node is as efficient as possible.
  * There's no performance penalty for using wranglers,
- * besides type casts that the jit compiler can often optimize away;
+ * besides type casts that the jit compiler can often optimize away anyway;
  * and their implementation can be used as a guide to how to implement
  * the underlying handles directly, if you need to.
  */

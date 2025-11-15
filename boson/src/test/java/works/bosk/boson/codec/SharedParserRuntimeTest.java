@@ -1,7 +1,6 @@
 package works.bosk.boson.codec;
 
 import org.junit.jupiter.api.Test;
-import works.bosk.boson.mapping.Token;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.boson.codec.io.Util.fast_isInsignificant;

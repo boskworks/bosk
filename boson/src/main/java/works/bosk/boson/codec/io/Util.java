@@ -1,9 +1,9 @@
 package works.bosk.boson.codec.io;
 
 import java.util.stream.LongStream;
-import works.bosk.boson.mapping.Token;
+import works.bosk.boson.codec.Token;
 
-import static works.bosk.boson.mapping.Token.INSIGNIFICANT;
+import static works.bosk.boson.codec.Token.INSIGNIFICANT;
 
 public class Util {
 	private static final long INSIGNIFICANT_CHARS = LongStream

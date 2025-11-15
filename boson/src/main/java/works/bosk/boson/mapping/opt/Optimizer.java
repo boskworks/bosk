@@ -10,6 +10,7 @@ import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;
@@ -22,22 +23,53 @@ import works.bosk.boson.types.DataType;
 
 public class Optimizer {
 
+	/**
+	 * Given a {@link TypeMap}, returns another that is functionally equivalent
+	 * but more efficient.
+	 * <p>
+	 * Requires that the input {@link TypeMap} is {@link TypeMap#isFrozen() frozen}.
+	 * Optimization produces the best results when all types are fully specified
+	 * before optimization begins;
+	 * requiring a frozen map helps avoid mistakenly optimizing
+	 * a type map that is still under construction.
+	 * <p>
+	 * The execution model for {@link JsonValueSpec} processing is
+	 * that a {@link TypeRefNode} is akin to a method call,
+	 * acting as a barrier to optimization,
+	 * but also enabling code sharing and recursion.
+	 * (It may or may not literally be implemented as a method call,
+	 * depending on how the codec chooses to cope with deeply nested
+	 * structures, but the model still holds.)
+	 * Optimizations could "inline" a {@link TypeRefNode} by replacing it
+	 * with its target {@link JsonValueSpec},
+	 * thus exposing additional opportunities for optimization;
+	 * or they could carve up a spec tree into pieces and introduce
+	 * {@link TypeRefNode}s to share pieces that would otherwise be duplicated.
+	 * <p>
+	 * Whether a node is shared or duplicated in the tree has no semantic significance:
+	 * that node is treated as though a copy of it appears wherever it is referenced.
+	 */
 	public TypeMap optimize(TypeMap original) {
+		assert original.isFrozen():
+			"TypeMap must be frozen before optimization; " +
+				"ensure all types are specified and then call freeze()";
 		TypeMap typeMap = TypeMap.copyOf(original);
-		var optimizer = new InlineScalarRefs(typeMap); // Currently our only optimization!
+		var optimizationPass = new InlineScalarRefs(typeMap); // Currently our only optimization!
 
 		// We now begin the analysis. The typeMap initially reflects everything
-		// we knew at the start, and then it gradually improves as we optimize each
-		// entry.
+		// we knew at the start, and then it gradually improves
+		// as we optimize each entry.
 		//
-		// This is what I'd refer to as a "simplification" optimization, walking
-		// the graph of IL elements in reverse postorder and doing our best at each step.
-		// If the types are recursive (ie. there's a cycle in the graph we're walking),
-		// then some nodes will not be fully optimized in all circumstances with this
-		// approach, and a more powerful cycle-aware analysis would be required.
+		// This is what I'd refer to as a "simplification" optimization:
+		// it walks the graph of IL elements in postorder,
+		// looking "downward only" at the node and its children at each step.
+		// Since the spec nodes are records, there can't be cycles, though there
+		// can be shared nodes, and a postorder walk handles that well.
+		// Cycles can happen for recursive types via TypeRefNode, so we do
+		// need to be careful about those.
 
 		postorder(typeMap).forEach(type -> {
-			typeMap.put(type, optimizer.optimize(original.get(type)));
+			typeMap.put(type, optimizationPass.optimize(original.get(type)));
 		});
 
 		return typeMap;

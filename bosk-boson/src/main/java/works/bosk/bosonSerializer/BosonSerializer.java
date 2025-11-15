@@ -88,16 +88,6 @@ public class BosonSerializer extends StateTreeSerializer {
 			)
 		));
 
-		// TODO: Is this really a bosk thing? Should this be built into boson?
-		directives.add(Directive.fixed(
-			RepresentAsSpec.as(
-				new StringNode(),
-				DataType.CHAR,
-				Object::toString,
-				BosonSerializer::stringToChar
-			)
-		));
-
 		record MapEntry<V>(Identifier id, V value) {}
 
 		// This probably should be a SequencedCollection, but pcollections doesn't have that
@@ -419,14 +409,6 @@ public class BosonSerializer extends StateTreeSerializer {
 			List.of(lookup),
 			List.copyOf(directives)
 		);
-	}
-
-	private static char stringToChar(String s) {
-		if (s.length() == 1) {
-			return s.charAt(0);
-		} else {
-			throw new IllegalArgumentException("Expected single-character string, got: " + s);
-		}
 	}
 
 }
