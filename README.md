@@ -94,8 +94,8 @@ A read context is intended to be coarse-grained, for example covering an entire 
 giving you "snapshot-at-start" semantics and protecting you from race conditions.
 It is an antipattern to use many small read contexts during the course of a single operation.
 
-If you're using Spring Boot 3, you can bring in `bosk-spring-boot`
-and set the `bosk.web.maintenance-path` property to get an immediate HTTP REST API to view and edit your state tree.
+This part is done automatically for you in Spring Boot if you bring in the `bosk-spring-boot` library.
+You can also set the `bosk.web.maintenance-path` property to get an immediate HTTP REST API to view and edit your state tree.
 
 To modify state programmatically, use the `BoskDriver` interface:
 
