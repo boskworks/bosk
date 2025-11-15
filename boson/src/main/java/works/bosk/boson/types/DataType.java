@@ -89,7 +89,9 @@ public sealed interface DataType permits KnownType, UnknownType {
 
 	/**
 	 * {@code A.isAssignableFrom(B)} if a value of type B can be assigned to
-	 * a variable of type A.
+	 * a variable of type A. This is an extension of {@link Class#isAssignableFrom} to
+	 * handle generics. Note, in particular, that it returns {@code false}
+	 * for boxing and unboxing conversions, as does {@link Class#isAssignableFrom}.
 	 * <p>
 	 * Note that this is neither weaker nor stronger than {@link #isBindableFrom}.
 	 * Type variables will only accept themselves or other type variables

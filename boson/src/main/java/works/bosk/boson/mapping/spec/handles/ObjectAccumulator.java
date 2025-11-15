@@ -75,6 +75,12 @@ public record ObjectAccumulator(
 		);
 	}
 
+	/**
+	 * @param <T> the type of the value object representing the object in memory
+	 * @param <A> the accumulator type
+	 * @param <K> the map key type
+	 * @param <V> the map value type
+	 */
 	public interface Wrangler<T,A,K,V> {
 		A create();
 		A integrate(A accumulator, K key, V value);

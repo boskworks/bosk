@@ -31,7 +31,7 @@ class TypeScannerTest {
 	public record FloatAsString(String text) {}
 
 	@Test
-	void testSimpleDirective() throws IOException {
+	void simpleDirective() throws IOException {
 		scanner.addBundle(new Bundle("test", List.of(), List.of(), List.of(
 			new Directive(
 				DataType.FLOAT,
@@ -62,7 +62,7 @@ class TypeScannerTest {
 	public record OverriddenImpl(int value) implements Overridden {}
 
 	@Test
-	void testTypeBound() throws IOException {
+	void typeBound() throws IOException {
 		scanner.addBundle(new Bundle("test", List.of(), List.of(), List.of(
 			new Directive(
 				new TypeVariable("T", Overridden.class),
@@ -87,7 +87,7 @@ class TypeScannerTest {
 	}
 
 	@Test
-	void testIterable() throws IOException {
+	void iterable() throws IOException {
 		record TestRecord(Iterable<String> items) {}
 		var typeMap = scanner
 			.useLookup(MethodHandles.lookup())
