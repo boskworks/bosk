@@ -123,6 +123,28 @@ class ParameterTypeTest {
 		assertEquals(INTEGER, eType.parameterType(C.class, 1));
 	}
 
+	@Test
+	void confusing() {
+		interface C<V> {}
+		interface D<V> extends C<V> {}
+		interface E<X> extends D<X> {}
+
+		TypeVariable v = new TypeVariable("V");
+		TypeVariable w = new TypeVariable("W");
+
+		assertEquals(v, new BoundType(E.class, List.of(v)).parameterType(C.class, 0));
+		assertEquals(v, new BoundType(E.class, List.of(v)).parameterType(D.class, 0));
+		assertEquals(v, new BoundType(E.class, List.of(v)).parameterType(E.class, 0));
+
+		assertEquals(w, new BoundType(E.class, List.of(w)).parameterType(C.class, 0));
+		assertEquals(w, new BoundType(E.class, List.of(w)).parameterType(D.class, 0));
+		assertEquals(w, new BoundType(E.class, List.of(w)).parameterType(E.class, 0));
+
+		assertEquals(STRING, new BoundType(E.class, List.of(STRING)).parameterType(C.class, 0));
+		assertEquals(STRING, new BoundType(E.class, List.of(STRING)).parameterType(D.class, 0));
+		assertEquals(STRING, new BoundType(E.class, List.of(STRING)).parameterType(E.class, 0));
+	}
+
 	public static InstanceType instanceType(TypeReference<?> ref) {
 		return (InstanceType) DataType.of(ref);
 	}

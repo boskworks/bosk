@@ -47,25 +47,16 @@ sealed public interface InstanceType extends KnownType permits BoundType, Erased
 			var candidate = immediateSuperType.parameterType(targetClass, parameterIndex);
 
 			if (candidate instanceof TypeVariable tv) {
-				// Now the candidate type would be V, in which case
-				// we want to map that to String.
+				// Now the candidate type would be V, which in this case is bound
+				// to String, so we want to return String. If there's no definition
+				// for a variable called V, then it's a free variable, and we just
+				// return V.
 				var typeParameters = rawClass().getTypeParameters();
 				for (int i = 0; i < typeParameters.length; i++) {
 					if (typeParameters[i].getName().equals(tv.name())) {
 						return parameterType(rawClass(), i);
 					}
 				}
-				// TODO: There's something fishy at this point.
-				// In the motivating example above, we do want to return String;
-				// but suppose S<X> extends T<X>, and we're calling this for S<V>.
-				// Then we want to return V. The confusing part is, there are
-				// two distinct variables here called V, and all this loop does
-				// is scan by name, so that's insufficient.
-				// We need a couple of testcases for this, and we might even
-				// need to distinguish type variables by their getGenericDeclaration(),
-				// which is currently absent from our TypeVariable,
-				// so maybe we need to a helper version of ParameterType
-				// that works on java.lang.reflect stuff and then converts to a DataType at the end.
 			}
 			return candidate;
 		}

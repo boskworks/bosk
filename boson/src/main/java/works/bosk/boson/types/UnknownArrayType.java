@@ -2,6 +2,8 @@ package works.bosk.boson.types;
 
 import java.util.Map;
 
+import static works.bosk.boson.types.ArrayType.arrayIsBindableFrom;
+
 public record UnknownArrayType(UnknownType elementType) implements UnknownType {
 	@Override
 	public String toString() {
@@ -9,20 +11,8 @@ public record UnknownArrayType(UnknownType elementType) implements UnknownType {
 	}
 
 	@Override
-	public boolean isAssignableFrom(DataType other) {
-		return switch (other) {
-			case ArrayType(var otherElementType) -> elementType.isAssignableFrom(otherElementType);
-			default -> false;
-		};
-	}
-
-	@Override
-	public boolean isBindableFrom(DataType other) {
-		// TODO: Double-check the semantics here and in ArrayType
-		return switch (other) {
-			case ArrayType(var otherElementType) -> elementType.isBindableFrom(otherElementType);
-			default -> false;
-		};
+	public boolean isBindableFrom(DataType other, BindableOptions options, Map<String, DataType> bindingsSoFar) {
+		return arrayIsBindableFrom(this, elementType, other, options, bindingsSoFar);
 	}
 
 	@Override
@@ -41,7 +31,7 @@ public record UnknownArrayType(UnknownType elementType) implements UnknownType {
 
 	@Override
 	public Map<String, DataType> bindingsFor(DataType other) {
-		assert this.isAssignableFrom(other);
+		assert this.isBindableFrom(other);
 		return switch (other) {
 			case ArrayType(var e) -> elementType.bindingsFor(e);
 			case UnknownArrayType(var e) -> elementType.bindingsFor(e);

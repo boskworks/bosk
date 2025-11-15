@@ -22,6 +22,17 @@ public record ArrayNode(
 			"emitter must supply elements of type " + elementNode.dataType();
 	}
 
+	/**
+	 * Uses a {@link TypeRefNode} for {@link #elementNode()}.
+	 */
+	public ArrayNode(ArrayAccumulator accumulator, ArrayEmitter emitter) {
+		this(
+			new TypeRefNode(accumulator.elementType()),
+			accumulator,
+			emitter
+		);
+	}
+
 	@Override
 	public DataType dataType() {
 		return accumulator.resultType();

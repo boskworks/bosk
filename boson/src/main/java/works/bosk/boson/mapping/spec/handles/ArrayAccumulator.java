@@ -87,7 +87,7 @@ public record ArrayAccumulator(
 		T finish(A accumulator);
 	}
 
-	public static ArrayAccumulator of(Wrangler<?,?,?> wrangler) {
+	public static ArrayAccumulator from(Wrangler<?,?,?> wrangler) {
 		BoundType wranglerType = (BoundType) DataType.of(wrangler.getClass());
 		var accumulatorType = wranglerType.parameterType(Wrangler.class, 0);
 		var elementType = wranglerType.parameterType(Wrangler.class, 1);

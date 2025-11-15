@@ -7,7 +7,6 @@ import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -20,6 +19,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.boson.exceptions.JsonFormatException;
+import works.bosk.boson.mapping.TypeScanner.Directive.IsAssignableFrom;
 import works.bosk.boson.mapping.opt.Optimizer;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.BigNumberNode;
@@ -48,16 +49,19 @@ import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.types.ArrayType;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
-import works.bosk.boson.types.ErasedType;
 import works.bosk.boson.types.KnownType;
-import works.bosk.boson.types.PrimitiveType;
-import works.bosk.boson.types.UnknownType;
+import works.bosk.boson.types.TypeReference;
+import works.bosk.boson.types.TypeVariable;
 
 import static java.lang.invoke.MethodType.methodType;
+import static java.util.Collections.unmodifiableList;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toSet;
+import static works.bosk.boson.mapping.TypeScanner.Directive.fixed;
 import static works.bosk.boson.mapping.spec.PrimitiveNumberNode.PRIMITIVE_NUMBER_CLASSES;
+import static works.bosk.boson.types.DataType.CHAR;
+import static works.bosk.boson.types.DataType.STRING;
 
 /**
  * Collects information about {@link DataType}s,
@@ -71,6 +75,142 @@ public class TypeScanner {
 
 	public TypeScanner(TypeMap.Settings settings) {
 		this.inProgress = new TypeMap(settings);
+		addFallbackBundle(builtInBundle());
+	}
+
+	private <T> Bundle builtInBundle() {
+		List<Directive> directives = new ArrayList<>();
+
+		directives.add(fixed(new StringNode()));
+		directives.add(fixed(new BigNumberNode(BigDecimal.class)));
+
+		directives.add(fixed(
+			new IsAssignableFrom(DataType.of(ArrayList.class)),
+			new ArrayNode(ARRAY_LIST_ACCUMULATOR, ITERABLE_EMITTER)
+		));
+
+		directives.add(fixed(
+			new IsAssignableFrom(DataType.of(LinkedHashMap.class)),
+			new UniformMapNode(LINKED_HASH_MAP_ACCUMULATOR, MAP_EMITTER)
+		));
+
+		directives.add(new Directive(
+			new TypeVariable("E", Enum.class),
+			enumType -> switch (enumType) {
+				case BoundType bt -> EnumByNameNode.of(bt.rawClass());
+				default ->
+					throw new IllegalStateException("Expected enum type but got " + enumType);
+			}
+		));
+
+		// boolean, boxed and unboxed
+		directives.add(fixed(new BooleanNode()));
+		directives.add(fixed(
+			RepresentAsSpec.as(
+				new BooleanNode(),
+				DataType.known(Boolean.class),
+				Boolean::booleanValue,
+				Boolean::valueOf
+			)
+		));
+
+		// char, boxed and unboxed
+		directives.add(fixed(
+			new RepresentAsSpec(
+				new StringNode(),
+				new TypedHandle(CHAR2STRING, STRING, List.of(CHAR)),
+				new TypedHandle(STRING2CHAR, CHAR, List.of(STRING))
+			)
+		));
+		directives.add(fixed(
+			RepresentAsSpec.as(
+				new StringNode(),
+				DataType.known(Character.class),
+				Object::toString,
+				string -> string.charAt(0)
+			)
+		));
+
+		// Primitive numbers, boxed and unboxed
+		for (var p: PRIMITIVE_NUMBER_CLASSES.entrySet()) {
+			directives.add(fixed(
+				new PrimitiveNumberNode(p.getKey())
+			));
+			directives.add(fixed(
+				new BoxedPrimitiveSpec(new PrimitiveNumberNode(p.getKey()))
+			));
+		}
+
+		// Arrays
+		//
+		// Ironically, we can't do much better than to represent arrays as lists,
+		// since we don't know their size ahead of time. Emitting them could be a bit more efficient.
+		directives.add(new Directive(
+			DataType.of(new TypeReference<T[]>(){}),
+			arrayType -> switch (arrayType) {
+				case ArrayType at -> RepresentAsSpec.of(new RepresentAsSpec.Wrangler<T[], List<T>>() {
+					final Object[] archetype = at.zeroLengthInstance();
+
+					@Override
+					public List<T> toRepresentation(T[] value) {
+						return List.of(value);
+					}
+
+					@Override
+					@SuppressWarnings("unchecked")
+					public T[] fromRepresentation(List<T> representation) {
+						return (T[])representation.toArray(archetype);
+					}
+				});
+				default ->
+					throw new IllegalStateException("Expected ArrayType but got " + arrayType);
+			}
+		));
+
+		directives.add(new Directive(
+			new TypeVariable("R", Record.class),
+			recordType -> switch (recordType) {
+				case BoundType bt -> scanRecord(bt);
+				default ->
+					throw new IllegalStateException("Expected record type but got " + recordType);
+			}
+		));
+
+		List<DataType> types = directives.stream()
+			.map(Directive::pattern)
+			.filter(t -> t instanceof BoundType b && b.actualArguments().isEmpty())
+			.toList();
+
+		return new Bundle(
+			"<built-in bundle>",
+			types,
+			List.of(MethodHandles.lookup()),
+			List.copyOf(directives)
+		);
+	}
+
+	private static String char2string(char c) {
+		return String.valueOf(c);
+	}
+
+	private static char string2char(String s) {
+		if (s.length() != 1) {
+			throw new JsonFormatException("String must have length 1 to convert to char: " + s);
+		}
+		return s.charAt(0);
+	}
+
+	private static final MethodHandle CHAR2STRING;
+	private static final MethodHandle STRING2CHAR;
+
+	static {
+		try {
+			var lookup = MethodHandles.lookup();
+			CHAR2STRING = lookup.findStatic(TypeScanner.class, "char2string", methodType(String.class, char.class));
+			STRING2CHAR = lookup.findStatic(TypeScanner.class, "string2char", methodType(char.class, String.class));
+		} catch (NoSuchMethodException | IllegalAccessException e) {
+			throw new ExceptionInInitializerError(e);
+		}
 	}
 
 	/**
@@ -90,67 +230,6 @@ public class TypeScanner {
 		var node = inProgress.computeIfAbsent(type, this::computeSpecNode);
 		assert type.equals(node.dataType()):
 			"Node must have datatype " + type + " but has " + node.dataType() + ": " + node;
-
-		// TODO: The following happens every time we scan a type, even if we've scanned it before.
-
-		// Automatic boxing/unboxing
-		if (node instanceof PrimitiveNumberNode pnn) {
-			var boxed = new BoxedPrimitiveSpec(pnn);
-			inProgress.put(boxed.dataType(), boxed);
-		} else if (node instanceof BoxedPrimitiveSpec(PrimitiveNumberNode child)) {
-			inProgress.put(child.dataType(), child);
-		} else if (type.equals(DataType.CHAR)) {
-			inProgress.put(
-				DataType.of(Character.class),
-				RepresentAsSpec.as(
-					node,
-					DataType.known(Character.class),
-					Character::charValue,
-					Character::valueOf
-				)
-			);
-		} else if (type.equals(DataType.of(Character.class))) {
-			inProgress.put(
-				DataType.CHAR,
-				RepresentAsSpec.as(
-					node,
-					DataType.CHAR,
-					Character::valueOf,
-					Character::charValue
-				)
-			);
-		} else if (type.equals(DataType.BOOLEAN)) {
-			inProgress.put(
-				DataType.of(Boolean.class),
-				RepresentAsSpec.as(
-					node,
-					DataType.known(Boolean.class),
-					Boolean::booleanValue,
-					Boolean::valueOf
-				)
-			);
-		} else if (type.equals(DataType.of(Boolean.class))) {
-			inProgress.put(
-				DataType.BOOLEAN,
-				RepresentAsSpec.as(
-					node,
-					DataType.BOOLEAN,
-					Boolean::valueOf,
-					Boolean::booleanValue
-				)
-			);
-		} else if (type.equals(DataType.of(Boolean.class))) {
-			inProgress.put(
-				DataType.BOOLEAN,
-				RepresentAsSpec.as(
-					node,
-					DataType.BOOLEAN,
-					Boolean::valueOf,
-					Boolean::booleanValue
-				)
-			);
-		}
-
 		return this;
 	}
 
@@ -176,9 +255,10 @@ public class TypeScanner {
 	 */
 	public TypeScanner specify(DataType type, JsonValueSpec spec) {
 		addBundle(new Bundle(
+			"<ad hoc bundle for type: " + type + ">",
 			List.of(type),
 			List.of(),
-			List.of(Directive.fixed(spec)
+			List.of(fixed(spec)
 		)));
 		return this;
 	}
@@ -195,21 +275,58 @@ public class TypeScanner {
 	}
 
 	/**
+	 * @param name has no significance other than for troubleshooting
 	 * @param types to scan even if not encountered during normal scanning
 	 * @param lookups to use for {@link MethodHandle} operations on types that would otherwise be inaccessible
 	 * @param directives are considered in order. The first matching directive is used.
 	 */
 	public record Bundle(
+		String name,
 		List<DataType> types,
 		List<Lookup> lookups,
 		List<Directive> directives
 	) { }
 
-	public record Directive(DataType pattern, Function<DataType, JsonValueSpec> spec) {
+	public record Directive(DataType pattern, Guard guard, Function<DataType, JsonValueSpec> spec) {
 		public Directive {
 			assert !pattern.hasWildcards():
 				"Directive pattern must not have wildcards; use type variables instead: " + pattern;
 		}
+
+		public Directive(DataType pattern, Function<DataType, JsonValueSpec> spec) {
+			this(pattern, ANY, spec);
+		}
+
+		/**
+		 * A restriction on the types to which a {@link Directive} applies.
+		 */
+		public sealed interface Guard {
+			boolean allows(DataType type);
+		}
+
+		/**
+		 * No restriction.
+		 */
+		public record Any() implements Guard {
+			@Override
+			public boolean allows(DataType type) {
+				return true;
+			}
+		}
+
+		/**
+		 * Allows any type that {@link DataType#isAssignableFrom isAssignableFrom}
+		 * the directive's pattern. Useful if the directive's spec returns a value
+		 * of type {@code subtype}.
+		 */
+		public record IsAssignableFrom(DataType subtype) implements Guard {
+			@Override
+			public boolean allows(DataType type) {
+				return type.isAssignableFrom(subtype);
+			}
+		}
+
+		public static final Guard ANY = new Any();
 
 		/**
 		 * @return a {@link Directive} that always returns the given {@code spec}
@@ -221,6 +338,18 @@ public class TypeScanner {
 				spec.dataType(),
 				_ -> spec
 			);
+		}
+
+		public static Directive fixed(Guard guard, JsonValueSpec spec) {
+			return new Directive(
+				spec.dataType(),
+				guard,
+				_ -> spec
+			);
+		}
+
+		public boolean appliesTo(DataType type) {
+			return pattern.isBindableFrom(type) && guard().allows(type);
 		}
 	}
 
@@ -362,8 +491,7 @@ public class TypeScanner {
 	}
 
 	private JsonValueSpec computeSpecNode(DataType type) {
-		if (type instanceof DataType // Work around JDK 25 bug
-				&& findDirective(type) instanceof Directive(var pattern, var specFunction)) {
+		if (findDirective(type) instanceof Directive(var pattern, _, var specFunction)) {
 			LOGGER.debug("Type {} matched directive {}", type, pattern);
 			var spec = specFunction.apply(type);
 
@@ -383,13 +511,19 @@ public class TypeScanner {
 				+ "; got " + spec.dataType();
 			return scrapeRefs(spec);
 		}
-		return switch (type) {
-			case ArrayType t -> scanArray(t);
-			case BoundType t -> scrapeRefs(scanClass(t));
-			case PrimitiveType t -> scanPrimitive(t);
-			case UnknownType _, ErasedType _ ->
-				throw new IllegalStateException("Unsupported type: " + type);
-		};
+
+		// We have a type that has no directive yet.
+		// We'll defer it with a TypeRefNode in the hopes that
+		// a subsequent bundle resolves it.
+		// If anyone relies on the value we return here, they're wrong.
+		//
+		// Unfortunately, returning
+		// this TypeRefNode, while not incorrect on its own, can cause
+		// a StackOverflowError if no directives override this.
+		// TODO: Handle this case more cleanly
+		// TODO: Do we really want to handle this case? Why not require
+		// all bundles to be added before scanning starts?
+		return new TypeRefNode(type);
 	}
 
 	private <T extends SpecNode> T scrapeRefs(T spec) {
@@ -424,8 +558,9 @@ public class TypeScanner {
 
 	private Directive findDirective(DataType type) {
 		for (var bundle : bundles) {
+			LOGGER.trace("Checking bundle {}", bundle.name());
 			for (var directive : bundle.directives()) {
-				if (directive.pattern().isBindableFrom(type)) {
+				if (directive.appliesTo(type)) {
 					return directive;
 				}
 			}
@@ -453,193 +588,20 @@ public class TypeScanner {
 		return refs.computeIfAbsent(type, TypeRefNode::new);
 	}
 
-	private JsonValueSpec scanArray(ArrayType array) {
-		throw new IllegalStateException("Not implemented");
-	}
-
-	private JsonValueSpec scanPrimitive(PrimitiveType primitive) {
-		var clazz = primitive.rawClass();
-		if (PRIMITIVE_NUMBER_CLASSES.containsKey(clazz)) {
-			return new PrimitiveNumberNode(clazz);
-		}
-		if (clazz == boolean.class) {
-			return new BooleanNode();
-		}
-		throw new IllegalStateException("Unsupported primitive type: " + primitive);
-	}
-
-	private JsonValueSpec scanClass(BoundType type) {
-		LOGGER.debug("scanClass({})", type);
-		var clazz = type.rawClass();
-		if (clazz.isRecord()) {
-			return scanRecord(type);
-		}
-		if (Number.class.isAssignableFrom(clazz)) {
-			if (clazz == BigDecimal.class) {
-				return new BigNumberNode(BigDecimal.class);
-			}
-			Class<?> primitiveClass = PRIMITIVE_NUMBER_CLASSES.entrySet().stream()
-				.filter(e -> e.getValue() == clazz)
-				.map(Map.Entry::getKey)
-				.findFirst()
-				.orElseThrow(() -> new IllegalStateException("Unsupported number class: " + clazz));
-			return new BoxedPrimitiveSpec(new PrimitiveNumberNode(primitiveClass));
-		}
-		if (Iterable.class.isAssignableFrom(clazz) && clazz.isAssignableFrom(List.class)) {
-			return new ArrayNode(
-				refNode(type.parameterType(Iterable.class, 0)),
-				listAccumulator(type),
-				listEmitter(type)
-			);
-		}
-		if (Map.class.isAssignableFrom(clazz) && clazz.isAssignableFrom(LinkedHashMap.class)) {
-			var keySpec = refNode(type.parameterType(Map.class, 0));
-			var valueSpec = refNode(type.parameterType(Map.class, 1));
-			return new UniformMapNode(
-				keySpec,
-				valueSpec,
-				mapAccumulator(type),
-				mapEmitter(type)
-			);
-		}
-		if (isStringParsingClass(type)) {
-			return scanStringParsingClass(type);
-		}
-		// At this point, we have a type that simply won't work unless
-		// it's handled by a directive. If anyone relies on the value
-		// we return here, they're wrong. Unfortunately, returning
-		// this TypeRefNode, while not incorrect on its own, can cause
-		// a StackOverflowError if no directives override this.
-		// TODO: Handle this case more cleanly
-		return new TypeRefNode(type);
-	}
-
 	public static ArrayAccumulator listAccumulator(BoundType arrayListType) {
-		assert arrayListType.rawClass().isAssignableFrom(ArrayList.class);
-		if (!(arrayListType.parameterType(Iterable.class, 0) instanceof KnownType elementType)) {
-			throw new IllegalStateException("Can't accumulate into a list of unknown element type: " + arrayListType);
-		}
-		MethodHandle creator, listAdd, finisher;
-		try {
-			creator = MethodHandles.lookup().unreflectConstructor(ArrayList.class.getConstructor());
-			listAdd = MethodHandles.lookup().unreflect(List.class.getMethod("add", Object.class));
-			finisher = MethodHandles.lookup().unreflect(Collections.class.getMethod("unmodifiableList", List.class));
-		} catch (IllegalAccessException | NoSuchMethodException e) {
-			throw new IllegalStateException("Unexpected error doing reflection on List", e);
-		}
-		var upcastCreator = creator.asType(creator.type().changeReturnType(List.class));
-		var integrator = listAdd.asType(listAdd.type()
-			.changeReturnType(void.class)
-			.changeParameterType(1, elementType.rawClass()));
-		var upcastFinisher = finisher.asType(finisher.type().changeReturnType(arrayListType.rawClass()));
-		var listType = new BoundType(List.class, arrayListType.bindings());
-		return new ArrayAccumulator(
-			new TypedHandle(upcastCreator, listType, List.of()),
-			new TypedHandle(integrator, DataType.VOID, List.of(listType, elementType)),
-			new TypedHandle(upcastFinisher, arrayListType, List.of(listType))
-		);
+		return ARRAY_LIST_ACCUMULATOR.substitute(ARRAY_LIST_ACCUMULATOR.resultType().bindingsFor(arrayListType));
 	}
 
 	public static ArrayEmitter listEmitter(BoundType iterableType) {
-		assert Iterable.class.isAssignableFrom(iterableType.rawClass());
-		if (!(iterableType.parameterType(Iterable.class, 0) instanceof KnownType elementType)) {
-			throw new IllegalStateException("Can't emit from a list of unknown element type: " + iterableType);
-		}
-		MethodHandle iterator, hasNext, next;
-		try {
-			iterator = MethodHandles.lookup().unreflect(iterableType.rawClass().getMethod("iterator"));
-			hasNext = MethodHandles.lookup().unreflect(Iterator.class.getMethod("hasNext"));
-			next = MethodHandles.lookup().unreflect(Iterator.class.getMethod("next"));
-		} catch (IllegalAccessException | NoSuchMethodException e) {
-			throw new IllegalStateException("Unexpected error doing reflection on Iterable", e);
-		}
-		var downcastNext = next.asType(next.type().changeReturnType(elementType.rawClass()));
-		var iteratorType = new BoundType(Iterator.class, iterableType.bindings());
-		return new ArrayEmitter(
-			new TypedHandle(iterator, iteratorType, List.of(iterableType)),
-			new TypedHandle(hasNext, DataType.BOOLEAN, List.of(iteratorType)),
-			new TypedHandle(downcastNext, elementType, List.of(iteratorType))
-		);
+		return ITERABLE_EMITTER.substitute(ITERABLE_EMITTER.dataType().bindingsFor(iterableType));
 	}
 
 	public static ObjectAccumulator mapAccumulator(BoundType linkedHashMapType) {
-		assert linkedHashMapType.rawClass().isAssignableFrom(LinkedHashMap.class);
-		if (!(linkedHashMapType.parameterType(Map.class, 0) instanceof KnownType keyType) ||
-			!(linkedHashMapType.parameterType(Map.class, 1) instanceof KnownType valueType)) {
-			throw new IllegalStateException("Can't accumulate into a map of unknown key or value type: " + linkedHashMapType);
-		}
-		MethodHandle creator, mapPut, finisher;
-		try {
-			creator = MethodHandles.lookup().unreflectConstructor(LinkedHashMap.class.getConstructor());
-			mapPut = MethodHandles.lookup().unreflect(Map.class.getDeclaredMethod("put", Object.class, Object.class));
-			finisher = MethodHandles.identity(Map.class).asType(methodType(linkedHashMapType.rawClass(), Map.class));
-		} catch (IllegalAccessException | NoSuchMethodException e) {
-			throw new IllegalStateException("Unexpected error doing reflection on List", e);
-		}
-		var upcastCreator = creator.asType(creator.type().changeReturnType(Map.class));
-		var integrator = mapPut.asType(mapPut.type()
-			.changeReturnType(void.class)
-			.changeParameterType(1, keyType.rawClass())
-			.changeParameterType(2, valueType.rawClass())
-		);
-		var mapType = new BoundType(Map.class, linkedHashMapType.bindings());
-		return new ObjectAccumulator(
-			new TypedHandle(upcastCreator, mapType, List.of()),
-			new TypedHandle(integrator, DataType.VOID, List.of(mapType, keyType, valueType)),
-			new TypedHandle(finisher, linkedHashMapType, List.of(mapType))
-		);
+		return LINKED_HASH_MAP_ACCUMULATOR.substitute(LINKED_HASH_MAP_ACCUMULATOR.resultType().bindingsFor(linkedHashMapType));
 	}
 
 	public static ObjectEmitter mapEmitter(BoundType mapType) {
-		assert Map.class.isAssignableFrom(mapType.rawClass());
-		if (!(mapType.parameterType(Map.class, 0) instanceof KnownType keyType) ||
-			!(mapType.parameterType(Map.class, 1) instanceof KnownType valueType)) {
-			throw new IllegalStateException("Can't emit from a map of unknown key or value type: " + mapType);
-		}
-		MethodHandle start, hasNext, next, getKey, getValue;
-		try {
-			start = MethodHandles.lookup().unreflect(TypeScanner.class.getDeclaredMethod("getIterator", Map.class));
-			hasNext = MethodHandles.lookup().unreflect(Iterator.class.getMethod("hasNext"));
-			next = MethodHandles.lookup().unreflect(Iterator.class.getMethod("next"));
-			getKey = MethodHandles.lookup().unreflect(Map.Entry.class.getMethod("getKey"));
-			getValue = MethodHandles.lookup().unreflect(Map.Entry.class.getMethod("getValue"));
-		} catch (IllegalAccessException | NoSuchMethodException e) {
-			throw new IllegalStateException("Unexpected error doing reflection on List", e);
-		}
-		var upcastStart = start.asType(start.type().changeParameterType(0, mapType.rawClass()));
-		var downcastGetKey = getKey.asType(getKey.type().changeReturnType(keyType.rawClass()));
-		var downcastGetValue = getValue.asType(getValue.type().changeReturnType(valueType.rawClass()));
-		var downcastNext = next.asType(next.type().changeReturnType(Map.Entry.class));
-		var mapEntryType = new BoundType(Map.Entry.class, mapType.bindings());
-		var iteratorType = new BoundType(Iterator.class, mapEntryType);
-		return new ObjectEmitter(
-			new TypedHandle(upcastStart, iteratorType, List.of(mapType)),
-			new TypedHandle(hasNext, DataType.BOOLEAN, List.of(iteratorType)),
-			new TypedHandle(downcastNext, mapEntryType, List.of(iteratorType)),
-			new TypedHandle(downcastGetKey, keyType, List.of(mapEntryType)),
-			new TypedHandle(downcastGetValue, valueType, List.of(mapEntryType))
-		);
-	}
-
-	private static Iterator<?> getIterator(Map<?,?> map) {
-		return map.entrySet().iterator();
-	}
-
-	private static boolean isStringParsingClass(KnownType type) {
-		var clazz = type.rawClass();
-		return clazz.isEnum() || clazz == String.class;
-	}
-
-	private static ScalarSpec scanStringParsingClass(KnownType type) {
-		assert isStringParsingClass(type);
-		var clazz = type.rawClass();
-		if (clazz.isEnum()) {
-			return EnumByNameNode.of(clazz);
-		}
-		if (clazz == String.class) {
-			return new StringNode();
-		}
-		throw new IllegalStateException("Unsupported type: " + clazz);
+		return MAP_EMITTER.substitute(MAP_EMITTER.dataType().bindingsFor(mapType));
 	}
 
 	private JsonValueSpec scanRecord(BoundType recordType) {
@@ -717,6 +679,105 @@ public class TypeScanner {
 
 	private Lookup lookupFor(Class<?> c) {
 		return inProgress.lookupFor(c);
+	}
+
+	private static final ArrayAccumulator ARRAY_LIST_ACCUMULATOR = computeArrayListAccumulator();
+	private static final ArrayEmitter ITERABLE_EMITTER = computeIterableEmitter();
+	private static final ObjectAccumulator LINKED_HASH_MAP_ACCUMULATOR = computeLinkedHashMapAccumulator();
+	private static final ObjectEmitter MAP_EMITTER = computeMapEmitter();
+
+	private static <T, L extends Iterable<T>> ArrayAccumulator computeArrayListAccumulator() {
+		return ArrayAccumulator.from(new ArrayAccumulator.Wrangler<ArrayList<T>, T, L>() {
+			@Override
+			public ArrayList<T> create() {
+				return new ArrayList<>();
+			}
+
+			@Override
+			public ArrayList<T> integrate(ArrayList<T> accumulator, T element) {
+				accumulator.add(element);
+				return accumulator;
+			}
+
+			@Override
+			@SuppressWarnings("unchecked")
+			public L finish(ArrayList<T> accumulator) {
+				return (L)unmodifiableList(accumulator);
+			}
+		});
+	}
+
+	private static <T, L extends Iterable<T>> ArrayEmitter computeIterableEmitter() {
+		return ArrayEmitter.from(
+			new ArrayEmitter.Wrangler<L, Iterator<T>, T>() {
+				@Override
+				public Iterator<T> start(L value) {
+					return value.iterator();
+				}
+
+				@Override
+				public boolean hasNext(Iterator<T> iterator) {
+					return iterator.hasNext();
+				}
+
+				@Override
+				public T next(Iterator<T> iterator) {
+					return iterator.next();
+				}
+			}
+		);
+	}
+
+	private static <K, V, M extends Map<K,V>> ObjectAccumulator computeLinkedHashMapAccumulator() {
+		return ObjectAccumulator.from(
+			new ObjectAccumulator.Wrangler<M, LinkedHashMap<K,V>, K, V>() {
+				@Override
+				public LinkedHashMap<K, V> create() {
+					return new LinkedHashMap<>();
+				}
+
+				@Override
+				public LinkedHashMap<K, V> integrate(LinkedHashMap<K, V> accumulator, K key, V value) {
+					accumulator.put(key, value);
+					return accumulator;
+				}
+
+				@Override
+				@SuppressWarnings("unchecked")
+				public M finish(LinkedHashMap<K, V> accumulator) {
+					return (M)accumulator;
+				}
+			}
+		);
+	}
+
+	private static <K, V, M extends Map<K,V>> ObjectEmitter computeMapEmitter() {
+		return ObjectEmitter.forIterator(new ObjectEmitter.IteratorWrangler<M, Iterator<Map.Entry<K, V>>, Map.Entry<K,V>, K, V>() {
+			@Override
+			public Iterator<Map.Entry<K, V>> start(M obj) {
+				return obj.entrySet().iterator();
+			}
+
+			@Override
+			public boolean hasNext(Iterator<Map.Entry<K, V>> iter) {
+				return iter.hasNext();
+			}
+
+			@Override
+			public Map.Entry<K, V> next(Iterator<Map.Entry<K, V>> iter) {
+				return iter.next();
+			}
+
+			@Override
+			public K getKey(Map.Entry<K, V> member) {
+				return member.getKey();
+			}
+
+			@Override
+			public V getValue(Map.Entry<K, V> member) {
+				return member.getValue();
+			}
+		});
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(TypeScanner.class);

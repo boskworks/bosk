@@ -1,6 +1,7 @@
 package works.bosk.boson.types;
 
 import java.lang.reflect.Type;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -14,17 +15,23 @@ import java.util.Map;
  * as needed, but be careful to avoid infinite recursion.
  */
 public record TypeVariable(String name, List<Type> bounds) implements UnknownType {
+
+	public TypeVariable {
+		assert !bounds.isEmpty():
+			"TypeVariable must have at least one bound (Object if unbounded)";
+	}
+
 	public TypeVariable(String name, Type... bounds) {
-		this(name, List.of(bounds));
+		this(name, (bounds.length == 0)? NO_BOUNDS : List.of(bounds));
 	}
 
 	public static TypeVariable unbounded(String name) {
-		return new TypeVariable(name, List.of());
+		return new TypeVariable(name, NO_BOUNDS);
 	}
 
 	@Override
 	public String toString() {
-		if (bounds.isEmpty()) {
+		if (NO_BOUNDS.equals(bounds)) {
 			return name;
 		} else {
 			StringBuilder sb = new StringBuilder();
@@ -41,48 +48,34 @@ public record TypeVariable(String name, List<Type> bounds) implements UnknownTyp
 	}
 
 	@Override
-	public boolean isAssignableFrom(DataType other) {
-		// For type variables, isAssignableFrom is stricter
-		// than isBindableFrom:
-		// for T t = x, x must either be T itself or a provable subtype of T
-		if (this.equals(other)) {
-			return true;
+	public boolean isBindableFrom(DataType other, BindableOptions options, Map<String, DataType> bindingsSoFar) {
+		var existing = bindingsSoFar.get(name);
+		if (existing == null) {
+			// Try to establish a new binding
+			if (options.freeVariables()) {
+				for (var bound : bounds) {
+					var substituted = DataType.of(bound).substitute(bindingsSoFar);
+					// When considering bounds, subtypes are allowed in any context
+					if (!substituted.isBindableFrom(other, options.withAllowSubtypes(true), bindingsSoFar)) {
+						return false;
+					}
+				}
+				bindingsSoFar.put(name, other);
+				return true;
+			} else {
+				// The variable is not free to bind; it must match itself
+				bindingsSoFar.put(name, this);
+				return this.equals(other);
+			}
+		} else {
+			return existing.isBindableFrom(other, options, bindingsSoFar);
 		}
-
-		if (other instanceof TypeVariable otherTv) {
-			// JLS 5.1.6.1
-			// - case 4: S is a type variable, and a narrowing reference conversion exists from the upper bound of S to T.
-			// - case 6: S is an intersection type S1 & ... & Sn, and for all i (1 ≤ i ≤ n), either a widening reference conversion or a narrowing reference conversion exists from Si to T.
-			// This means T must be assignable from all bounds of S.
-			//
-			// Intuitively it seems like any bound would be enough--
-			// I'm not sure why the JLS requires all bounds--
-			// but it's academic for type variables anyway,
-			// because 4.4 disallows type variables
-			// from participating in intersection types,
-			// so if otherTv is not a singleton, it's not going to match.
-			//
- 			// However, allMatch returns true for an empty stream,
-			// which is wrong, so we use anyMatch instead.
-			//
-			return otherTv.bounds().stream().anyMatch(t ->
-				this.isAssignableFrom(DataType.of(t)));
-		}
-
-		// Otherwise, a type variable is only assignable from itself
-		return false;
-	}
-
-	@Override
-	public boolean isBindableFrom(DataType other) {
-		return bounds.stream().allMatch(t ->
-			DataType.of(t).isAssignableFrom(other));
 	}
 
 	@Override
 	public Class<?> leastUpperBoundClass() {
 		return switch (bounds.size()) {
-			case 0 -> Object.class;
+			case 0 -> { throw new AssertionError("TypeVariable must have at least one bound"); }
 			case 1 -> DataType.of(bounds.getFirst()).leastUpperBoundClass();
 			default -> Object.class; // TODO: Do better. Check the JLS to see what we're supposed to do here.
 		};
@@ -100,9 +93,28 @@ public record TypeVariable(String name, List<Type> bounds) implements UnknownTyp
 
 	@Override
 	public Map<String, DataType> bindingsFor(DataType other) {
+		var map = new LinkedHashMap<String, DataType>();
+
 		// This is where the rubber meets the road:
 		// we're binding this variable to `other`.
-		return Map.of(name, other);
+		map.put(name, other);
+
+		if (other instanceof BoundType otherBoundType) {
+			// We may be able to infer more bindings from how this variable's bounds
+			// match up with other.
+			bounds.forEach(bound -> {
+				if (DataType.of(bound) instanceof BoundType bt) {
+					var bindings = bt.bindings();
+					for (int i = 0; i < bindings.size(); i++) {
+						if (bindings.get(i) instanceof TypeVariable tv) {
+							map.put(tv.name, otherBoundType.parameterType(bt.rawClass(), i));
+						}
+					}
+				}
+			});
+		}
+
+		return Map.copyOf(map);
 	}
 
 	@Override
@@ -112,4 +124,7 @@ public record TypeVariable(String name, List<Type> bounds) implements UnknownTyp
 		// result would be wildcard-free regardless of the bounds, so we return false here.
 		return false;
 	}
+
+	public static final List<Type> NO_BOUNDS = List.of(Object.class);
+
 }

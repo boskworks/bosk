@@ -1,5 +1,6 @@
 package works.bosk.boson.types;
 
+import java.lang.reflect.Array;
 import java.util.Map;
 
 public record ArrayType(KnownType elementType) implements KnownType {
@@ -9,20 +10,24 @@ public record ArrayType(KnownType elementType) implements KnownType {
 	}
 
 	@Override
-	public boolean isAssignableFrom(DataType other) {
-		return switch (other) {
-			case ArrayType(var e) -> elementType.isAssignableFrom(e);
-			case UnknownArrayType(var e) -> elementType.isAssignableFrom(e);
-			case UpperBoundedWildcardType(var b) -> this.isAssignableFrom(b);
-			default -> false;
-		};
+	public boolean isBindableFrom(DataType other, BindableOptions options, Map<String, DataType> bindingsSoFar) {
+		return arrayIsBindableFrom(this, elementType, other, options, bindingsSoFar);
 	}
 
-	@Override
-	public boolean isBindableFrom(DataType other) {
-		// TODO: Check the semantics here and in UnknownArrayType
-		return other instanceof ArrayType(var otherElementType)
-			&& elementType.isBindableFrom(otherElementType);
+	static boolean arrayIsBindableFrom(DataType arrayType, DataType elementType, DataType other, BindableOptions options, Map<String, DataType> bindingsSoFar) {
+		return switch (other) {
+			case ArrayType(var otherElementType) -> elementType.isBindableFrom(otherElementType, options, bindingsSoFar);
+			case UnknownArrayType(var otherElementType) -> elementType.isBindableFrom(otherElementType, options, bindingsSoFar);
+			case KnownType _ -> false;
+			case TypeVariable typeVariable -> options.allowSubtypes()
+				&& typeVariable.bounds().stream().allMatch(bound ->
+				arrayType.isBindableFrom(DataType.of(bound), options, bindingsSoFar));
+			case WildcardType w -> options.allowSubtypes()
+				&& arrayType.isBindableFrom(w.capture(), options, bindingsSoFar);
+			case NullType _ -> options.allowSubtypes();
+			case CapturedType capturedType -> options.allowSubtypes()
+				&& arrayType.isBindableFrom(capturedType.upperBound(), options, bindingsSoFar);
+		};
 	}
 
 	@Override
@@ -42,6 +47,10 @@ public record ArrayType(KnownType elementType) implements KnownType {
 			case ArrayType(var e) -> elementType.bindingsFor(e);
 			default -> throw new IllegalArgumentException("wat");
 		};
+	}
+
+	public Object[] zeroLengthInstance() {
+		return (Object[]) Array.newInstance(elementType.rawClass(), 0);
 	}
 
 	@Override

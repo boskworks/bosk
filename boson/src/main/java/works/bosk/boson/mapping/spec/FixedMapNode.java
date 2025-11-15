@@ -29,7 +29,7 @@ public record FixedMapNode(
 			DataType finisherParameter = iter.next();
 			assert finisherParameter.isAssignableFrom(member.valueSpec().dataType()):
 				"Finisher parameter type " + finisherParameter +
-				" is not assignable from member '" + name +
+				" must be assignable from member '" + name +
 				"' value type " + member.valueSpec().dataType();
 		});
 	}

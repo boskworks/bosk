@@ -1,10 +1,8 @@
 package works.bosk.boson.types;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiPredicate;
 import java.util.stream.Stream;
 
 import static java.util.Collections.unmodifiableMap;
@@ -33,97 +31,43 @@ public record BoundType(Class<?> rawClass, List<? extends DataType> bindings) im
 	}
 
 	@Override
-	public boolean isAssignableFrom(DataType other) {
-		return switch (other) {
-			case ArrayType _ -> rawClass().isAssignableFrom(Object[].class);
-			case PrimitiveType _ -> false; // No instance type matches any primitive
-			case BoundType bt -> isAssignableFrom(bt, BoundType::isAssignableFromTypeParameter);
-			case ErasedType(var t)  -> rawClass().isAssignableFrom(t); // Seems aggressive, but people use erased types when they don't want to think about generics
-			case TypeVariable(_, var bounds) -> bounds.stream().anyMatch(t -> this.isAssignableFrom(DataType.of(t)));
-			case UnknownType _ -> rawClass().isAssignableFrom(other.leastUpperBoundClass());
-		};
-
-	}
-
-	/**
-	 * @return true if {@code List<patternArg>} is assignable from {@code List<candidate>}.
-	 */
-	private static boolean isAssignableFromTypeParameter(DataType patternArg, DataType candidate) {
-		// isAssignableGenericParameter is too lax because it's meant
-		// for invocation site compatibility, so it allows type variables
-		// to match things that aren't type variables.
-
-		// isAssignableFrom is too lax because allows types to
-		// match their subtypes, but too strict because unknown
-		// types hardly match anything.
-
-		return switch (patternArg) {
-			case KnownType t -> t.isBindableFrom(candidate);
-			case UnknownType t -> t.isAssignableFrom(candidate);
-		};
-
-	}
-
-	@Override
-	public boolean isBindableFrom(DataType other) {
+	public boolean isBindableFrom(DataType other, BindableOptions options, Map<String, DataType> bindingsSoFar) {
 		return switch (other) {
 			case BoundType bt ->
-				rawClass().equals(bt.rawClass())
-					&& isAssignableFrom(bt, DataType::isBindableFrom);
-			case ErasedType(var t)  -> rawClass().equals(t);
-			default -> false;
+				options.matches(rawClass(), bt.rawClass())
+					&& argsAreBindable(bt, options, bindingsSoFar);
+			case ErasedType(var t)  -> options.matches(rawClass(), t); // Erased types are pretty permissive
+			case TypeVariable(var name, var bounds) -> {
+				var existing = bindingsSoFar.get(name);
+				if (existing == null) {
+					bindingsSoFar.put(name, this);
+					yield options.allowSubtypes() // If subtypes aren't allowed, type variables can't match bound types
+						&& bounds.stream().anyMatch(bound ->
+						this.isBindableFrom(DataType.of(bound), options, bindingsSoFar));
+				} else {
+					yield this.isBindableFrom(existing, options, bindingsSoFar);
+				}
+			}
+			case WildcardType w ->
+				this.isBindableFrom(w.capture(), options, bindingsSoFar);
+			case CapturedType capturedType ->
+				options.allowSubtypes()
+					&& this.isBindableFrom(capturedType.upperBound(), options, bindingsSoFar);
+			case NullType _ -> options.allowSubtypes();
+			case ArrayType _, UnknownArrayType _ -> options.allowSubtypes() && rawClass().isAssignableFrom(Object[].class);
+			case PrimitiveType _ -> false;
 		};
 	}
 
-	private boolean isAssignableFrom(InstanceType candidate, BiPredicate<DataType, DataType> typeParameterCheck) {
-		if (!rawClass().isAssignableFrom(candidate.rawClass())) {
-			return false;
-		}
-
-		// Collect all type variable bindings.
-		Map<String, DataType> typeVariableBindings = new HashMap<>();
-		for (int i = 0; i < bindings().size(); i++) {
-			DataType patternArg = typeArgument(i);
-			var candidateParameter = candidate.parameterType(rawClass(), i);
-			if (patternArg instanceof TypeVariable tv) {
-				var existing = typeVariableBindings.put(tv.name(), candidateParameter);
-				if (existing != null && !existing.equals(candidateParameter)) {
-					// Conflicting bindings for the same type variable
-					return false;
-				}
-			}
-		}
-
-		// For each type argument with bounds that are themselves type variables,
-		// substitute the values of those bindings.
-		// TODO: Double-check the bounds on the type variables?
-		List<DataType> resolvedArguments = new ArrayList<>();
-		typeArguments().forEach(arg -> {
-			switch (arg) {
-				case UpperBoundedWildcardType(var upperBound)
-					when (upperBound instanceof TypeVariable(String name, _)) -> {
-					resolvedArguments.add(new UpperBoundedWildcardType(
-						typeVariableBindings.getOrDefault(name, upperBound)
-					));
-				}
-				case LowerBoundedWildcardType(var lowerBound)
-					when (lowerBound instanceof TypeVariable(String name, _)) -> {
-					resolvedArguments.add(new LowerBoundedWildcardType(
-						typeVariableBindings.getOrDefault(name, lowerBound)
-					));
-				}
-				default -> resolvedArguments.add(arg);
-			}
-		});
-
-		for (int i = 0; i < resolvedArguments.size(); i++) {
-			DataType patternArg = resolvedArguments.get(i);
-			DataType candidateParameter = candidate.parameterType(this.rawClass(), i);
-			if (!typeParameterCheck.test(patternArg, candidateParameter)) {
+	private boolean argsAreBindable(BoundType candidate, BindableOptions options, Map<String, DataType> existingBindings) {
+		for (int i = 0; i < this.bindings().size(); i++) {
+			DataType patternArg = this.typeArgument(i);
+			DataType candidateArg = candidate.parameterType(this.rawClass(), i);
+			// When checking type arguments, subtypes are not allowed
+			if (!patternArg.isBindableFrom(candidateArg, options.withAllowSubtypes(false), existingBindings)) {
 				return false;
 			}
 		}
-
 		return true;
 	}
 

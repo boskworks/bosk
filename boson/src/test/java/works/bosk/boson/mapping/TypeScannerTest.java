@@ -2,6 +2,7 @@ package works.bosk.boson.mapping;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,8 +32,8 @@ class TypeScannerTest {
 	public record FloatAsString(String text) {}
 
 	@Test
-	void testSimpleDirective() throws IOException {
-		scanner.addBundle(new Bundle(List.of(), List.of(), List.of(
+	void simpleDirective() throws IOException {
+		scanner.addBundle(new Bundle("test", List.of(), List.of(), List.of(
 			new Directive(
 				DataType.FLOAT,
 				_ -> RepresentAsSpec.as(
@@ -62,8 +63,8 @@ class TypeScannerTest {
 	public record OverriddenImpl(int value) implements Overridden {}
 
 	@Test
-	void testTypeBound() throws IOException {
-		scanner.addBundle(new Bundle(List.of(), List.of(), List.of(
+	void typeBound() throws IOException {
+		scanner.addBundle(new Bundle("test", List.of(), List.of(), List.of(
 			new Directive(
 				new TypeVariable("T", Overridden.class),
 				t -> RepresentAsSpec.asInt(
@@ -87,7 +88,7 @@ class TypeScannerTest {
 	}
 
 	@Test
-	void testIterable() throws IOException {
+	void iterable() throws IOException {
 		record TestRecord(Iterable<String> items) {}
 		var typeMap = scanner
 			.useLookup(MethodHandles.lookup())
@@ -100,5 +101,36 @@ class TypeScannerTest {
 			{ "items": [ "a", "b", "c" ] }
 			"""));
 		assertEquals(new TestRecord(List.of("a", "b", "c")), actual);
+	}
+
+	@Test
+	void array() throws IOException {
+		record TestRecord(String[] items) {
+			@Override
+			public boolean equals(Object o) {
+				if (o == null || getClass() != o.getClass()) {
+					return false;
+				}
+
+				TestRecord that = (TestRecord) o;
+				return Arrays.equals(items, that.items);
+			}
+
+			@Override
+			public int hashCode() {
+				return Arrays.hashCode(items);
+			}
+		}
+		var typeMap = scanner
+			.useLookup(MethodHandles.lookup())
+			.scan(DataType.of(TestRecord.class))
+			.build();
+		JsonValueSpec spec = typeMap.get(DataType.of(TestRecord.class));
+		Codec codec = CodecBuilder.using(typeMap).build();
+		Object actual = codec.parserFor(spec).parse(CharArrayJsonReader.forString(
+			"""
+			{ "items": [ "a", "b", "c" ] }
+			"""));
+		assertEquals(new TestRecord(new String[] { "a", "b", "c" }), actual);
 	}
 }

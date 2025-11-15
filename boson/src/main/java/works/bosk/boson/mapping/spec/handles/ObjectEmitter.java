@@ -231,11 +231,66 @@ public record ObjectEmitter(
 		);
 	}
 
+	public interface IteratorWrangler<T, I, M, K, V> {
+		I start(T obj);
+		boolean hasNext(I iter);
+		M next(I iter);
+		K getKey(M member);
+		V getValue(M member);
+	}
+
+	public static <T, I, M, K, V> ObjectEmitter forIterator(IteratorWrangler<T, I, M, K, V> wrangler) {
+		var wranglerType = (BoundType)DataType.of(wrangler.getClass());
+		var objectType = wranglerType.parameterType(IteratorWrangler.class, 0);
+		var iteratorType = wranglerType.parameterType(IteratorWrangler.class, 1);
+		var memberType = wranglerType.parameterType(IteratorWrangler.class, 2);
+		var keyType = wranglerType.parameterType(IteratorWrangler.class, 3);
+		var valueType = wranglerType.parameterType(IteratorWrangler.class, 4);
+
+		return new ObjectEmitter(
+			new TypedHandle(
+				ITERATOR_WRANGLER_START
+					.bindTo(wrangler)
+					.asType(MethodType.methodType(iteratorType.leastUpperBoundClass(), objectType.leastUpperBoundClass())),
+				iteratorType, List.of(objectType)
+			),
+			new TypedHandle(
+				ITERATOR_WRANGLER_HAS_NEXT
+					.bindTo(wrangler)
+					.asType(MethodType.methodType(boolean.class, iteratorType.leastUpperBoundClass())),
+				BOOLEAN, List.of(iteratorType)
+			),
+			new TypedHandle(
+				ITERATOR_WRANGLER_NEXT
+					.bindTo(wrangler)
+					.asType(MethodType.methodType(memberType.leastUpperBoundClass(), iteratorType.leastUpperBoundClass())),
+				memberType, List.of(iteratorType)
+			),
+			new TypedHandle(
+				ITERATOR_WRANGLER_GET_KEY
+					.bindTo(wrangler)
+					.asType(MethodType.methodType(keyType.leastUpperBoundClass(), memberType.leastUpperBoundClass())),
+				keyType, List.of(memberType)
+			),
+			new TypedHandle(
+				ITERATOR_WRANGLER_GET_VALUE
+					.bindTo(wrangler)
+					.asType(MethodType.methodType(valueType.leastUpperBoundClass(), memberType.leastUpperBoundClass())),
+				valueType, List.of(memberType)
+			)
+		);
+	}
+
 	private static final MethodHandle FOR_LOOP_WRANGLER_START;
 	private static final MethodHandle FOR_LOOP_WRANGLER_HAS_NEXT;
 	private static final MethodHandle FOR_LOOP_WRANGLER_NEXT;
 	private static final MethodHandle FOR_LOOP_WRANGLER_GET_KEY;
 	private static final MethodHandle FOR_LOOP_WRANGLER_GET_VALUE;
+	private static final MethodHandle ITERATOR_WRANGLER_START;
+	private static final MethodHandle ITERATOR_WRANGLER_HAS_NEXT;
+	private static final MethodHandle ITERATOR_WRANGLER_NEXT;
+	private static final MethodHandle ITERATOR_WRANGLER_GET_KEY;
+	private static final MethodHandle ITERATOR_WRANGLER_GET_VALUE;
 
 	static {
 		try {
@@ -264,6 +319,31 @@ public record ObjectEmitter(
 				ForLoopWrangler.class,
 				"getValue",
 				MethodType.methodType(Object.class, long.class, Object.class)
+			);
+			ITERATOR_WRANGLER_START = lookup.findVirtual(
+				IteratorWrangler.class,
+				"start",
+				MethodType.methodType(Object.class, Object.class)
+			);
+			ITERATOR_WRANGLER_HAS_NEXT = lookup.findVirtual(
+				IteratorWrangler.class,
+				"hasNext",
+				MethodType.methodType(boolean.class, Object.class)
+			);
+			ITERATOR_WRANGLER_NEXT = lookup.findVirtual(
+				IteratorWrangler.class,
+				"next",
+				MethodType.methodType(Object.class, Object.class)
+			);
+			ITERATOR_WRANGLER_GET_KEY = lookup.findVirtual(
+				IteratorWrangler.class,
+				"getKey",
+				MethodType.methodType(Object.class, Object.class)
+			);
+			ITERATOR_WRANGLER_GET_VALUE = lookup.findVirtual(
+				IteratorWrangler.class,
+				"getValue",
+				MethodType.methodType(Object.class, Object.class)
 			);
 		} catch (NoSuchMethodException | IllegalAccessException e) {
 			throw new ExceptionInInitializerError(e);

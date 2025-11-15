@@ -87,7 +87,7 @@ public record ArrayEmitter(
 		E next(I iterator);
 	}
 
-	public static ArrayEmitter of(Wrangler<?,?,?> wrangler) {
+	public static ArrayEmitter from(Wrangler<?,?,?> wrangler) {
 		BoundType wranglerType = (BoundType) DataType.of(wrangler.getClass());
 		var arrayType = wranglerType.parameterType(Wrangler.class, 0);
 		var iteratorType = wranglerType.parameterType(Wrangler.class, 1);

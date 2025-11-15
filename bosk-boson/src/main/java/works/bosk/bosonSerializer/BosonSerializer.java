@@ -414,6 +414,7 @@ public class BosonSerializer extends StateTreeSerializer {
 		));
 
 		return new TypeScanner.Bundle(
+			"Bosk [" + bosk.name() + "]",
 			List.of(DataType.of(ListingEntry.class)),
 			List.of(lookup),
 			List.copyOf(directives)

@@ -36,13 +36,21 @@ public record RepresentAsSpec(
 ) implements JsonValueSpec {
 	public RepresentAsSpec {
 		assert toRepresentation.parameterTypes().size() == 1;
-		assert toRepresentation.parameterTypes().getFirst().isAssignableFrom(fromRepresentation.returnType());
+		assert toRepresentation.parameterTypes().getFirst().isAssignableFrom(fromRepresentation.returnType()):
+			"toRepresentation parameter type " + toRepresentation.parameterTypes().getFirst() +
+				" must be assignable from fromRepresentation return type " + fromRepresentation.returnType();
 
 		assert fromRepresentation.parameterTypes().size() == 1;
-		assert fromRepresentation.parameterTypes().getFirst().isAssignableFrom(toRepresentation.returnType());
+		assert fromRepresentation.parameterTypes().getFirst().isAssignableFrom(toRepresentation.returnType()):
+			"fromRepresentation parameter type " + fromRepresentation.parameterTypes().getFirst() +
+				" must be assignable from toRepresentation return type " + toRepresentation.returnType();
 
-		assert toRepresentation.returnType().isAssignableFrom(representation.dataType());
-		assert representation.dataType().isAssignableFrom(toRepresentation.returnType());
+		assert toRepresentation.returnType().isAssignableFrom(representation.dataType()):
+			"toRepresentation return type " + toRepresentation.returnType() +
+				" must be assignable from representation type " + representation.dataType();
+		assert representation.dataType().isAssignableFrom(toRepresentation.returnType()):
+			"representation type " + representation.dataType() +
+				" must be assignable from toRepresentation return type " + toRepresentation.returnType();
 	}
 
 	@Override
