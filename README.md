@@ -21,7 +21,7 @@ is all delegated to MongoDB: a well-known, reliable, battle-hardened codebase.
 You don't even need to trust Bosk to get all these details right:
 all we do is send updates to MongoDB, and maintain the in-memory replica by following the MongoDB change stream.
 
-If you'd rather use SQL instead of MongoDB, there's a [SQL library](bosk-sql) too.
+If you'd rather use SQL instead of MongoDB, there's an experimental [SQL library](bosk-sql) too.
 
 ## Documentation
 - [User's Guide](docs/USERS.md)
