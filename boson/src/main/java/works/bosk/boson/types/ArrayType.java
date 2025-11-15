@@ -1,5 +1,6 @@
 package works.bosk.boson.types;
 
+import java.lang.reflect.Array;
 import java.util.Map;
 
 public record ArrayType(KnownType elementType) implements KnownType {
@@ -46,6 +47,10 @@ public record ArrayType(KnownType elementType) implements KnownType {
 			case ArrayType(var e) -> elementType.bindingsFor(e);
 			default -> throw new IllegalArgumentException("wat");
 		};
+	}
+
+	public Object[] zeroLengthInstance() {
+		return (Object[]) Array.newInstance(elementType.rawClass(), 0);
 	}
 
 	@Override

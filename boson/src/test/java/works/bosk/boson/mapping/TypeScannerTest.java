@@ -2,6 +2,7 @@ package works.bosk.boson.mapping;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -100,5 +101,36 @@ class TypeScannerTest {
 			{ "items": [ "a", "b", "c" ] }
 			"""));
 		assertEquals(new TestRecord(List.of("a", "b", "c")), actual);
+	}
+
+	@Test
+	void array() throws IOException {
+		record TestRecord(String[] items) {
+			@Override
+			public boolean equals(Object o) {
+				if (o == null || getClass() != o.getClass()) {
+					return false;
+				}
+
+				TestRecord that = (TestRecord) o;
+				return Arrays.equals(items, that.items);
+			}
+
+			@Override
+			public int hashCode() {
+				return Arrays.hashCode(items);
+			}
+		}
+		var typeMap = scanner
+			.useLookup(MethodHandles.lookup())
+			.scan(DataType.of(TestRecord.class))
+			.build();
+		JsonValueSpec spec = typeMap.get(DataType.of(TestRecord.class));
+		Codec codec = CodecBuilder.using(typeMap).build();
+		Object actual = codec.parserFor(spec).parse(CharArrayJsonReader.forString(
+			"""
+			{ "items": [ "a", "b", "c" ] }
+			"""));
+		assertEquals(new TestRecord(new String[] { "a", "b", "c" }), actual);
 	}
 }
