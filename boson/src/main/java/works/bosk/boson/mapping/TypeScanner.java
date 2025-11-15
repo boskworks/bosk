@@ -491,8 +491,7 @@ public class TypeScanner {
 	}
 
 	private JsonValueSpec computeSpecNode(DataType type) {
-		if (type instanceof DataType // Work around JDK 25 bug
-				&& findDirective(type) instanceof Directive(var pattern, _, var specFunction)) {
+		if (findDirective(type) instanceof Directive(var pattern, _, var specFunction)) {
 			LOGGER.debug("Type {} matched directive {}", type, pattern);
 			var spec = specFunction.apply(type);
 
