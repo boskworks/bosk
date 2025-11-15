@@ -1,10 +1,10 @@
 package works.bosk.boson.codec.io;
 
-import java.nio.charset.StandardCharsets;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 
 import static java.lang.Math.min;
+import static java.nio.charset.StandardCharsets.US_ASCII;
 import static works.bosk.boson.codec.Token.END_TEXT;
 import static works.bosk.boson.codec.Token.NUMBER;
 
@@ -59,7 +59,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	@Override
 	public Token peekToken() {
-		new String(new byte[0], StandardCharsets.US_ASCII);
+		new String(new byte[0], US_ASCII);
 		skipInsignificant();
 		return peekRawToken();
 	}
@@ -201,10 +201,25 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	@Override
 	public String consumeString() {
+		// PD - I haven't been able to measure a difference between these.
+		// The staging buffer would have value only if it allows us to cross
+		// chunk boundaries without falling back to the slow path,
+		// but it's not clear that's feasible; if it's not, then we might
+		// as well simplify things and read directly from the chunk's byte array.
+//		return consumeStringWithStagingBuffer();
+		return consumeStringDirectly();
+	}
+
+	private String consumeStringWithStagingBuffer() {
 		// Do a scan to see if the string has no escape codes
 		// and finishes before the next chunk boundary.
 		// Don't change currentChunkPos until we're sure.
 		// TODO: We probably don't care about chunk boundaries now that we're using a staging buffer.
+		// This is complicated by the fact that when we can't easily move
+		// to the next chunk without changing the state of this reader
+		// irrevocably, and so we can't easily "roll back" and call the super
+		// method anymore.
+		//
 		// There's reason to believe we hit boundaries often enough to cause a considerable perf hit.
 		int currentPos = currentChunkPos+1;
 		int stagingPos = 0;
@@ -225,6 +240,37 @@ public final class ByteChunkJsonReader implements JsonReader {
 				break;
 			} else {
 				stagingBuffer[stagingPos++] = (char) b;
+				currentPos++;
+			}
+		}
+
+		// Otherwise fall back to the default implementation
+		// for any more complex cases.
+		return JsonReader.super.consumeString();
+	}
+
+	private String consumeStringDirectly() {
+		// Do a scan to see if the string is all ASCII
+		// with no escape codes and finishes before the next chunk boundary.
+		// Don't change currentChunkPos until we're sure.
+		int currentPos = currentChunkPos+1;
+		byte[] buf = currentChunk.bytes();
+		int limit = currentChunk.stop();
+
+		while (currentPos < limit) {
+			byte b = buf[currentPos];
+			if (b == '"') {
+				// Found the end of the string
+				var start = currentChunkPos + 1; // after the opening quote
+				var length = currentPos - start;
+				currentChunkPos = currentPos + 1; // after the closing quote
+				return new String(buf, start, length, US_ASCII);
+			} else if (b == '\\' || b < 0x20) {
+				// Found a byte that can't be directly copied as a char.
+				// The inherited method already has logic for this;
+				// let's just fall back to that.
+				break;
+			} else {
 				currentPos++;
 			}
 		}

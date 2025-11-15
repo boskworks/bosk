@@ -18,7 +18,7 @@ public class SynchronousChunkFiller implements ChunkFiller {
 	final byte[] buffer;
 
 	public SynchronousChunkFiller(InputStream stream) {
-		this(stream, 20_000);
+		this(stream, 40_000);
 	}
 
 	SynchronousChunkFiller(InputStream stream, int bufferSize) {

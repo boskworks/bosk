@@ -39,7 +39,7 @@ import static works.bosk.boson.mapping.TypeMap.Settings.DEFAULT;
 @State(Scope.Thread)
 @Fork(3)
 @Warmup(iterations = 8, time = 1)
-@Measurement(iterations = 3, time = 1, timeUnit = SECONDS)
+@Measurement(iterations = 5, time = 1, timeUnit = SECONDS)
 public class ParseBenchmark {
 	private char[] json;
 	private ObjectReader objectReader;

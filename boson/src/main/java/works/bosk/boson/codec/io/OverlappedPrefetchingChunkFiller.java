@@ -25,13 +25,13 @@ public final class OverlappedPrefetchingChunkFiller implements ChunkFiller {
 	private final Thread backgroundThread;
 
 	public OverlappedPrefetchingChunkFiller(InputStream stream) {
-		// In microbenchmarks, we can outperform Java with a 2MB buffer,
+		// In microbenchmarks, we can outperform Jackson with a 2MB buffer,
 		// but that's pretty extreme.
 
 		// We aim to use an integer number of memory pages for the array object.
 		// It's not clear whether this is better than using an integer number of
 		// pages for the array _contents_.
-		int bufferSize = 5*4096 - 16; // 16 = array header
+		int bufferSize = 10*4096 - 16; // 16 = array header
 		this(stream, bufferSize, 2);
 	}
 
