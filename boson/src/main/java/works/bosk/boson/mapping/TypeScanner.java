@@ -176,6 +176,7 @@ public class TypeScanner {
 	 */
 	public TypeScanner specify(DataType type, JsonValueSpec spec) {
 		addBundle(new Bundle(
+			"<ad hoc bundle for type: " + type + ">",
 			List.of(type),
 			List.of(),
 			List.of(Directive.fixed(spec)
@@ -195,11 +196,13 @@ public class TypeScanner {
 	}
 
 	/**
+	 * @param name has no significance other than for troubleshooting
 	 * @param types to scan even if not encountered during normal scanning
 	 * @param lookups to use for {@link MethodHandle} operations on types that would otherwise be inaccessible
 	 * @param directives are considered in order. The first matching directive is used.
 	 */
 	public record Bundle(
+		String name,
 		List<DataType> types,
 		List<Lookup> lookups,
 		List<Directive> directives

@@ -32,7 +32,7 @@ class TypeScannerTest {
 
 	@Test
 	void testSimpleDirective() throws IOException {
-		scanner.addBundle(new Bundle(List.of(), List.of(), List.of(
+		scanner.addBundle(new Bundle("test", List.of(), List.of(), List.of(
 			new Directive(
 				DataType.FLOAT,
 				_ -> RepresentAsSpec.as(
@@ -63,7 +63,7 @@ class TypeScannerTest {
 
 	@Test
 	void testTypeBound() throws IOException {
-		scanner.addBundle(new Bundle(List.of(), List.of(), List.of(
+		scanner.addBundle(new Bundle("test", List.of(), List.of(), List.of(
 			new Directive(
 				new TypeVariable("T", Overridden.class),
 				t -> RepresentAsSpec.asInt(
