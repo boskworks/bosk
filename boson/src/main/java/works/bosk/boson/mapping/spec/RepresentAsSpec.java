@@ -64,9 +64,9 @@ public record RepresentAsSpec(
 	}
 
 	@Override
-	public RepresentAsSpec substitute(Map<String, DataType> actualArguments) {
+	public RepresentAsSpec specialize(Map<String, DataType> actualArguments) {
 		return new RepresentAsSpec(
-			representation.substitute(actualArguments),
+			representation.specialize(actualArguments),
 			toRepresentation.substitute(actualArguments),
 			fromRepresentation.substitute(actualArguments)
 		);

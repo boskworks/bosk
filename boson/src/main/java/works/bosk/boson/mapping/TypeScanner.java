@@ -66,6 +66,21 @@ import static works.bosk.boson.types.DataType.STRING;
 /**
  * Collects information about {@link DataType}s,
  * and then {@link #build() builds} an optimized {@link TypeMap}.
+ * <p>
+ * Behaviour is customizable via {@link Directive}s, grouped into {@link Bundle}s,
+ * which allow you to use Java's type system to declare which types to customize
+ * and how to customize them.
+ * For a directive with a given {@link Directive#pattern pattern},
+ * when a type {@link DataType#isBindableFrom(DataType) isBindableFrom} the pattern,
+ * the directive's {@link Directive#spec spec function} will provide a specification
+ * that is further {@link JsonValueSpec#specialize specialized} to handle the actual type.
+ * <p>
+ * The scan aggressively follows any types referenced in {@link TypeRefNode}s,
+ * so the specifications returned from directives can use those freely,
+ * rather than needing to recursively specify every referenced type.
+ * Furthermore, the {@link TypeMap} produced by the {@link #build() build} method
+ * is optimized via the {@link Optimizer}, so there's essentially no
+ * cost to using {@link TypeRefNode}s.
  */
 public class TypeScanner {
 	final Map<DataType, TypeRefNode> refs = new LinkedHashMap<>();
@@ -275,6 +290,9 @@ public class TypeScanner {
 	}
 
 	/**
+	 * A collection of configuration info.
+	 * The primary way to tell a {@link TypeScanner} how to do reflection-based scanning.
+	 *
 	 * @param name has no significance other than for troubleshooting
 	 * @param types to scan even if not encountered during normal scanning
 	 * @param lookups to use for {@link MethodHandle} operations on types that would otherwise be inaccessible
@@ -287,6 +305,35 @@ public class TypeScanner {
 		List<Directive> directives
 	) { }
 
+	/**
+	 * A rule describing what {@link JsonValueSpec}
+	 * to associate with certain {@link DataType}s.
+	 * <p>
+	 * The {@link #pattern} describes which types the directive applies to.
+	 * It may contain {@link TypeVariable}s (but not wildcards).
+	 * When a directive is applied to a particular concrete type,
+	 * bindings for any type variables will be derived from the concrete type,
+	 * and these bindings will be used to {@link JsonValueSpec#specialize specialize}
+	 * the {@link #spec}.
+	 * <p>
+	 * The {@link #guard} further restricts which types the directive applies to.
+	 * This is primarily needed by specs that deserialize using a particular subtype;
+	 * for example, a directive whose pattern matches {@code List<E>}
+	 * might deserialize using an {@code ArrayList<E>}, and so the directive must
+	 * not apply to types that are not {@link DataType#isAssignableFrom assignable from}
+	 * {@code ArrayList<E>}.
+	 * <p>
+	 * The {@link #spec} is a function, rather than a fixed {@link JsonValueSpec},
+	 * giving it an opportunity to customize the spec based on the particular type
+	 * being handled.
+	 * In many cases, though, the built-in specialization mechanism suffices,
+	 * so the {@link #spec} function ignores its argument and returns a fixed value.
+	 * The {@link #fixed} factory methods are provided to handle this very common case.
+	 *
+	 * @param pattern describes the types to which the directive applies
+	 * @param guard further restricts the types to which the directive applies
+	 * @param spec function that produces the {@link JsonValueSpec} for a particular type
+	 */
 	public record Directive(DataType pattern, Guard guard, Function<DataType, JsonValueSpec> spec) {
 		public Directive {
 			assert !pattern.hasWildcards():
@@ -496,12 +543,12 @@ public class TypeScanner {
 			var spec = specFunction.apply(type);
 
 			// This assertion rules out matching on lower bounds, which is unfortunate,
-			// but I can't figure out how to make `substitute` work with wildcards.
+			// but I can't figure out how to make `specialize` work with wildcards.
 			assert !spec.dataType().hasWildcards():
 				"Spec produced by directive must not have wildcards: " + spec;
 
 			LOGGER.debug("Directive returned {}", spec);
-			var specialized = spec.substitute(pattern.bindingsFor(type));
+			var specialized = spec.specialize(pattern.bindingsFor(type));
 			if (!specialized.equals(spec)) {
 				spec = specialized;
 				LOGGER.debug("Specialized: {}", spec);

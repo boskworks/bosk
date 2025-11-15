@@ -9,21 +9,21 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.boson.TestUtils.Month;
 import works.bosk.boson.codec.JsonReader;
-import works.bosk.boson.mapping.Token;
+import works.bosk.boson.codec.Token;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.boson.TestUtils.ABSENT_FIELD_VALUE;
 import static works.bosk.boson.TestUtils.COMPUTED_FIELD_VALUE;
 import static works.bosk.boson.TestUtils.ONE_OF_EACH;
-import static works.bosk.boson.mapping.Token.END_ARRAY;
-import static works.bosk.boson.mapping.Token.END_OBJECT;
-import static works.bosk.boson.mapping.Token.FALSE;
-import static works.bosk.boson.mapping.Token.NULL;
-import static works.bosk.boson.mapping.Token.NUMBER;
-import static works.bosk.boson.mapping.Token.START_ARRAY;
-import static works.bosk.boson.mapping.Token.START_OBJECT;
-import static works.bosk.boson.mapping.Token.STRING;
-import static works.bosk.boson.mapping.Token.TRUE;
+import static works.bosk.boson.codec.Token.END_ARRAY;
+import static works.bosk.boson.codec.Token.END_OBJECT;
+import static works.bosk.boson.codec.Token.FALSE;
+import static works.bosk.boson.codec.Token.NULL;
+import static works.bosk.boson.codec.Token.NUMBER;
+import static works.bosk.boson.codec.Token.START_ARRAY;
+import static works.bosk.boson.codec.Token.START_OBJECT;
+import static works.bosk.boson.codec.Token.STRING;
+import static works.bosk.boson.codec.Token.TRUE;
 
 public class ManualTest {
 	/**

@@ -59,10 +59,10 @@ public record UniformMapNode(
 	}
 
 	@Override
-	public UniformMapNode substitute(Map<String, DataType> actualArguments) {
+	public UniformMapNode specialize(Map<String, DataType> actualArguments) {
 		return new UniformMapNode(
-			keyNode.substitute(actualArguments),
-			valueNode.substitute(actualArguments),
+			keyNode.specialize(actualArguments),
+			valueNode.specialize(actualArguments),
 			accumulator.substitute(actualArguments),
 			emitter.substitute(actualArguments)
 		);

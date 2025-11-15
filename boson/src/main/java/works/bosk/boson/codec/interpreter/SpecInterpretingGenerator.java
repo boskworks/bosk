@@ -32,10 +32,10 @@ import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.MemberValue
 import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.Nullary;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
 
-import static works.bosk.boson.mapping.Token.END_ARRAY;
-import static works.bosk.boson.mapping.Token.END_OBJECT;
-import static works.bosk.boson.mapping.Token.START_ARRAY;
-import static works.bosk.boson.mapping.Token.START_OBJECT;
+import static works.bosk.boson.codec.Token.END_ARRAY;
+import static works.bosk.boson.codec.Token.END_OBJECT;
+import static works.bosk.boson.codec.Token.START_ARRAY;
+import static works.bosk.boson.codec.Token.START_OBJECT;
 
 public class SpecInterpretingGenerator implements Generator {
 	private final JsonValueSpec spec;

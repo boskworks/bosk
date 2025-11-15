@@ -1,15 +1,17 @@
 package works.bosk.boson.codec.io;
 
+import java.nio.charset.StandardCharsets;
 import works.bosk.boson.codec.JsonReader;
-import works.bosk.boson.mapping.Token;
+import works.bosk.boson.codec.Token;
 
 import static java.lang.Math.min;
-import static works.bosk.boson.mapping.Token.END_TEXT;
-import static works.bosk.boson.mapping.Token.NUMBER;
+import static works.bosk.boson.codec.Token.END_TEXT;
+import static works.bosk.boson.codec.Token.NUMBER;
 
 
 /**
  * {@link JsonReader} that uses a {@link ChunkFiller}.
+ * Can process JSON text of arbitrary size.
  * <p>
  * Calling {@link #close()} will close the underlying channel.
  */
@@ -40,7 +42,13 @@ public final class ByteChunkJsonReader implements JsonReader {
 	 */
 	private int currentChunkPos;
 
-	private final char[] stagingBuffer = new char[120];
+	/**
+	 * Used by consumeString() for fast-path reading of small simple strings.
+	 * TODO: Is this the best we can do?
+	 * I forget why we use this instead of passing bytes to
+	 * {@link String#String(byte[], java.nio.charset.Charset)} directly.
+	 */
+	private final char[] stringStagingBuffer = new char[120];
 
 	public ByteChunkJsonReader(ChunkFiller chunkFiller) {
 		this.filler = chunkFiller;
@@ -51,6 +59,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	@Override
 	public Token peekToken() {
+		new String(new byte[0], StandardCharsets.US_ASCII);
 		skipInsignificant();
 		return peekRawToken();
 	}
@@ -200,7 +209,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 		int currentPos = currentChunkPos+1;
 		int stagingPos = 0;
 		byte[] buf = currentChunk.bytes();
-		char[] stagingBuffer = this.stagingBuffer;
+		char[] stagingBuffer = this.stringStagingBuffer;
 		int limit = min(currentChunk.stop(), currentPos + stagingBuffer.length);
 
 		while (currentPos < limit) {
@@ -210,7 +219,9 @@ public final class ByteChunkJsonReader implements JsonReader {
 				currentChunkPos = currentPos + 1;
 				return new String(stagingBuffer, 0, stagingPos);
 			} else if (b == '\\' || b < 0x20) {
-				// Found an escape or non-ASCII character
+				// Found a byte that can't be directly copied as a char.
+				// The inherited method already has logic for this;
+				// let's just fall back to that.
 				break;
 			} else {
 				stagingBuffer[stagingPos++] = (char) b;

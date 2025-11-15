@@ -49,10 +49,10 @@ public record ParseCallbackSpec(
 	}
 
 	@Override
-	public ParseCallbackSpec substitute(Map<String, DataType> actualArguments) {
+	public ParseCallbackSpec specialize(Map<String, DataType> actualArguments) {
 		return new ParseCallbackSpec(
 			before.substitute(actualArguments),
-			child.substitute(actualArguments),
+			child.specialize(actualArguments),
 			after.substitute(actualArguments)
 		);
 	}

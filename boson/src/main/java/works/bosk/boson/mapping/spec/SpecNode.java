@@ -1,6 +1,7 @@
 package works.bosk.boson.mapping.spec;
 
 import java.util.function.UnaryOperator;
+import works.bosk.boson.codec.Token;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.types.DataType;
 
@@ -14,7 +15,7 @@ import static java.util.Objects.requireNonNull;
  * and deserialization.
  * <p>
  * (A minor note: you'll notice a node has a known {@link #dataType},
- * but not a known JSON {@link works.bosk.boson.mapping.Token Token} type.
+ * but not a known JSON {@link Token Token} type.
  * The asymmetry is due to {@link TypeRefNode}, for which the datatype
  * is known, but the JSON type is not known without a {@link TypeMap}.)
  */

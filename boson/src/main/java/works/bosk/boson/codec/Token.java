@@ -1,4 +1,4 @@
-package works.bosk.boson.mapping;
+package works.bosk.boson.codec;
 
 public enum Token {
 	END_TEXT,

@@ -37,9 +37,9 @@ import works.bosk.boson.codec.Codec;
 import works.bosk.boson.codec.Generator;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Parser;
+import works.bosk.boson.codec.Token;
 import works.bosk.boson.codec.compiler.LocalVariableAllocator.LocalVariable;
 import works.bosk.boson.codec.interpreter.SpecInterpretingGenerator;
-import works.bosk.boson.mapping.Token;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.BigNumberNode;
@@ -68,15 +68,23 @@ import static java.lang.reflect.AccessFlag.FINAL;
 import static java.lang.reflect.AccessFlag.PRIVATE;
 import static java.lang.reflect.AccessFlag.PUBLIC;
 import static java.lang.reflect.AccessFlag.STATIC;
+import static works.bosk.boson.codec.Token.END_ARRAY;
+import static works.bosk.boson.codec.Token.END_OBJECT;
+import static works.bosk.boson.codec.Token.NULL;
+import static works.bosk.boson.codec.Token.START_ARRAY;
+import static works.bosk.boson.codec.Token.START_OBJECT;
+import static works.bosk.boson.codec.Token.STRING;
 import static works.bosk.boson.codec.io.SharedParserRuntime.PRIMITIVE_PARSE_METHOD_NAMES;
-import static works.bosk.boson.mapping.Token.END_ARRAY;
-import static works.bosk.boson.mapping.Token.END_OBJECT;
-import static works.bosk.boson.mapping.Token.NULL;
-import static works.bosk.boson.mapping.Token.START_ARRAY;
-import static works.bosk.boson.mapping.Token.START_OBJECT;
-import static works.bosk.boson.mapping.Token.STRING;
 import static works.bosk.boson.mapping.spec.PrimitiveNumberNode.PRIMITIVE_NUMBER_CLASSES;
 
+/**
+ * <em>Maintenance node</em>: currently compiles only parsers, not generators.
+ * Compiling generators should be straightforward,
+ * so we've focused initially on parsers since they are more awkward,
+ * and hence served as a more stringent test of our abstractions.
+ * But generators would also benefit from compilation,
+ * so we should implement that at some point.
+ */
 public class SpecCompiler {
 	final TypeMap typeMap;
 	final String className;

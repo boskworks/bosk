@@ -81,7 +81,7 @@ public record FixedMapNode(
 	}
 
 	@Override
-	public FixedMapNode substitute(Map<String, DataType> actualArguments) {
+	public FixedMapNode specialize(Map<String, DataType> actualArguments) {
 		var memberSpecs = new LinkedHashMap<String, FixedMapMember>();
 		this.memberSpecs.forEach((name, member) ->
 			memberSpecs.put(name, member.substitute(actualArguments)));

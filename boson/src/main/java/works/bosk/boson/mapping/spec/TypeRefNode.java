@@ -33,7 +33,7 @@ public record TypeRefNode (
 	}
 
 	@Override
-	public TypeRefNode substitute(Map<String, DataType> actualArguments) {
+	public TypeRefNode specialize(Map<String, DataType> actualArguments) {
 		return new TypeRefNode(type.substitute(actualArguments));
 	}
 
