@@ -6,6 +6,9 @@ import works.bosk.boson.codec.interpreter.SpecInterpretingParser;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 
+/**
+ * Builds a {@link Codec} according to the user's instructions.
+ */
 public class CodecBuilder {
 	private final TypeMap typeMap;
 	private final SpecCompiler compiler;

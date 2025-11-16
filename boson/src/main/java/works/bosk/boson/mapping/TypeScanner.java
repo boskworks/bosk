@@ -64,8 +64,8 @@ import static works.bosk.boson.types.DataType.CHAR;
 import static works.bosk.boson.types.DataType.STRING;
 
 /**
- * Collects information about {@link DataType}s,
- * and then {@link #build() builds} an optimized {@link TypeMap}.
+ * Reflectively walks a {@link DataType} to collect information
+ * to {@link #build() build} a suitable optimized {@link TypeMap}.
  * <p>
  * Behaviour is customizable via {@link Directive}s, grouped into {@link Bundle}s,
  * which allow you to use Java's type system to declare which types to customize
@@ -290,8 +290,8 @@ public class TypeScanner {
 	}
 
 	/**
-	 * A collection of configuration info.
-	 * The primary way to tell a {@link TypeScanner} how to do reflection-based scanning.
+	 * A collection of configuration info:
+	 * the primary way to tell a {@link TypeScanner} how to do its reflection-based scanning.
 	 *
 	 * @param name has no significance other than for troubleshooting
 	 * @param types to scan even if not encountered during normal scanning
