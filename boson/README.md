@@ -3,7 +3,7 @@
 This is the subproject for the published `boson` JSON processing library.
 It is not a part of the bosk framework per se, and can be used separately.
 
-See the [package info](src/main/java/works/bosk/boson/package-info.java) for more information.
+See the [javadocs](https://javadoc.io/doc/works.bosk/boson/latest/works.bosk.boson/module-summary.html) for more information.
 
 (We're not particular about how you pronounce the name.
 It's the name of a subatomic particle, so you can pronounce it like that,
