@@ -1,5 +1,5 @@
 /**
- * The Boson library for high-performance JSON object mapping.
+ * High-performance JSON object mapping library.
  * <p>
  * Boson provides a declarative API for mapping JSON data to Java objects and vice versa,
  * using a bidirectional {@link works.bosk.boson.mapping.spec specification} tree structure.
@@ -10,25 +10,6 @@
  * The type scanner uses rich type information including generics,
  * allowing precise specification of the mapping between JSON and Java types,
  * which in turn allows Boson to generate efficient code.
- * <p>
- * The major packages are:
- *
- * <ul>
- *     <li>
- *         {@link works.bosk.boson.types},
- *         a powerful API that describes the Java type system;
- *     </li>
- *     <li>
- *         {@link works.bosk.boson.mapping},
- *         which includes the declarative {@link works.bosk.boson.mapping.spec mapping specification API}
- *         and the reflection-based {@link works.bosk.boson.mapping.TypeScanner TypeScanner}; and
- *     </li>
- *     <li>
- *         {@link works.bosk.boson.codec},
- *         which performs the actual JSON parsing and generation
- *         based on the mapping specifications.
- *     </li>
- * </ul>
  */
 module works.bosk.boson {
 	requires org.slf4j;

@@ -1,5 +1,8 @@
 package works.bosk.boson.codec;
 
+/**
+ * A syntactically significant element of JSON text.
+ */
 public enum Token {
 	END_TEXT,
 	NULL,

@@ -3,7 +3,8 @@ package works.bosk.boson.types;
 import java.util.Map;
 
 /**
- * A {@link DataType} representing a class or interface type,
+ * A {@link DataType} representing a class or interface type
+ * whose {@link #rawClass} is known.
  */
 sealed public interface KnownType extends DataType permits ArrayType, InstanceType, PrimitiveType {
 	Class<?> rawClass();

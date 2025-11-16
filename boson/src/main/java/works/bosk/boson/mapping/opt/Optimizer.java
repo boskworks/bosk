@@ -10,7 +10,6 @@ import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.FixedMapNode;
-import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;
@@ -32,19 +31,6 @@ public class Optimizer {
 	 * before optimization begins;
 	 * requiring a frozen map helps avoid mistakenly optimizing
 	 * a type map that is still under construction.
-	 * <p>
-	 * The execution model for {@link JsonValueSpec} processing is
-	 * that a {@link TypeRefNode} is akin to a method call,
-	 * acting as a barrier to optimization,
-	 * but also enabling code sharing and recursion.
-	 * (It may or may not literally be implemented as a method call,
-	 * depending on how the codec chooses to cope with deeply nested
-	 * structures, but the model still holds.)
-	 * Optimizations could "inline" a {@link TypeRefNode} by replacing it
-	 * with its target {@link JsonValueSpec},
-	 * thus exposing additional opportunities for optimization;
-	 * or they could carve up a spec tree into pieces and introduce
-	 * {@link TypeRefNode}s to share pieces that would otherwise be duplicated.
 	 * <p>
 	 * Whether a node is shared or duplicated in the tree has no semantic significance:
 	 * that node is treated as though a copy of it appears wherever it is referenced.
