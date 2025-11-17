@@ -137,16 +137,28 @@ public abstract class StateTreeSerializer {
 		return new OutermostDeserializationScope();
 	}
 
-	public static abstract class DeserializationScope implements AutoCloseable {
-		DeserializationScope(){}
+	/**
+	 * DeserializationScope represents the thread-local, stackable context used
+	 * during deserialization.
+	 * <p>
+	 * Scopes are intended to be pushed and popped like a stack
+	 * and should be managed using try-with-resources.
+	 */
+	public sealed interface DeserializationScope extends AutoCloseable {
+		/**
+		 * The path used to create a {@link Self} reference.
+		 */
+		Path path();
 
-		public abstract Path path();
-		public abstract BindingEnvironment bindingEnvironment();
+		/**
+		 * Used to bind parameters when using {@link DeserializationPath}.
+		 */
+		BindingEnvironment bindingEnvironment();
 
-		@Override public abstract void close();
+		@Override void close();
 	}
 
-	private static final class OutermostDeserializationScope extends DeserializationScope {
+	private static final class OutermostDeserializationScope implements DeserializationScope {
 		@Override public Path path() { return Path.empty(); }
 		@Override public BindingEnvironment bindingEnvironment() { return BindingEnvironment.empty(); }
 
@@ -156,9 +168,14 @@ public abstract class StateTreeSerializer {
 		}
 	}
 
-	@Value
+	/**
+	 * A {@link DeserializationScope} that is not the {@link OutermostDeserializationScope}.
+	 * Closing this scope restores the previous (outer) scope as the current
+	 * thread-local scope.
+	 */
+	@Value // Can't be a record because this is an inner class
 	@EqualsAndHashCode(callSuper = false)
-	private class NestedDeserializationScope extends DeserializationScope {
+	private class NestedDeserializationScope implements DeserializationScope {
 		DeserializationScope outer;
 		Path path;
 		BindingEnvironment bindingEnvironment;

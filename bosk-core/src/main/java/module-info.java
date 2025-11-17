@@ -1,3 +1,12 @@
+/**
+ * Fundamental Bosk library providing enough to get started with no frills.
+ * <p>
+ * Start with {@link works.bosk the root package} for the primary Bosk APIs.
+ * Additional packages provide driver interfaces ({@link works.bosk.drivers}),
+ * common exceptions ({@link works.bosk.exceptions}), internal bytecode helpers
+ * ({@link works.bosk.bytecode}), logging support ({@link works.bosk.logging}),
+ * and reflection utilities ({@link works.bosk.util}).
+ */
 module works.bosk.core {
 	requires transitive org.jetbrains.annotations;
 	requires org.objectweb.asm;

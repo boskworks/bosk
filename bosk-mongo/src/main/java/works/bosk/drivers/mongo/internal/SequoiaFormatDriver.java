@@ -29,7 +29,6 @@ import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
-import works.bosk.drivers.mongo.Manifest;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.exceptions.FlushFailureException;

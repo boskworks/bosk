@@ -22,6 +22,14 @@ import org.pcollections.OrderedPSet;
 
 import static java.util.Objects.requireNonNull;
 
+/**
+ * A way to associate extra data with {@link Entity entities}
+ * in a particular {@link Catalog}, known as the {@code domain},
+ * without modifying the entities themselves.
+ *
+ * @param <K> the key entity type
+ * @param <V> the value type
+ */
 @EqualsAndHashCode
 @RequiredArgsConstructor(access=AccessLevel.PRIVATE)
 public final class SideTable<K extends Entity, V> implements EnumerableByIdentifier<V> {

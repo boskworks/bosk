@@ -5,3 +5,5 @@ containing extra support for the Logback implementation of SLF4J.
 In particular, it allows unit tests to adjust log levels
 to eliminate expected log messages from the test output,
 making it easier to notice important log messages.
+
+See the [javadocs](https://javadoc.io/doc/works.bosk/bosk-logback/latest/works.bosk.logback/module-summary.html) for more information.

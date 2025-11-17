@@ -1,7 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
 import org.junit.jupiter.api.Test;
-import works.bosk.drivers.mongo.Manifest;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static works.bosk.TypeValidation.validateType;

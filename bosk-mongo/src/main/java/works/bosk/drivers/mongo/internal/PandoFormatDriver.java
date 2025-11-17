@@ -41,7 +41,6 @@ import works.bosk.Reference;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
-import works.bosk.drivers.mongo.Manifest;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;

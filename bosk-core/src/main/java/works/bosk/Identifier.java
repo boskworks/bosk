@@ -5,6 +5,10 @@ import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * The means by which {@link Entity entities} are identified within
+ * a particular domain, such as a {@link Catalog} or {@link SideTable}.
+ */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 @EqualsAndHashCode
 public final class Identifier {
