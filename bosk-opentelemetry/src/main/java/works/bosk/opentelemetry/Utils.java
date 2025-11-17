@@ -9,7 +9,7 @@ import java.util.Map;
 import works.bosk.BoskDiagnosticContext;
 import works.bosk.MapValue;
 
-public class Utils {
+class Utils {
 	/**
 	 * Prefix for OpenTelemetry-related diagnostic attributes.
 	 */

@@ -27,7 +27,6 @@ import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.StateTreeSerializer;
 import works.bosk.drivers.mongo.BsonSerializer;
-import works.bosk.drivers.mongo.Manifest;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;

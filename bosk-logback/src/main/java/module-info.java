@@ -1,3 +1,6 @@
+/**
+ * Logback-specific logging utilities.
+ */
 module works.bosk.logback {
 	requires transitive ch.qos.logback.classic;
 	requires transitive ch.qos.logback.core;

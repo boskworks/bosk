@@ -110,8 +110,6 @@ public class ReplicaSet<R extends StateTreeNode> {
 	 * <p>
 	 * Note that there is no "primary" bosk in this case.
 	 * The returned driver will send updates only to the {@code other} bosk.
-	 * This is much like a {@link NoOpDriver} except that this one can accept
-	 * references to a different bosk.
 	 */
 	public static <RR extends StateTreeNode> BoskDriver redirectingTo(Bosk<RR> other) {
 		// A ReplicaSet with only the one replica

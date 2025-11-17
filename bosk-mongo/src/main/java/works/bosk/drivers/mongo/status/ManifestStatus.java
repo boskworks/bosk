@@ -1,6 +1,6 @@
 package works.bosk.drivers.mongo.status;
 
-import works.bosk.drivers.mongo.Manifest;
+import works.bosk.drivers.mongo.internal.Manifest;
 
 public record ManifestStatus(
 	Manifest expected,

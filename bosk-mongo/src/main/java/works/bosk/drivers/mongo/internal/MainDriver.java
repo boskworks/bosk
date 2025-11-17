@@ -31,7 +31,6 @@ import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
-import works.bosk.drivers.mongo.Manifest;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;

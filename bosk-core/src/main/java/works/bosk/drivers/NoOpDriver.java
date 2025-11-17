@@ -9,9 +9,15 @@ import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
 
+/**
+ * A driver that silently ignores all updates.
+ * Mainly useful for testing, for example,
+ * to make a driver that responds to a subset of updates
+ * by overriding the corresponding methods.
+ */
 public class NoOpDriver implements BoskDriver {
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory() {
-		return (b,d) -> new NoOpDriver();
+		return (_,_) -> new NoOpDriver();
 	}
 
 	@Override
