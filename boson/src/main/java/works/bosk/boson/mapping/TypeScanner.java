@@ -309,12 +309,18 @@ public class TypeScanner {
 	 * A rule describing what {@link JsonValueSpec}
 	 * to associate with certain {@link DataType}s.
 	 * <p>
-	 * The {@link #pattern} describes which types the directive applies to.
+	 * The {@link #pattern} describes which types the directive applies to:
+	 * it applies to any type {@code T} such that {@link DataType#isBindableFrom(DataType) pattern.isBindableFrom(T)}.
 	 * It may contain {@link TypeVariable}s (but not wildcards).
 	 * When a directive is applied to a particular concrete type,
 	 * bindings for any type variables will be derived from the concrete type,
 	 * and these bindings will be used to {@link JsonValueSpec#specialize specialize}
 	 * the {@link #spec}.
+	 * Bindings are inferred by the variable's name:
+	 * all bindings for a type variable with a given name
+	 * are assumed to refer to the same type,
+	 * even if those variables are actually declared in
+	 * different places in the code.
 	 * <p>
 	 * The {@link #guard} further restricts which types the directive applies to.
 	 * This is primarily needed by specs that deserialize using a particular subtype;
@@ -330,7 +336,8 @@ public class TypeScanner {
 	 * so the {@link #spec} function ignores its argument and returns a fixed value.
 	 * The {@link #fixed} factory methods are provided to handle this very common case.
 	 *
-	 * @param pattern describes the types to which the directive applies
+	 * @param pattern describes the types to which the directive applies,
+	 *                and the type variables used for specialization
 	 * @param guard further restricts the types to which the directive applies
 	 * @param spec function that produces the {@link JsonValueSpec} for a particular type
 	 */
@@ -352,7 +359,7 @@ public class TypeScanner {
 		}
 
 		/**
-		 * No restriction.
+		 * A {@link Guard} with no restrictions.
 		 */
 		public record Any() implements Guard {
 			@Override
@@ -362,9 +369,9 @@ public class TypeScanner {
 		}
 
 		/**
-		 * Allows any type that {@link DataType#isAssignableFrom isAssignableFrom}
-		 * the directive's pattern. Useful if the directive's spec returns a value
-		 * of type {@code subtype}.
+		 * A {@link Guard} that allows
+		 * any type {@code T} such that {@code T.isAssignableFrom(subtype)}.
+		 * Useful if the directive's spec returns a value of type {@code subtype}.
 		 */
 		public record IsAssignableFrom(DataType subtype) implements Guard {
 			@Override
@@ -522,7 +529,7 @@ public class TypeScanner {
 	}
 
 	/**
-	 * During the scans, we may have created some TypeRefNodes.
+	 * During the scans, we may have created some {@link TypeRefNode}s.
 	 * Proactively scan those now, before optimization begins,
 	 * to give the most possible information to the optimizer.
 	 */
