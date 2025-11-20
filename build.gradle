@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'com.diffplug.spotless' version '8.0.0'
+	id 'com.diffplug.spotless' version '8.1.0'
 	alias(libs.plugins.nexus)
 	alias(libs.plugins.spotbugs) apply false
 }
