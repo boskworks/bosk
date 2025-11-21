@@ -33,6 +33,8 @@ import works.bosk.testing.drivers.DriverConformanceTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static tools.jackson.core.StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION;
+import static tools.jackson.databind.cfg.EnumFeature.READ_ENUMS_USING_TO_STRING;
+import static tools.jackson.databind.cfg.EnumFeature.WRITE_ENUMS_USING_TO_STRING;
 
 @InjectFrom(BosonRoundTripConformanceTest.VariantInjector.class)
 class BosonRoundTripConformanceTest extends DriverConformanceTest {
@@ -61,6 +63,8 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 			this.codec = CodecBuilder.using(typeMap).build();
 			this.jackson = JsonMapper.builder()
 				.enable(INCLUDE_SOURCE_IN_LOCATION)
+				.disable(READ_ENUMS_USING_TO_STRING)
+				.disable(WRITE_ENUMS_USING_TO_STRING)
 				.addModule(new JacksonSerializer().moduleFor(b))
 				.build();
 		}
