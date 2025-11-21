@@ -2,7 +2,6 @@ package works.bosk.boson;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.StringReader;
 import java.lang.invoke.MethodHandle;
@@ -16,6 +15,7 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
+import tools.jackson.databind.ObjectMapper;
 import works.bosk.boson.mapping.Nullable;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;

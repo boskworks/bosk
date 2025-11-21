@@ -1,13 +1,14 @@
 package works.bosk.jackson;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import works.bosk.Bosk;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -54,8 +55,9 @@ public class JsonNodeSurgeonTest {
 			Bosk.simpleRegistrar());
 		refs = bosk.buildReferences(Refs.class);
 		jacksonSerializer = new JacksonSerializer();
-		mapper = new ObjectMapper();
-		mapper.registerModule(jacksonSerializer.moduleFor(bosk));
+		mapper = JsonMapper.builder()
+			.addModule(jacksonSerializer.moduleFor(bosk))
+			.build();
 		surgeon = new JsonNodeSurgeon();
 	}
 

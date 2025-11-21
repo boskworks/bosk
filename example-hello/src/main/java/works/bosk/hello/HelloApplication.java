@@ -8,10 +8,9 @@ import works.bosk.logback.BoskLogFilter;
 @SpringBootApplication
 public class HelloApplication {
 
-	public static void main(String[] args) {
+	static void main(String[] args) {
 		SpringApplication.run(HelloApplication.class, args);
 	}
-
 
 	@Bean
 	BoskLogFilter.LogController logController() {

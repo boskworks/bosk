@@ -4,8 +4,8 @@
  * See {@link works.bosk.jackson.JacksonSerializer} for the main entry point.
  */
 module works.bosk.jackson {
-	requires transitive com.fasterxml.jackson.core;
-	requires transitive com.fasterxml.jackson.databind;
+	requires transitive tools.jackson.core;
+	requires transitive tools.jackson.databind;
 	requires org.slf4j;
 	requires transitive works.bosk.core;
 

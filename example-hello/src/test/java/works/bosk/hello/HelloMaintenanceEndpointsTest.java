@@ -1,6 +1,5 @@
 package works.bosk.hello;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Stream;
@@ -12,10 +11,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver;
+import tools.jackson.databind.ObjectMapper;
 import works.bosk.Catalog;
 import works.bosk.Identifier;
 import works.bosk.hello.state.BoskState;
@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static works.bosk.logging.MdcKeys.BOSK_INSTANCE_ID;
 
-@SpringBootTest(classes = HelloApplication.class)
+@SpringBootTest(classes = {HelloApplication.class})
 @AutoConfigureMockMvc
 public class HelloMaintenanceEndpointsTest {
 	static final Target INITIAL_TARGET = new Target(Identifier.from("world"));

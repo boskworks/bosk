@@ -1,9 +1,9 @@
 package works.bosk.jackson;
 
-import com.fasterxml.jackson.core.Version;
-import com.fasterxml.jackson.databind.Module;
+import tools.jackson.core.Version;
+import tools.jackson.databind.JacksonModule;
 
-public abstract class BoskJacksonModule extends Module {
+public abstract class BoskJacksonModule extends JacksonModule {
 
 	@Override
 	public String getModuleName() {

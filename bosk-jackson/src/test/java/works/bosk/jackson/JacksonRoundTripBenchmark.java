@@ -1,7 +1,5 @@
 package works.bosk.jackson;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.concurrent.atomic.AtomicReference;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -13,6 +11,9 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import works.bosk.AbstractRoundTripTest;
 import works.bosk.Bosk;
 import works.bosk.BoskDriver;
@@ -32,18 +33,17 @@ public class JacksonRoundTripBenchmark extends AbstractRoundTripTest {
 	@State(Scope.Benchmark)
 	public static class BenchmarkState {
 		private Bosk<TestRoot> bosk;
-		private ObjectMapper mapper;
 		private BoskDriver driver;
 		private BoskDriver downstreamDriver;
 		private Reference<TestRoot> rootRef;
 		private TestRoot root1, root2;
 
 		@Setup(Level.Trial)
-		public void setup() throws JsonProcessingException {
+		public void setup() throws JacksonException {
 			AtomicReference<BoskDriver> downstreamRef = new AtomicReference<>();
 			this.bosk = setUpBosk(DriverStack.of(
 				jacksonRoundTripFactory(defaultConfiguration()),
-				(b,d) -> {
+				(_,d) -> {
 					downstreamRef.set(d);
 					return d;
 				}
@@ -51,7 +51,9 @@ public class JacksonRoundTripBenchmark extends AbstractRoundTripTest {
 			this.driver = bosk.driver();
 			this.downstreamDriver = downstreamRef.get();
 			JacksonSerializer jacksonSerializer = new JacksonSerializer();
-			this.mapper = new ObjectMapper().registerModule(jacksonSerializer.moduleFor(bosk));
+			ObjectMapper mapper = JsonMapper.builder()
+				.addModule(jacksonSerializer.moduleFor(bosk))
+				.build();
 			rootRef = bosk.rootReference();
 			try (var _ = bosk.readContext()) {
 				root1 = rootRef.value();

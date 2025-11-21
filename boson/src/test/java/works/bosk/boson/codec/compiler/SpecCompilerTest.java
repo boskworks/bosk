@@ -1,12 +1,12 @@
 package works.bosk.boson.codec.compiler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 import works.bosk.boson.TestUtils.Month;
 import works.bosk.boson.TestUtils.OneOfEach;
 import works.bosk.boson.codec.Parser;

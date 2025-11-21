@@ -1,11 +1,12 @@
 package works.bosk.jackson;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.DriverFactory;
@@ -33,9 +34,10 @@ public class JsonNodeDriver implements BoskDriver {
 
 	protected JsonNodeDriver(BoskInfo<?> bosk, BoskDriver downstream, JacksonSerializer jacksonSerializer) {
 		this.downstream = downstream;
-		this.mapper = new ObjectMapper();
+		this.mapper = JsonMapper.builder()
+			.addModule(jacksonSerializer.moduleFor(bosk))
+			.build();
 		this.surgeon = new JsonNodeSurgeon();
-		mapper.registerModule(jacksonSerializer.moduleFor(bosk));
 	}
 
 	@Override

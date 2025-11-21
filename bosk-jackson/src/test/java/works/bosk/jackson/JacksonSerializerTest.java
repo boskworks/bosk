@@ -1,11 +1,5 @@
 package works.bosk.jackson;
 
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.type.TypeFactory;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -22,6 +16,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import tools.jackson.core.exc.StreamReadException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.type.TypeFactory;
 import works.bosk.AbstractBoskTest;
 import works.bosk.BindingEnvironment;
 import works.bosk.Bosk;
@@ -45,7 +45,6 @@ import works.bosk.exceptions.MalformedPathException;
 import works.bosk.exceptions.ParameterUnboundException;
 import works.bosk.exceptions.UnexpectedPathException;
 
-import static com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonList;
@@ -57,6 +56,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static tools.jackson.databind.SerializationFeature.INDENT_OUTPUT;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 
 class JacksonSerializerTest extends AbstractBoskTest {
@@ -65,6 +65,8 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	private JacksonSerializer jacksonSerializer;
 	private ObjectMapper boskMapper;
 	private Refs refs;
+
+	private static final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
 
 	public interface Refs {
 		@ReferencePath("/entities") CatalogReference<TestEntity> entities();
@@ -84,17 +86,19 @@ class JacksonSerializerTest extends AbstractBoskTest {
 		teb = new TestEntityBuilder(bosk);
 		refs = bosk.buildReferences(Refs.class);
 
-		plainMapper = new ObjectMapper()
-			.enable(INDENT_OUTPUT);
+		plainMapper = JsonMapper.builder()
+			.enable(INDENT_OUTPUT)
+			.build();
 
 		jacksonSerializer = new JacksonSerializer();
-		boskMapper = new ObjectMapper()
-			.registerModule(jacksonSerializer.moduleFor(bosk))
-			.enable(INDENT_OUTPUT);
+		boskMapper = JsonMapper.builder()
+			.addModule(jacksonSerializer.moduleFor(bosk))
+			.enable(INDENT_OUTPUT)
+			.build();
 	}
 
 	@Test
-	void identifier_works() throws JsonProcessingException {
+	void identifier_works() {
 		Identifier id = Identifier.from("testID");
 		String expected = "\"testID\"";
 		assertEquals(expected, boskMapper.writeValueAsString(id));
@@ -153,7 +157,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	@Test
-	void listingEntry_works() throws JsonProcessingException {
+	void listingEntry_works() {
 		assertEquals("true", boskMapper.writeValueAsString(LISTING_ENTRY));
 		Assertions.assertEquals(LISTING_ENTRY, boskMapper.readValue("true", ListingEntry.class));
 	}
@@ -202,21 +206,21 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	@Test
-	void phantom_isOmitted() throws JsonProcessingException {
+	void phantom_isOmitted() {
 		TestEntity entity = makeEntityWithOptionalString(Optional.empty());
 		String json = boskMapper.writeValueAsString(entity);
 		assertThat(json, not(containsString(Phantoms.Fields.phantomString)));
 	}
 
 	@Test
-	void optional_isOmitted() throws JsonProcessingException {
+	void optional_isOmitted() {
 		TestEntity entity = makeEntityWithOptionalString(Optional.empty());
 		String json = boskMapper.writeValueAsString(entity);
 		assertThat(json, not(containsString(Optionals.Fields.optionalString)));
 	}
 
 	@Test
-	void optional_isIncluded() throws JsonProcessingException {
+	void optional_isIncluded() {
 		String contents = "OPTIONAL STRING CONTENTS";
 		TestEntity entity = makeEntityWithOptionalString(Optional.of(contents));
 		String json = boskMapper.writeValueAsString(entity);
@@ -225,14 +229,14 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	@Test
-	void rootReference_works() throws JsonProcessingException {
+	void rootReference_works() {
 		String json = boskMapper.writeValueAsString(bosk.rootReference());
 		assertEquals("\"/\"", json);
 	}
 
 	@ParameterizedTest
 	@MethodSource("listValueArguments")
-	void listValue_serializationWorks(List<?> list, JavaType type) throws JsonProcessingException {
+	void listValue_serializationWorks(List<?> list, JavaType type) {
 		ListValue<?> listValue = ListValue.from(list);
 		String expected = plainMapper.writeValueAsString(list);
 		assertEquals(expected, boskMapper.writeValueAsString(listValue));
@@ -240,7 +244,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	@ParameterizedTest
 	@MethodSource("listValueArguments")
-	void listValue_deserializationWorks(List<?> list, JavaType type) throws JsonProcessingException {
+	void listValue_deserializationWorks(List<?> list, JavaType type) {
 		ListValue<?> expected = ListValue.from(list);
 		String json = plainMapper.writeValueAsString(list);
 		Object actual = boskMapper.readerFor(type).readValue(json);
@@ -257,8 +261,8 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	private static Arguments listValueCase(Type entryType, Object...entries) {
-		JavaType entryJavaType = TypeFactory.defaultInstance().constructType(entryType);
-		return Arguments.of(asList(entries), TypeFactory.defaultInstance().constructParametricType(ListValue.class, entryJavaType));
+		JavaType entryJavaType = typeFactory.constructType(entryType);
+		return Arguments.of(asList(entries), typeFactory.constructParametricType(ListValue.class, entryJavaType));
 	}
 
 	@Test
@@ -293,7 +297,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	@ParameterizedTest
 	@MethodSource("mapValueArguments")
-	void mapValue_serializationWorks(Map<String,?> map, JavaType type) throws JsonProcessingException {
+	void mapValue_serializationWorks(Map<String,?> map, JavaType type) {
 		MapValue<?> mapValue = MapValue.copyOf(map);
 		String expected = plainMapper.writeValueAsString(map);
 		assertEquals(expected, boskMapper.writeValueAsString(mapValue));
@@ -301,7 +305,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	@ParameterizedTest
 	@MethodSource("mapValueArguments")
-	void mapValue_deserializationWorks(Map<String,?> map, JavaType type) throws JsonProcessingException {
+	void mapValue_deserializationWorks(Map<String,?> map, JavaType type) {
 		MapValue<?> expected = MapValue.copyOf(map);
 		String json = plainMapper.writeValueAsString(map);
 		Object actual = boskMapper.readerFor(type).readValue(json);
@@ -319,12 +323,12 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	@SafeVarargs
 	private static Arguments mapValueCase(Type entryType, Map<String, Object>...entries) {
-		JavaType entryJavaType = TypeFactory.defaultInstance().constructType(entryType);
+		JavaType entryJavaType = typeFactory.constructType(entryType);
 		Map<String, Object> map = new LinkedHashMap<>();
 		for (var entry: entries) {
 			map.putAll(entry);
 		}
-		return Arguments.of(map, TypeFactory.defaultInstance().constructParametricType(MapValue.class, entryJavaType));
+		return Arguments.of(map, typeFactory.constructParametricType(MapValue.class, entryJavaType));
 	}
 
 	private static Map<String, Object> kv(String key, Object value) {
@@ -332,7 +336,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	@Test
-	void implicitRefs_omitted() throws JsonProcessingException {
+	void implicitRefs_omitted() {
 		TestEntity entity = makeEntityWithOptionalString(Optional.empty());
 		String json = boskMapper.writeValueAsString(entity);
 		assertThat(json, not(containsString(ImplicitRefs.Fields.reference)));
@@ -447,7 +451,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	private void assertJacksonWorks(List<?> plainList, Object boskObject, TypeReference<?> boskObjectTypeRef, Path path) {
-		JavaType boskObjectType = TypeFactory.defaultInstance().constructType(boskObjectTypeRef);
+		JavaType boskObjectType = typeFactory.constructType(boskObjectTypeRef);
 		List<Object> actualPlainList = plainListFor(boskObject);
 		assertEquals(plainList, actualPlainList, "Serialized object should match expected");
 
@@ -460,48 +464,32 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	private Map<String, Object> plainObjectFor(Object boskObject) {
-		try {
-			JavaType mapJavaType = TypeFactory.defaultInstance().constructParametricType(Map.class, String.class, Object.class);
-			String json = boskMapper.writeValueAsString(boskObject);
-			return plainMapper.readerFor(mapJavaType).readValue(json);
-		} catch (JsonProcessingException e) {
-			throw new AssertionError(e);
-		}
+		JavaType mapJavaType = typeFactory.constructParametricType(Map.class, String.class, Object.class);
+		String json = boskMapper.writeValueAsString(boskObject);
+		return plainMapper.readerFor(mapJavaType).readValue(json);
 	}
 
 	private List<Object> plainListFor(Object boskObject) {
-		try {
-			JavaType listJavaType = TypeFactory.defaultInstance().constructParametricType(List.class, Object.class);
-			String json = boskMapper.writeValueAsString(boskObject);
-			return plainMapper.readerFor(listJavaType).readValue(json);
-		} catch (JsonProcessingException e) {
-			throw new AssertionError(e);
-		}
+		JavaType listJavaType = typeFactory.constructParametricType(List.class, Object.class);
+		String json = boskMapper.writeValueAsString(boskObject);
+		return plainMapper.readerFor(listJavaType).readValue(json);
 	}
 
 	private <T> T boskObjectFor(Map<String, ?> plainObject, TypeReference<T> boskObjectTypeRef, Path path) {
-		try {
-			JavaType boskJavaType = TypeFactory.defaultInstance().constructType(boskObjectTypeRef);
-			JavaType mapJavaType = TypeFactory.defaultInstance().constructParametricType(Map.class, String.class, Object.class);
-			String json = plainMapper.writerFor(mapJavaType).writeValueAsString(plainObject);
-			try (var _ = jacksonSerializer.newDeserializationScope(path)) {
-				return boskMapper.readerFor(boskJavaType).readValue(json);
-			}
-		} catch (JsonProcessingException e) {
-			throw new AssertionError(e);
+		JavaType boskJavaType = typeFactory.constructType(boskObjectTypeRef);
+		JavaType mapJavaType = typeFactory.constructParametricType(Map.class, String.class, Object.class);
+		String json = plainMapper.writerFor(mapJavaType).writeValueAsString(plainObject);
+		try (var _ = jacksonSerializer.newDeserializationScope(path)) {
+			return boskMapper.readerFor(boskJavaType).readValue(json);
 		}
 	}
 
 	private Object boskListFor(List<?> plainList, JavaType boskListType, Path path) {
-		try {
-			JavaType boskJavaType = TypeFactory.defaultInstance().constructType(boskListType);
-			JavaType listJavaType = TypeFactory.defaultInstance().constructParametricType(List.class, Object.class);
-			String json = plainMapper.writerFor(listJavaType).writeValueAsString(plainList);
-			try (var _ = jacksonSerializer.newDeserializationScope(path)) {
-				return boskMapper.readerFor(boskJavaType).readValue(json);
-			}
-		} catch (JsonProcessingException e) {
-			throw new AssertionError(e);
+		JavaType boskJavaType = typeFactory.constructType(boskListType);
+		JavaType listJavaType = typeFactory.constructParametricType(List.class, Object.class);
+		String json = plainMapper.writerFor(listJavaType).writeValueAsString(plainList);
+		try (var _ = jacksonSerializer.newDeserializationScope(path)) {
+			return boskMapper.readerFor(boskJavaType).readValue(json);
 		}
 	}
 
@@ -537,7 +525,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	void nonexistentPath_throws() {
 		assertThrows(UnexpectedPathException.class, () ->
 			boskMapper
-				.readerFor(TypeFactory.defaultInstance().constructParametricType(Reference.class, String.class))
+				.readerFor(typeFactory.constructParametricType(Reference.class, String.class))
 				.readValue("\"/some/nonexistent/path\""));
 	}
 
@@ -599,10 +587,10 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	private void assertJsonException(String json, Class<?> rawClass, Type... parameters) {
 		JavaType[] params = new JavaType[parameters.length];
 		for (int i = 0; i < parameters.length; i++) {
-			params[i] = TypeFactory.defaultInstance().constructType(parameters[i]);
+			params[i] = typeFactory.constructType(parameters[i]);
 		}
-		JavaType parametricType = TypeFactory.defaultInstance().constructParametricType(rawClass, params);
-		assertThrows(JsonParseException.class, () -> boskMapper.readerFor(parametricType).readValue(json));
+		JavaType parametricType = typeFactory.constructParametricType(rawClass, params);
+		assertThrows(StreamReadException.class, () -> boskMapper.readerFor(parametricType).readValue(json));
 	}
 
 	@Test

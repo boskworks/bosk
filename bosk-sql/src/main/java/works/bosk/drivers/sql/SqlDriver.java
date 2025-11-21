@@ -1,9 +1,10 @@
 package works.bosk.drivers.sql;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.function.BiFunction;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.DriverFactory;
@@ -17,11 +18,11 @@ public interface SqlDriver extends BoskDriver {
 	static <RR extends StateTreeNode> SqlDriverFactory<RR> factory(
 		SqlDriverSettings settings,
 		ConnectionSource connectionSource,
-		BiFunction<BoskInfo<RR>, ObjectMapper, ObjectMapper> objectMapperCustomizer
+		BiFunction<BoskInfo<RR>, JsonMapper.Builder, JsonMapper.Builder> objectMapperCustomizer
 	) {
 		return (b, d) -> {
 			JacksonSerializer jacksonSerializer = new JacksonSerializer();
-			ObjectMapper mapper = objectMapperCustomizer.apply(b, new ObjectMapper().registerModule(jacksonSerializer.moduleFor(b)));
+			ObjectMapper mapper = objectMapperCustomizer.apply(b, JsonMapper.builder().addModule(jacksonSerializer.moduleFor(b))).build();
 			return new SqlDriverFacade(jacksonSerializer, new SqlDriverImpl(
 				settings, connectionSource, b, mapper, d
 			));

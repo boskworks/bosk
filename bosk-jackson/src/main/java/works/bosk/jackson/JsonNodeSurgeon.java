@@ -1,12 +1,12 @@
 package works.bosk.jackson;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.Map;
 import java.util.function.Supplier;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.node.StringNode;
 import works.bosk.Catalog;
 import works.bosk.Listing;
 import works.bosk.Path;
@@ -165,7 +165,7 @@ public class JsonNodeSurgeon {
 			var ids = (ArrayNode)parent.get("ids");
 			var id = ref.path().lastSegment();
 			for (int i = 0; i < ids.size(); i++) {
-				if (id.equals(ids.get(i).textValue())) {
+				if (id.equals(ids.get(i).asString())) {
 					return NodeInfo.idOnly(new ArrayElement(ids, i));
 				}
 			}
@@ -270,7 +270,7 @@ public class JsonNodeSurgeon {
 	public JsonNode replacementNode(NodeInfo nodeInfo, String lastSegment, Supplier<JsonNode> newValue) {
 		return switch (nodeInfo.replacementStyle()) {
 			case PLAIN -> newValue.get();
-			case ID_ONLY -> new TextNode(lastSegment);
+			case ID_ONLY -> new StringNode(lastSegment);
 			case WRAPPED -> new ObjectNode(JsonNodeFactory.instance)
 				.set(lastSegment, newValue.get());
 		};
