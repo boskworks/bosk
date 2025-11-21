@@ -17,6 +17,9 @@ jobs:
 
     name: Build and test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # for upload-artifact
 
     steps:
       - uses: actions/checkout@v4
