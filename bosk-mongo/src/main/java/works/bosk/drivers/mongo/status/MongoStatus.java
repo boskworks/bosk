@@ -1,8 +1,8 @@
 package works.bosk.drivers.mongo.status;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import works.bosk.drivers.mongo.internal.Manifest;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
+import works.bosk.drivers.mongo.internal.Manifest;
 
 import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
 
