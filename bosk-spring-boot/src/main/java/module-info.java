@@ -38,7 +38,7 @@
  * </ul>
  */
 module works.bosk.spring.boot {
-	requires transitive com.fasterxml.jackson.databind;
+	requires transitive tools.jackson.databind;
 	requires transitive org.apache.tomcat.embed.core;
 	requires org.slf4j;
 	requires spring.boot.autoconfigure;

@@ -1,16 +1,5 @@
 package works.bosk.jackson;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationConfig;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.SerializationConfig;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.type.TypeFactory;
-import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
@@ -26,6 +15,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.DeserializationConfig;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.SerializationConfig;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.ValueSerializer;
+import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BoskInfo;
 import works.bosk.Phantom;
 import works.bosk.ReferenceUtils;
@@ -42,6 +41,7 @@ import static works.bosk.util.ReflectionHelpers.boxedClass;
 @RequiredArgsConstructor
 final class JacksonCompiler {
 	private final JacksonSerializer jacksonSerializer;
+	private final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
 
 	/**
 	 * A stack of types for which we are in the midst of compiling a {@link CompiledSerDes}.
@@ -92,11 +92,11 @@ final class JacksonCompiler {
 
 	/**
 	 * The output of {@link JacksonCompiler#compiled}.
-	 * Packages a {@link JsonSerializer} and a {@link JsonDeserializer}.
+	 * Packages a {@link ValueSerializer} and a {@link ValueDeserializer}.
 	 */
 	interface CompiledSerDes<T> {
-		JsonSerializer<T> serializer(SerializationConfig config);
-		JsonDeserializer<T> deserializer(DeserializationConfig config);
+		ValueSerializer<T> serializer(SerializationConfig config);
+		ValueDeserializer<T> deserializer(DeserializationConfig config);
 	}
 
 	/**
@@ -109,7 +109,7 @@ final class JacksonCompiler {
 		 *
 		 * @return Nothing. {@link ClassBuilder} does not yet support void methods.
 		 */
-		Object writeFields(Object node, JsonGenerator jsonGenerator, SerializerProvider serializers);
+		Object writeFields(Object node, JsonGenerator jsonGenerator, SerializationContext serializers);
 
 		/**
 		 * A faster version of {@link Constructor#newInstance} without the overhead
@@ -122,7 +122,7 @@ final class JacksonCompiler {
 	 * Generates the body of the {@link Codec#writeFields} method.
 	 */
 	private void generate_writeFields(Type nodeType, List<RecordComponent> components, ClassBuilder<Codec> cb) {
-		JavaType nodeJavaType = TypeFactory.defaultInstance().constructType(nodeType);
+		JavaType nodeJavaType = typeFactory.constructType(nodeType);
 		Class<?> nodeClass = nodeJavaType.getRawClass();
 		cb.beginMethod(CODEC_WRITE_FIELDS);
 		// Incoming arguments
@@ -145,7 +145,7 @@ final class JacksonCompiler {
 			// building the plan. The plan should be straightforward and "obviously
 			// correct". The execution of the plan should contain the sophistication.
 			FieldWritePlan plan;
-			JavaType parameterType = TypeFactory.defaultInstance().resolveMemberType(component.getGenericType(), nodeJavaType.getBindings());
+			JavaType parameterType = typeFactory.resolveMemberType(component.getGenericType(), nodeJavaType.getBindings());
 			plan = new OrdinaryFieldWritePlan();
 			if (Optional.class.isAssignableFrom(component.getType())) {
 				plan = new OptionalFieldWritePlan(plan);
@@ -164,7 +164,7 @@ final class JacksonCompiler {
 			}
 
 			// Execute the plan
-			SerializerProvider serializerProvider = null; // static optimization not yet implemented
+			SerializationContext serializerProvider = null; // static optimization not yet implemented
 			plan.generateFieldWrite(name, cb, jsonGenerator, serializers, serializerProvider, parameterType);
 		}
 		// TODO: Support void methods
@@ -200,7 +200,7 @@ final class JacksonCompiler {
 	}
 
 	/**
-	 * This is the building block of compiler's "intermediate form" describing
+	 * This is the building block of the compiler's "intermediate form" describing
 	 * how to write a single field to Jackson.
 	 *
 	 * <p>
@@ -223,19 +223,19 @@ final class JacksonCompiler {
 			ClassBuilder<Codec> cb,
 			LocalVariable jsonGenerator,
 			LocalVariable serializers,
-			SerializerProvider serializerProvider,
+			SerializationContext serializerProvider,
 			JavaType type);
 	}
 
 	/**
-	 * The basic, un-optimized, canonical way to write a field.
+	 * The basic, unoptimized, canonical way to write a field.
 	 */
 	private record OrdinaryFieldWritePlan() implements FieldWritePlan {
 		/**
 		 * {@inheritDoc}
 		 */
 		@Override
-		public void generateFieldWrite(String name, ClassBuilder<Codec> cb, LocalVariable jsonGenerator, LocalVariable serializers, SerializerProvider serializerProvider, JavaType type) {
+		public void generateFieldWrite(String name, ClassBuilder<Codec> cb, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider, JavaType type) {
 			cb.pushString(name);
 			cb.pushObject("type", type, JavaType.class);
 			cb.pushLocal(jsonGenerator);
@@ -257,7 +257,7 @@ final class JacksonCompiler {
 		 * {@inheritDoc}
 		 */
 		@Override
-		public void generateFieldWrite(String name, ClassBuilder<Codec> cb, LocalVariable jsonGenerator, LocalVariable serializers, SerializerProvider serializerProvider, JavaType type) {
+		public void generateFieldWrite(String name, ClassBuilder<Codec> cb, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider, JavaType type) {
 			cb.castTo(Optional.class);
 			LocalVariable optional = cb.popToLocal();
 			cb.pushLocal(optional);
@@ -278,7 +278,7 @@ final class JacksonCompiler {
 	 * Implements the {@link CompiledSerDes} interface using a {@link Codec} object.
 	 * Putting boilerplate code in this wrapper is much easier than generating it
 	 * in the compiler, and allows us to keep the {@link Codec} interface focused
-	 * on just the highly-customized code that we do want to generate.
+	 * on just the highly customized code that we do want to generate.
 	 */
 	@Value
 	@EqualsAndHashCode(callSuper = false)
@@ -289,10 +289,10 @@ final class JacksonCompiler {
 		LinkedHashMap<String, RecordComponent> componentsByName;
 
 		@Override
-		public JsonSerializer<T> serializer(SerializationConfig config) {
-			return new JsonSerializer<>() {
+		public ValueSerializer<T> serializer(SerializationConfig config) {
+			return new ValueSerializer<>() {
 				@Override
-				public void serialize(T value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+				public void serialize(T value, JsonGenerator gen, SerializationContext serializers) {
 					gen.writeStartObject();
 					codec.writeFields(value, gen, serializers);
 					gen.writeEndObject();
@@ -301,10 +301,10 @@ final class JacksonCompiler {
 		}
 
 		@Override
-		public JsonDeserializer<T> deserializer(DeserializationConfig config) {
-			return new JsonDeserializer<>() {
+		public ValueDeserializer<T> deserializer(DeserializationConfig config) {
+			return new ValueDeserializer<>() {
 				@Override
-				public T deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+				public T deserialize(JsonParser p, DeserializationContext ctxt) {
 					// Performance-critical. Pre-compute as much as possible outside this method.
 					// Note: the reading side can't be as efficient as the writing side
 					// because we need to tolerate the fields arriving in arbitrary order.
@@ -327,9 +327,9 @@ final class JacksonCompiler {
 
 	static {
 		try {
-			CODEC_WRITE_FIELDS = Codec.class.getDeclaredMethod("writeFields", Object.class, JsonGenerator.class, SerializerProvider.class);
+			CODEC_WRITE_FIELDS = Codec.class.getDeclaredMethod("writeFields", Object.class, JsonGenerator.class, SerializationContext.class);
 			CODEC_INSTANTIATE_FROM = Codec.class.getDeclaredMethod("instantiateFrom", List.class);
-			DYNAMIC_WRITE_FIELD = JacksonCodecRuntime.class.getDeclaredMethod("dynamicWriteField", Object.class, String.class, JavaType.class, JsonGenerator.class, SerializerProvider.class);
+			DYNAMIC_WRITE_FIELD = JacksonCodecRuntime.class.getDeclaredMethod("dynamicWriteField", Object.class, String.class, JavaType.class, JsonGenerator.class, SerializationContext.class);
 			LIST_GET = List.class.getDeclaredMethod("get", int.class);
 			OPTIONAL_IS_PRESENT = Optional.class.getDeclaredMethod("isPresent");
 			OPTIONAL_GET = Optional.class.getDeclaredMethod("get");

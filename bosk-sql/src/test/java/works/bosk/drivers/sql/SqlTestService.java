@@ -10,8 +10,8 @@ import java.util.function.Function;
 import works.bosk.exceptions.NotYetImplementedException;
 import works.bosk.testing.drivers.state.TestEntity;
 
-import static com.fasterxml.jackson.core.JsonParser.Feature.INCLUDE_SOURCE_IN_LOCATION;
-import static com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT;
+import static tools.jackson.core.StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION;
+import static tools.jackson.databind.SerializationFeature.INDENT_OUTPUT;
 
 public class SqlTestService {
 	record DBKey(Database database, String databaseName) {}

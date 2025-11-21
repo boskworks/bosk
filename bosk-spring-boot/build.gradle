@@ -1,8 +1,9 @@
 
 dependencies {
 	api project(":bosk-jackson")
-	implementation libs.spring.boot.starter.web
+	implementation libs.spring.boot.starter.webmvc
 	testImplementation libs.spring.boot.starter.test
+	testImplementation libs.spring.boot.starter.webmvc.test
 	annotationProcessor libs.spring.boot.annotation.processor
 	testImplementation project(":bosk-testing")
 }

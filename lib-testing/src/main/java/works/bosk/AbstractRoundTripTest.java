@@ -1,10 +1,5 @@
 package works.bosk;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.Module;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.type.TypeFactory;
 import java.io.IOException;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -28,14 +23,20 @@ import org.bson.codecs.configuration.CodecRegistries;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JacksonModule;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.type.TypeFactory;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.jackson.JacksonSerializer;
 import works.bosk.jackson.JacksonSerializerConfiguration;
 
-import static com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT;
 import static java.lang.System.identityHashCode;
 import static java.util.Collections.newSetFromMap;
+import static tools.jackson.databind.SerializationFeature.INDENT_OUTPUT;
 
 public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 
@@ -75,27 +76,26 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 		@Override
 		public BoskDriver build(BoskInfo<R> boskInfo, BoskDriver driver) {
 			return new PreprocessingDriver(driver) {
-				final Module module = jp.moduleFor(boskInfo);
-				final ObjectMapper objectMapper = new ObjectMapper()
-					.registerModule(module)
-					.enable(INDENT_OUTPUT);
+				private final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
+				final JacksonModule module = jp.moduleFor(boskInfo);
+				final ObjectMapper objectMapper = JsonMapper.builder()
+					.addModule(module)
+					.enable(INDENT_OUTPUT)
+					.build();
 
 				@Override
 				protected <T> T preprocess(Reference<T> reference, T newValue) {
 					try {
-						JavaType targetType = javaType(reference.targetType());
+						JavaType targetType = typeFactory.constructType(reference.targetType());
 						String json = objectMapper.writerFor(targetType).writeValueAsString(newValue);
 						try (var _ = jp.newDeserializationScope(reference)) {
 							return objectMapper.readerFor(targetType).readValue(json);
 						}
-					} catch (JsonProcessingException e) {
+					} catch (JacksonException e) {
 						throw new AssertionError(e);
 					}
 				}
 
-				private JavaType javaType(Type type) {
-					return TypeFactory.defaultInstance().constructType(type);
-				}
 			};
 		}
 

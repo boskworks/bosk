@@ -1,11 +1,5 @@
 package works.bosk.drivers.sql;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.TextNode;
-import com.fasterxml.jackson.databind.type.TypeFactory;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.sql.Connection;
@@ -20,6 +14,12 @@ import org.jooq.Record;
 import org.jooq.TableField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.StringNode;
+import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BoskDiagnosticContext;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
@@ -160,7 +160,7 @@ class SqlDriverImpl implements SqlDriver {
 						} else {
 							try {
 								diagnosticAttributes = mapper.readerFor(mapValueType(String.class)).readValue(diagnostics);
-							} catch (JsonProcessingException e) {
+							} catch (JacksonException e) {
 								LOGGER.error("Unable to parse diagnostic attributes; ignoring", e);
 								diagnosticAttributes = MapValue.empty();
 							}
@@ -171,11 +171,11 @@ class SqlDriverImpl implements SqlDriver {
 							if (newState == null) {
 								newValue = null;
 							} else {
-								newValue = mapper.readerFor(TypeFactory.defaultInstance().constructType(target.targetType()))
+								newValue = mapper.readerFor(typeFactory.constructType(target.targetType()))
 									.readValue(newState);
 							}
 							submitDownstream(target, newValue, changeID);
-						} catch (JsonProcessingException e) {
+						} catch (JacksonException e) {
 							throw new NotYetImplementedException("Error parsing notification", e);
 						} catch (InvalidTypeException e) {
 							throw new NotYetImplementedException("Invalid object reference: \"" + ref + "\"", e);
@@ -283,7 +283,7 @@ class SqlDriverImpl implements SqlDriver {
 			.fetchOneInto(StateAndEpoch.class);
 	}
 
-	private synchronized StateTreeNode resetBoskState(Type rootType, StateAndEpoch stateAndEpoch, Connection connection) throws JsonProcessingException, SQLException {
+	private synchronized StateTreeNode resetBoskState(Type rootType, StateAndEpoch stateAndEpoch, Connection connection) throws SQLException {
 		StateTreeNode result;
 		this.epoch = stateAndEpoch.epoch;
 		long currentChangeID;
@@ -292,7 +292,7 @@ class SqlDriverImpl implements SqlDriver {
 		} catch (EpochMismatchException e) {
 			throw new AssertionError("Epoch was just set, so it shouldn't mismatch in the same transaction", e);
 		}
-		JavaType valueType = TypeFactory.defaultInstance().constructType(rootType);
+		JavaType valueType = typeFactory.constructType(rootType);
 		result = mapper.readValue(stateAndEpoch.state, valueType);
 		this.lastChangeSubmittedDownstream.set(-1);
 		connection.commit();
@@ -399,8 +399,8 @@ class SqlDriverImpl implements SqlDriver {
 	}
 
 	private boolean isMatchingTextNode(Reference<Identifier> precondition, Identifier requiredValue, JsonNode state) {
-		return surgeon.valueNode(state, precondition) instanceof TextNode text
-			&& Objects.equals(text.textValue(), requiredValue.toString());
+		return surgeon.valueNode(state, precondition) instanceof StringNode text
+			&& Objects.equals(text.asString(), requiredValue.toString());
 	}
 
 	@Override
@@ -451,12 +451,7 @@ class SqlDriverImpl implements SqlDriver {
 				if (newValue == null) {
 					throw new NotYetImplementedException("Cannot delete root");
 				}
-				String json;
-				try {
-					json = mapper.writeValueAsString(newValue);
-				} catch (JsonProcessingException e) {
-					throw new NotYetImplementedException(e);
-				}
+				String json = mapper.writeValueAsString(newValue);
 				long revision = insertChange(connection, target, json);
 				using(connection)
 					.update(BOSK)
@@ -482,7 +477,7 @@ class SqlDriverImpl implements SqlDriver {
 				try {
 					nodeJson = mapper.writeValueAsString(newNode);
 					stateJson = mapper.writeValueAsString(state);
-				} catch (JsonProcessingException e) {
+				} catch (JacksonException e) {
 					throw new NotYetImplementedException(e);
 				}
 				insertChange(connection, target, nodeJson);
@@ -504,7 +499,7 @@ class SqlDriverImpl implements SqlDriver {
 				.returning(REVISION)
 				.fetchOptional(REVISION)
 				.orElseThrow(()->new NotYetImplementedException("No change inserted"));
-		} catch (JsonProcessingException e) {
+		} catch (JacksonException e) {
 			throw new NotYetImplementedException(e);
 		}
 	}
@@ -522,7 +517,7 @@ class SqlDriverImpl implements SqlDriver {
 		}
 		try {
 			return mapper.readTree(json);
-		} catch (JsonProcessingException e) {
+		} catch (JacksonException e) {
 			throw new IllegalStateException("Unable to parse database contents", e);
 		}
 	}
@@ -546,8 +541,9 @@ class SqlDriverImpl implements SqlDriver {
 	}
 
 	private static JavaType mapValueType(Class<?> entryType) {
-		return TypeFactory.defaultInstance().constructParametricType(MapValue.class, entryType);
+		return typeFactory.constructParametricType(MapValue.class, entryType);
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SqlDriverImpl.class);
+	private static final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
 }

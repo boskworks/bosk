@@ -1,7 +1,5 @@
 package works.bosk.boson;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -15,6 +13,8 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectReader;
 import works.bosk.boson.TestUtils.JustScalars;
 import works.bosk.boson.TestUtils.Month;
 import works.bosk.boson.TestUtils.OneOfEach;

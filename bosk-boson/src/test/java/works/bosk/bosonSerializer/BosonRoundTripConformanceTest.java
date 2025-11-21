@@ -1,17 +1,16 @@
 package works.bosk.bosonSerializer;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.type.TypeFactory;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.lang.reflect.Parameter;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.type.TypeFactory;
 import works.bosk.AbstractRoundTripTest;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
@@ -33,9 +32,12 @@ import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.DriverConformanceTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static tools.jackson.core.StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION;
 
 @InjectFrom(BosonRoundTripConformanceTest.VariantInjector.class)
 class BosonRoundTripConformanceTest extends DriverConformanceTest {
+	private static final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
+
 	BosonRoundTripConformanceTest(Variant variant) {
 		driverFactory = BosonRoundTripDriver.factory(variant);
 	}
@@ -57,9 +59,10 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 				.scan(rootType)
 				.build();
 			this.codec = CodecBuilder.using(typeMap).build();
-			this.jackson = new ObjectMapper();
-			jackson.enable(JsonParser.Feature.INCLUDE_SOURCE_IN_LOCATION);
-			jackson.registerModule(new JacksonSerializer().moduleFor(b));
+			this.jackson = JsonMapper.builder()
+				.enable(INCLUDE_SOURCE_IN_LOCATION)
+				.addModule(new JacksonSerializer().moduleFor(b))
+				.build();
 		}
 
 		public static <R extends Entity> DriverFactory<R> factory(Variant variant) {
@@ -68,7 +71,7 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 
 		@Override
 		protected <T> T preprocess(Reference<T> reference, T newValue) {
-			JavaType referenceType = TypeFactory.defaultInstance().constructType(reference.targetType());
+			JavaType referenceType = typeFactory.constructType(reference.targetType());
 
 			JsonValueSpec targetSpec = typeMap.get(DataType.of(reference.targetType()));
 			Generator generator = codec.generatorFor(targetSpec);
@@ -81,23 +84,15 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 			} else {
 				jsonString = generateFromBoson(newValue, generator);
 				var jacksonString = generateFromJackson(newValue, referenceType);
-				try {
-					JsonNode fromBoson = jackson.readTree(jsonString);
-					JsonNode fromJackson = jackson.readTree(jacksonString);
-					assertEquals(fromJackson, fromBoson);
-				} catch (JsonProcessingException e) {
-					throw new AssertionError(e);
-				}
+				JsonNode fromBoson = jackson.readTree(jsonString);
+				JsonNode fromJackson = jackson.readTree(jacksonString);
+				assertEquals(fromJackson, fromBoson);
 			}
 
 			LOGGER.debug("Intermediate JSON:\n{}", jsonString);
 
 			if (variant == Variant.B2J) {
-				try {
-					return jackson.readerFor(referenceType).readValue(jsonString);
-				} catch (JsonProcessingException e) {
-					throw new AssertionError("Problem reading " + referenceType, e);
-				}
+				return jackson.readerFor(referenceType).readValue(jsonString);
 			} else {
 				try {
 					Object parsed = parser.parse(CharArrayJsonReader.forString(jsonString));
@@ -109,13 +104,7 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 		}
 
 		private <T> String generateFromJackson(T newValue, JavaType referenceType) {
-			String jsonString;
-			try {
-				jsonString = jackson.writerFor(referenceType).writeValueAsString(newValue);
-			} catch (JsonProcessingException e) {
-				throw new AssertionError(e);
-			}
-			return jsonString;
+			return jackson.writerFor(referenceType).writeValueAsString(newValue);
 		}
 
 		private static <T> String generateFromBoson(T newValue, Generator generator) {

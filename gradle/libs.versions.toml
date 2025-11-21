@@ -1,7 +1,7 @@
 [versions]
 asm = "9.9"
 hamcrest = "3.0"
-jackson = "2.20.1"
+jackson = "3.0.2"
 jetbrains-annotations = "26.0.2-1"
 jmh = "1.37"
 junit = "6.0.1"
@@ -9,7 +9,7 @@ logback = "1.5.21"
 lombok = "1.18.42"
 pcollections = "5.0.0"
 slf4j = "2.0.17"
-spring-boot = "3.5.8"
+spring-boot = "4.0.0-RC2"
 testcontainers = "2.0.2"
 
 [libraries]
@@ -17,9 +17,9 @@ asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
 hamcrest = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
 hamcrest-library = { module = "org.hamcrest:hamcrest-library", version.ref = "hamcrest" }
 hikari = { module = "com.zaxxer:HikariCP", version = "7.0.2" }
-jackson-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson" }
+jackson-bom = { module = "tools.jackson:jackson-bom", version.ref = "jackson" }
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations" }
-jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref="jetbrains-annotations" }
 jmh-apt = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
@@ -40,7 +40,9 @@ postgresql = { module = "org.postgresql:postgresql", version = "42.7.8" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 spring-boot-annotation-processor = { module="org.springframework.boot:spring-boot-configuration-processor", version.ref="spring-boot" }
 spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter-web", version.ref="spring-boot" }
+spring-boot-starter-webmvc = { module="org.springframework.boot:spring-boot-starter-webmvc", version.ref="spring-boot" }
 spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
+spring-boot-starter-webmvc-test = { module="org.springframework.boot:spring-boot-starter-webmvc-test", version.ref="spring-boot" }
 sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.51.0.0" }
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
