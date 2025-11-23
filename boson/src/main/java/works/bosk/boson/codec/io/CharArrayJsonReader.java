@@ -2,6 +2,7 @@ package works.bosk.boson.codec.io;
 
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
+import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.lang.Math.min;
 
@@ -112,7 +113,7 @@ public final class CharArrayJsonReader implements JsonReader {
 					}
 					yield value;
 				}
-				default -> throw new IllegalStateException("Invalid escape: \\" + esc);
+				default -> throw new JsonSyntaxException("Invalid escape: \\" + esc);
 			};
 		} else {
 			return c;
@@ -144,7 +145,7 @@ public final class CharArrayJsonReader implements JsonReader {
 				}
 			}
 		} catch (ArrayIndexOutOfBoundsException e) {
-			throw new IllegalStateException("Unterminated string", e);
+			throw new JsonSyntaxException("Unterminated string", e);
 		}
 		String result = new String(chars, start, pos - start);
 		pos++; // Skip closing quote

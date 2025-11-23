@@ -11,6 +11,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
+import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -224,7 +225,7 @@ class JsonReaderTest {
 	void unterminatedStringThrows() {
 		try (JsonReader reader = readerSupplier.apply("\"abc")) {
 			assertEquals(STRING, peekToken(reader));
-			assertThrows(IllegalStateException.class, reader::consumeString);
+			assertThrows(JsonSyntaxException.class, reader::consumeString);
 		}
 	}
 
@@ -232,7 +233,7 @@ class JsonReaderTest {
 	void invalidEscapeThrows() {
 		try (JsonReader reader = readerSupplier.apply("\"abc\\x\"")) {
 			assertEquals(STRING, peekToken(reader));
-			assertThrows(IllegalStateException.class, reader::consumeString);
+			assertThrows(JsonSyntaxException.class, reader::consumeString);
 		}
 	}
 

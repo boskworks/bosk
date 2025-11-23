@@ -5,6 +5,9 @@ import works.bosk.boson.codec.io.ByteArrayChunkFiller;
 import works.bosk.boson.codec.io.ByteChunkJsonReader;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.codec.io.SynchronousChunkFiller;
+import works.bosk.boson.exceptions.JsonContentException;
+import works.bosk.boson.exceptions.JsonFormatException;
+import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.lang.Character.MAX_SURROGATE;
 import static java.lang.Character.MIN_SURROGATE;
@@ -71,22 +74,42 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 */
 	Token peekToken();
 
+	/**
+	 * A variant of {@link #peekToken} that throws if the next token is not the expected one.
+	 * <p>
+	 * Since we don't know whether to throw {@link JsonSyntaxException} or {@link JsonContentException},
+	 * because that depends on the calling context,
+	 * we throw {@link JsonSyntaxException} itself.
+	 * Consider catching that and re-throwing a more specific subclass
+	 * based on your context.
+	 *
+	 * @throws JsonFormatException if the input is not valid JSON.
+	 */
 	default void peekToken(Token expected) {
 		Token actual = peekToken();
 		if (actual != expected) {
-			throw new IllegalStateException("Expected " + expected + " but got " + actual);
+			throw new JsonFormatException("Expected " + expected + " but got " + actual);
 		}
 	}
 
 	/**
-	 * After {@link #peekToken} returns a token with a {@link Token#hasFixedRepresentation fixed representation},
+	 * After {@link #peekToken} returns a token with a
+	 * {@link Token#hasFixedRepresentation fixed representation},
 	 * this consumes that token from the input, leaving the reader
 	 * ready for the next call to {@link #peekToken}.
+	 * <p>
+	 * It is an error to call this method unless the next token is indeed the expected one.
+	 * Implementations may or may not check for this condition.
+	 * Likewise, it is an error to call this method with
+	 * a token that does not have a fixed representation.
 	 *
 	 * @param token must be the last token returned by {@link #peekToken}
 	 */
 	void consumeFixedToken(Token token);
 
+	/**
+	 * @throws JsonSyntaxException if the next token is not the expected one.
+	 */
 	default void expectFixedToken(Token expected) {
 		assert expected.hasFixedRepresentation();
 		peekToken(expected);
@@ -110,8 +133,6 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 * ready for the next call to {@link #peekToken}.
 	 */
 	CharSequence consumeNumber();
-
-	// String processing, used after peekToken returns STRING
 
 	/**
 	 * After {@link #peekToken} returns {@link Token#STRING STRING},
@@ -189,7 +210,7 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 			}
 			if (c == -1) {
 				if (i != 1) {
-					throw new IllegalStateException("Unexpected end of string while skipping characters");
+					throw new JsonSyntaxException("Unexpected end of string while skipping characters");
 				}
 			}
 		}
@@ -246,8 +267,6 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 		consumeStringContents(sb);
 		return sb.toString();
 	}
-
-	// Diagnostics etc
 
 	/**
 	 * On a best-effort basis, return the upcoming characters in the input.
