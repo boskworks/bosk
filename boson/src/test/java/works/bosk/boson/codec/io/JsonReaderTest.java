@@ -36,7 +36,8 @@ class JsonReaderTest {
 	static Stream<Function<String, ? extends JsonReader>> readerSuppliers() {
 		return Stream.of(
 			new ByteArray(),
-			new ByteChunks()
+			new ByteChunks(),
+			new CharArray()
 		);
 	}
 
