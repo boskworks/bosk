@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static works.bosk.boson.codec.io.ByteChunkJsonReader.CARRYOVER_BYTES;
+import static works.bosk.boson.codec.io.ByteChunkJsonReader.MIN_CHUNK_SIZE;
 
 /**
  * Uses a virtual thread to read from a channel in the background
@@ -39,7 +40,7 @@ public final class OverlappedPrefetchingChunkFiller implements ChunkFiller {
 	 * @param numBuffers if only 1, no overlapping will occur.
 	 */
 	public OverlappedPrefetchingChunkFiller(InputStream stream, int bufferSize, int numBuffers) {
-		assert bufferSize > CARRYOVER_BYTES: "Buffer size must be larger than " + CARRYOVER_BYTES;
+		assert bufferSize >= MIN_CHUNK_SIZE: "Buffer size must be at least " + MIN_CHUNK_SIZE;
 		this.stream = stream;
 		this.emptyBuffers = new ArrayBlockingQueue<>(numBuffers);
 		this.filledBuffers = new ArrayBlockingQueue<>(numBuffers);

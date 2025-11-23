@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import static works.bosk.boson.codec.io.ByteChunkJsonReader.CARRYOVER_BYTES;
+import static works.bosk.boson.codec.io.ByteChunkJsonReader.MIN_CHUNK_SIZE;
 
 /**
  * A {@link ChunkFiller} that reads chunks on demand from an {@link InputStream}.
@@ -22,7 +23,7 @@ public class SynchronousChunkFiller implements ChunkFiller {
 	}
 
 	SynchronousChunkFiller(InputStream stream, int bufferSize) {
-		assert bufferSize > CARRYOVER_BYTES: "Buffer size must be larger than " + CARRYOVER_BYTES;
+		assert bufferSize >= MIN_CHUNK_SIZE: "Buffer size must be at least " + MIN_CHUNK_SIZE;
 		this.stream = stream;
 		buffer = new byte[bufferSize];
 	}

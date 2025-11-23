@@ -25,6 +25,15 @@ public final class ByteChunkJsonReader implements JsonReader {
 	 */
 	static final int CARRYOVER_BYTES = 5;
 
+	/**
+	 * The purpose of carryover is to ensure we always have at least 1+CARRYOVER_BYTES
+	 * to simplify character decoding (except at the end of the input).
+	 * Carryover may copy as few as zero bytes from the end of the prior chunk;
+	 * therefore, to ensure that we always end up with at least 1+CARRYOVER_BYTES bytes
+	 * after carryover, the chunk size must be at least this much plus CARRYOVER_BYTES.
+	 */
+	static final int MIN_CHUNK_SIZE = 2*CARRYOVER_BYTES+1;
+
 	private final ChunkFiller filler;
 	private ByteChunk currentChunk;
 
