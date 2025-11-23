@@ -66,7 +66,7 @@ public class MongoDriverHanoiTest extends HanoiTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<TestParameters.ParameterSet> values() {
 			return TestParameters.driverSettings(
 				Stream.of(
 					PandoFormat.oneBigDocument(),
@@ -76,7 +76,6 @@ public class MongoDriverHanoiTest extends HanoiTest {
 					MongoDriverSettings.DatabaseFormat.SEQUOIA
 				),
 				Stream.of(TestParameters.EventTiming.NORMAL))
-			.map(x -> (Object)x)
 			.toList();
 		}
 	}

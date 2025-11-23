@@ -21,7 +21,7 @@ public class JacksonRoundTripConformanceTest extends DriverConformanceTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<JacksonSerializerConfiguration> values() {
 			return List.of(JacksonSerializerConfiguration.defaultConfiguration());
 		}
 	}

@@ -26,9 +26,8 @@ public interface ParameterInjector {
 	/**
 	 * @return non-null {@link List} of values for the given parameter.
 	 */
-	List<Object> values();
+	List<?> values();
 
-	@SuppressWarnings("unchecked")
 	static <T> ParameterInjector ofType(Class<T> type, List<? extends T> values) {
 		return new ParameterInjector() {
 			@Override
@@ -36,8 +35,8 @@ public interface ParameterInjector {
 				return p.getType() == type;
 			}
 			@Override
-			public List<Object> values() {
-				return (List<Object>) values;
+			public List<? extends T> values() {
+				return values;
 			}
 		};
 	}

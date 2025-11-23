@@ -21,7 +21,7 @@ public class PrimitiveTypeInjector implements ParameterInjector {
 	}
 
 	@Override
-	public List<Object> values() {
+	public List<PrimitiveType> values() {
 		return List.of(
 			BOOLEAN,
 			BYTE,

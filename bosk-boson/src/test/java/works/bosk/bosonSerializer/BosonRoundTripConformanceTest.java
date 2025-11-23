@@ -129,7 +129,7 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Variant> values() {
 			return List.of(Variant.values());
 		}
 	}

@@ -53,7 +53,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		}
 
 		@Override
-		public java.util.List<Object> values() {
+		public java.util.List<Database> values() {
 			return List.of(POSTGRES, SQLITE);
 		}
 	}

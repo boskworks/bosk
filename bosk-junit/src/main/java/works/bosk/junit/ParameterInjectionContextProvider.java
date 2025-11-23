@@ -44,7 +44,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 		List<Branch> neededBranches = computeBranches(context, requiredParameters);
 
 		return neededBranches.stream().flatMap(branch -> {
-			var valuesByInjector = new LinkedHashMap<ParameterInjector, List<Object>>();
+			var valuesByInjector = new LinkedHashMap<ParameterInjector, List<?>>();
 			requiredParameters.forEach(p -> {
 				ParameterInjector injector = branch.injectorFor(p);
 				if (injector != null) {
@@ -193,9 +193,9 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	/**
 	 * Compute the cartesian product of a list of lists.
 	 */
-	private static List<List<Object>> cartesianProduct(Collection<List<Object>> input) {
+	private static List<List<Object>> cartesianProduct(Collection<? extends List<?>> input) {
 		List<List<Object>> result = List.of(List.of());
-		for (List<Object> list : input) {
+		for (List<?> list : input) {
 			result = result.stream()
 				.flatMap(prev -> list.stream().map(v -> {
 					List<Object> next = new ArrayList<>(prev);
@@ -213,7 +213,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	 *                   to produce these values, with no guarantees on the order
 	 */
 	record Superposition(
-		List<Object> values,
+		List<?> values,
 		Set<ParameterInjector> provenance
 	){
 		Superposition collapsed(Object singleValue) {
@@ -261,7 +261,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 			// for a constructor parameter of another injector on this branch,
 			// its corresponding list will contain just that one value
 			// and will not further expand the cartesian product.)
-			List<List<Object>> valueLists = injectorsToUse.stream()
+			List<? extends List<?>> valueLists = injectorsToUse.stream()
 				.map(toInject::get)
 				.map(Superposition::values)
 				.toList();

@@ -82,7 +82,7 @@ public class SchemaEvolutionTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Configuration> values() {
 			return configs();
 		}
 	}
@@ -99,12 +99,12 @@ public class SchemaEvolutionTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Configuration> values() {
 			return configs();
 		}
 	}
 
-	static List<Object> configs() {
+	static List<Configuration> configs() {
 		return List.of(
 			new Configuration(MongoDriverSettings.DatabaseFormat.SEQUOIA),
 			new Configuration(PandoFormat.oneBigDocument()),

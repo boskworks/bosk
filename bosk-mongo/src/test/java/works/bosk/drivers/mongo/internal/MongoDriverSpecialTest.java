@@ -81,7 +81,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<ParameterSet> values() {
 			return TestParameters.driverSettings(
 				Stream.of(
 					MongoDriverSettings.DatabaseFormat.SEQUOIA,
@@ -91,7 +91,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				Stream.of(TestParameters.EventTiming.NORMAL)
 			).map(b -> b.applyDriverSettings(s -> s
 				.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
-			)).map(x->(Object)x).toList();
+			)).toList();
 		}
 	}
 

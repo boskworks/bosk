@@ -45,7 +45,7 @@ class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<ParameterSet> values() {
 			return TestParameters.driverSettings(
 					Stream.of(
 						PandoFormat.oneBigDocument(),
@@ -57,7 +57,6 @@ class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 						SEQUOIA
 					),
 					Stream.of(EventTiming.NORMAL)) // EARLY is slow; LATE is really slow
-				.map(x -> (Object)x)
 				.toList();
 		}
 	}

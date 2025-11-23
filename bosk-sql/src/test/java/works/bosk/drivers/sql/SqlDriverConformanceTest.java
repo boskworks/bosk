@@ -51,7 +51,7 @@ class SqlDriverConformanceTest extends SharedDriverConformanceTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Database> values() {
 			return List.of(POSTGRES, MYSQL, SQLITE);
 		}
 	}

@@ -11,7 +11,7 @@ public record PrimitiveInjector() implements ParameterInjector {
 	}
 
 	@Override
-	public List<Object> values() {
+	public List<PrimitiveNumber> values() {
 		return List.of(
 			new PrimitiveNumber("int", int.class, Integer.class, 123, "123"),
 			new PrimitiveNumber("long", long.class, Long.class, 123L, "123"),

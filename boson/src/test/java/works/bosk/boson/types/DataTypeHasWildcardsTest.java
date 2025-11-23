@@ -2,6 +2,7 @@ package works.bosk.boson.types;
 
 import java.lang.reflect.Parameter;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
 import works.bosk.boson.codec.PrimitiveTypeInjector;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
@@ -62,12 +63,11 @@ public class DataTypeHasWildcardsTest {
 		}
 
 		@Override
-		public List<Object> values() {
-			return values2();
+		public List<Case> values() {
+			return getCases();
 		}
 
-		@SuppressWarnings("rawtypes")
-		private static <T> List<Object> values2() {
+		private static <T> @NotNull List<Case> getCases() {
 			return List.of(
 				new Case(
 					DataType.STRING,
@@ -78,23 +78,19 @@ public class DataTypeHasWildcardsTest {
 					false
 				),
 				new Case(
-					(InstanceType) DataType.of(new TypeReference<List<?>>() {
-					}),
+					(InstanceType) DataType.of(new TypeReference<List<?>>() { }),
 					true
 				),
 				new Case(
-					(InstanceType) DataType.of(new TypeReference<List<String>>() {
-					}),
+					(InstanceType) DataType.of(new TypeReference<List<String>>() { }),
 					false
 				),
 				new Case(
-					(InstanceType) DataType.of(new TypeReference<List<T>>() {
-					}),
+					(InstanceType) DataType.of(new TypeReference<List<T>>() { }),
 					false
 				),
 				new Case(
-					(InstanceType) DataType.of(new TypeReference<List>() {
-					}),
+					(InstanceType) DataType.of(new TypeReference<List>() { }),
 					true // Erased type is considered to have wildcards
 				)
 			);

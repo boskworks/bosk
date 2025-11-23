@@ -10,7 +10,6 @@ import java.time.DayOfWeek;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.TestInstance;
 import works.bosk.boson.codec.PrimitiveInjector.PrimitiveNumber;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
@@ -273,8 +272,8 @@ public final class RoundTripTest {
 		}
 
 		@Override
-		public List<Object> values() {
-			return Stream.of(
+		public List<Escape> values() {
+			return List.of(
 				new Escape("\"", "\\\""),
 				new Escape("\\", "\\\\"),
 				new Escape("\b", "\\b"),
@@ -283,7 +282,7 @@ public final class RoundTripTest {
 				new Escape("\r", "\\r"),
 				new Escape("\t", "\\t"),
 				new Escape("👍", "\\ud83d\\udc4d")
-			).<Object>map(x->x).toList();
+			);
 		}
 	}
 
@@ -294,7 +293,7 @@ public final class RoundTripTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<MemberPresenceCondition> values() {
 			// No Nullary here because it's hard to make that return different
 			// values for different test cases.
 			var component = RecordWithOptionalField.class.getRecordComponents()[0];
