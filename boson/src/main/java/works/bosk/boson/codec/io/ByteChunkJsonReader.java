@@ -71,7 +71,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 	 */
 	private Token peekRawToken() {
 		while (currentChunk != null && currentChunkPos >= currentChunk.stop()) {
-			nextBuffer();
+			nextChunk();
 		}
 
 		if (currentChunk == null) {
@@ -106,7 +106,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 			}
 		}
 
-		// The number crosses a buffer boundary
+		// The number crosses a chunk boundary
 		return numberStringBuilder(startPos);
 	}
 
@@ -166,7 +166,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 		byte[] carryover = new byte[CARRYOVER_BYTES]; // Fixed size might help stack allocation
 		int length = initialChunk.stop() - initialChunkPos;
 		System.arraycopy(initialChunk.bytes(), initialChunkPos, carryover, 0, length);
-		if (!nextBuffer()) {
+		if (!nextChunk()) {
 			// We've hit the end. Might as well continue with the current chunk
 			currentChunk = initialChunk;
 			currentChunkPos = initialChunkPos;
@@ -175,7 +175,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 			currentChunk = new ByteChunk(currentChunk.bytes(), currentChunk.start() - length, currentChunk.stop());
 			currentChunkPos = currentChunk.start();
 		} else {
-			throw new IllegalStateException("Buffer cannot accommodate carryover");
+			throw new IllegalStateException("Chunk cannot accommodate carryover");
 		}
 	}
 
@@ -282,7 +282,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	/**
 	 * A generalized (if slow) way to build a {@link CharSequence} for a number
-	 * regardless of whether it spans buffer boundaries or contains non-ASCII characters.
+	 * regardless of whether it spans chunk boundaries or contains non-ASCII characters.
 	 */
 	private CharSequence numberStringBuilder(int startPos) {
 		StringBuilder sb = new StringBuilder();
@@ -307,8 +307,8 @@ public final class ByteChunkJsonReader implements JsonReader {
 				}
 			}
 
-			if (nextBuffer()) {
-				// Continue from the start of the new buffer
+			if (nextChunk()) {
+				// Continue from the start of the new chunk
 				pos = currentChunk.start();
 			} else {
 				// whoops, the input ended in the middle of a number
@@ -348,7 +348,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 				return;
 			} else {
 				n -= remaining;
-				if (!nextBuffer()) {
+				if (!nextChunk()) {
 					return;
 				}
 			}
@@ -367,13 +367,13 @@ public final class ByteChunkJsonReader implements JsonReader {
 				}
 			}
 
-			if (!nextBuffer()) {
+			if (!nextChunk()) {
 				return;
 			}
 		}
 	}
 
-	private boolean nextBuffer() {
+	private boolean nextChunk() {
 		if (currentChunk == null) {
 			return false;
 		}
@@ -404,16 +404,16 @@ public final class ByteChunkJsonReader implements JsonReader {
 		}
 	}
 
-	// numberStringBuilder() only called for multi-buffer numbers
+	// numberStringBuilder() only called for multi-chunk numbers
 
 	/**
-	 * Relatively slow way to advance one byte, loading a new buffer if needed.
+	 * Relatively slow way to advance one byte, loading a new chunk if needed.
 	 */
 	void advance() {
 		if (currentChunk != null) {
 			currentChunkPos++;
 			if (currentChunkPos >= currentChunk.stop()) {
-				nextBuffer();
+				nextChunk();
 			}
 		}
 	}
