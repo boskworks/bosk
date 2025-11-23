@@ -17,8 +17,10 @@ public sealed abstract class JsonException extends RuntimeException permits Json
 	public static <T extends JsonException> T wrap(T exception, String context) {
 		String newMessage = context + ": " + exception.getMessage();
 		return switch (exception) {
+			case JsonSyntaxException e -> (T)new JsonSyntaxException(newMessage, e);
+			case JsonContentException e -> (T)new JsonContentException(newMessage, e);
 			case JsonFormatException e -> (T)new JsonFormatException(newMessage, e);
-			case JsonProcessingException e -> (T)new JsonFormatException(newMessage, e);
+			case JsonProcessingException e -> (T)new JsonProcessingException(newMessage, e);
 		};
 	}
 }

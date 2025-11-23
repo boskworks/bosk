@@ -19,7 +19,7 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Parser;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.codec.io.SharedParserRuntime;
-import works.bosk.boson.exceptions.JsonFormatException;
+import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.exceptions.JsonProcessingException;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
@@ -221,7 +221,7 @@ public class SpecInterpretingParser implements Parser {
 								case JsonValueSpec j -> j; // The normal case: proceed with the member's value
 								case MaybeAbsentSpec(var ifPresent, _, _) -> ifPresent; // It ain't absent
 								case ComputedSpec _ -> {
-									throw new JsonFormatException("Invalid input: Unexpected value for computed member " + member.accessor());
+									throw new JsonContentException("Invalid input: Unexpected value for computed member " + member.accessor());
 								}
 							};
 							continue;
@@ -379,7 +379,7 @@ public class SpecInterpretingParser implements Parser {
 				// We know the current key is present because we just parsed it.
 				// Absent key handling is not relevant here.
 				return switch(currentKey.valueSpec()) {
-					case ComputedSpec _ -> throw new JsonFormatException("Invalid input: Unexpected value for computed member " + currentKey.index());
+					case ComputedSpec _ -> throw new JsonContentException("Invalid input: Unexpected value for computed member " + currentKey.index());
 					case JsonValueSpec spec -> spec;
 					case MaybeAbsentSpec(var ifPresent, _, _) -> ifPresent;
 				};
@@ -553,12 +553,12 @@ public class SpecInterpretingParser implements Parser {
 				String memberName = input.consumeString();
 				var memberNode = componentsByName.get(memberName);
 				if (memberNode == null) {
-					throw new JsonFormatException("Unexpected member name [" + memberName + "]");
+					throw new JsonContentException("Unexpected member name [" + memberName + "]");
 				}
 				LOGGER.debug("| member [{}:{}]: |{}|", memberName, memberNode, previewString());
 				Object value = switch (memberNode.valueSpec()) {
 					case JsonValueSpec n -> parseAny(n);
-					case ComputedSpec _ -> throw new JsonFormatException("Unexpected value for computed member [" + memberName + "]");
+					case ComputedSpec _ -> throw new JsonContentException("Unexpected value for computed member [" + memberName + "]");
 					case MaybeAbsentSpec(var n, _, _) -> parseAny(n);
 				};
 				memberValues.put(memberName, value);

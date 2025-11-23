@@ -10,6 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
+import works.bosk.boson.exceptions.JsonContentException;
+import works.bosk.boson.exceptions.JsonProcessingException;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 
@@ -32,7 +34,7 @@ public abstract class SharedParserRuntime {
 		return switch (token) {
 			case FALSE -> false;
 			case TRUE -> true;
-			default -> throw new IllegalStateException("Expected boolean, not " + token);
+			default -> throw new JsonContentException("Expected boolean, not " + token);
 		};
 	}
 
@@ -49,10 +51,10 @@ public abstract class SharedParserRuntime {
 		try {
 			result = (Enum<?>) valueOfHandle.invoke(name);
 		} catch (Throwable e) {
-			throw new IllegalStateException("Error decoding enum name", e.getCause());
+			throw new JsonProcessingException("Error decoding enum name", e.getCause());
 		}
 		if (result == null) {
-			throw new IllegalStateException("No enum constant " + valueOfHandle.type().returnType().getSimpleName() + "." + name);
+			throw new JsonContentException("No enum constant " + valueOfHandle.type().returnType().getSimpleName() + "." + name);
 		}
 		return result;
 	}
@@ -64,7 +66,7 @@ public abstract class SharedParserRuntime {
 		try {
 			return parseHandle.invoke(string);
 		} catch (Throwable e) {
-			throw new IllegalStateException("Error decoding number", e.getCause());
+			throw new JsonProcessingException("Error decoding number", e.getCause());
 		}
 	}
 
@@ -161,7 +163,7 @@ public abstract class SharedParserRuntime {
 
 	protected final void parseError(String message) {
 		String previewString = previewString();
-		throw new IllegalStateException(message + " at offset " + input.currentOffset() + ": |" + previewString + "|");
+		throw new JsonContentException(message + " at offset " + input.currentOffset() + ": |" + previewString + "|");
 	}
 
 	private static final Map<Class<?>, MethodHandle> PRIMITIVE_PARSE_HANDLES = new ConcurrentHashMap<>();

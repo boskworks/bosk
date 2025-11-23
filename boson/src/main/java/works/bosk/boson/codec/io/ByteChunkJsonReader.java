@@ -2,6 +2,8 @@ package works.bosk.boson.codec.io;
 
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
+import works.bosk.boson.exceptions.JsonProcessingException;
+import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.lang.Math.min;
 import static java.nio.charset.StandardCharsets.US_ASCII;
@@ -157,7 +159,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 				return decodeUtf8Char(b);
 			}
 		} catch (ArrayIndexOutOfBoundsException e) {
-			throw new IllegalStateException("Unexpected end of text in the middle of a string character", e);
+			throw new JsonSyntaxException("Unexpected end of text in the middle of a string character", e);
 		}
 	}
 
@@ -184,7 +186,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 			currentChunk = new ByteChunk(currentChunk.bytes(), currentChunk.start() - length, currentChunk.stop());
 			currentChunkPos = currentChunk.start();
 		} else {
-			throw new IllegalStateException("Chunk cannot accommodate carryover");
+			throw new JsonProcessingException("Chunk cannot accommodate carryover");
 		}
 	}
 
@@ -433,7 +435,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 			case 'n' -> '\n';
 			case 'r' -> '\r';
 			case 't' -> '\t';
-			default -> throw new IllegalStateException("Invalid escape: \\" + (char) b);
+			default -> throw new JsonSyntaxException("Invalid escape: \\" + (char) b);
 		};
 	}
 
@@ -451,14 +453,14 @@ public final class ByteChunkJsonReader implements JsonReader {
 			sequenceLength = 4;
 			codePoint = firstChar & 0x07;
 		} else {
-			throw new IllegalStateException("Invalid UTF-8 start byte: " + firstChar);
+			throw new JsonSyntaxException("Invalid UTF-8 start byte: " + firstChar);
 		}
 
 		byte[] bytes = currentChunk.bytes();
 		for (int i = 1; i < sequenceLength; i++) {
 			int bx = bytes[currentChunkPos++];
 			if ((bx & 0xC0) != 0x80) {
-				throw new IllegalStateException("Invalid UTF-8 continuation byte: " + bx);
+				throw new JsonSyntaxException("Invalid UTF-8 continuation byte: " + bx);
 			}
 			codePoint = (codePoint << 6) | (bx & 0x3F);
 		}

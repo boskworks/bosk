@@ -19,7 +19,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.boson.exceptions.JsonFormatException;
+import works.bosk.boson.exceptions.JsonContentException;
+import works.bosk.boson.exceptions.JsonProcessingException;
 import works.bosk.boson.mapping.TypeScanner.Directive.IsAssignableFrom;
 import works.bosk.boson.mapping.opt.Optimizer;
 import works.bosk.boson.mapping.spec.ArrayNode;
@@ -114,7 +115,7 @@ public class TypeScanner {
 			enumType -> switch (enumType) {
 				case BoundType bt -> EnumByNameNode.of(bt.rawClass());
 				default ->
-					throw new IllegalStateException("Expected enum type but got " + enumType);
+					throw new JsonContentException("Expected enum type but got " + enumType);
 			}
 		));
 
@@ -178,7 +179,7 @@ public class TypeScanner {
 					}
 				});
 				default ->
-					throw new IllegalStateException("Expected ArrayType but got " + arrayType);
+					throw new JsonContentException("Expected ArrayType but got " + arrayType);
 			}
 		));
 
@@ -187,7 +188,7 @@ public class TypeScanner {
 			recordType -> switch (recordType) {
 				case BoundType bt -> scanRecord(bt);
 				default ->
-					throw new IllegalStateException("Expected record type but got " + recordType);
+					throw new JsonContentException("Expected record type but got " + recordType);
 			}
 		));
 
@@ -210,7 +211,7 @@ public class TypeScanner {
 
 	private static char string2char(String s) {
 		if (s.length() != 1) {
-			throw new JsonFormatException("String must have length 1 to convert to char: " + s);
+			throw new JsonContentException("String must have length 1 to convert to char: " + s);
 		}
 		return s.charAt(0);
 	}
@@ -692,7 +693,7 @@ public class TypeScanner {
 		try {
 			constructor = lookupFor(recordClass).unreflectConstructor(recordClass.getDeclaredConstructor(ctorParameterTypes));
 		} catch (NoSuchMethodException | IllegalAccessException e) {
-			throw new IllegalStateException("Unexpected error accessing record constructor for " + recordClass, e);
+			throw new JsonProcessingException("Unexpected error accessing record constructor for " + recordClass, e);
 		}
 		List<DataType> memberTypes = componentsByName.values().stream().map(FixedMapMember::dataType).toList();
 		return new TypedHandle(

@@ -1,10 +1,16 @@
 package works.bosk.boson.exceptions;
 
 /**
- * Indicates a problem with either invalid JSON text or valid JSON
- * that does not contain the expected contents.
+ * The JSON input text is invalid.
+ * <p>
+ * This class is concrete so that it can be thrown in the rare situation where
+ * we don't know which subclass to throw.
+ * If you know which one to throw, you should throw that instead.
  */
-public final class JsonFormatException extends JsonException {
+public sealed class JsonFormatException extends JsonException permits
+	JsonContentException,
+	JsonSyntaxException
+{
 	public JsonFormatException(String message) {
 		super(message);
 	}

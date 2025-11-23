@@ -1,10 +1,9 @@
 package works.bosk.boson.mapping.spec;
 
 import java.util.Map;
-import works.bosk.boson.exceptions.JsonFormatException;
+import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.mapping.spec.handles.ObjectAccumulator;
 import works.bosk.boson.mapping.spec.handles.ObjectEmitter;
-import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
 
@@ -107,14 +106,14 @@ public record UniformMapNode(
 				if (acc == null) {
 					return wrangler.finish(key, value);
 				} else {
-					throw new JsonFormatException("More than one entry in singleton map");
+					throw new JsonContentException("More than one entry in singleton map");
 				}
 			}
 
 			@Override
 			public T finish(T acc) {
 				if (acc == null) {
-					throw new JsonFormatException("Empty singleton map");
+					throw new JsonContentException("Empty singleton map");
 				} else {
 					return acc;
 				}
@@ -158,24 +157,6 @@ public record UniformMapNode(
 			accumulator,
 			emitter
 		);
-	}
-
-	@SuppressWarnings("unchecked")
-	private static <T> T singletonIntegrator(TypedHandle finisher, T accumulator, Object key, Object value) {
-		if (accumulator == null) {
-			// TODO: Shouldn't have to call invoke here. Probably should use MethodHandles.guardWithTest
-			return (T) finisher.invoke(key, value);
-		} else {
-			throw new IllegalStateException("More than one entry in singleton map");
-		}
-	}
-
-	private static <T> T singletonFinisher(T accumulator) {
-		if (accumulator == null) {
-			throw new IllegalStateException("Empty singleton map");
-		} else {
-			return accumulator;
-		}
 	}
 
 }
