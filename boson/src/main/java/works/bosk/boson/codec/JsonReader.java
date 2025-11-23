@@ -6,6 +6,9 @@ import works.bosk.boson.codec.io.ByteChunkJsonReader;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.codec.io.SynchronousChunkFiller;
 
+import static java.lang.Character.MAX_SURROGATE;
+import static java.lang.Character.MIN_SURROGATE;
+
 /**
  * A streaming JSON reader abstraction for high-performance parsing.
  * This interface is rather unfriendly by design.
@@ -163,12 +166,34 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 * Note that this never consumes the closing quote.
 	 * One of {@link #nextStringChar} or {@link #skipToEndOfString}
 	 * must be called to finish consuming the string.
+	 * <p>
+	 * Note also that this specifically counts decoded code points,
+	 * so surrogate pairs count as a single character.
+	 * This is deliberately different from {@link #nextStringChar()},
+	 * because the purpose of this method is to skip a known portion
+	 * of the string regardless of how it is represented.
 	 *
 	 * @param n number of characters to skip
 	 * @throws IllegalArgumentException if {@code n} is negative
 	 * @throws IllegalStateException if {@code n} is more than the remaining characters in the string
 	 */
-	void skipStringChars(int n);
+	default void skipStringChars(int n) {
+		if (n < 0) {
+			throw new IllegalArgumentException("Must skip a non-negative number of characters, got " + n);
+		}
+		for (int i = n; i > 0; --i) {
+			int c = nextStringChar();
+			if (MIN_SURROGATE <= c && c <= MAX_SURROGATE) {
+				// A surrogate pair counts as one character in this context.
+				c = nextStringChar();
+			}
+			if (c == -1) {
+				if (i != 1) {
+					throw new IllegalStateException("Unexpected end of string while skipping characters");
+				}
+			}
+		}
+	}
 
 	/**
 	 * Skips the remainder of the string token, as though {@link #nextStringChar()}

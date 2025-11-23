@@ -114,6 +114,21 @@ class JsonReaderTest {
 		}
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"\"A😎Z\"",
+		"\"A\\uD83D\\uDE0EZ\"",
+	})
+	void skipStringOutsideBMP(String json) {
+		try (JsonReader reader = readerSupplier.apply(json)) {
+			assertEquals(STRING, peekToken(reader));
+			reader.startConsumingString();
+			reader.skipStringChars(3);
+			assertEquals(-1, reader.nextStringChar());
+			assertEquals(END_TEXT, consumeToken(reader));
+		}
+	}
+
 	@Test
 	void stringWithReversedSurrogates() {
 		try (JsonReader reader = readerSupplier.apply("\"\\uDE0E\\uD83D\"")) {

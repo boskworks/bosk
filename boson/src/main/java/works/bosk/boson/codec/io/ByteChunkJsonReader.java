@@ -189,21 +189,6 @@ public final class ByteChunkJsonReader implements JsonReader {
 	}
 
 	@Override
-	public void skipStringChars(int n) {
-		if (n < 0) {
-			throw new IllegalArgumentException("Must skip a non-negative number of characters, got " + n);
-		}
-		for (int i = n; i > 0; --i) {
-			int c = nextStringChar();
-			if (c == -1) {
-				if (i != 1) {
-					throw new IllegalStateException("Unexpected end of string while skipping characters");
-				}
-			}
-		}
-	}
-
-	@Override
 	public void skipToEndOfString() {
 		while (nextStringChar() != -1) {}
 	}

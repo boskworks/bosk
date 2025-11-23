@@ -120,16 +120,6 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	@Override
-	public void skipStringChars(int n) {
-		for (int i = 0; i < n; i++) {
-			int c = nextStringChar();
-			if (c == -1) {
-				throw new IllegalStateException("Attempt to skip past end of string");
-			}
-		}
-	}
-
-	@Override
 	public void skipToEndOfString() {
 		while (nextStringChar() != -1) { }
 	}
