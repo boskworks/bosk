@@ -6,6 +6,9 @@ import works.bosk.boson.codec.io.ByteChunkJsonReader;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.codec.io.SynchronousChunkFiller;
 
+import static java.lang.Character.MAX_SURROGATE;
+import static java.lang.Character.MIN_SURROGATE;
+
 /**
  * A streaming JSON reader abstraction for high-performance parsing.
  * This interface is rather unfriendly by design.
@@ -130,9 +133,27 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	void startConsumingString();
 
 	/**
-	 * Advances to the next character (code point) in the string.
+	 * Advances to the next character in the string.
+	 * For characters outside the BMP, this can return either the
+	 * full code point or the first {@link Character#isSurrogate(char) surrogate},
+	 * so callers should be prepared to handle either.
+	 * <p>
+	 * The rationale for this ambiguity is that
+	 * if we mandated the full code point, that would entail unnecessary
+	 * processing if those code points are simply being appended to a string anyway,
+	 * and it would be unable to represent invalid surrogate pairs, which are allowed in JSON.
+	 * On the other hand, if we mandated surrogates, that would entail
+	 * awkward bookkeeping for individual Unicode characters in the input:
+	 * the location within the input stream would not be enough to indicate
+	 * what the next call to this method should return.
+	 * Either could lead to inefficiencies, so we leave it up to the implementation.
+	 * <p>
+	 * Fortunately, {@link StringBuilder#appendCodePoint} happens to handle either case correctly,
+	 * as would any reasonable logic that works by checking for ints beyond the char range.
+	 * Only logic being pedantic by checking specifically for surrogates would be problematic.
+	 * If you are using something that cares about surrogates, you'll need to check for that case.
 	 *
-	 * @return next decoded code point of the string,
+	 * @return next decoded character or code point of the string,
 	 * or -1 to indicate the end of the string,
 	 * at which point the closing quote has been consumed from the input.
 	 */
@@ -145,12 +166,34 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 * Note that this never consumes the closing quote.
 	 * One of {@link #nextStringChar} or {@link #skipToEndOfString}
 	 * must be called to finish consuming the string.
+	 * <p>
+	 * Note also that this specifically counts decoded code points,
+	 * so surrogate pairs count as a single character.
+	 * This is deliberately different from {@link #nextStringChar()},
+	 * because the purpose of this method is to skip a known portion
+	 * of the string regardless of how it is represented.
 	 *
 	 * @param n number of characters to skip
 	 * @throws IllegalArgumentException if {@code n} is negative
 	 * @throws IllegalStateException if {@code n} is more than the remaining characters in the string
 	 */
-	void skipStringChars(int n);
+	default void skipStringChars(int n) {
+		if (n < 0) {
+			throw new IllegalArgumentException("Must skip a non-negative number of characters, got " + n);
+		}
+		for (int i = n; i > 0; --i) {
+			int c = nextStringChar();
+			if (MIN_SURROGATE <= c && c <= MAX_SURROGATE) {
+				// A surrogate pair counts as one character in this context.
+				c = nextStringChar();
+			}
+			if (c == -1) {
+				if (i != 1) {
+					throw new IllegalStateException("Unexpected end of string while skipping characters");
+				}
+			}
+		}
+	}
 
 	/**
 	 * Skips the remainder of the string token, as though {@link #nextStringChar()}
@@ -192,6 +235,8 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 		startConsumingString();
 		int c;
 		while ((c = nextStringChar()) != -1) {
+			// Bonus: despite what its Javadocs say, this also handles surrogates.
+			// No need for special logic.
 			sb.appendCodePoint(c);
 		}
 	}

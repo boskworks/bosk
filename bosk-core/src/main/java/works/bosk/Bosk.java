@@ -49,9 +49,9 @@ import static works.bosk.TypeValidation.validateType;
 
 /**
  * A mutable container for an immutable object tree with cross-tree {@link Reference}s,
- * providing snapshot-at-start semantics via {@link ReadContext},
+ * providing snapshot-at-start semantics via {@link ReadContext ReadContext},
  * managing updates via {@link BoskDriver},
- * and notifying listeners of changes via {@link #registerHook}.
+ * and notifying listeners of changes via {@link #registerHook registerHook}.
  *
  * <p>
  * The intent is that there would be one of these injected into your
@@ -63,7 +63,7 @@ import static works.bosk.TypeValidation.validateType;
  *
  * <p>
  * Reads are performed by calling {@link Reference#value()} in the context of
- * a {@link ReadContext}, which provides an immutable snapshot of the bosk
+ * a {@code ReadContext}, which provides an immutable snapshot of the bosk
  * state to the thread.
  * This object acts as a factory for {@link Reference} objects that
  * traverse the object trees by walking their fields (actually getter methods)
@@ -71,10 +71,10 @@ import static works.bosk.TypeValidation.validateType;
  *
  * <p>
  * Updates are performed by submitting an update via {@link
- * BoskDriver#submitReplacement(Reference, Object)} and similar,
+ * BoskDriver#submitReplacement(Reference, Object) submitReplacement} and similar,
  * rather than by modifying the in-memory state directly.
  * The driver will apply the changes either immediately or at a later time.
- * Regardless, updates will not be visible in any {@link ReadContext}
+ * Regardless, updates will not be visible in any {@code ReadContext}
  * created before the update occurred.
  *
  * @author pdoyle
@@ -817,7 +817,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 	/**
 	 * A thread-local region in which {@link Reference#value()} works; outside
-	 * of a {@link ReadContext}, {@link Reference#value()} will throw {@link
+	 * of a {@code ReadContext}, {@link Reference#value()} will throw {@link
 	 * IllegalStateException}.
 	 *
 	 * @author pdoyle

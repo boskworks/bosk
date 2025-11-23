@@ -120,16 +120,6 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	@Override
-	public void skipStringChars(int n) {
-		for (int i = 0; i < n; i++) {
-			int c = nextStringChar();
-			if (c == -1) {
-				throw new IllegalStateException("Attempt to skip past end of string");
-			}
-		}
-	}
-
-	@Override
 	public void skipToEndOfString() {
 		while (nextStringChar() != -1) { }
 	}
@@ -144,13 +134,17 @@ public final class CharArrayJsonReader implements JsonReader {
 		// We can do better than the default implementation
 		int start = ++pos; // First actual character in the string's value
 		int c;
-		while (pos <= chars.length && (c = chars[pos]) != '"') {
-			pos++;
-			if (c == '\\') {
-				// Whoops, found an escape code. Fast path doesn't work.
-				pos = start-1; // Back up to the opening quote
-				return JsonReader.super.consumeString();
+		try {
+			while (pos <= chars.length && (c = chars[pos]) != '"') {
+				pos++;
+				if (c == '\\') {
+					// Whoops, found an escape code. Fast path doesn't work.
+					pos = start - 1; // Back up to the opening quote
+					return JsonReader.super.consumeString();
+				}
 			}
+		} catch (ArrayIndexOutOfBoundsException e) {
+			throw new IllegalStateException("Unterminated string", e);
 		}
 		String result = new String(chars, start, pos - start);
 		pos++; // Skip closing quote
