@@ -2,8 +2,6 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.MongoCollection;
 import java.io.IOException;
-import java.lang.reflect.Parameter;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -14,6 +12,8 @@ import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
@@ -24,9 +24,7 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
-import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.junit.Slow;
 
@@ -42,10 +40,8 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * Tests the kinds of recovery actions a human operator might take to try to get a busted service running again.
  */
 @Slow
-@InjectFrom({
-	MongoDriverRecoveryTest.FlushOrWaitInjector.class,
-	MongoDriverRecoveryTest.TestParameterInjector.class
-})
+@ParameterizedClass
+@MethodSource("classParameters")
 public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 	FlushOrWait flushOrWait;
 
@@ -60,26 +56,21 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		this.flushOrWait = flushOrWait;
 	}
 
-	record TestParameterInjector() implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == TestParameters.ParameterSet.class;
-		}
-
-		@Override
-		public List<TestParameters.ParameterSet> values() {
-			return TestParameters.driverSettings(
-				Stream.of(
-					MongoDriverSettings.DatabaseFormat.SEQUOIA,
-					PandoFormat.oneBigDocument(),
-					PandoFormat.withGraftPoints("/catalog", "/sideTable")
-				),
-				Stream.of(TestParameters.EventTiming.NORMAL)
-			).map(b -> b.applyDriverSettings(s -> s
-				.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
-			))
-			.toList();
-		}
+	static Stream<Object[]> classParameters() {
+		Stream<TestParameters.ParameterSet> parameterSets = TestParameters.driverSettings(
+			Stream.of(
+				MongoDriverSettings.DatabaseFormat.SEQUOIA,
+				PandoFormat.oneBigDocument(),
+				PandoFormat.withGraftPoints("/catalog", "/sideTable")
+			),
+			Stream.of(TestParameters.EventTiming.NORMAL)
+		).map(b -> b.applyDriverSettings(s -> s
+			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
+		));
+		return parameterSets
+			.flatMap(s -> Stream.of(FlushOrWait.values())
+				.map(f -> new Object[] {f, s})
+			);
 	}
 
 	enum FlushOrWait {
@@ -94,18 +85,6 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		 * updates eventually arrive.
 		 */
 		WAIT,
-	}
-
-	record FlushOrWaitInjector() implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == FlushOrWait.class;
-		}
-
-		@Override
-		public List<Object> values() {
-			return List.of((Object[])FlushOrWait.values());
-		}
 	}
 
 

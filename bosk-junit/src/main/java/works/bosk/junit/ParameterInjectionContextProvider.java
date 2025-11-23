@@ -37,9 +37,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 
 	@Override
 	public Stream<TestTemplateInvocationContext> provideTestTemplateInvocationContexts(ExtensionContext context) {
-		List<Parameter> requiredParameters = new ArrayList<>();
-		requiredParameters.addAll(asList(context.getRequiredTestMethod().getParameters()));
-		requiredParameters.addAll(asList(context.getRequiredTestClass().getDeclaredConstructors()[0].getParameters()));
+		List<Parameter> requiredParameters = asList(context.getRequiredTestMethod().getParameters());
 
 		List<Branch> neededBranches = computeBranches(context, requiredParameters);
 

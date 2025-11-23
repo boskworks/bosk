@@ -2,8 +2,8 @@ package works.bosk.bosonSerializer;
 
 import java.io.IOException;
 import java.io.StringWriter;
-import java.lang.reflect.Parameter;
-import java.util.List;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JavaType;
@@ -27,8 +27,6 @@ import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.types.DataType;
 import works.bosk.jackson.JacksonSerializer;
-import works.bosk.junit.InjectFrom;
-import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.DriverConformanceTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,7 +34,8 @@ import static tools.jackson.core.StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION;
 import static tools.jackson.databind.cfg.EnumFeature.READ_ENUMS_USING_TO_STRING;
 import static tools.jackson.databind.cfg.EnumFeature.WRITE_ENUMS_USING_TO_STRING;
 
-@InjectFrom(BosonRoundTripConformanceTest.VariantInjector.class)
+@ParameterizedClass
+@EnumSource(BosonRoundTripConformanceTest.Variant.class)
 class BosonRoundTripConformanceTest extends DriverConformanceTest {
 	private static final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
 
@@ -121,18 +120,6 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 	}
 
 	public enum Variant {B2B, J2B, B2J}
-
-	public static final class VariantInjector implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(Variant.class);
-		}
-
-		@Override
-		public List<Variant> values() {
-			return List.of(Variant.values());
-		}
-	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(BosonRoundTripConformanceTest.class);
 }

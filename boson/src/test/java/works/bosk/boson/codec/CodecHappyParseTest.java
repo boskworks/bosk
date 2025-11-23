@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.boson.codec.PrimitiveInjector.PrimitiveNumber;
 import works.bosk.boson.mapping.TypeMap.Settings;
 import works.bosk.boson.mapping.TypeScanner;
@@ -54,7 +56,9 @@ import static works.bosk.boson.types.DataType.STRING;
 /**
  * Tests that {@link Codec} parses valid JSON correctly.
  */
-@InjectFrom({SettingsInjector.class, PrimitiveInjector.class})
+@InjectFrom(PrimitiveInjector.class)
+@ParameterizedClass
+@MethodSource("settings")
 @TestInstance(PER_METHOD)
 public class CodecHappyParseTest {
 	final Settings settings;
@@ -63,6 +67,10 @@ public class CodecHappyParseTest {
 	public CodecHappyParseTest(Settings settings) {
 		this.settings = settings;
 		scanner = new TypeScanner(settings).useLookup(MethodHandles.lookup());
+	}
+
+	static List<Settings> settings() {
+		return new SettingsInjector().values();
 	}
 
 	@InjectedTest

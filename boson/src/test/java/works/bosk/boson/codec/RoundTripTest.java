@@ -11,6 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.boson.codec.PrimitiveInjector.PrimitiveNumber;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.mapping.TypeMap;
@@ -55,11 +57,12 @@ import static works.bosk.boson.types.DataType.INT;
 import static works.bosk.boson.types.DataType.STRING;
 
 @InjectFrom({
-	SettingsInjector.class,
 	RoundTripTest.EscapeInjector.class,
 	PrimitiveInjector.class,
 	RoundTripTest.PresenceConditionInjector.class
 })
+@ParameterizedClass
+@MethodSource("settings")
 @TestInstance(PER_METHOD)
 public final class RoundTripTest {
 	final Settings settings;
@@ -67,6 +70,10 @@ public final class RoundTripTest {
 
 	public RoundTripTest(Settings settings) {
 		this.settings = settings;
+	}
+
+	static List<Settings> settings() {
+		return new SettingsInjector().values();
 	}
 
 	@InjectedTest

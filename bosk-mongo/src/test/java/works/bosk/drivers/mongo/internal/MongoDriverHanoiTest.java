@@ -8,20 +8,21 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.DriverStack;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
-import works.bosk.junit.InjectFrom;
-import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.HanoiTest;
 import works.bosk.testing.junit.Slow;
 
 import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 
 @Slow
-@InjectFrom(MongoDriverHanoiTest.Injector.class)
+@ParameterizedClass
+@MethodSource("parameterSets")
 public class MongoDriverHanoiTest extends HanoiTest {
 	private static MongoService mongoService;
 	private final Queue<Runnable> shutdownOperations = new ConcurrentLinkedDeque<>();
@@ -42,6 +43,20 @@ public class MongoDriverHanoiTest extends HanoiTest {
 			.drop();
 	}
 
+	static List<TestParameters.ParameterSet> parameterSets() {
+		return TestParameters.driverSettings(
+				Stream.of(
+					PandoFormat.oneBigDocument(),
+					PandoFormat.withGraftPoints("/puzzles"),
+					PandoFormat.withGraftPoints("/puzzles/-puzzle-/towers"),
+					PandoFormat.withGraftPoints("/puzzles", "/puzzles/-puzzle-/towers/-tower-/discs"),
+					MongoDriverSettings.DatabaseFormat.SEQUOIA
+				),
+				Stream.of(TestParameters.EventTiming.NORMAL))
+			.toList();
+	}
+
+
 	@BeforeAll
 	static void setupMongoConnection() {
 		mongoService = new MongoService();
@@ -57,27 +72,6 @@ public class MongoDriverHanoiTest extends HanoiTest {
 		shutdownOperations.forEach(Runnable::run);
 		shutdownOperations.clear();
 		AbstractMongoDriverTest.logTest("\\=== Done", testInfo);
-	}
-
-	record Injector() implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(java.lang.reflect.Parameter parameter) {
-			return parameter.getType() == TestParameters.ParameterSet.class;
-		}
-
-		@Override
-		public List<TestParameters.ParameterSet> values() {
-			return TestParameters.driverSettings(
-				Stream.of(
-					PandoFormat.oneBigDocument(),
-					PandoFormat.withGraftPoints("/puzzles"),
-					PandoFormat.withGraftPoints("/puzzles/-puzzle-/towers"),
-					PandoFormat.withGraftPoints("/puzzles", "/puzzles/-puzzle-/towers/-tower-/discs"),
-					MongoDriverSettings.DatabaseFormat.SEQUOIA
-				),
-				Stream.of(TestParameters.EventTiming.NORMAL))
-			.toList();
-		}
 	}
 
 }
