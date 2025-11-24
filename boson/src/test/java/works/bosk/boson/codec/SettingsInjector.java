@@ -2,7 +2,6 @@ package works.bosk.boson.codec;
 
 import java.lang.reflect.Parameter;
 import java.util.List;
-import java.util.stream.Stream;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.junit.ParameterInjector;
 
@@ -13,13 +12,13 @@ record SettingsInjector() implements ParameterInjector {
 	}
 
 	@Override
-	public List<Object> values() {
-		return Stream.of(
+	public List<TypeMap.Settings> values() {
+		return List.of(
 			new TypeMap.Settings(false, false, false, false, false),
 			new TypeMap.Settings(true, false, false, false, false),
 			new TypeMap.Settings(true, false, false, true, false),
 			new TypeMap.Settings(true, false, true, false, false),
 			new TypeMap.Settings(true, true, true, true, false)
-		).<Object>map(x->x).toList();
+		);
 	}
 }

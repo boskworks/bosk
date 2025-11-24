@@ -3,7 +3,6 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import java.io.IOException;
-import java.lang.reflect.Parameter;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -19,6 +18,8 @@ import org.bson.BsonString;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
@@ -43,9 +44,7 @@ import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
-import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.testing.drivers.state.UpgradeableEntity;
@@ -68,31 +67,24 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 /**
  * Tests {@link MongoDriver}-specific functionality not covered by {@link MongoDriverConformanceTest}.
  */
-@InjectFrom(MongoDriverSpecialTest.TestParameterInjector.class)
+@ParameterizedClass
+@MethodSource("parameterSets")
 class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	public MongoDriverSpecialTest(ParameterSet parameters) {
 		super(parameters.driverSettingsBuilder());
 	}
 
-	record TestParameterInjector() implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(ParameterSet.class);
-		}
-
-		@Override
-		public List<Object> values() {
-			return TestParameters.driverSettings(
-				Stream.of(
-					MongoDriverSettings.DatabaseFormat.SEQUOIA,
-					PandoFormat.oneBigDocument(),
-					PandoFormat.withGraftPoints("/catalog", "/sideTable")
-				),
-				Stream.of(TestParameters.EventTiming.NORMAL)
-			).map(b -> b.applyDriverSettings(s -> s
-				.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
-			)).map(x->(Object)x).toList();
-		}
+	static List<ParameterSet> parameterSets() {
+		return TestParameters.driverSettings(
+			Stream.of(
+				MongoDriverSettings.DatabaseFormat.SEQUOIA,
+				PandoFormat.oneBigDocument(),
+				PandoFormat.withGraftPoints("/catalog", "/sideTable")
+			),
+			Stream.of(TestParameters.EventTiming.NORMAL)
+		).map(b -> b.applyDriverSettings(s -> s
+			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
+		)).toList();
 	}
 
 	@InjectedTest

@@ -1,7 +1,6 @@
 package works.bosk.drivers.sql;
 
 import com.zaxxer.hikari.HikariDataSource;
-import java.lang.reflect.Parameter;
 import java.sql.SQLException;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -12,11 +11,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
-import works.bosk.junit.InjectFrom;
-import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.SharedDriverConformanceTest;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -26,9 +25,8 @@ import static works.bosk.drivers.sql.SqlTestService.Database.SQLITE;
 import static works.bosk.drivers.sql.SqlTestService.sqlDriverFactory;
 
 @Testcontainers
-@InjectFrom({
-	SqlDriverConformanceTest.DatabaseInjector.class
-})
+@ParameterizedClass
+@MethodSource("databases")
 class SqlDriverConformanceTest extends SharedDriverConformanceTest {
 	private final Deque<Runnable> tearDownActions = new ArrayDeque<>();
 	private final Database database;
@@ -44,16 +42,8 @@ class SqlDriverConformanceTest extends SharedDriverConformanceTest {
 			|| testInfo.getTags().contains("slow"));
 	}
 
-	record DatabaseInjector() implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == Database.class;
-		}
-
-		@Override
-		public List<Object> values() {
-			return List.of(POSTGRES, MYSQL, SQLITE);
-		}
+	static List<Database> databases() {
+		return List.of(POSTGRES, MYSQL, SQLITE);
 	}
 
 	@BeforeEach

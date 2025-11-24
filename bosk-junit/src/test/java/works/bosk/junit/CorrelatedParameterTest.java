@@ -31,7 +31,7 @@ public class CorrelatedParameterTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Long> values() {
 			return List.of(1001L, 1002L);
 		}
 	}
@@ -43,7 +43,7 @@ public class CorrelatedParameterTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<String> values() {
 			return List.of("2(" + from1 + ")");
 		}
 	}
@@ -55,7 +55,7 @@ public class CorrelatedParameterTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<String> values() {
 			return List.of("3a(" + from1 + "," + from2 + ")",
 				"3b(" + from1 + "," + from2 + ")");
 		}
@@ -68,7 +68,7 @@ public class CorrelatedParameterTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<String> values() {
 			return List.of("4(" + from1 + "," + from3 + ")");
 		}
 	}

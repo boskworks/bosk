@@ -38,7 +38,7 @@ class IdentifierTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<String> values() {
 			return validStrings();
 		}
 	}
@@ -51,12 +51,17 @@ class IdentifierTest {
 		}
 
 		@Override
-		public List<Object> values() {
-			return invalidStrings();
+		public List<String> values() {
+			return List.of(
+				"",
+				"-startsWithDash",
+				"endsWithDash-",
+				"-startsAndEndsWithDash-"
+			);
 		}
 	}
 
-	static List<Object> validStrings() {
+	static List<String> validStrings() {
 		return List.of(
 			"test",
 			"unicode\uD83C\uDF33",
@@ -68,12 +73,4 @@ class IdentifierTest {
 		);
 	}
 
-	static List<Object> invalidStrings() {
-		return List.of(
-			"",
-			"-startsWithDash",
-			"endsWithDash-",
-			"-startsAndEndsWithDash-"
-		);
-	}
 }

@@ -2,15 +2,15 @@ package works.bosk.drivers.mongo.internal;
 
 import ch.qos.logback.classic.Level;
 import java.io.IOException;
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
-import java.lang.reflect.Parameter;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
@@ -19,31 +19,36 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
-import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
-import works.bosk.junit.ParameterInjector;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.junit.Slow;
 
-import static java.lang.annotation.ElementType.PARAMETER;
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Slow
-@InjectFrom({
-	SchemaEvolutionTest.FromConfigs.class,
-	SchemaEvolutionTest.ToConfigs.class
-})
+@ParameterizedClass
+@MethodSource("classParameters")
 public class SchemaEvolutionTest {
 
 	private final Helper fromHelper;
 	private final Helper toHelper;
 
-	SchemaEvolutionTest(@From Configuration fromConfig, @To Configuration toConfig) {
+	SchemaEvolutionTest(Configuration fromConfig, Configuration toConfig) {
 		int dbCounter = DB_COUNTER.incrementAndGet();
 		this.fromHelper = new Helper(fromConfig, dbCounter);
 		this.toHelper = new Helper(toConfig, dbCounter);
+	}
+
+	static Stream<Object[]> classParameters() {
+		List<Configuration> configs = List.of(
+			new Configuration(MongoDriverSettings.DatabaseFormat.SEQUOIA),
+			new Configuration(PandoFormat.oneBigDocument()),
+			new Configuration(PandoFormat.withGraftPoints("/catalog", "/sideTable"))
+		);
+		return configs.stream()
+			.flatMap(fromConfig -> configs.stream()
+				.map(toConfig -> new Object[] { fromConfig, toConfig }));
 	}
 
 	@BeforeAll
@@ -69,50 +74,6 @@ public class SchemaEvolutionTest {
 		fromHelper.runTearDown(testInfo);
 		toHelper  .runTearDown(testInfo);
 	}
-
-	@Target(PARAMETER)
-	@Retention(RUNTIME)
-	@interface From {}
-
-	record FromConfigs() implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.isAnnotationPresent(From.class)
-				&& parameter.getType() == Configuration.class;
-		}
-
-		@Override
-		public List<Object> values() {
-			return configs();
-		}
-	}
-
-	@Target(PARAMETER)
-	@Retention(RUNTIME)
-	@interface To {}
-
-	record ToConfigs() implements ParameterInjector {
-		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.isAnnotationPresent(To.class)
-				&& parameter.getType() == Configuration.class;
-		}
-
-		@Override
-		public List<Object> values() {
-			return configs();
-		}
-	}
-
-	static List<Object> configs() {
-		return List.of(
-			new Configuration(MongoDriverSettings.DatabaseFormat.SEQUOIA),
-			new Configuration(PandoFormat.oneBigDocument()),
-			new Configuration(PandoFormat.withGraftPoints("/catalog", "/sideTable"))
-		);
-	}
-
-
 
 	@InjectedTest
 	void pairwise_readCompatible() throws Exception {

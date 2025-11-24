@@ -74,7 +74,7 @@ class ParameterInjectionContextProviderTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<String> values() {
 			return List.of("foo", "bar");
 		}
 	}
@@ -86,7 +86,7 @@ class ParameterInjectionContextProviderTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Integer> values() {
 			return List.of(1, 2, 3);
 		}
 	}
@@ -98,7 +98,7 @@ class ParameterInjectionContextProviderTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Integer> values() {
 			return List.of(incomingValue + 100); // overrides IntInjector1
 		}
 	}
@@ -110,7 +110,7 @@ class ParameterInjectionContextProviderTest {
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Boolean> values() {
 			return List.of(true, false);
 		}
 	}

@@ -641,11 +641,12 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	record EnclosingPathInjector() implements ParameterInjector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
-			return parameter.isAnnotationPresent(EnclosingCatalog.class);
+			return parameter.getType().equals(Path.class)
+				&& parameter.isAnnotationPresent(EnclosingCatalog.class);
 		}
 
 		@Override
-		public List<Object> values() {
+		public List<Path> values() {
 			return List.of(
 				Path.just(TestEntity.Fields.catalog),
 				Path.of(TestEntity.Fields.catalog, AWKWARD_ID, TestEntity.Fields.catalog),
@@ -679,8 +680,8 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		}
 
 		@Override
-		public List<Object> values() {
-			return childIDs().stream().<Object>map(x->x).toList();
+		public List<Identifier> values() {
+			return childIDs();
 		}
 	}
 
@@ -689,7 +690,6 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	 */
 	public static final String AWKWARD_ID = "awkward$id.with%everything:/ +\uD83D\uDE09";
 
-	@SuppressWarnings("unused")
 	static List<String> testEntityFields() {
 		return List.of(
 			TestEntity.Fields.id,
@@ -708,8 +708,8 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		}
 
 		@Override
-		public List<Object> values() {
-			return testEntityFields().stream().<Object>map(x->x).toList();
+		public List<String> values() {
+			return testEntityFields();
 		}
 	}
 
