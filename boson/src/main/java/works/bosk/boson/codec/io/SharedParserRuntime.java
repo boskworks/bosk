@@ -21,6 +21,7 @@ import static java.util.Objects.requireNonNull;
  * Handy wrapper around {@link JsonReader} that makes common operations
  * a little easier to call.
  */
+@SuppressWarnings("unused") // called by generated code
 public abstract class SharedParserRuntime {
 	protected final JsonReader input;
 
@@ -29,7 +30,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final boolean parseBoolean() {
-		Token token = input.peekToken();
+		Token token = input.peekValueToken();
 		skipToken(token);
 		return switch (token) {
 			case FALSE -> false;
@@ -40,7 +41,7 @@ public abstract class SharedParserRuntime {
 
 	protected final Number parseBigNumber() {
 		logEntry("parseBigNumber");
-		var token = input.peekToken();
+		var token = input.peekValueToken();
 		assert token == Token.NUMBER;
 		return new BigDecimal(input.consumeNumber().toString());
 	}
@@ -60,7 +61,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final Object parsePrimitiveNumber(MethodHandle parseHandle) {
-		var token = input.peekToken();
+		var token = input.peekValueToken();
 		assert token == Token.NUMBER;
 		String string = input.consumeNumber().toString();
 		try {
@@ -71,7 +72,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final CharSequence readNumberAsCharSequence() {
-		Token token = input.peekToken();
+		Token token = input.peekValueToken();
 		if (token != Token.NUMBER) {
 			parseError("Expected number, not " + token);
 		}
@@ -79,7 +80,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final int peekTokenOrdinal() {
-		Token token = input.peekToken();
+		Token token = input.peekValueToken();
 //		LOGGER.debug("peekTokenOrdinal: {}", token);
 		return token.ordinal();
 	}
@@ -94,7 +95,7 @@ public abstract class SharedParserRuntime {
 	 * @return true if the token was the expected one
 	 */
 	protected final boolean nextTokenIs(Token expectedToken) {
-		Token readToken = input.peekToken();
+		Token readToken = input.peekValueToken();
 		if (readToken == expectedToken) {
 			input.consumeFixedToken(readToken);
 			return true;
@@ -112,12 +113,12 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final String parseString() {
-		input.peekToken(Token.STRING);
+		input.peekValueToken(Token.STRING);
 		return input.consumeString();
 	}
 
 	protected final void startConsumingString() {
-		assert input.peekToken() == Token.STRING;
+		assert input.peekValueToken() == Token.STRING; // TODO: This is unsafe because peekValueToken has side effects
 		input.startConsumingString();
 	}
 
@@ -150,7 +151,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final void skipToken(Token expectedToken) {
-		var token = input.peekToken();
+		var token = input.peekValueToken();
 		if (token != expectedToken) {
 			parseError("Expected token " + expectedToken + ", not " + token);
 		}

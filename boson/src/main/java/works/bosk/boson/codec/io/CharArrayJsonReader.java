@@ -24,15 +24,15 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	@Override
-	public Token peekToken() {
+	public Token peekValueToken() {
 		skipInsignificant();
-		return Token.startingWith(peekChar());
+		return peekRawToken();
 	}
 
 	/**
 	 * @return NOT a code point!
 	 */
-	private int peekChar() {
+	private int peekRawChar() {
 		if (pos >= chars.length) {
 			return -1;
 		} else {
@@ -41,14 +41,14 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	private void skipInsignificant() {
-		while (Util.fast_isInsignificant(peekChar())) {
+		while (Util.fast_isInsignificant(peekRawChar())) {
 			pos++;
 		}
 	}
 
 	@Override
 	public void consumeFixedToken(Token token) {
-		assert peekToken() == token;
+		assert peekRawToken() == token;
 		pos += token.fixedRepresentation().length();
 	}
 
@@ -63,7 +63,7 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	@Override
 	public void startConsumingString() {
-		assert peekToken() == Token.STRING;
+		assert peekRawToken() == Token.STRING;
 		pos++; // Skip opening quote
 	}
 
@@ -161,6 +161,10 @@ public final class CharArrayJsonReader implements JsonReader {
 	@Override
 	public long currentOffset() {
 		return pos;
+	}
+
+	private Token peekRawToken() {
+		return Token.startingWith(peekRawChar());
 	}
 
 	private class CharArraySequence implements CharSequence {

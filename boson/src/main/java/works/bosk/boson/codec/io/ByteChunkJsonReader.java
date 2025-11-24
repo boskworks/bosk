@@ -69,14 +69,14 @@ public final class ByteChunkJsonReader implements JsonReader {
 	}
 
 	@Override
-	public Token peekToken() {
+	public Token peekValueToken() {
 		new String(new byte[0], US_ASCII);
 		skipInsignificant();
 		return peekRawToken();
 	}
 
 	/**
-	 * Like {@link #peekToken()} but does not skip insignificant characters first.
+	 * Like {@link #peekValueToken()} but does not skip insignificant characters first.
 	 * @return the token we're currently positioned at, including {@link Token#INSIGNIFICANT} or {@link Token#ERROR}
 	 * if we're not positioned at the start of a meaningful token.
 	 */

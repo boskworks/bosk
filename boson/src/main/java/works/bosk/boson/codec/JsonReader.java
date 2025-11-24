@@ -54,7 +54,9 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 
 	/**
 	 * Start by calling this.
-	 * Skips insignificant characters and returns the next token encountered.
+	 * Skips insignificant characters (whitespace, commas, and colons)
+	 * and returns the next token encountered, which is either the first
+	 * or last token of a JSON value, or {@link Token#END_TEXT}.
 	 * <p>
 	 * Depending on the token returned, the next method called must be one of the following:
 	 * <ul>
@@ -72,10 +74,10 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 *
 	 * This method is idempotent; calling it repeatedly will return the same result.
 	 */
-	Token peekToken();
+	Token peekValueToken();
 
 	/**
-	 * A variant of {@link #peekToken} that throws if the next token is not the expected one.
+	 * A variant of {@link #peekValueToken} that throws if the next token is not the expected one.
 	 * <p>
 	 * Since we don't know whether to throw {@link JsonSyntaxException} or {@link JsonContentException},
 	 * because that depends on the calling context,
@@ -85,25 +87,25 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 *
 	 * @throws JsonFormatException if the input is not valid JSON.
 	 */
-	default void peekToken(Token expected) {
-		Token actual = peekToken();
+	default void peekValueToken(Token expected) {
+		Token actual = peekValueToken();
 		if (actual != expected) {
 			throw new JsonFormatException("Expected " + expected + " but got " + actual);
 		}
 	}
 
 	/**
-	 * After {@link #peekToken} returns a token with a
+	 * After {@link #peekValueToken} returns a token with a
 	 * {@link Token#hasFixedRepresentation fixed representation},
 	 * this consumes that token from the input, leaving the reader
-	 * ready for the next call to {@link #peekToken}.
+	 * ready for the next call to {@link #peekValueToken}.
 	 * <p>
 	 * It is an error to call this method unless the next token is indeed the expected one.
 	 * Implementations may or may not check for this condition.
 	 * Likewise, it is an error to call this method with
 	 * a token that does not have a fixed representation.
 	 *
-	 * @param token must be the last token returned by {@link #peekToken}
+	 * @param token must be the last token returned by {@link #peekValueToken}
 	 */
 	void consumeFixedToken(Token token);
 
@@ -112,12 +114,12 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 */
 	default void expectFixedToken(Token expected) {
 		assert expected.hasFixedRepresentation();
-		peekToken(expected);
+		peekValueToken(expected);
 		consumeFixedToken(expected);
 	}
 
 	/**
-	 * After {@link #peekToken} returns {@link Token#NUMBER NUMBER},
+	 * After {@link #peekValueToken} returns {@link Token#NUMBER NUMBER},
 	 * this returns the character data
 	 * comprising the text representation of the number.
 	 * <p>
@@ -130,12 +132,12 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 * of buffer boundaries and such.
 	 * <p>
 	 * Consumes the number from the input, leaving the reader
-	 * ready for the next call to {@link #peekToken}.
+	 * ready for the next call to {@link #peekValueToken}.
 	 */
 	CharSequence consumeNumber();
 
 	/**
-	 * After {@link #peekToken} returns {@link Token#STRING STRING},
+	 * After {@link #peekValueToken} returns {@link Token#STRING STRING},
 	 * this prepares to decode the string's contents.
 	 * <p>
 	 * After calling this, the next method called must be one of:
@@ -248,7 +250,7 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 * Handy if you need the entire string.
 	 * <p>
 	 * Consumes the string input, leaving the reader
-	 * ready for the next call to {@link #peekToken}.
+	 * ready for the next call to {@link #peekValueToken}.
 	 *
 	 * @see #nextStringChar()
 	 */
