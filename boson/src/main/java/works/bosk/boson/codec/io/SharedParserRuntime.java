@@ -12,10 +12,14 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.exceptions.JsonProcessingException;
+import works.bosk.boson.exceptions.JsonSyntaxException;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 
 import static java.util.Objects.requireNonNull;
+import static works.bosk.boson.codec.Token.NUMBER;
+import static works.bosk.boson.codec.Token.STRING;
+import static works.bosk.boson.codec.Token.values;
 
 /**
  * Handy wrapper around {@link JsonReader} that makes common operations
@@ -42,7 +46,7 @@ public abstract class SharedParserRuntime {
 	protected final Number parseBigNumber() {
 		logEntry("parseBigNumber");
 		var token = input.peekValueToken();
-		assert token == Token.NUMBER;
+		assert token == NUMBER;
 		return new BigDecimal(input.consumeNumber().toString());
 	}
 
@@ -62,10 +66,12 @@ public abstract class SharedParserRuntime {
 
 	protected final Object parsePrimitiveNumber(MethodHandle parseHandle) {
 		var token = input.peekValueToken();
-		assert token == Token.NUMBER;
+		assert token == NUMBER;
 		String string = input.consumeNumber().toString();
 		try {
 			return parseHandle.invoke(string);
+		} catch (NumberFormatException e) {
+			throw new JsonSyntaxException("Invalid number format: [" + string + "]", e);
 		} catch (Throwable e) {
 			throw new JsonProcessingException("Error decoding number", e.getCause());
 		}
@@ -73,7 +79,7 @@ public abstract class SharedParserRuntime {
 
 	protected final CharSequence readNumberAsCharSequence() {
 		Token token = input.peekValueToken();
-		if (token != Token.NUMBER) {
+		if (token != NUMBER) {
 			parseError("Expected number, not " + token);
 		}
 		return input.consumeNumber();
@@ -113,12 +119,12 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final String parseString() {
-		input.peekValueToken(Token.STRING);
+		input.peekValueToken(STRING);
 		return input.consumeString();
 	}
 
 	protected final void startConsumingString() {
-		assert input.peekValueToken() == Token.STRING; // TODO: This is unsafe because peekValueToken has side effects
+		assert input.peekValueToken() == STRING; // TODO: This is unsafe because peekValueToken has side effects
 		input.startConsumingString();
 	}
 
@@ -145,7 +151,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final void skipTokenWithOrdinal(int ord) {
-		Token token = Token.values()[ord];
+		Token token = values()[ord];
 //		LOGGER.debug("skipTokenWithOrdinal: {}", token);
 		skipToken(token);
 	}

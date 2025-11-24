@@ -30,7 +30,7 @@ import static works.bosk.boson.codec.io.ByteChunkJsonReader.MIN_CHUNK_SIZE;
 
 @ParameterizedClass
 @MethodSource("readerSuppliers")
-class JsonReaderTest {
+class JsonReaderHappyTest {
 	@Parameter
 	Function<String, ? extends JsonReader> readerSupplier;
 
@@ -145,6 +145,16 @@ class JsonReaderTest {
 	}
 
 	@Test
+	void stringWithSurrogates() {
+		try (JsonReader reader = readerSupplier.apply("\"\uD83D\uDE0E\"")) {
+			assertEquals(STRING, peekValueToken(reader));
+			String string = reader.consumeString();
+			assertEquals("\uD83D\uDE0E", string);
+			assertEquals("😎", string);
+		}
+	}
+
+	@Test
 	void stringWithEscapes() {
 		try (JsonReader reader = readerSupplier.apply("\"he\\\"llo\\nworld\\\\\"")) {
 			assertEquals(STRING, peekValueToken(reader));
@@ -159,6 +169,34 @@ class JsonReaderTest {
 			assertEquals("ABC", reader.consumeString());
 		}
 	}
+
+	/**
+	 * JSON has no rules requiring surrogates to be correctly paired.
+	 */
+	@Test
+	void stringWithBackwardSurrogatePair() {
+		try (JsonReader reader = readerSupplier.apply("\"\\uDC00\\uD800\"")) { // Low surrogate before high surrogate
+			assertEquals(STRING, peekValueToken(reader));
+			assertEquals("\uDC00\uD800", reader.consumeString());
+		}
+	}
+
+	@Test
+	void stringWithHighSurrogateOnly() {
+		try (JsonReader reader = readerSupplier.apply("\"\\uD800\"")) {
+			assertEquals(STRING, reader.peekValueToken());
+			assertEquals("\uD800", reader.consumeString());
+		}
+	}
+
+	@Test
+	void stringWithLowSurrogateOnly() {
+		try (JsonReader reader = readerSupplier.apply("\"\\uDC00\"")) {
+			assertEquals(STRING, reader.peekValueToken());
+			assertEquals("\uDC00", reader.consumeString());
+		}
+	}
+
 
 	@Test
 	void emptyString() {

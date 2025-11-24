@@ -2,6 +2,7 @@ package works.bosk.boson.codec.io;
 
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
+import works.bosk.boson.exceptions.JsonFormatException;
 import works.bosk.boson.exceptions.JsonProcessingException;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
@@ -16,6 +17,8 @@ import static works.bosk.boson.codec.Token.NUMBER;
  * Can process JSON text of arbitrary size.
  * <p>
  * Calling {@link #close()} will close the underlying channel.
+ * <p>
+ * Does only as much JSON validation as can be done with no performance impact.
  */
 public final class ByteChunkJsonReader implements JsonReader {
 	/**
@@ -64,13 +67,15 @@ public final class ByteChunkJsonReader implements JsonReader {
 	public ByteChunkJsonReader(ChunkFiller chunkFiller) {
 		this.filler = chunkFiller;
 		// TODO: Not ideal. There's no reason to block here until we actually need data.
-		this.currentChunk = this.filler.nextChunk();
-		this.currentChunkPos = currentChunk.start();
+		if ((this.currentChunk = this.filler.nextChunk()) == null) {
+			this.currentChunkPos = 0;
+		} else {
+			this.currentChunkPos = this.currentChunk.start();
+		}
 	}
 
 	@Override
 	public Token peekValueToken() {
-		new String(new byte[0], US_ASCII);
 		skipInsignificant();
 		return peekRawToken();
 	}
@@ -204,6 +209,37 @@ public final class ByteChunkJsonReader implements JsonReader {
 		// as well simplify things and read directly from the chunk's byte array.
 //		return consumeStringWithStagingBuffer();
 		return consumeStringDirectly();
+	}
+
+	@Override
+	public void validateCharacters(CharSequence expectedCharacters) {
+		int matchedSoFar = 0;
+		while (matchedSoFar < expectedCharacters.length()) {
+			if (currentChunk == null) {
+				throw new JsonFormatException("Unexpected end of input; expected \"" + expectedCharacters + "\"");
+			}
+
+			byte[] buf = currentChunk.bytes();
+
+			// Go to the end of the chunk, or to the end of expectedCharacters, whichever comes first
+			int limit = Integer.min(
+				currentChunk.stop() - currentChunkPos,
+				expectedCharacters.length() - matchedSoFar
+			);
+
+			while (limit-- > 0) {
+				byte b = buf[currentChunkPos++];
+				char expectedChar = expectedCharacters.charAt(matchedSoFar++);
+				assert 1 <= expectedChar && expectedChar <= 127: "ASCII characters only: " + Character.getName(expectedChar);
+				if (b != expectedChar) {
+					throw new JsonFormatException("Unexpected character '" + (char) b +
+						"'; expected '" + expectedChar + "'");
+				}
+			}
+			if (currentChunkPos >= currentChunk.stop()) {
+				nextChunk();
+			}
+		}
 	}
 
 	private String consumeStringWithStagingBuffer() {
@@ -404,6 +440,8 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	/**
 	 * Relatively slow way to advance one byte, loading a new chunk if needed.
+	 * Callers can avoid calling this by using fast-path logic when they
+	 * can prove that there are enough characters in the current chunk.
 	 */
 	void advance() {
 		if (currentChunk != null) {
@@ -420,7 +458,11 @@ public final class ByteChunkJsonReader implements JsonReader {
 		for (int i = 0; i < 4; i++) {
 			int b = bytes[currentChunkPos++];
 			value <<= 4;
-			value |= Character.digit(b, 16);
+			int digitValue = Character.digit(b, 16);
+			if (digitValue == -1) {
+				throw new JsonSyntaxException("Invalid hex digit in Unicode escape: " + (char) b);
+			}
+			value |= digitValue;
 		}
 		return value;
 	}

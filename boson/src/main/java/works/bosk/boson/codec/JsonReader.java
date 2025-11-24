@@ -5,6 +5,7 @@ import works.bosk.boson.codec.io.ByteArrayChunkFiller;
 import works.bosk.boson.codec.io.ByteChunkJsonReader;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.codec.io.SynchronousChunkFiller;
+import works.bosk.boson.codec.io.TokenValidatingReader;
 import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.exceptions.JsonFormatException;
 import works.bosk.boson.exceptions.JsonSyntaxException;
@@ -14,6 +15,7 @@ import static java.lang.Character.MIN_SURROGATE;
 
 /**
  * A streaming JSON reader abstraction for high-performance parsing.
+ * <p>
  * This interface is rather unfriendly by design.
  * Methods mutate the reader's internal state in ways that are not obvious
  * from the outside.
@@ -22,8 +24,15 @@ import static java.lang.Character.MIN_SURROGATE;
  * The intent is that this interface allows highly tuned bytecode to describe
  * its precise requirements in a way that allows the implementation to avoid
  * all unnecessary work.
+ * <p>
+ * Implementations may or may not validate the JSON input;
+ * some invalid input may be accepted and misinterpreted without error.
  */
-public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonReader, CharArrayJsonReader {
+public sealed interface JsonReader extends AutoCloseable permits
+	ByteChunkJsonReader,
+	CharArrayJsonReader,
+	TokenValidatingReader
+{
 	@Override void close(); // No throws Exception
 
 	/**
@@ -52,10 +61,14 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 		return new CharArrayJsonReader(string.toCharArray());
 	}
 
+	default JsonReader withValidation() {
+		return new TokenValidatingReader(this);
+	}
+
 	/**
 	 * Start by calling this.
 	 * Skips insignificant characters (whitespace, commas, and colons)
-	 * and returns the next token encountered, which is either the first
+	 * and returns the next token encountered that is either the first
 	 * or last token of a JSON value, or {@link Token#END_TEXT}.
 	 * <p>
 	 * Depending on the token returned, the next method called must be one of the following:
@@ -73,6 +86,11 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	 * </ul>
 	 *
 	 * This method is idempotent; calling it repeatedly will return the same result.
+	 * <p>
+	 * The token is determined from its first character only.
+	 * For example, if the next character is a digit,
+	 * this will return {@link Token#NUMBER},
+	 * even though the full token might turn out to be invalid.
 	 */
 	Token peekValueToken();
 
@@ -110,7 +128,7 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 	void consumeFixedToken(Token token);
 
 	/**
-	 * @throws JsonSyntaxException if the next token is not the expected one.
+	 * @throws JsonFormatException if the next token is not the expected one.
 	 */
 	default void expectFixedToken(Token expected) {
 		assert expected.hasFixedRepresentation();
@@ -269,6 +287,32 @@ public sealed interface JsonReader extends AutoCloseable permits ByteChunkJsonRe
 		consumeStringContents(sb);
 		return sb.toString();
 	}
+
+	/**
+	 * Consumes the next characters in the input, verifying that they match
+	 * exactly the {@code expectedCharacters}.
+	 * If they match, nothing happens.
+	 * If they do not match, throws {@link JsonFormatException},
+	 * and consumes some unspecified number of characters.
+	 * In effect, this reader is no longer usable.
+	 * <p>
+	 * This can be used by callers that require a higher level of input validation
+	 * compared to other skipping methods like {@link #consumeFixedToken consumeFixedToken},
+	 * which simply assume that the input is correct.
+	 * <p>
+	 * This can only handle JSON syntax outside strings, which is always ASCII.
+	 * <p>
+	 * Since we don't know whether to throw {@link JsonSyntaxException} or {@link JsonContentException},
+	 * because that depends on the calling context,
+	 * we throw {@link JsonSyntaxException} itself.
+	 * Consider catching that and re-throwing a more specific subclass
+	 * based on your context.
+	 *
+	 * @param expectedCharacters the sequence of characters to consume
+	 * @throws JsonFormatException if the next characters in the input
+	 *         do not match the expected characters
+	 */
+	void validateCharacters(CharSequence expectedCharacters);
 
 	/**
 	 * On a best-effort basis, return the upcoming characters in the input.

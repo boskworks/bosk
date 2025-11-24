@@ -35,7 +35,14 @@ public class Util {
 		return result;
 	}
 
-	static boolean isNumberChar(int b) {
+	public static boolean isNumberChar(int b) {
 		return (b >= '0' && b <= '9') || b == '.' || b == '-' || b == '+' || b == 'e' || b == 'E';
+	}
+
+	/**
+	 * Zero is a special case that the caller must handle separately.
+	 */
+	public static boolean isNumberLeadingChar(int b) {
+		return (b >= '1' && b <= '9') || b == '-';
 	}
 }

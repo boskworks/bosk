@@ -2,6 +2,7 @@ package works.bosk.boson.codec.io;
 
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
+import works.bosk.boson.exceptions.JsonFormatException;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.lang.Math.min;
@@ -10,6 +11,8 @@ import static java.lang.Math.min;
  * A {@link JsonReader} that reads from a char array.
  * Useful for reading JSON text that is small enough to have been
  * fully loaded into memory already, like when reading from a String.
+ * <p>
+ * Does only as much JSON validation as can be done with no performance impact.
  */
 public final class CharArrayJsonReader implements JsonReader {
 	final char[] chars;
@@ -150,6 +153,21 @@ public final class CharArrayJsonReader implements JsonReader {
 		String result = new String(chars, start, pos - start);
 		pos++; // Skip closing quote
 		return result;
+	}
+
+	@Override
+	public void validateCharacters(CharSequence expectedCharacters) {
+		if (expectedCharacters.length() > chars.length - pos) {
+			throw new JsonFormatException("Unexpected end of input; expecting '" + expectedCharacters + "'");
+		} else {
+			for (int i = 0; i < expectedCharacters.length(); i++) {
+				if (chars[pos + i] != expectedCharacters.charAt(i)) {
+					throw new JsonFormatException("Unexpected character '" + chars[pos + i] +
+						"'; expecting '" + expectedCharacters.charAt(i) + "'");
+				}
+			}
+			pos += expectedCharacters.length();
+		}
 	}
 
 	@Override
