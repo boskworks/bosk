@@ -181,7 +181,8 @@ public final class CharArrayJsonReader implements JsonReader {
 		return pos;
 	}
 
-	private Token peekRawToken() {
+	@Override
+	public Token peekRawToken() {
 		return Token.startingWith(peekRawChar());
 	}
 

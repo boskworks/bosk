@@ -24,6 +24,9 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 		downstream.close();
 	}
 
+	/**
+	 * @throws JsonSyntaxException if the next token is invalid; never returns {@link Token#ERROR}
+	 */
 	@Override
 	public Token peekValueToken() {
 		Token result = downstream.peekValueToken();
@@ -33,11 +36,23 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 		return result;
 	}
 
+	/**
+	 * @throws JsonSyntaxException if the next token is invalid; never returns {@link Token#ERROR}
+	 */
+	@Override
+	public Token peekRawToken() {
+		Token result = downstream.peekRawToken();
+		if (result == ERROR) {
+			throw new JsonSyntaxException("Invalid JSON syntax at offset " + currentOffset());
+		}
+		return result;
+	}
+
 	@Override
 	public void consumeFixedToken(Token token) {
-		if (!token.equals(peekValueToken())) {
+		if (!token.equals(peekRawToken())) {
 			throw new JsonSyntaxException(
-				"Expected token " + token + " but found " + peekValueToken() +
+				"Expected token " + token + " but found " + peekRawToken() +
 				" at offset " + currentOffset());
 		}
 		try {

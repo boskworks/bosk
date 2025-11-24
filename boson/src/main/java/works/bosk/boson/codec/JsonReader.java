@@ -113,6 +113,19 @@ public sealed interface JsonReader extends AutoCloseable permits
 	}
 
 	/**
+	 * Returns the next token without skipping insignificant characters.
+	 * Has no side effects.
+	 * <p>
+	 * This is useful for implementations that need to process
+	 * the exact structure of the input, including commas, colons,
+	 * and whitespace.
+	 *
+	 * @return the token we're currently positioned at, including {@link Token#INSIGNIFICANT} or {@link Token#ERROR}
+	 * if we're not positioned at the start of a meaningful token.
+	 */
+	Token peekRawToken();
+
+	/**
 	 * After {@link #peekValueToken} returns a token with a
 	 * {@link Token#hasFixedRepresentation fixed representation},
 	 * this consumes that token from the input, leaving the reader

@@ -124,7 +124,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final void startConsumingString() {
-		assert input.peekValueToken() == STRING; // TODO: This is unsafe because peekValueToken has side effects
+		assert input.peekRawToken() == STRING;
 		input.startConsumingString();
 	}
 
