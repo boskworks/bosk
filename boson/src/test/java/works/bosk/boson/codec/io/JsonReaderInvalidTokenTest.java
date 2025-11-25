@@ -79,7 +79,7 @@ class JsonReaderInvalidTokenTest {
 	void unescapedControlCharacter() {
 		try (JsonReader reader = readerFor("\"line\nbreak\"")) {
 			assertEquals(STRING, reader.peekValueToken());
-			assertThrows(JsonSyntaxException.class, reader::consumeString);
+			assertThrows(JsonSyntaxException.class, () -> reader.consumeString());
 		}
 	}
 

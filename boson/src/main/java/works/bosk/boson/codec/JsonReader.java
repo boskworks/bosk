@@ -33,6 +33,11 @@ public sealed interface JsonReader extends AutoCloseable permits
 	CharArrayJsonReader,
 	TokenValidatingReader
 {
+	/**
+	 * Returned by {@link #nextStringChar()} to indicate the closing quote has been reached.
+	 */
+	int END_OF_STRING = -2;
+
 	@Override void close(); // No throws Exception
 
 	/**
@@ -208,8 +213,14 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * If you are using something that cares about surrogates, you'll need to check for that case.
 	 *
 	 * @return next decoded character or code point of the string,
-	 * or -1 to indicate the end of the string,
+	 * or {@link #END_OF_STRING} to indicate the end of the string,
 	 * at which point the closing quote has been consumed from the input.
+	 * May also return other negative values for other errors;
+	 * ought to throw a {@link JsonSyntaxException},
+	 * but some implementations may choose to return negative values instead.
+	 * In particular, some implementations return an infinite stream of negative values
+	 * after the end of input, so if you loop checking specifically for -2,
+	 * you might hang.
 	 */
 	int nextStringChar();
 
@@ -229,7 +240,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 *
 	 * @param n number of characters to skip
 	 * @throws IllegalArgumentException if {@code n} is negative
-	 * @throws IllegalStateException if {@code n} is more than the remaining characters in the string
+	 * @throws JsonSyntaxException if {@code n} is more than the remaining characters in the string
 	 */
 	default void skipStringChars(int n) {
 		if (n < 0) {
@@ -241,7 +252,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 				// A surrogate pair counts as one character in this context.
 				c = nextStringChar();
 			}
-			if (c == -1) {
+			if (c < 0) {
 				if (i != 1) {
 					throw new JsonSyntaxException("Unexpected end of string while skipping characters");
 				}
@@ -251,7 +262,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 
 	/**
 	 * Skips the remainder of the string token, as though {@link #nextStringChar()}
-	 * had been called repeatedly until it returned -1.
+	 * had been called repeatedly until it returned a negative value.
 	 * Useful if the rest of the string's value isn't needed.
 	 */
 	void skipToEndOfString();
@@ -288,7 +299,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	default void consumeStringContents(StringBuilder sb) {
 		startConsumingString();
 		int c;
-		while ((c = nextStringChar()) != -1) {
+		while ((c = nextStringChar()) >= 0) {
 			// Bonus: despite what its Javadocs say, this also handles surrogates.
 			// No need for special logic.
 			sb.appendCodePoint(c);

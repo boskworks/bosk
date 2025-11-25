@@ -142,8 +142,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 			int b = bytes[currentChunkPos++];
 			switch (b) {
 				case '"' -> {
-					// End of string
-					return -1;
+					return END_OF_STRING;
 				}
 				case '\\' -> {
 					int esc = bytes[currentChunkPos++];
@@ -155,12 +154,22 @@ public final class ByteChunkJsonReader implements JsonReader {
 			}
 
 			// Normal character
+			int result;
 			if ((b & 0x80) == 0) {
 				// ASCII fast path
-				return b;
+				result = b;
 			} else {
 				// Decode UTF-8 multibyte sequence
-				return decodeUtf8Char(b);
+				result = decodeUtf8Char(b);
+			}
+
+			// Because we decode backslash sequences into code points,
+			// this is the only place we can distinguish actual illegal characters
+			// from legal escape sequences.
+			if (0x20 <= result && result <= 0x10FFFF && result != '"' && result != '\\') {
+				return result;
+			} else {
+				throw new JsonSyntaxException("Invalid character in string: " + Integer.toHexString(result));
 			}
 		} catch (ArrayIndexOutOfBoundsException e) {
 			throw new JsonSyntaxException("Unexpected end of text in the middle of a string character", e);
@@ -196,7 +205,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	@Override
 	public void skipToEndOfString() {
-		while (nextStringChar() != -1) {}
+		while (nextStringChar() >= 0) {}
 	}
 
 	@Override

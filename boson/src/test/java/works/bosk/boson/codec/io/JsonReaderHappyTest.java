@@ -38,11 +38,22 @@ class JsonReaderHappyTest {
 		return Stream.of(
 			new ByteArray(),
 			new ByteChunks(),
-			new CharArray()
+			new CharArray(),
+			new CharArray(){
+				@Override
+				public JsonReader apply(String s) {
+					return super.apply(s).withValidation();
+				}
+
+				@Override
+				public String toString() {
+					return "Validating " + super.toString();
+				}
+			}
 		);
 	}
 
-	static final class ByteArray implements Function<String, JsonReader> {
+	static class ByteArray implements Function<String, JsonReader> {
 		@Override
 		public JsonReader apply(String s) {
 			ByteArrayInputStream in = new ByteArrayInputStream(s.getBytes(UTF_8));
@@ -55,7 +66,7 @@ class JsonReaderHappyTest {
 		}
 	}
 
-	static final class ByteChunks implements Function<String, JsonReader> {
+	static class ByteChunks implements Function<String, JsonReader> {
 		@Override
 		public JsonReader apply(String s) {
 			return new ByteChunkJsonReader(new SynchronousChunkFiller(new ByteArrayInputStream(s.getBytes(UTF_8)), MIN_CHUNK_SIZE));
@@ -67,7 +78,7 @@ class JsonReaderHappyTest {
 		}
 	}
 
-	static final class CharArray implements Function<String, JsonReader> {
+	static class CharArray implements Function<String, JsonReader> {
 		@Override
 		public JsonReader apply(String s) {
 			return JsonReader.create(s.toCharArray());
@@ -110,7 +121,7 @@ class JsonReaderHappyTest {
 					"Entire code point");
 			}
 
-			assertEquals(-1, reader.nextStringChar());
+			assertEquals(-2, reader.nextStringChar());
 			assertEquals(END_TEXT, consumeToken(reader));
 		}
 	}
@@ -125,7 +136,7 @@ class JsonReaderHappyTest {
 			assertEquals(STRING, peekValueToken(reader));
 			reader.startConsumingString();
 			reader.skipStringChars(3);
-			assertEquals(-1, reader.nextStringChar());
+			assertEquals(-2, reader.nextStringChar());
 			assertEquals(END_TEXT, consumeToken(reader));
 		}
 	}
@@ -139,7 +150,7 @@ class JsonReaderHappyTest {
 				"First surrogate, even though invalid");
 			assertEquals(0xd83d, reader.nextStringChar(),
 				"Second surrogate");
-			assertEquals(-1, reader.nextStringChar());
+			assertEquals(-2, reader.nextStringChar());
 			assertEquals(END_TEXT, consumeToken(reader));
 		}
 	}
@@ -263,7 +274,7 @@ class JsonReaderHappyTest {
 	void unterminatedStringThrows() {
 		try (JsonReader reader = readerSupplier.apply("\"abc")) {
 			assertEquals(STRING, peekValueToken(reader));
-			assertThrows(JsonSyntaxException.class, reader::consumeString);
+			assertThrows(JsonSyntaxException.class, () -> reader.consumeString());
 		}
 	}
 

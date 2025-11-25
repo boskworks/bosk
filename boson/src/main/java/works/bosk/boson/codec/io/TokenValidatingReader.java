@@ -101,14 +101,11 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 
 	@Override
 	public int nextStringChar() {
-		int i = downstream.nextStringChar();
-		// Make sure it's a valid JSON character
-		if (0 <= i && i < 0x20 || i == '"' || i == '\\') {
-			throw new JsonSyntaxException(
-				"Invalid character " + Character.getName(i) + " in JSON string at offset " + currentOffset()
-			);
+		int result = downstream.nextStringChar();
+		if (result < 0 && result != END_OF_STRING) {
+			throw new JsonSyntaxException("Error in string at offset " + currentOffset());
 		}
-		return i;
+		return result;
 	}
 
 	@Override

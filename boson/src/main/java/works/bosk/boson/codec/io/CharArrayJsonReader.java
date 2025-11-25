@@ -73,27 +73,19 @@ public final class CharArrayJsonReader implements JsonReader {
 	@Override
 	public int nextStringChar() {
 		if (pos >= chars.length) {
-			return -1;
+			throw new JsonSyntaxException("Unterminated string at end of input");
 		}
 		char c = chars[pos++];
 		if (Character.isSurrogate(c)) {
 			if (pos >= chars.length) {
-				// Unpaired surrogate at the end of input.
-				// We're doomed to get a parse error; might
-				// as well return -1 to indicate the end of input
-				// in hopes that will generate a useful error message.
-				return -1;
+				throw new JsonSyntaxException("Unpaired UTF-8 surrogate at end of input");
 			}
 			return Character.toCodePoint(c, chars[pos++]);
 		} else if (c == '"') {
-			return -1;
+			return END_OF_STRING;
 		} else if (c == '\\') {
 			if (pos >= chars.length) {
-				// Unfinished backslash sequence at the end of input.
-				// We're doomed to get a parse error; might
-				// as well return -1 to indicate the end of input
-				// in hopes that will generate a useful error message.
-				return -1;
+				throw new JsonSyntaxException("Unterminated escape sequence at end of input");
 			}
 			char esc = chars[pos++];
 			return switch (esc) {
@@ -105,8 +97,7 @@ public final class CharArrayJsonReader implements JsonReader {
 				case 't' -> '\t';
 				case 'u' -> {
 					if (pos + 4 > chars.length) {
-						// Incomplete Unicode escape at the end of input.
-						yield -1;
+						throw new JsonSyntaxException("Incomplete Unicode escape sequence at end of input");
 					}
 					int value = 0;
 					for (int i = 0; i < 4; i++) {
@@ -118,14 +109,19 @@ public final class CharArrayJsonReader implements JsonReader {
 				}
 				default -> throw new JsonSyntaxException("Invalid escape: \\" + esc);
 			};
-		} else {
+		} else if (c >= 0x20) {
 			return c;
+		} else {
+			// Because we decode backslash sequences into code points,
+			// this is the only place we can distinguish actual illegal characters
+			// from legal escape sequences.
+			throw new JsonSyntaxException("Invalid character in string: " + Integer.toHexString(c));
 		}
 	}
 
 	@Override
 	public void skipToEndOfString() {
-		while (nextStringChar() != -1) { }
+		while (nextStringChar() >= 0) { }
 	}
 
 	@Override
