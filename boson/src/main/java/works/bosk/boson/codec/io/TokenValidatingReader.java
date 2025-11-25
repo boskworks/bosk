@@ -19,6 +19,10 @@ import static works.bosk.boson.codec.Token.ERROR;
  *
  */
 public record TokenValidatingReader(JsonReader downstream) implements JsonReader {
+
+	/**
+	 * Closing this closes {@link #downstream}.
+	 */
 	@Override
 	public void close() {
 		downstream.close();
@@ -97,6 +101,12 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	@Override
 	public void startConsumingString() {
 		downstream.startConsumingString();
+	}
+
+	@Override
+	public JsonReader withValidation() {
+		// Already validating
+		return this;
 	}
 
 	@Override

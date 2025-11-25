@@ -76,12 +76,7 @@ public final class CharArrayJsonReader implements JsonReader {
 			throw new JsonSyntaxException("Unterminated string at end of input");
 		}
 		char c = chars[pos++];
-		if (Character.isSurrogate(c)) {
-			if (pos >= chars.length) {
-				throw new JsonSyntaxException("Unpaired UTF-8 surrogate at end of input");
-			}
-			return Character.toCodePoint(c, chars[pos++]);
-		} else if (c == '"') {
+		if (c == '"') {
 			return END_OF_STRING;
 		} else if (c == '\\') {
 			if (pos >= chars.length) {

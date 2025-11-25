@@ -1,14 +1,15 @@
 package works.bosk.boson.codec.io;
 
-import java.io.ByteArrayInputStream;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.boson.codec.Token.FALSE;
@@ -21,7 +22,15 @@ import static works.bosk.boson.codec.Token.STRING;
  * {@link JsonReader} is unable to describe the next token,
  * as opposed to structural problems like mismatched brackets.
  */
-class JsonReaderInvalidTokenTest {
+@ParameterizedClass
+@MethodSource("readerSuppliers")
+class JsonReaderInvalidTokenTest extends AbstractJsonReaderTest {
+
+	@Override
+	protected JsonReader readerFor(String json) {
+		// We need validation on all readers here
+		return super.readerFor(json).withValidation();
+	}
 
 	@ParameterizedTest
 	@ValueSource(strings = {
@@ -79,7 +88,7 @@ class JsonReaderInvalidTokenTest {
 	void unescapedControlCharacter() {
 		try (JsonReader reader = readerFor("\"line\nbreak\"")) {
 			assertEquals(STRING, reader.peekValueToken());
-			assertThrows(JsonSyntaxException.class, () -> reader.consumeString());
+			assertThrows(JsonSyntaxException.class, reader::consumeString);
 		}
 	}
 
@@ -183,7 +192,7 @@ class JsonReaderInvalidTokenTest {
 		byte[] invalidUtf8 = new byte[] { (byte) 0x22, (byte) 0xFF, (byte) 0xFE, (byte) 0x22 }; // "��"
 		try (JsonReader reader = JsonReader.create(invalidUtf8)) {
 			assertEquals(STRING, reader.peekValueToken());
-			assertThrows(JsonSyntaxException.class, () -> reader.consumeString());
+			assertThrows(JsonSyntaxException.class, reader::consumeString);
 		}
 	}
 
@@ -198,6 +207,53 @@ class JsonReaderInvalidTokenTest {
 	void multiLineComment() {
 		try (JsonReader reader = readerFor("/* comment */ 123")) {
 			assertThrows(JsonSyntaxException.class, reader::peekValueToken);
+		}
+	}
+
+	@Test
+	void justAQuote() {
+		try (JsonReader reader = readerFor("\"")) {
+			assertEquals(STRING, reader.peekValueToken());
+			reader.startConsumingString();
+			assertThrows(JsonSyntaxException.class, reader::nextStringChar);
+		}
+	}
+
+	@Test
+	void trailingBackslash() {
+		// Opening quote then backslash, end of input
+		try (JsonReader reader = readerFor(new String(new char[] { '"', '\\' }))) {
+			assertEquals(STRING, reader.peekValueToken());
+			reader.startConsumingString();
+			assertThrows(JsonSyntaxException.class, reader::nextStringChar);
+		}
+	}
+
+	/**
+	 * Java has difficulty representing unpaired surrogates in string literals.
+	 * The UTF-8 based readers can't represent this case at all.
+	 * This case is probably not really worth testing anyway though.
+	 */
+	@Disabled
+	@Test
+	void trailingHalfSurrogate() {
+		// Opening quote then an unpaired high surrogate
+		String json = new String(new char[]{'"', '\uD800'});
+		try (JsonReader reader = readerFor(json)) {
+			assertEquals(STRING, reader.peekValueToken());
+			reader.startConsumingString();
+			assertEquals('\uD800', reader.nextStringChar());
+			assertThrows(JsonSyntaxException.class, reader::nextStringChar);
+		}
+	}
+
+	@Test
+	void trailingPartialUnicodeEscape() {
+		// Half a unicode escape sequence
+		try (JsonReader reader = readerFor(new String(new char[] { '"', '\\', 'u', '1', '2' }))) {
+			assertEquals(STRING, reader.peekValueToken());
+			reader.startConsumingString();
+			assertThrows(JsonSyntaxException.class, reader::nextStringChar);
 		}
 	}
 
@@ -231,11 +287,4 @@ class JsonReaderInvalidTokenTest {
 
 	 */
 
-	/**
-	 * Helper to create a JsonReader for a string
-	 */
-	private JsonReader readerFor(String json) {
-		ByteArrayInputStream in = new ByteArrayInputStream(json.getBytes(UTF_8));
-		return JsonReader.create(in).withValidation();
-	}
 }

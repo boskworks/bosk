@@ -3,7 +3,6 @@ package works.bosk.boson.codec.io;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.exceptions.JsonFormatException;
-import works.bosk.boson.exceptions.JsonProcessingException;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.lang.Math.min;
@@ -133,8 +132,16 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	@Override
 	public int nextStringChar() {
+		int currentChunkStop;
 		try {
-			if (currentChunkPos + CARRYOVER_BYTES >= currentChunk.stop()) {
+			currentChunkStop = currentChunk.stop();
+		} catch (NullPointerException e) {
+			// This is a rare case, so we don't want to check for null every time.
+			// Communicate to the JIT that this is rare by using the NPE instead of a null check.
+			throw new JsonSyntaxException("Unexpected end of text in the middle of a string", e);
+		}
+		try {
+			if (currentChunkPos + CARRYOVER_BYTES >= currentChunkStop) {
 				doCarryover();
 			}
 
@@ -194,12 +201,11 @@ public final class ByteChunkJsonReader implements JsonReader {
 			// We've hit the end. Might as well continue with the current chunk
 			currentChunk = initialChunk;
 			currentChunkPos = initialChunkPos;
-		} else if (currentChunk.start() >= length) {
+		} else {
+			assert currentChunk.start() >= length: "Chunk must accommodate carryover";
 			System.arraycopy(carryover, 0, currentChunk.bytes(), currentChunk.start() - length, length);
 			currentChunk = new ByteChunk(currentChunk.bytes(), currentChunk.start() - length, currentChunk.stop());
 			currentChunkPos = currentChunk.start();
-		} else {
-			throw new JsonProcessingException("Chunk cannot accommodate carryover");
 		}
 	}
 
