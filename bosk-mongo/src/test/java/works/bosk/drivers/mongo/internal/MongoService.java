@@ -15,9 +15,9 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.containers.Network;
-import org.testcontainers.containers.ToxiproxyContainer;
+import org.testcontainers.mongodb.MongoDBContainer;
+import org.testcontainers.toxiproxy.ToxiproxyContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import static com.mongodb.ReadPreference.secondaryPreferred;
@@ -101,14 +101,9 @@ public class MongoService implements Closeable {
 
 	private static MongoDBContainer mongoContainer() {
 		MongoDBContainer container = new MongoDBContainer(DockerImageName.parse("mongo:7.0"))
+			.withReplicaSet()
 			.withTmpFs(Map.of("/data/db", "rw"))
-			.withNetwork(NETWORK)
-			.withCommand(
-				"mongod",
-				"--replSet", "rsLonesome",
-				"--port", "27017",
-				"--bind_ip_all"
-			);
+			.withNetwork(NETWORK);
 		container.start();
 		return container;
 	}

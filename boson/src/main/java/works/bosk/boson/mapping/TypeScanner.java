@@ -83,7 +83,7 @@ import static works.bosk.boson.types.DataType.STRING;
  * is optimized via the {@link Optimizer}, so there's essentially no
  * cost to using {@link TypeRefNode}s.
  */
-public class TypeScanner {
+public final class TypeScanner {
 	final Map<DataType, TypeRefNode> refs = new LinkedHashMap<>();
 	final TypeMap inProgress;
 	final Deque<Bundle> bundles = new ArrayDeque<>();
