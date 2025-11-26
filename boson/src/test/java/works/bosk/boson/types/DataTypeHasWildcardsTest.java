@@ -2,7 +2,6 @@ package works.bosk.boson.types;
 
 import java.lang.reflect.Parameter;
 import java.util.List;
-import org.jetbrains.annotations.NotNull;
 import works.bosk.boson.codec.PrimitiveTypeInjector;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
@@ -67,7 +66,8 @@ public class DataTypeHasWildcardsTest {
 			return getCases();
 		}
 
-		private static <T> @NotNull List<Case> getCases() {
+		@SuppressWarnings("rawtypes")
+		private static <T> List<Case> getCases() {
 			return List.of(
 				new Case(
 					DataType.STRING,

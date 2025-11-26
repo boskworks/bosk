@@ -36,7 +36,6 @@ import works.bosk.SideTable;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
 import works.bosk.drivers.BufferingDriver;
-import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
@@ -336,7 +335,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	@InjectedTest
 	void initialStateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException {
-		setLogging(ERROR, BsonSerializer.class);
+		setLogging(ERROR, StateTreeSerializer.class);
 
 		// Upon creating bosk, the initial value will be saved to MongoDB
 		new Bosk<>(
@@ -436,7 +435,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	@InjectedTest
 	void deleteNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class);
+		setLogging(ERROR, StateTreeSerializer.class);
 
 		Bosk<TestEntity> newerBosk = new Bosk<>(
 			boskName("Newer"),
