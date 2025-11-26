@@ -38,8 +38,8 @@ import static works.bosk.boson.mapping.TypeMap.Settings.DEFAULT;
 @BenchmarkMode(Throughput)
 @State(Scope.Thread)
 @Fork(3)
-@Warmup(iterations = 8, time = 1)
-@Measurement(iterations = 5, time = 1, timeUnit = SECONDS)
+@Warmup(iterations = 12, time = 1)
+@Measurement(iterations = 6, time = 1, timeUnit = SECONDS)
 public class ParseBenchmark {
 	private char[] json;
 	private ObjectReader objectReader;
@@ -72,6 +72,7 @@ public class ParseBenchmark {
 		TypeScanner defaultTS = new TypeScanner(DEFAULT);
 		defaultTS.specify(DataType.of(Month.class), Month.specNode());
 		defaultTS.scan(targetType);
+		defaultTS.scan(listOfOneOfEach);
 		TypeMap defaultTypeMap = defaultTS.build();
 		JsonValueSpec defaultSpec = defaultTypeMap.get(targetType);
 		interpreter = CodecBuilder.using(defaultTypeMap)
@@ -79,17 +80,24 @@ public class ParseBenchmark {
 		compiled = CodecBuilder.using(defaultTypeMap)
 			.buildCompiled().parserFor(defaultSpec);
 
-		TypeScanner experimentalTS = new TypeScanner(DEFAULT.withFewerSwitches());
-		experimentalTS.specify(DataType.of(Month.class), Month.specNode());
-		experimentalTS.scan(targetType);
-		experimentalTS.scan(listOfOneOfEach);
-		var experimentalTypeMap = experimentalTS.build();
-		JsonValueSpec experimentalSpec = experimentalTypeMap.get(targetType);
-		interpreterExperimental = CodecBuilder.using(experimentalTypeMap)
-			.buildInterpreter().parserFor(experimentalSpec);
-		compiledExperimental = CodecBuilder.using(experimentalTypeMap)
-			.buildCompiled().parserFor(experimentalSpec);
+		TypeMap experimentalTypeMap;
+		if (false) {
+			TypeScanner experimentalTS = new TypeScanner(DEFAULT);
+			experimentalTS.specify(DataType.of(Month.class), Month.specNode());
+			experimentalTS.scan(targetType);
+			experimentalTS.scan(listOfOneOfEach);
+			experimentalTypeMap = experimentalTS.build();
+			JsonValueSpec experimentalSpec = experimentalTypeMap.get(targetType);
+			interpreterExperimental = CodecBuilder.using(experimentalTypeMap)
+				.buildInterpreter().parserFor(experimentalSpec);
+			compiledExperimental = CodecBuilder.using(experimentalTypeMap)
+				.buildCompiled().parserFor(experimentalSpec);
 
+		} else {
+			interpreterExperimental = interpreter;
+			compiledExperimental = compiled;
+			experimentalTypeMap = defaultTypeMap;
+		}
 		listReader = objectMapper.readerForListOf(OneOfEach.class);
 		listParser = CodecBuilder.using(experimentalTypeMap).buildCompiled().parserFor(experimentalTypeMap.get(listOfOneOfEach));
 	}
@@ -115,14 +123,14 @@ public class ParseBenchmark {
 		return interpreterExperimental.parse(new CharArrayJsonReader(json));
 	}
 
-//	@Benchmark
+	@Benchmark
 	public Object compiled_default() throws IOException {
 		return compiled.parse(new CharArrayJsonReader(json));
 	}
 
 	@Benchmark
 	public Object compiled_experimental() throws IOException {
-		return compiledExperimental.parse(new CharArrayJsonReader(json));
+		return compiledExperimental.parse(new CharArrayJsonReader(json).withValidation());
 	}
 
 	@Benchmark
