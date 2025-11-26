@@ -119,17 +119,13 @@ public class TypeMap {
 		boolean fewerSwitches,
 		boolean shallowScan
 	) {
-		public static Settings DEFAULT = new Settings(true, false, true, false, false);
+		public static Settings DEFAULT = new Settings(true, false, true, true, false);
 
 		/**
 		 * Makes no effort to recurse into structures,
 		 * instead using {@link works.bosk.boson.types.TypeReference} for any types encountered.
 		 */
 		public static Settings SHALLOW = new Settings(false, false, false, false, true);
-
-		public Settings withFewerSwitches() {
-			return new Settings(compiled, iterative, optimize, true, shallowScan);
-		}
 
 		public Settings withCompiled(boolean compiled) {
 			return new Settings(compiled, iterative, optimize, fewerSwitches, shallowScan);
