@@ -69,32 +69,67 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	@Override
 	public CharSequence consumeNumber() {
 		CharSequence result = downstream.consumeNumber();
-		if (!isValidJsonNumber(result)) {
-			throw new JsonSyntaxException(
-				"Invalid JSON number '" + result + "' at offset " + currentOffset());
-		}
+		validateJsonNumber(result);
 		return result;
 	}
 
-	private boolean isValidJsonNumber(CharSequence seq) {
-		if ("0".contentEquals(seq)) {
-			return true;
-		}
-		if (!Util.isNumberLeadingChar(seq.charAt(0))) {
-			throw new JsonSyntaxException(
-				"Invalid leading character in JSON number: '" + seq + "'"
-			);
-		}
-		if (!Character.isDigit(seq.charAt(seq.length()-1))) {
-			throw new JsonSyntaxException(
-				"Invalid trailing character in JSON number: '" + seq + "'"
-			);
-		}
+	private void validateJsonNumber(CharSequence seq) {
+		// Regex is insanely slow
 		try {
-			Double.parseDouble(seq.toString());
-			return true;
-		} catch (NumberFormatException e) {
-			return false;
+			int i = 0;
+			if (seq.charAt(0) == '-') {
+				i++;
+			}
+			switch (seq.charAt(i)) {
+				case '0' -> i++;
+				case '1', '2', '3', '4', '5', '6', '7', '8', '9' -> {
+					do {
+						i++;
+						if (i == seq.length()) {
+							return;
+						}
+					} while (Character.isDigit(seq.charAt(i)));
+				}
+				default -> throw new JsonSyntaxException(
+					"Invalid leading character in JSON number: '" + seq + "'"
+				);
+			}
+			if (seq.charAt(i) == '.') {
+				i++;
+				if (!Character.isDigit(seq.charAt(i))) {
+					throw new JsonSyntaxException(
+						"Invalid fractional part in JSON number: '" + seq + "'"
+					);
+				}
+				do {
+					i++;
+					if (i == seq.length()) {
+						return;
+					}
+				} while (Character.isDigit(seq.charAt(i)));
+			}
+			if ((seq.charAt(i) == 'e' || seq.charAt(i) == 'E')) {
+				i++;
+				if (seq.charAt(i) == '+' || seq.charAt(i) == '-') {
+					i++;
+				}
+				if (!Character.isDigit(seq.charAt(i))) {
+					throw new JsonSyntaxException(
+						"Invalid exponent part in JSON number: '" + seq + "'"
+					);
+				}
+				do {
+					i++;
+					if (i == seq.length()) {
+						return;
+					}
+				} while (Character.isDigit(seq.charAt(i)));
+			}
+			throw new JsonSyntaxException(
+				"Invalid trailing characters in JSON number: '" + seq + "'"
+			);
+		} catch (IndexOutOfBoundsException e) {
+			throw new JsonSyntaxException("Unexpected end of number constant", e);
 		}
 	}
 
