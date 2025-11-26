@@ -100,7 +100,7 @@ public class MongoService implements Closeable {
 	}
 
 	private static MongoDBContainer mongoContainer() {
-		MongoDBContainer container = new MongoDBContainer(DockerImageName.parse("mongo:7.0"))
+		MongoDBContainer container = new MongoDBContainer(DockerImageName.parse("mongo:8.0"))
 			.withReplicaSet()
 			.withTmpFs(Map.of("/data/db", "rw"))
 			.withNetwork(NETWORK);
