@@ -30,9 +30,9 @@ public enum Token {
 	public static Token startingWith(int codePoint) {
 		return switch (codePoint) {
 			case -1 -> END_TEXT;
-			case 'n', 'N' -> NULL;
-			case 'f', 'F' -> FALSE;
-			case 't', 'T' -> TRUE;
+			case 'n' -> NULL;
+			case 'f' -> FALSE;
+			case 't' -> TRUE;
 			case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-' -> NUMBER; // Multi-digit numbers can't technically start with a zero
 			case '{' -> START_OBJECT;
 			case '}' -> END_OBJECT;

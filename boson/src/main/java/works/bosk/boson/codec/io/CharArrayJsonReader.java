@@ -2,6 +2,7 @@ package works.bosk.boson.codec.io;
 
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
+import works.bosk.boson.exceptions.JsonFormatException;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.lang.Math.min;
@@ -10,6 +11,8 @@ import static java.lang.Math.min;
  * A {@link JsonReader} that reads from a char array.
  * Useful for reading JSON text that is small enough to have been
  * fully loaded into memory already, like when reading from a String.
+ * <p>
+ * Does only as much JSON validation as can be done with no performance impact.
  */
 public final class CharArrayJsonReader implements JsonReader {
 	final char[] chars;
@@ -24,15 +27,15 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	@Override
-	public Token peekToken() {
+	public Token peekValueToken() {
 		skipInsignificant();
-		return Token.startingWith(peekChar());
+		return peekRawToken();
 	}
 
 	/**
 	 * @return NOT a code point!
 	 */
-	private int peekChar() {
+	private int peekRawChar() {
 		if (pos >= chars.length) {
 			return -1;
 		} else {
@@ -41,14 +44,14 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	private void skipInsignificant() {
-		while (Util.fast_isInsignificant(peekChar())) {
+		while (Util.fast_isInsignificant(peekRawChar())) {
 			pos++;
 		}
 	}
 
 	@Override
 	public void consumeFixedToken(Token token) {
-		assert peekToken() == token;
+		assert peekRawToken() == token;
 		pos += token.fixedRepresentation().length();
 	}
 
@@ -63,34 +66,21 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	@Override
 	public void startConsumingString() {
-		assert peekToken() == Token.STRING;
+		assert peekRawToken() == Token.STRING;
 		pos++; // Skip opening quote
 	}
 
 	@Override
 	public int nextStringChar() {
 		if (pos >= chars.length) {
-			return -1;
+			throw new JsonSyntaxException("Unterminated string at end of input");
 		}
 		char c = chars[pos++];
-		if (Character.isSurrogate(c)) {
-			if (pos >= chars.length) {
-				// Unpaired surrogate at the end of input.
-				// We're doomed to get a parse error; might
-				// as well return -1 to indicate the end of input
-				// in hopes that will generate a useful error message.
-				return -1;
-			}
-			return Character.toCodePoint(c, chars[pos++]);
-		} else if (c == '"') {
-			return -1;
+		if (c == '"') {
+			return END_OF_STRING;
 		} else if (c == '\\') {
 			if (pos >= chars.length) {
-				// Unfinished backslash sequence at the end of input.
-				// We're doomed to get a parse error; might
-				// as well return -1 to indicate the end of input
-				// in hopes that will generate a useful error message.
-				return -1;
+				throw new JsonSyntaxException("Unterminated escape sequence at end of input");
 			}
 			char esc = chars[pos++];
 			return switch (esc) {
@@ -102,8 +92,7 @@ public final class CharArrayJsonReader implements JsonReader {
 				case 't' -> '\t';
 				case 'u' -> {
 					if (pos + 4 > chars.length) {
-						// Incomplete Unicode escape at the end of input.
-						yield -1;
+						throw new JsonSyntaxException("Incomplete Unicode escape sequence at end of input");
 					}
 					int value = 0;
 					for (int i = 0; i < 4; i++) {
@@ -115,14 +104,19 @@ public final class CharArrayJsonReader implements JsonReader {
 				}
 				default -> throw new JsonSyntaxException("Invalid escape: \\" + esc);
 			};
-		} else {
+		} else if (c >= 0x20) {
 			return c;
+		} else {
+			// Because we decode backslash sequences into code points,
+			// this is the only place we can distinguish actual illegal characters
+			// from legal escape sequences.
+			throw new JsonSyntaxException("Invalid character in string: " + Integer.toHexString(c));
 		}
 	}
 
 	@Override
 	public void skipToEndOfString() {
-		while (nextStringChar() != -1) { }
+		while (nextStringChar() >= 0) { }
 	}
 
 	@Override
@@ -153,6 +147,21 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	@Override
+	public void validateCharacters(CharSequence expectedCharacters) {
+		if (expectedCharacters.length() > chars.length - pos) {
+			throw new JsonFormatException("Unexpected end of input; expecting '" + expectedCharacters + "'");
+		} else {
+			for (int i = 0; i < expectedCharacters.length(); i++) {
+				if (chars[pos + i] != expectedCharacters.charAt(i)) {
+					throw new JsonFormatException("Unexpected character '" + chars[pos + i] +
+						"'; expecting '" + expectedCharacters.charAt(i) + "'");
+				}
+			}
+			pos += expectedCharacters.length();
+		}
+	}
+
+	@Override
 	public String previewString(int requestedLength) {
 		int actualLength = min(requestedLength, chars.length - pos - 1);
 		return new String(chars, pos, actualLength);
@@ -161,6 +170,11 @@ public final class CharArrayJsonReader implements JsonReader {
 	@Override
 	public long currentOffset() {
 		return pos;
+	}
+
+	@Override
+	public Token peekRawToken() {
+		return Token.startingWith(peekRawChar());
 	}
 
 	private class CharArraySequence implements CharSequence {

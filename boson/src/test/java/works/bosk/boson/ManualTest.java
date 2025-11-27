@@ -59,7 +59,7 @@ public class ManualTest {
 
 		input.expectFixedToken(START_OBJECT);
 		loop: while (true) {
-			Token token = input.peekToken();
+			Token token = input.peekValueToken();
 			switch (token) {
 				case STRING -> { // member name
 					input.startConsumingString();
@@ -151,7 +151,7 @@ public class ManualTest {
 	private Map<TimeUnit, BigDecimal> readTimeUnitToBigDecimalMap() throws IOException {
 		input.expectFixedToken(START_OBJECT);
 		Map<TimeUnit, BigDecimal> result = new java.util.LinkedHashMap<>();
-		while (input.peekToken() != END_OBJECT) {
+		while (input.peekValueToken() != END_OBJECT) {
 			var member = readString();
 			var value = readBigNumber();
 			result.put(TimeUnit.valueOf(member), (BigDecimal) value);
@@ -163,7 +163,7 @@ public class ManualTest {
 	private List<String> readStringList() {
 		input.expectFixedToken(START_ARRAY);
 		List<String> result = new java.util.ArrayList<>();
-		while (input.peekToken() != Token.END_ARRAY) {
+		while (input.peekValueToken() != Token.END_ARRAY) {
 			result.add(input.consumeString());
 		}
 		input.consumeFixedToken(END_ARRAY);
@@ -173,7 +173,7 @@ public class ManualTest {
 	private List<Object> readAnyList() throws IOException {
 		input.expectFixedToken(START_ARRAY);
 		List<Object> result = new java.util.ArrayList<>();
-		while (input.peekToken() != Token.END_ARRAY) {
+		while (input.peekValueToken() != Token.END_ARRAY) {
 			result.add(readAnyValue());
 		}
 		input.consumeFixedToken(END_ARRAY);
@@ -183,7 +183,7 @@ public class ManualTest {
 	private Map<String, Object> readAnyMap() throws IOException {
 		input.expectFixedToken(START_OBJECT);
 		Map<String, Object> result = new java.util.LinkedHashMap<>();
-		while (input.peekToken() != END_OBJECT) {
+		while (input.peekValueToken() != END_OBJECT) {
 			var member = readString();
 			var value = readAnyValue();
 			result.put(member, value);
@@ -193,7 +193,7 @@ public class ManualTest {
 	}
 
 	private Object readAnyValue() throws IOException {
-		switch (input.peekToken()) {
+		switch (input.peekValueToken()) {
 			case NULL -> {
 				input.consumeFixedToken(NULL);
 				return null;
@@ -225,23 +225,23 @@ public class ManualTest {
 	}
 
 	private String readString() {
-		input.peekToken(STRING);
+		input.peekValueToken(STRING);
 		return input.consumeString();
 	}
 
 	private long readInteger() {
-		input.peekToken(NUMBER);
+		input.peekValueToken(NUMBER);
 		CharSequence s = input.consumeNumber();
 		return Long.parseLong(s, 0, s.length(), 10);
 	}
 
 	private double readDecimal() {
-		input.peekToken(NUMBER);
+		input.peekValueToken(NUMBER);
 		return Double.parseDouble(input.consumeNumber().toString());
 	}
 
 	private Number readBigNumber() {
-		input.peekToken(NUMBER);
+		input.peekValueToken(NUMBER);
 		return new BigDecimal(input.consumeNumber().toString());
 	}
 

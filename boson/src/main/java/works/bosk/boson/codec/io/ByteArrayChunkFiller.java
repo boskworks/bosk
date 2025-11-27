@@ -1,10 +1,13 @@
 package works.bosk.boson.codec.io;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * A simple {@link ChunkFiller} that returns a single chunk backed by a given byte array.
  */
 public class ByteArrayChunkFiller implements ChunkFiller {
 	final ByteChunk chunk;
+	final AtomicBoolean isConsumed = new AtomicBoolean(false);
 
 	public ByteArrayChunkFiller(byte[] bytes) {
 		// No need for carryover because there's only one chunk.
@@ -13,7 +16,7 @@ public class ByteArrayChunkFiller implements ChunkFiller {
 
 	@Override
 	public ByteChunk nextChunk() {
-		return chunk;
+		return isConsumed.getAndSet(true) ? null : chunk;
 	}
 
 	@Override

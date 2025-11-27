@@ -12,15 +12,20 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.exceptions.JsonProcessingException;
+import works.bosk.boson.exceptions.JsonSyntaxException;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 
 import static java.util.Objects.requireNonNull;
+import static works.bosk.boson.codec.Token.NUMBER;
+import static works.bosk.boson.codec.Token.STRING;
+import static works.bosk.boson.codec.Token.values;
 
 /**
  * Handy wrapper around {@link JsonReader} that makes common operations
  * a little easier to call.
  */
+@SuppressWarnings("unused") // called by generated code
 public abstract class SharedParserRuntime {
 	protected final JsonReader input;
 
@@ -29,7 +34,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final boolean parseBoolean() {
-		Token token = input.peekToken();
+		Token token = input.peekValueToken();
 		skipToken(token);
 		return switch (token) {
 			case FALSE -> false;
@@ -40,8 +45,8 @@ public abstract class SharedParserRuntime {
 
 	protected final Number parseBigNumber() {
 		logEntry("parseBigNumber");
-		var token = input.peekToken();
-		assert token == Token.NUMBER;
+		var token = input.peekValueToken();
+		assert token == NUMBER;
 		return new BigDecimal(input.consumeNumber().toString());
 	}
 
@@ -60,26 +65,28 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final Object parsePrimitiveNumber(MethodHandle parseHandle) {
-		var token = input.peekToken();
-		assert token == Token.NUMBER;
+		var token = input.peekValueToken();
+		assert token == NUMBER;
 		String string = input.consumeNumber().toString();
 		try {
 			return parseHandle.invoke(string);
+		} catch (NumberFormatException e) {
+			throw new JsonSyntaxException("Invalid number format: \"" + string + "\"", e);
 		} catch (Throwable e) {
 			throw new JsonProcessingException("Error decoding number", e.getCause());
 		}
 	}
 
 	protected final CharSequence readNumberAsCharSequence() {
-		Token token = input.peekToken();
-		if (token != Token.NUMBER) {
+		Token token = input.peekValueToken();
+		if (token != NUMBER) {
 			parseError("Expected number, not " + token);
 		}
 		return input.consumeNumber();
 	}
 
 	protected final int peekTokenOrdinal() {
-		Token token = input.peekToken();
+		Token token = input.peekValueToken();
 //		LOGGER.debug("peekTokenOrdinal: {}", token);
 		return token.ordinal();
 	}
@@ -94,7 +101,7 @@ public abstract class SharedParserRuntime {
 	 * @return true if the token was the expected one
 	 */
 	protected final boolean nextTokenIs(Token expectedToken) {
-		Token readToken = input.peekToken();
+		Token readToken = input.peekValueToken();
 		if (readToken == expectedToken) {
 			input.consumeFixedToken(readToken);
 			return true;
@@ -112,12 +119,12 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final String parseString() {
-		input.peekToken(Token.STRING);
+		input.peekValueToken(STRING);
 		return input.consumeString();
 	}
 
 	protected final void startConsumingString() {
-		assert input.peekToken() == Token.STRING;
+		assert input.peekRawToken() == STRING;
 		input.startConsumingString();
 	}
 
@@ -144,13 +151,13 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final void skipTokenWithOrdinal(int ord) {
-		Token token = Token.values()[ord];
+		Token token = values()[ord];
 //		LOGGER.debug("skipTokenWithOrdinal: {}", token);
 		skipToken(token);
 	}
 
 	protected final void skipToken(Token expectedToken) {
-		var token = input.peekToken();
+		var token = input.peekValueToken();
 		if (token != expectedToken) {
 			parseError("Expected token " + expectedToken + ", not " + token);
 		}

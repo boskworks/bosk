@@ -495,7 +495,7 @@ public class SpecInterpretingParser implements Parser {
 			input.expectFixedToken(START_ARRAY);
 			works.bosk.boson.mapping.spec.handles.ArrayAccumulator acc = node.accumulator();
 			Object accumulator = acc.creator().invoke();
-			while (input.peekToken() != END_ARRAY) {
+			while (input.peekValueToken() != END_ARRAY) {
 				Object element = parseAny(node.elementNode());
 				var returned = acc.integrator().invoke(accumulator, element);
 				if (acc.integrator().returnType() != VOID) {
@@ -511,7 +511,7 @@ public class SpecInterpretingParser implements Parser {
 			input.expectFixedToken(START_OBJECT);
 			ObjectAccumulator acc = node.accumulator();
 			Object accumulator = acc.creator().invoke();
-			while (input.peekToken() != END_OBJECT) {
+			while (input.peekValueToken() != END_OBJECT) {
 				Object key = parseAny(node.keyNode());
 				Object value = parseAny(node.valueNode());
 				LOGGER.debug("| member [{}:{}]: |{}|", key, value, previewString());
@@ -549,7 +549,7 @@ public class SpecInterpretingParser implements Parser {
 					case JsonValueSpec _ -> {} // No default
 				}
 			});
-			while (input.peekToken() != END_OBJECT) {
+			while (input.peekValueToken() != END_OBJECT) {
 				String memberName = input.consumeString();
 				var memberNode = componentsByName.get(memberName);
 				if (memberNode == null) {
@@ -581,7 +581,7 @@ public class SpecInterpretingParser implements Parser {
 
 		private boolean nodeIsApplicable(SpecNode node) {
 			if (node instanceof JsonValueSpec valueSpec) {
-				Token nextToken = input.peekToken();
+				Token nextToken = input.peekValueToken();
 				Set<Token> expected = expectedTokens(valueSpec);
 				boolean result = expected.contains(nextToken);
 				LOGGER.trace("nodeIsApplicable: ({},{},{}) -> {}", node, expected, nextToken, result);

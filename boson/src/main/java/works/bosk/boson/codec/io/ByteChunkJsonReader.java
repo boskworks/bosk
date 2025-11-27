@@ -2,7 +2,7 @@ package works.bosk.boson.codec.io;
 
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
-import works.bosk.boson.exceptions.JsonProcessingException;
+import works.bosk.boson.exceptions.JsonFormatException;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.lang.Math.min;
@@ -16,6 +16,8 @@ import static works.bosk.boson.codec.Token.NUMBER;
  * Can process JSON text of arbitrary size.
  * <p>
  * Calling {@link #close()} will close the underlying channel.
+ * <p>
+ * Does only as much JSON validation as can be done with no performance impact.
  */
 public final class ByteChunkJsonReader implements JsonReader {
 	/**
@@ -64,23 +66,24 @@ public final class ByteChunkJsonReader implements JsonReader {
 	public ByteChunkJsonReader(ChunkFiller chunkFiller) {
 		this.filler = chunkFiller;
 		// TODO: Not ideal. There's no reason to block here until we actually need data.
-		this.currentChunk = this.filler.nextChunk();
-		this.currentChunkPos = currentChunk.start();
+		if ((this.currentChunk = this.filler.nextChunk()) == null) {
+			this.currentChunkPos = 0;
+		} else {
+			this.currentChunkPos = this.currentChunk.start();
+		}
 	}
 
 	@Override
-	public Token peekToken() {
-		new String(new byte[0], US_ASCII);
+	public Token peekValueToken() {
 		skipInsignificant();
 		return peekRawToken();
 	}
 
 	/**
-	 * Like {@link #peekToken()} but does not skip insignificant characters first.
-	 * @return the token we're currently positioned at, including {@link Token#INSIGNIFICANT} or {@link Token#ERROR}
-	 * if we're not positioned at the start of a meaningful token.
+	 * Like {@link #peekValueToken()} but does not skip insignificant characters first.
 	 */
-	private Token peekRawToken() {
+	@Override
+	public Token peekRawToken() {
 		while (currentChunk != null && currentChunkPos >= currentChunk.stop()) {
 			nextChunk();
 		}
@@ -129,8 +132,16 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	@Override
 	public int nextStringChar() {
+		int currentChunkStop;
 		try {
-			if (currentChunkPos + CARRYOVER_BYTES >= currentChunk.stop()) {
+			currentChunkStop = currentChunk.stop();
+		} catch (NullPointerException e) {
+			// This is a rare case, so we don't want to check for null every time.
+			// Communicate to the JIT that this is rare by using the NPE instead of a null check.
+			throw new JsonSyntaxException("Unexpected end of text in the middle of a string", e);
+		}
+		try {
+			if (currentChunkPos + CARRYOVER_BYTES >= currentChunkStop) {
 				doCarryover();
 			}
 
@@ -138,8 +149,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 			int b = bytes[currentChunkPos++];
 			switch (b) {
 				case '"' -> {
-					// End of string
-					return -1;
+					return END_OF_STRING;
 				}
 				case '\\' -> {
 					int esc = bytes[currentChunkPos++];
@@ -151,12 +161,23 @@ public final class ByteChunkJsonReader implements JsonReader {
 			}
 
 			// Normal character
+			int result;
 			if ((b & 0x80) == 0) {
 				// ASCII fast path
-				return b;
+				result = b;
 			} else {
 				// Decode UTF-8 multibyte sequence
-				return decodeUtf8Char(b);
+				result = decodeUtf8Char(b);
+				assert result != '"' && result != '\\': "These are ASCII characters and should have been handled above";
+			}
+
+			// Because we decode backslash sequences into code points,
+			// this is the only place we can distinguish actual illegal characters
+			// from legal escape sequences.
+			if (0x20 <= result && result <= 0x10FFFF) {
+				return result;
+			} else {
+				throw new JsonSyntaxException("Invalid character in string: " + Integer.toHexString(result));
 			}
 		} catch (ArrayIndexOutOfBoundsException e) {
 			throw new JsonSyntaxException("Unexpected end of text in the middle of a string character", e);
@@ -181,18 +202,17 @@ public final class ByteChunkJsonReader implements JsonReader {
 			// We've hit the end. Might as well continue with the current chunk
 			currentChunk = initialChunk;
 			currentChunkPos = initialChunkPos;
-		} else if (currentChunk.start() >= length) {
+		} else {
+			assert currentChunk.start() >= length: "Chunk must accommodate carryover";
 			System.arraycopy(carryover, 0, currentChunk.bytes(), currentChunk.start() - length, length);
 			currentChunk = new ByteChunk(currentChunk.bytes(), currentChunk.start() - length, currentChunk.stop());
 			currentChunkPos = currentChunk.start();
-		} else {
-			throw new JsonProcessingException("Chunk cannot accommodate carryover");
 		}
 	}
 
 	@Override
 	public void skipToEndOfString() {
-		while (nextStringChar() != -1) {}
+		while (nextStringChar() >= 0) {}
 	}
 
 	@Override
@@ -204,6 +224,37 @@ public final class ByteChunkJsonReader implements JsonReader {
 		// as well simplify things and read directly from the chunk's byte array.
 //		return consumeStringWithStagingBuffer();
 		return consumeStringDirectly();
+	}
+
+	@Override
+	public void validateCharacters(CharSequence expectedCharacters) {
+		int matchedSoFar = 0;
+		while (matchedSoFar < expectedCharacters.length()) {
+			if (currentChunk == null) {
+				throw new JsonFormatException("Unexpected end of input; expected \"" + expectedCharacters + "\"");
+			}
+
+			byte[] buf = currentChunk.bytes();
+
+			// Go to the end of the chunk, or to the end of expectedCharacters, whichever comes first
+			int limit = Integer.min(
+				currentChunk.stop() - currentChunkPos,
+				expectedCharacters.length() - matchedSoFar
+			);
+
+			while (limit-- > 0) {
+				byte b = buf[currentChunkPos++];
+				char expectedChar = expectedCharacters.charAt(matchedSoFar++);
+				assert 1 <= expectedChar && expectedChar <= 127: "ASCII characters only: " + Character.getName(expectedChar);
+				if (b != expectedChar) {
+					throw new JsonFormatException("Unexpected character '" + (char) b +
+						"'; expected '" + expectedChar + "'");
+				}
+			}
+			if (currentChunkPos >= currentChunk.stop()) {
+				nextChunk();
+			}
+		}
 	}
 
 	private String consumeStringWithStagingBuffer() {
@@ -404,6 +455,8 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	/**
 	 * Relatively slow way to advance one byte, loading a new chunk if needed.
+	 * Callers can avoid calling this by using fast-path logic when they
+	 * can prove that there are enough characters in the current chunk.
 	 */
 	void advance() {
 		if (currentChunk != null) {
@@ -420,7 +473,11 @@ public final class ByteChunkJsonReader implements JsonReader {
 		for (int i = 0; i < 4; i++) {
 			int b = bytes[currentChunkPos++];
 			value <<= 4;
-			value |= Character.digit(b, 16);
+			int digitValue = Character.digit(b, 16);
+			if (digitValue == -1) {
+				throw new JsonSyntaxException("Invalid hex digit in Unicode escape: " + (char) b);
+			}
+			value |= digitValue;
 		}
 		return value;
 	}
