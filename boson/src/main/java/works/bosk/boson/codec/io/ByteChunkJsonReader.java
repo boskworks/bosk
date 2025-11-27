@@ -168,12 +168,13 @@ public final class ByteChunkJsonReader implements JsonReader {
 			} else {
 				// Decode UTF-8 multibyte sequence
 				result = decodeUtf8Char(b);
+				assert result != '"' && result != '\\': "These are ASCII characters and should have been handled above";
 			}
 
 			// Because we decode backslash sequences into code points,
 			// this is the only place we can distinguish actual illegal characters
 			// from legal escape sequences.
-			if (0x20 <= result && result <= 0x10FFFF && result != '"' && result != '\\') {
+			if (0x20 <= result && result <= 0x10FFFF) {
 				return result;
 			} else {
 				throw new JsonSyntaxException("Invalid character in string: " + Integer.toHexString(result));

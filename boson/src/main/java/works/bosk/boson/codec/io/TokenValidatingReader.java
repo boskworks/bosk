@@ -129,6 +129,9 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 				"Invalid trailing characters in JSON number: '" + seq + "'"
 			);
 		} catch (IndexOutOfBoundsException e) {
+			// This is performance critical for valid numbers,
+			// so we don't continually check against seq.length() everywhere.
+			// Just let it fall off the end and catch the exception.
 			throw new JsonSyntaxException("Unexpected end of number constant", e);
 		}
 	}

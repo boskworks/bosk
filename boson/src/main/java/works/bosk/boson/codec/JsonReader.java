@@ -219,7 +219,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * ought to throw a {@link JsonSyntaxException},
 	 * but some implementations may choose to return negative values instead.
 	 * In particular, some implementations return an infinite stream of negative values
-	 * after the end of input, so if you loop checking specifically for -2,
+	 * after the end of input, so if you loop checking specifically for {@link #END_OF_STRING},
 	 * you might hang.
 	 */
 	int nextStringChar();
@@ -328,7 +328,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * <p>
 	 * Since we don't know whether to throw {@link JsonSyntaxException} or {@link JsonContentException},
 	 * because that depends on the calling context,
-	 * we throw {@link JsonSyntaxException} itself.
+	 * we throw {@link JsonFormatException} itself.
 	 * Consider catching that and re-throwing a more specific subclass
 	 * based on your context.
 	 *

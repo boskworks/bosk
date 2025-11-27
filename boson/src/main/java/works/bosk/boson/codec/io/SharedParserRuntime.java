@@ -71,7 +71,7 @@ public abstract class SharedParserRuntime {
 		try {
 			return parseHandle.invoke(string);
 		} catch (NumberFormatException e) {
-			throw new JsonSyntaxException("Invalid number format: [" + string + "]", e);
+			throw new JsonSyntaxException("Invalid number format: \"" + string + "\"", e);
 		} catch (Throwable e) {
 			throw new JsonProcessingException("Error decoding number", e.getCause());
 		}
