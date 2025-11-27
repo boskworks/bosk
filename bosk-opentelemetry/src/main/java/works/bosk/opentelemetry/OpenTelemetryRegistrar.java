@@ -36,7 +36,7 @@ public final class OpenTelemetryRegistrar implements HookRegistrar {
 	@Override
 	public <T> void registerHook(String name, Reference<T> scope, BoskHook<T> hook) {
 		downstream.registerHook(name, scope, ref -> {
-			try (var __ = Utils.contextFromDiagnosticAttributes(diagnosticContext).makeCurrent()) {
+			try (var _ = Utils.contextFromDiagnosticAttributes(diagnosticContext).makeCurrent()) {
 				hook.onChanged(ref);
 			}
 		});

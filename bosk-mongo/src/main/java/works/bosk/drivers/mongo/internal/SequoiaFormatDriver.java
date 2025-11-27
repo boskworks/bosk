@@ -204,7 +204,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					throw new UnprocessableEventException("Missing fullDocument", event.getOperationType());
 				}
 				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
-				try (var __ = diagnosticContext.withOnly(diagnosticAttributes)) {
+				try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
 					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
 					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name(), null);
 					if (state == null) {
@@ -225,7 +225,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(event);
 					if (shouldNotSkip(revision)) {
 						MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromUpdate(event);
-						try (var __ = diagnosticContext.withOnly(diagnosticAttributes)) {
+						try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
 							replaceUpdatedFields(updateDescription.getUpdatedFields());
 							deleteRemovedFields(updateDescription.getRemovedFields(), event.getOperationType());
 						}
@@ -344,7 +344,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
 		LOGGER.debug("| Set field {}: {}", key, value);
 		BsonDocument result = updateDoc();
-		result.compute("$set", (__,existing) -> {
+		result.compute("$set", (_,existing) -> {
 			if (existing == null) {
 				return new BsonDocument(key, value);
 			} else {

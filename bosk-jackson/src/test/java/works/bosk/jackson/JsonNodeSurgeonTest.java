@@ -258,7 +258,7 @@ public class JsonNodeSurgeonTest {
 
 	JsonNode boskContents() throws IOException, InterruptedException {
 		bosk.driver().flush();
-		try (var __ = bosk.readContext()) {
+		try (var _ = bosk.readContext()) {
 			return mapper.convertValue(bosk.rootReference().value(), JsonNode.class);
 		}
 	}

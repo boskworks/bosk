@@ -32,49 +32,49 @@ public class DiagnosticScopeDriver implements BoskDriver {
 
 	@Override
 	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-		try (var __ = scopeSupplier.apply(diagnosticContext)) {
+		try (var _ = scopeSupplier.apply(diagnosticContext)) {
 			return downstream.initialRoot(rootType);
 		}
 	}
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		try (var __ = scopeSupplier.apply(diagnosticContext)) {
+		try (var _ = scopeSupplier.apply(diagnosticContext)) {
 			downstream.submitReplacement(target, newValue);
 		}
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		try (var __ = scopeSupplier.apply(diagnosticContext)) {
+		try (var _ = scopeSupplier.apply(diagnosticContext)) {
 			downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		}
 	}
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		try (var __ = scopeSupplier.apply(diagnosticContext)) {
+		try (var _ = scopeSupplier.apply(diagnosticContext)) {
 			downstream.submitConditionalCreation(target, newValue);
 		}
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		try (var __ = scopeSupplier.apply(diagnosticContext)) {
+		try (var _ = scopeSupplier.apply(diagnosticContext)) {
 			downstream.submitDeletion(target);
 		}
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		try (var __ = scopeSupplier.apply(diagnosticContext)) {
+		try (var _ = scopeSupplier.apply(diagnosticContext)) {
 			downstream.submitConditionalDeletion(target, precondition, requiredValue);
 		}
 	}
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		try (var __ = scopeSupplier.apply(diagnosticContext)) {
+		try (var _ = scopeSupplier.apply(diagnosticContext)) {
 			downstream.flush();
 		}
 	}

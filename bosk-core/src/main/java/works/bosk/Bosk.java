@@ -809,7 +809,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			// TODO: This would be less cumbersome if we could apply a Reference to an arbitrary root object.
 			// For now, References only apply to the current ReadContext, so we need a new ReadContext every time
 			// we want to change roots.
-			try (var __ = new ReadContext(priorRoot)) {
+			try (var _ = new ReadContext(priorRoot)) {
 				return containerRef.valueIfExists();
 			}
 		}

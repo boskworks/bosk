@@ -82,7 +82,7 @@ class ChangeReceiver implements Closeable {
 	private void connectionLoop() {
 		String oldThreadName = currentThread().getName();
 		currentThread().setName(getClass().getSimpleName() + " [" + boskName + "]");
-		try (MDCScope __ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("Starting connectionLoop task");
 			try {
 				while (!isClosed) {

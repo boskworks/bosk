@@ -19,7 +19,7 @@ class Demultiplexer {
 	public void add(ChangeStreamDocument<BsonDocument> event) {
 		TransactionID key = TransactionID.from(requireNonNull(event));
 		transactionsInProgress
-			.computeIfAbsent(key, __ -> new ArrayList<>())
+			.computeIfAbsent(key, _ -> new ArrayList<>())
 			.add(event);
 	}
 

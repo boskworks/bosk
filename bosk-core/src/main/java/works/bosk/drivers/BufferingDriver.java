@@ -88,7 +88,7 @@ public class BufferingDriver implements BoskDriver {
 		LOGGER.debug("Buffering action {} {}", changeID, diagnosticContext.getAttributes());
 		MapValue<String> capturedAttributes = diagnosticContext.getAttributes();
 		updateQueue.add(d -> {
-			try (var __ = diagnosticContext.withOnly(capturedAttributes)) {
+			try (var _ = diagnosticContext.withOnly(capturedAttributes)) {
 				LOGGER.debug("Running action {} {}", changeID, diagnosticContext.getAttributes());
 				action.accept(d);
 			}

@@ -85,7 +85,7 @@ typically using your application framework's dependency injection system.
 To read state, acquire a `ReadContext`, providing access to a lightweight immutable snapshot of your state tree:
 
 ```
-try (var __ = bosk.readContext()) {
+try (var _ = bosk.readContext()) {
 	System.out.println("Hello, " + bosk.refs.name.value());
 }
 ```

@@ -137,7 +137,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 				// This should be a safe assumption--some shenanigans would be required
 				// to violate this--but unfortunately we have no way to verify it here,
 				// because at this point in the code, we cannot tell which replica we're initializing.
-				try (var __ = primaryReadContext(primary)) {
+				try (var _ = primaryReadContext(primary)) {
 					return primary.boskInfo().rootReference().value();
 				}
 			} else {
