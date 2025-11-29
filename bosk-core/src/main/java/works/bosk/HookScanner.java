@@ -20,7 +20,7 @@ import static works.bosk.util.ReflectionHelpers.getDeclaredMethodsInOrder;
 /**
  * Finds methods annotated with {@link Hook} in the given {@code object} and registers them in the given {@link Bosk}.
  */
-class HookScanner {
+final class HookScanner {
 	static <T> void registerHooks(T receiverObject, Bosk<?> bosk) throws InvalidTypeException {
 		int hookCounter = 0;
 		for (
