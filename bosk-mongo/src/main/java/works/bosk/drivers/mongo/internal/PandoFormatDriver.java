@@ -302,7 +302,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				}
 
 				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
-				try (var __ = diagnosticContext.withOnly(diagnosticAttributes)) {
+				try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
 					BsonDocument state = fullDocument.getDocument(Formatter.DocumentFields.state.name());
 					if (state == null) {
 						ChangeStreamDocument<BsonDocument> mainEvent = events.get(events.size() - 2);
@@ -324,7 +324,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					return;
 				}
 				MapValue<String> attributes = formatter.eventDiagnosticAttributesFromUpdate(finalEvent);
-				try (var __ = diagnosticContext.withOnly(attributes)) {
+				try (var _ = diagnosticContext.withOnly(attributes)) {
 					boolean mainEventIsFinalEvent = updateEventHasField(finalEvent, Formatter.DocumentFields.state); // If the final update changes only the revision field, then it's not the main event
 					if (mainEventIsFinalEvent) {
 						LOGGER.debug("Main event is final event");
@@ -719,7 +719,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		String key = BsonFormatter.dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Set field {}: {}", key, value);
 		BsonDocument result = blankUpdateDoc();
-		result.compute("$set", (__,existing) -> {
+		result.compute("$set", (_,existing) -> {
 			if (existing == null) {
 				return new BsonDocument(key, value);
 			} else {

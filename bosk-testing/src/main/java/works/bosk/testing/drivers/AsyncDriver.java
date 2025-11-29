@@ -71,7 +71,7 @@ public class AsyncDriver implements BoskDriver {
 		var diagnosticAttributes = bosk.diagnosticContext().getAttributes();
 		executor.submit(()->{
 			LOGGER.debug("Run {}", description);
-			try (var __ = bosk.diagnosticContext().withOnly(diagnosticAttributes)) {
+			try (var _ = bosk.diagnosticContext().withOnly(diagnosticAttributes)) {
 				task.run();
 			}
 			LOGGER.trace("Done {}", description);

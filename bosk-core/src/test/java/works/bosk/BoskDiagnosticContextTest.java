@@ -68,7 +68,7 @@ class BoskDiagnosticContextTest extends AbstractDriverTest {
 		var diagnosticContext = bosk.diagnosticContext();
 		try (var _ = diagnosticContext.withAttributes(expectedOuter)) {
 			assertEquals(expectedOuter, diagnosticContext.getAttributes());
-			try (var __ = diagnosticContext.withReplacedPrefix("prefix.", overrides)) {
+			try (var _ = diagnosticContext.withReplacedPrefix("prefix.", overrides)) {
 				assertEquals(expectedInner, diagnosticContext.getAttributes());
 			}
 		}

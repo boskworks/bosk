@@ -103,7 +103,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		BsonSerializer bsonSerializer,
 		BoskDriver downstream
 	) {
-		try (MDCScope __ = setupMDC(boskInfo.name(), boskInfo.instanceID())) {
+		try (MDCScope _ = setupMDC(boskInfo.name(), boskInfo.instanceID())) {
 			this.boskInfo = boskInfo;
 			this.driverSettings = driverSettings;
 			this.bsonSerializer = bsonSerializer;
@@ -141,7 +141,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, InterruptedException, IOException {
-		try (MDCScope __ = beginDriverOperation("initialRoot({})", rootType)) {
+		try (MDCScope _ = beginDriverOperation("initialRoot({})", rootType)) {
 			// The actual loading of the initial state happens on the ChangeReceiver thread.
 			// Here, we just wait for that to finish and deal with the consequences.
 			FutureTask<R> task = listener.taskRef.get();
@@ -206,7 +206,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// by other processes.
 
 		R root;
-		try (var __ = collection.newReadOnlySession()){
+		try (var _ = collection.newReadOnlySession()){
 			FormatDriver<R> detectedDriver = detectFormat();
 			StateAndMetadata<R> loadedState = detectedDriver.loadAllState();
 			root = loadedState.state();
@@ -357,7 +357,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public MongoStatus readStatus() throws Exception {
 		try (
-			var __ = collection.newReadOnlySession()
+			var _ = collection.newReadOnlySession()
 		) {
 			MongoStatus partialResult = detectFormat().readStatus();
 			Manifest manifest = loadManifest(); // TODO: Avoid loading the manifest again
@@ -401,7 +401,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			if (initialRootAction == null) {
 				FormatDriver<R> newDriver;
 				StateAndMetadata<R> loadedState;
-				try (var __ = collection.newReadOnlySession()) {
+				try (var _ = collection.newReadOnlySession()) {
 					LOGGER.debug("Loading database state to submit to downstream driver");
 					newDriver = detectFormat();
 					loadedState = newDriver.loadAllState();
@@ -423,7 +423,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// This causes downstream.submitReplacement to be associated with the last update to the state,
 				// which is of dubious relevance. We might just want to use the context from the current thread,
 				// which is probably empty because this runs on the ChangeReceiver thread.
-				try (var ___ = boskInfo.diagnosticContext().withOnly(loadedState.diagnosticAttributes())) {
+				try (var _ = boskInfo.diagnosticContext().withOnly(loadedState.diagnosticAttributes())) {
 					downstream.submitReplacement(boskInfo.rootReference(), loadedState.state());
 					LOGGER.debug("Done submitting downstream");
 				}
@@ -626,7 +626,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				break;
 			}
 		};
-		try (var __ = beginDriverOperation(description, args)) {
+		try (var _ = beginDriverOperation(description, args)) {
 			try {
 				operationInSession.run();
 			} catch (DisconnectedException e) {

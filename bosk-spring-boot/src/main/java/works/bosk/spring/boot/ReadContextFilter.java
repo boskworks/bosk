@@ -39,7 +39,7 @@ public class ReadContextFilter extends OncePerRequestFilter {
 			}
 		}
 		if (automaticallyOpenReadContext(request)) {
-			try (var __ = bosk.readContext()) {
+			try (var _ = bosk.readContext()) {
 				filterChain.doFilter(request, response);
 			}
 		} else {

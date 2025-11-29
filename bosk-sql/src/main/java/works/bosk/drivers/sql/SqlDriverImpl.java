@@ -123,7 +123,7 @@ class SqlDriverImpl implements SqlDriver {
 	}
 
 	private void listenForChanges() {
-		try (MDCScope ___ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			if (!isOpen.get()) {
 				LOGGER.debug("Already closed");
 				return;
@@ -165,7 +165,7 @@ class SqlDriverImpl implements SqlDriver {
 								diagnosticAttributes = MapValue.empty();
 							}
 						}
-						try (var __ = diagnosticContext.withOnly(diagnosticAttributes)) {
+						try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
 							Reference<Object> target = rootRef.then(Object.class, Path.parse(ref));
 							Object newValue;
 							if (newState == null) {
@@ -238,7 +238,7 @@ class SqlDriverImpl implements SqlDriver {
 	@Override
 	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		// TODO: Consider a disconnected mode where we delegate downstream if something goes wrong
-		try (MDCScope __ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("initialRoot({})", rootType);
 			try (
 				var connection = connectionSource.get()
@@ -319,7 +319,7 @@ class SqlDriverImpl implements SqlDriver {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		try (MDCScope __ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("submitReplacement({}, {})", target, newValue);
 			try (
 				var connection = connectionSource.get()
@@ -334,7 +334,7 @@ class SqlDriverImpl implements SqlDriver {
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		try (MDCScope __ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("submitConditionalReplacement({}, {}, {}, {})", target, newValue, precondition, requiredValue);
 			try (
 				var connection = connectionSource.get()
@@ -351,7 +351,7 @@ class SqlDriverImpl implements SqlDriver {
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		try (MDCScope __ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("submitConditionalCreation({}, {})", target, newValue);
 			try (
 				var connection = connectionSource.get()
@@ -369,7 +369,7 @@ class SqlDriverImpl implements SqlDriver {
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		try (MDCScope __ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("submitDeletion({})", target);
 			try (
 				var connection = connectionSource.get()
@@ -383,7 +383,7 @@ class SqlDriverImpl implements SqlDriver {
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		try (MDCScope __ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("submitConditionalDeletion({}, {}, {})", target, precondition, requiredValue);
 			try (
 				var connection = connectionSource.get()
@@ -405,7 +405,7 @@ class SqlDriverImpl implements SqlDriver {
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		try (MDCScope __ = setupMDC(boskName, boskID)) {
+		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			try (
 				var connection = connectionSource.get()
 			) {
@@ -447,7 +447,7 @@ class SqlDriverImpl implements SqlDriver {
 	private <T> void replaceAndCommit(JsonNode state, Reference<T> target, T newValue, Connection connection) throws SQLException {
 		NodeInfo node = surgeon.nodeInfo(state, target);
 		switch (node.replacementLocation()) {
-			case Root __ -> {
+			case Root _ -> {
 				if (newValue == null) {
 					throw new NotYetImplementedException("Cannot delete root");
 				}
@@ -460,7 +460,7 @@ class SqlDriverImpl implements SqlDriver {
 				connection.commit();
 				LOGGER.debug("{}: replaced root", revision);
 			}
-			case NonexistentParent __ -> {
+			case NonexistentParent _ -> {
 				// Modifying a node with a nonexistent parent is a no-op
 				LOGGER.debug("--: nonexistent parent for {}", target);
 			}

@@ -31,10 +31,10 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 			throw new AssertionError("Unexpected exception", e);
 		}
 		TestEntity expected, actual;
-		try (var __ = canonicalBosk.readContext()) {
+		try (var _ = canonicalBosk.readContext()) {
 			expected = canonicalBosk.rootReference().value();
 		}
-		try (var __ = latecomer.readContext()) {
+		try (var _ = latecomer.readContext()) {
 			actual = latecomer.rootReference().value();
 		}
 		assertEquals(expected, actual);
@@ -63,14 +63,14 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 
 		LOGGER.debug("Ensure polyfill returns the right value on read");
 		TestValues polyfill;
-		try (var __ = upgradeableBosk.readContext()) {
+		try (var _ = upgradeableBosk.readContext()) {
 			polyfill = upgradeableBosk.rootReference().value().values();
 		}
 		assertEquals(TestValues.blank(), polyfill);
 
 		LOGGER.debug("Check state before");
 		Optional<TestValues> before;
-		try (var ___ = originalBosk.readContext()) {
+		try (var _ = originalBosk.readContext()) {
 			before = originalBosk.rootReference().value().values();
 		}
 		assertEquals(Optional.empty(), before); // Not there yet
@@ -82,7 +82,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 
 		LOGGER.debug("Check state after");
 		String after;
-		try (var ____ = originalBosk.readContext()) {
+		try (var _ = originalBosk.readContext()) {
 			after = originalBosk.rootReference().value().values().get().string();
 		}
 		assertEquals("new value", after); // Now it's there

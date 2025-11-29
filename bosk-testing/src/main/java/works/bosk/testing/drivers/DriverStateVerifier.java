@@ -18,6 +18,7 @@ import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.BufferingDriver;
 import works.bosk.drivers.DiagnosticScopeDriver;
+import works.bosk.drivers.ForwardingDriver;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
@@ -39,7 +40,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * semantics, the resulting verifier could be more or less strict than expected.
  */
 @RequiredArgsConstructor(access = PRIVATE)
-public class DriverStateVerifier<R extends StateTreeNode> {
+public final class DriverStateVerifier<R extends StateTreeNode> {
 	/**
 	 * Used to model the effect of each operation on the bosk state
 	 */
@@ -51,8 +52,8 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 	 */
 	final BoskDriver stateTrackingDriver;
 
-	final Map<String, Deque<UpdateOperation>> pendingOperationsByThreadName = new ConcurrentHashMap<>();
-	static final String THREAD_NAME = "thread.name";
+	final Map<String, Deque<UpdateOperation>> pendingOperationsByThreadID = new ConcurrentHashMap<>();
+	static final String THREAD_ID = "testing.thread.id";
 
 	/**
 	 * @param subject factory whose behaviour is to be verified
@@ -72,17 +73,45 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 			ReplicaSet.redirectingTo(stateTrackingBosk)
 		);
 		return DriverStack.of(
-			// Tag the updates with a thread name so we can demultiplex them properly after they go through the subject driver
-			DiagnosticScopeDriver.factory(dc -> dc.withAttribute(THREAD_NAME, currentThread().getName())),
-			// Report the updates as they appear on their way into the subject driver
-			ReportingDriver.factory(verifier::incomingUpdate, verifier::incomingFlush),
+			// Tag the updates with a thread ID so we can demultiplex them properly after they go through the subject driver
+			DiagnosticScopeDriver.factory(dc -> dc.withAttribute(THREAD_ID, Long.toString(currentThread().threadId()))),
+			// Record the updates as they appear on their way into the subject driver
+			ReportingDriver.factory(verifier::incomingUpdate, _->{}),
+			// Verify that flushes are propagated synchronously
+			verifier.flushCheckingFactory(),
 			// Send to the subject driver
 			subject,
-			// Delay as long as possible to catch missing flushes
+			// Delay to ensure that the subject doesn't depend on immediate propagation of updates
 			BufferingDriver.factory(),
 			// Report the updates as they appear on their way out of the subject driver
 			ReportingDriver.factory(verifier::outgoingUpdate, verifier::outgoingFlush)
 		);
+	}
+
+	/**
+	 * This takes some explanation.
+	 * <p>
+	 * In a driver stack, each driver "wraps" the next one, so it can add functionality
+	 * before and after calling the downstream method.
+	 * However, {@link ReportingDriver} calls a callback before calling the downstream method,
+	 * and so we cannot use it to check conditions after the downstream method has completed.
+	 * This is fine for most driver methods, but for an incoming {@link BoskDriver#flush()},
+	 * we need to do a check after the downstream flush has completed,
+	 * so it needs special handling.
+	 */
+	DriverFactory<R> flushCheckingFactory() {
+		return (b,d) -> new ForwardingDriver(d) {
+			@Override
+			public void flush() throws InterruptedException, IOException {
+				super.flush();
+				var threadID = b.diagnosticContext().getAttribute(THREAD_ID);
+				var queue = pendingOperationsByThreadID.get(threadID);
+				if (queue != null && !queue.isEmpty()) {
+					throw new AssertionError(queue.size() + " pending operations remain on thread " + threadID
+						+ "; first is: " + queue.getFirst());
+				}
+			}
+		};
 	}
 
 	/**
@@ -92,13 +121,9 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 	private void incomingUpdate(UpdateOperation updateOperation) {
 		LOGGER.debug("---> IN: {}", updateOperation);
 		// Note: because we have a separate queue for each thread, this isn't actually blocking
-		pendingOperationsByThreadName
-			.computeIfAbsent(updateOperation.diagnosticAttributes().get(THREAD_NAME), t -> new LinkedBlockingDeque<>())
+		pendingOperationsByThreadID
+			.computeIfAbsent(updateOperation.diagnosticAttributes().get(THREAD_ID), _ -> new LinkedBlockingDeque<>())
 			.addLast(updateOperation);
-	}
-
-	private void incomingFlush(FlushOperation __) {
-		LOGGER.debug("incomingFlush()");
 	}
 
 	/**
@@ -114,15 +139,15 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 			LOGGER.trace("\t\tbefore: {}", before);
 			LOGGER.trace("\t\t after: {}", after);
 
-			String threadName = op.diagnosticAttributes().get(THREAD_NAME);
-			if (threadName == null) {
-				LOGGER.debug("\tMissing " + THREAD_NAME + " diagnostic attribute");
+			String threadID = op.diagnosticAttributes().get(THREAD_ID);
+			if (threadID == null) {
+				LOGGER.debug("\tMissing " + THREAD_ID + " diagnostic attribute");
 			} else {
-				Deque<UpdateOperation> q = pendingOperationsByThreadName.get(threadName);
+				Deque<UpdateOperation> q = pendingOperationsByThreadID.get(threadID);
 				if (q == null) {
-					LOGGER.debug("\tNo queued events for thread \"{}\"", threadName);
+					LOGGER.debug("\tNo queued events for thread \"{}\"", threadID);
 				} else {
-					LOGGER.trace("\tThread \"{}\" has {} queued operations", threadName, q.size());
+					LOGGER.trace("\tThread \"{}\" has {} queued operations", threadID, q.size());
 					for (UpdateOperation expected : q) {
 						Object expectedBefore = currentStateBefore(expected); // May not equal `before` if the two operations have different targets
 						Object expectedAfter = hypotheticalStateAfter(expected);
@@ -157,7 +182,7 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 
 	private void outgoingFlush(FlushOperation __) {
 		LOGGER.debug("outgoingFlush()");
-		pendingOperationsByThreadName.forEach((thread, q) -> {
+		pendingOperationsByThreadID.forEach((thread, q) -> {
 			discardLeadingNops(q);
 			if (!q.isEmpty()) {
 				throw new AssertionError(q.size() + " pending operations remain on thread " + thread
@@ -190,7 +215,7 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 	private <T> T currentStateBefore(UpdateOperation op) throws IOException, InterruptedException {
 		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 		stateTrackingBosk.driver().flush();
-		try (var __ = stateTrackingBosk.readContext()) {
+		try (var _ = stateTrackingBosk.readContext()) {
 			return stateTrackingRef.valueIfExists();
 		}
 	}
@@ -200,12 +225,12 @@ public class DriverStateVerifier<R extends StateTreeNode> {
 		R originalState;
 		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 		stateTrackingBosk.driver().flush();
-		try (var __ = stateTrackingBosk.readContext()) {
+		try (var _ = stateTrackingBosk.readContext()) {
 			originalState = stateTrackingBosk.rootReference().value();
 		}
 		op.submitTo(stateTrackingDriver);
 		stateTrackingBosk.driver().flush();
-		try (var __ = stateTrackingBosk.readContext()) {
+		try (var _ = stateTrackingBosk.readContext()) {
 			return stateTrackingRef.valueIfExists();
 		} finally {
 			stateTrackingBosk.driver().submitReplacement(stateTrackingBosk.rootReference(), originalState);

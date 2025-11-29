@@ -41,7 +41,7 @@ public record Manifest(
 	public static Manifest forFormat(DatabaseFormat format) {
 		return switch (format) {
 			case PandoFormat p -> forPando(p);
-			case SequoiaFormat __ -> forSequoia();
+			case SequoiaFormat _ -> forSequoia();
 		};
 	}
 }
