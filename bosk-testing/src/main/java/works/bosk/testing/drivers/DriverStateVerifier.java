@@ -18,6 +18,7 @@ import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.BufferingDriver;
 import works.bosk.drivers.DiagnosticScopeDriver;
+import works.bosk.drivers.ForwardingDriver;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
@@ -74,15 +75,43 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		return DriverStack.of(
 			// Tag the updates with a thread ID so we can demultiplex them properly after they go through the subject driver
 			DiagnosticScopeDriver.factory(dc -> dc.withAttribute(THREAD_ID, Long.toString(currentThread().threadId()))),
-			// Report the updates as they appear on their way into the subject driver
-			ReportingDriver.factory(verifier::incomingUpdate, verifier::incomingFlush),
+			// Record the updates as they appear on their way into the subject driver
+			ReportingDriver.factory(verifier::incomingUpdate, _->{}),
+			// Verify that flushes are propagated synchronously
+			verifier.flushCheckingFactory(),
 			// Send to the subject driver
 			subject,
-			// Delay as long as possible to catch missing flushes
+			// Delay to ensure that the subject doesn't depend on immediate propagation of updates
 			BufferingDriver.factory(),
 			// Report the updates as they appear on their way out of the subject driver
 			ReportingDriver.factory(verifier::outgoingUpdate, verifier::outgoingFlush)
 		);
+	}
+
+	/**
+	 * This takes some explanation.
+	 * <p>
+	 * In a driver stack, each driver "wraps" the next one, so it can add functionality
+	 * before and after calling the downstream method.
+	 * However, {@link ReportingDriver} calls a callback before calling the downstream method,
+	 * and so we cannot use it to check conditions after the downstream method has completed.
+	 * This is fine for most driver methods, but for an incoming {@link BoskDriver#flush()},
+	 * we need to do a check after the downstream flush has completed,
+	 * so it needs special handling.
+	 */
+	DriverFactory<R> flushCheckingFactory() {
+		return (b,d) -> new ForwardingDriver(d) {
+			@Override
+			public void flush() throws InterruptedException, IOException {
+				super.flush();
+				var threadID = b.diagnosticContext().getAttribute(THREAD_ID);
+				var queue = pendingOperationsByThreadID.get(threadID);
+				if (queue != null && !queue.isEmpty()) {
+					throw new AssertionError(queue.size() + " pending operations remain on thread " + threadID
+						+ "; first is: " + queue.getFirst());
+				}
+			}
+		};
 	}
 
 	/**
@@ -95,10 +124,6 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		pendingOperationsByThreadID
 			.computeIfAbsent(updateOperation.diagnosticAttributes().get(THREAD_ID), _ -> new LinkedBlockingDeque<>())
 			.addLast(updateOperation);
-	}
-
-	private void incomingFlush(FlushOperation __) {
-		LOGGER.debug("incomingFlush()");
 	}
 
 	/**
