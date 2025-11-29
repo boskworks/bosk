@@ -21,7 +21,7 @@ import static lombok.AccessLevel.PRIVATE;
  * Allows diagnostic context to be supplied automatically to every operation.
  */
 @RequiredArgsConstructor(access = PRIVATE)
-public class DiagnosticScopeDriver implements BoskDriver {
+public final class DiagnosticScopeDriver implements BoskDriver {
 	final BoskDriver downstream;
 	final BoskDiagnosticContext diagnosticContext;
 	final Function<BoskDiagnosticContext, DiagnosticScope> scopeSupplier;
