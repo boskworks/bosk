@@ -47,7 +47,7 @@ public class AbstractJsonReaderTest {
 	}
 
 	@SuppressWarnings("unused") // Subclasses use this to parameterize tests
-	static Stream<Function<String, ? extends JsonReader>> readerSuppliers() {
+	static Stream<Function<String, JsonReader>> readerSuppliers() {
 		return Stream.of(
 			new ByteArray(),
 			new ByteChunks(),

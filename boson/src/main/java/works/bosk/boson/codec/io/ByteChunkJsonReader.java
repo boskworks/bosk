@@ -410,10 +410,10 @@ public final class ByteChunkJsonReader implements JsonReader {
 			byte[] buf = currentChunk.bytes();
 			int limit = currentChunk.stop();
 			while (currentChunkPos < limit) {
-				if (!Util.fast_isInsignificant(buf[currentChunkPos])) {
-					return;
-				} else {
+				if (Util.fast_isInsignificant(buf[currentChunkPos])) {
 					currentChunkPos++;
+				} else {
+					return;
 				}
 			}
 
@@ -428,10 +428,10 @@ public final class ByteChunkJsonReader implements JsonReader {
 			byte[] buf = currentChunk.bytes();
 			int limit = currentChunk.stop();
 			while (currentChunkPos < limit) {
-				if (!Character.isWhitespace(buf[currentChunkPos])) {
-					return;
-				} else {
+				if (Util.fast_isWhitespace(buf[currentChunkPos])) {
 					currentChunkPos++;
+				} else {
+					return;
 				}
 			}
 

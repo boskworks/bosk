@@ -5,6 +5,7 @@ import works.bosk.boson.codec.io.ByteArrayChunkFiller;
 import works.bosk.boson.codec.io.ByteChunkJsonReader;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.codec.io.SynchronousChunkFiller;
+import works.bosk.boson.codec.io.SyntaxValidatingReader;
 import works.bosk.boson.codec.io.TokenValidatingReader;
 import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.exceptions.JsonFormatException;
@@ -31,7 +32,8 @@ import static java.lang.Character.MIN_SURROGATE;
 public sealed interface JsonReader extends AutoCloseable permits
 	ByteChunkJsonReader,
 	CharArrayJsonReader,
-	TokenValidatingReader
+	TokenValidatingReader,
+	SyntaxValidatingReader
 {
 	/**
 	 * Returned by {@link #nextStringChar()} to indicate the closing quote has been reached.
@@ -67,7 +69,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	}
 
 	default JsonReader withValidation() {
-		return new TokenValidatingReader(this);
+		return new SyntaxValidatingReader(new TokenValidatingReader(this));
 	}
 
 	/**

@@ -169,12 +169,6 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	}
 
 	@Override
-	public JsonReader withValidation() {
-		// Already validating
-		return this;
-	}
-
-	@Override
 	public int nextStringChar() {
 		int result = downstream.nextStringChar();
 		if (result < 0 && result != END_OF_STRING) {

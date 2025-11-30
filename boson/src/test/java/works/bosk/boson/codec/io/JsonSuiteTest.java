@@ -6,7 +6,6 @@ import java.nio.charset.MalformedInputException;
 import java.nio.file.Files;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -16,6 +15,7 @@ import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.util.Objects.requireNonNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static works.bosk.boson.codec.Token.END_TEXT;
 
@@ -44,8 +44,11 @@ public class JsonSuiteTest extends AbstractJsonReaderTest {
 	@ParameterizedTest
 	@MethodSource("nFiles")
 	void testInvalid(File file) {
-		assertThrows(IOException.class, () ->
+		var thrown = assertThrows(Exception.class, () ->
 			readAll(readerFor(Files.readString(file.toPath()))));
+		assertTrue(thrown instanceof JsonSyntaxException
+			|| thrown instanceof MalformedInputException,
+			"Should throw JsonSyntaxException or MalformedInputException, but threw: " + thrown);
 	}
 
 	@ParameterizedTest
@@ -62,6 +65,7 @@ public class JsonSuiteTest extends AbstractJsonReaderTest {
 		while (reader.peekRawToken() != END_TEXT) {
 			consumeValueToken(reader);
 		}
+		reader.consumeFixedToken(END_TEXT);
 	}
 
 	public static Stream<Arguments> yFiles() {
@@ -69,7 +73,7 @@ public class JsonSuiteTest extends AbstractJsonReaderTest {
 	}
 
 	public static Stream<Arguments> nFiles() {
-		return filesWithPrefix("n_").limit(1);
+		return filesWithPrefix("n_");
 	}
 
 	public static Stream<Arguments> iFiles() {

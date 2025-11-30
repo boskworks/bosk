@@ -230,6 +230,8 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 			assertEquals(END_ARRAY, consumeNonWhitespaceToken(reader));
 			assertEquals(END_OBJECT, consumeNonWhitespaceToken(reader));
 			assertEquals(END_TEXT, consumeNonWhitespaceToken(reader));
+			assertEquals(END_TEXT, consumeNonWhitespaceToken(reader),
+				"Unlimited END_TEXT tokens at end of input is valid");
 		}
 	}
 

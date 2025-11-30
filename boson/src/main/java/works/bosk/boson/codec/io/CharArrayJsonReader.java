@@ -56,7 +56,7 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	private void skipWhitespace() {
-		while (Character.isWhitespace(peekRawChar())) {
+		while (Util.fast_isWhitespace(peekRawChar())) {
 			pos++;
 		}
 	}
@@ -110,7 +110,12 @@ public final class CharArrayJsonReader implements JsonReader {
 					for (int i = 0; i < 4; i++) {
 						char b = chars[pos++];
 						value <<= 4;
-						value |= Character.digit(b, 16);
+						int digit = Character.digit(b, 16);
+						if (digit == -1) {
+							throw new JsonSyntaxException("Invalid hex digit in Unicode escape: '" + b + "'");
+						} else {
+							value |= digit;
+						}
 					}
 					yield value;
 				}
