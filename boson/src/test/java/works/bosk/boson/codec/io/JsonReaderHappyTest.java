@@ -237,27 +237,4 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 		return reader.peekValueToken();
 	}
 
-	private static Token consumeNonWhitespaceToken(JsonReader reader) {
-		Token token = reader.peekNonWhitespaceToken();
-		assert token != WHITESPACE;
-		if (token.isInsignificant()) {
-			reader.consumeFixedToken(token);
-			return token;
-		} else {
-			return consumeValueToken(reader);
-		}
-	}
-
-	private static Token consumeValueToken(JsonReader reader) {
-		Token token = reader.peekValueToken();
-		if (token.hasFixedRepresentation()) {
-			reader.consumeFixedToken(token);
-		} else if (token == STRING) {
-			reader.startConsumingString();
-			reader.skipToEndOfString();
-		} else if (token == NUMBER) {
-			reader.consumeNumber();
-		}
-		return token;
-	}
 }
