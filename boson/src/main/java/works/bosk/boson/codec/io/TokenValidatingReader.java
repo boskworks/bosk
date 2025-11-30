@@ -22,6 +22,11 @@ import static works.bosk.boson.codec.Token.ERROR;
  * This class does not detect invalid sequences of tokens, such as unbalanced braces,
  * so it does not detect all possible invalid JSON inputs;
  * but it does reduce the problem of validating JSON syntax to merely validating token sequences.
+ * <p>
+ * This class does not necessarily catch invalid tokens as early as possible.
+ * In particular, the {@code peek} methods only check the first character,
+ * so if the rest of the token is invalid, the error will only be detected
+ * when the rest of the token is consumed.
  */
 public record TokenValidatingReader(JsonReader downstream) implements JsonReader {
 
@@ -39,6 +44,18 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	@Override
 	public Token peekValueToken() {
 		Token result = downstream.peekValueToken();
+		if (result == ERROR) {
+			throw new JsonSyntaxException("Invalid JSON syntax at offset " + currentOffset());
+		}
+		return result;
+	}
+
+	/**
+	 * @throws JsonSyntaxException if the next token is invalid; never returns {@link Token#ERROR}
+	 */
+	@Override
+	public Token peekNonWhitespaceToken() {
+		Token result = downstream.peekNonWhitespaceToken();
 		if (result == ERROR) {
 			throw new JsonSyntaxException("Invalid JSON syntax at offset " + currentOffset());
 		}

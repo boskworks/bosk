@@ -79,9 +79,12 @@ public final class ByteChunkJsonReader implements JsonReader {
 		return peekRawToken();
 	}
 
-	/**
-	 * Like {@link #peekValueToken()} but does not skip insignificant characters first.
-	 */
+	@Override
+	public Token peekNonWhitespaceToken() {
+		skipWhitespace();
+		return peekRawToken();
+	}
+
 	@Override
 	public Token peekRawToken() {
 		while (currentChunk != null && currentChunkPos >= currentChunk.stop()) {
@@ -408,6 +411,24 @@ public final class ByteChunkJsonReader implements JsonReader {
 			int limit = currentChunk.stop();
 			while (currentChunkPos < limit) {
 				if (!Util.fast_isInsignificant(buf[currentChunkPos])) {
+					return;
+				} else {
+					currentChunkPos++;
+				}
+			}
+
+			if (!nextChunk()) {
+				return;
+			}
+		}
+	}
+
+	private void skipWhitespace() {
+		while (currentChunk != null) {
+			byte[] buf = currentChunk.bytes();
+			int limit = currentChunk.stop();
+			while (currentChunkPos < limit) {
+				if (!Character.isWhitespace(buf[currentChunkPos])) {
 					return;
 				} else {
 					currentChunkPos++;

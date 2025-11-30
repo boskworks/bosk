@@ -3,8 +3,6 @@ package works.bosk.boson.codec.io;
 import java.util.stream.LongStream;
 import works.bosk.boson.codec.Token;
 
-import static works.bosk.boson.codec.Token.INSIGNIFICANT;
-
 public class Util {
 	private static final long INSIGNIFICANT_CHARS = LongStream
 		.of(0x20, 0x0A, 0x0D, 0x09, ',', ':')
@@ -31,7 +29,7 @@ public class Util {
 		long answer = bitIsSet & ~(isNegative | isTooBig);
 
 		boolean result = (answer != 0);
-		assert result == (Token.startingWith(codePoint) == INSIGNIFICANT);
+		assert result == Token.startingWith(codePoint).isInsignificant();
 		return result;
 	}
 

@@ -32,6 +32,12 @@ public final class CharArrayJsonReader implements JsonReader {
 		return peekRawToken();
 	}
 
+	@Override
+	public Token peekNonWhitespaceToken() {
+		skipWhitespace();
+		return peekRawToken();
+	}
+
 	/**
 	 * @return NOT a code point!
 	 */
@@ -45,6 +51,12 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	private void skipInsignificant() {
 		while (Util.fast_isInsignificant(peekRawChar())) {
+			pos++;
+		}
+	}
+
+	private void skipWhitespace() {
+		while (Character.isWhitespace(peekRawChar())) {
 			pos++;
 		}
 	}

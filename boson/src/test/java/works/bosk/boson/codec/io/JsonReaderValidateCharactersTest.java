@@ -14,6 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.boson.codec.Token.END_TEXT;
 import static works.bosk.boson.codec.io.ByteChunkJsonReader.CARRYOVER_BYTES;
 
+/**
+ * Tests the {@link JsonReader#validateCharacters(CharSequence)} method.
+ * The input we're testing here isn't even valid JSON;
+ * we're just using the reader's ability to validate specified character sequences.
+ */
 @ParameterizedClass
 @MethodSource("readers")
 public class JsonReaderValidateCharactersTest {

@@ -16,6 +16,7 @@ import static works.bosk.boson.codec.Token.FALSE;
 import static works.bosk.boson.codec.Token.NUMBER;
 import static works.bosk.boson.codec.Token.START_ARRAY;
 import static works.bosk.boson.codec.Token.STRING;
+import static works.bosk.boson.codec.Token.WHITESPACE;
 
 /**
  * Tests cases in which {@link JsonSyntaxException} is thrown because the
@@ -142,6 +143,27 @@ class JsonReaderInvalidTokenTest extends AbstractJsonReaderTest {
 				reader.consumeFixedToken(FALSE);
 				reader.peekValueToken();
 			});
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"\f  ",
+	})
+	void invalidWhitespaceImmediately(String json) {
+		try (JsonReader reader = readerFor(json)) {
+			assertThrows(JsonSyntaxException.class, reader::peekRawToken);
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+		" \f",
+	})
+	void invalidWhitespaceLater(String json) {
+		try (JsonReader reader = readerFor(json)) {
+			assertEquals(WHITESPACE, reader.peekRawToken());
+			assertThrows(JsonSyntaxException.class, reader::peekValueToken);
 		}
 	}
 
