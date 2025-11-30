@@ -8,15 +8,20 @@ import works.bosk.boson.exceptions.JsonSyntaxException;
 import static works.bosk.boson.codec.Token.ERROR;
 
 /**
- * Stackable layer that adds lexical and syntactical validation to a given {@link JsonReader}.
+ * Stackable layer that adds lexical validation to a given {@link JsonReader}.
  * <p>
  * The {@link JsonReader} interface itself is vague as to how much validation it does,
  * specifying only a bare minimum.
- * This class ensures that the input is free of errors that would cause a
- * {@link JsonSyntaxException}.
- * Without this, a reader typically does only the validation required
+ * This class catches invalid numbers, strings, and literals other than {@code true}, {@code false}, and {@code null};
+ * and ensures that the input is free of errors that would cause it
+ * to emit an {@link Token#ERROR}
+ * or to run past the end of input in the middle of a token.
+ * Without this, a reader typically does only the minimum validation required
  * by the {@link JsonReader} interface.
- *
+ * <p>
+ * This class does not detect invalid sequences of tokens, such as unbalanced braces,
+ * so it does not detect all possible invalid JSON inputs;
+ * but it does reduce the problem of validating JSON syntax to merely validating token sequences.
  */
 public record TokenValidatingReader(JsonReader downstream) implements JsonReader {
 
