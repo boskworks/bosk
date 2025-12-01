@@ -20,10 +20,11 @@ public enum Token {
 	 */
 	STRING,
 
-	/**
-	 * Includes whitespace and commas between meaningful tokens
-	 */
-	INSIGNIFICANT,
+	// These are needed for JSON validation. They are all insignificant
+	// and could be treated as whitespace otherwise.
+	COMMA,
+	COLON,
+	WHITESPACE,
 
 	ERROR;
 
@@ -39,7 +40,9 @@ public enum Token {
 			case '[' -> START_ARRAY;
 			case ']' -> END_ARRAY;
 			case '"' -> STRING;
-			case 0x20, 0x0A, 0x0D, 0x09, ',', ':' -> INSIGNIFICANT;
+			case ',' -> COMMA;
+			case ':' -> COLON;
+			case 0x20, 0x0A, 0x0D, 0x09 -> WHITESPACE;
 			default -> ERROR;
 		};
 	}
@@ -49,7 +52,10 @@ public enum Token {
 	 */
 	public boolean hasFixedRepresentation() {
 		return switch (this) {
-			case END_TEXT, NULL, FALSE, TRUE, START_OBJECT, END_OBJECT, START_ARRAY, END_ARRAY ->
+			case END_TEXT,
+				 NULL, FALSE, TRUE,
+				 START_OBJECT, END_OBJECT, START_ARRAY, END_ARRAY,
+				 COMMA, COLON ->
 				true;
 			default ->
 				false;
@@ -66,9 +72,22 @@ public enum Token {
 			case END_OBJECT -> "}";
 			case START_ARRAY -> "[";
 			case END_ARRAY -> "]";
+			case COMMA -> ",";
+			case COLON -> ":";
 			default ->
 				throw new IllegalArgumentException("Token has no fixed representation: " + this);
 		};
 	}
 
+	/**
+	 * @return true for tokens needed only for validation, not for parsing JSON values
+	 */
+	public boolean isInsignificant() {
+		return switch (this) {
+			case COMMA, COLON, WHITESPACE ->
+				true;
+			default ->
+				false;
+		};
+	}
 }

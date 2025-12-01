@@ -12,13 +12,11 @@ class SharedParserRuntimeTest {
 		int[] insignificant = new int[]{0x20, 0x0A, 0x0D, 0x09, ',', ':'};
 		for (int i: insignificant) {
 			for (int delta: new int[]{1, -1, 64, -64}) {
-				assertEquals(isInsignificant(i+delta), fast_isInsignificant(i+delta), i + "+" + delta);
+				boolean expected = Token.startingWith(i + delta).isInsignificant();
+				boolean actual = fast_isInsignificant(i + delta);
+				assertEquals(expected, actual, i + "+" + delta);
 			}
 		}
-	}
-
-	private boolean isInsignificant(int codePoint) {
-		return Token.startingWith(codePoint) == Token.INSIGNIFICANT;
 	}
 
 }

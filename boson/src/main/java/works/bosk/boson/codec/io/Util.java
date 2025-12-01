@@ -3,11 +3,16 @@ package works.bosk.boson.codec.io;
 import java.util.stream.LongStream;
 import works.bosk.boson.codec.Token;
 
-import static works.bosk.boson.codec.Token.INSIGNIFICANT;
+import static works.bosk.boson.codec.Token.WHITESPACE;
 
 public class Util {
 	private static final long INSIGNIFICANT_CHARS = LongStream
 		.of(0x20, 0x0A, 0x0D, 0x09, ',', ':')
+		.map(n -> 1L << n)
+		.sum();
+
+	private static final long WHITESPACE_CHARS = LongStream
+		.of(0x20, 0x0A, 0x0D, 0x09)
 		.map(n -> 1L << n)
 		.sum();
 
@@ -31,7 +36,27 @@ public class Util {
 		long answer = bitIsSet & ~(isNegative | isTooBig);
 
 		boolean result = (answer != 0);
-		assert result == (Token.startingWith(codePoint) == INSIGNIFICANT);
+		assert result == Token.startingWith(codePoint).isInsignificant();
+		return result;
+	}
+
+	public static boolean fast_isWhitespace(int codePoint) {
+		// The position to check in WHITESPACE_CHARS
+		long bit = 1L << codePoint;
+
+		// Zero if definitely not whitespace
+		// Can have false positives
+		long bitIsSet = WHITESPACE_CHARS & bit;
+
+		// All ones if codePoint is greater than the largest whitespace char
+		long isNegative = (long)codePoint >> 63; // Note: -1 represents EOF
+		long isTooBig = (63L - codePoint) >> 63;
+
+		// Zero if not whitespace
+		long answer = bitIsSet & ~(isNegative | isTooBig);
+
+		boolean result = (answer != 0);
+		assert result == (Token.startingWith(codePoint) == WHITESPACE);
 		return result;
 	}
 

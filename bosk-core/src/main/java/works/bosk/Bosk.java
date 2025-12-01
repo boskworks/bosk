@@ -18,9 +18,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.Value;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -42,7 +39,6 @@ import static java.lang.Thread.holdsLock;
 import static java.util.Collections.unmodifiableCollection;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
-import static lombok.AccessLevel.NONE;
 import static works.bosk.Path.parameterNameFromSegment;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.TypeValidation.validateType;
@@ -77,14 +73,13 @@ import static works.bosk.TypeValidation.validateType;
  * Regardless, updates will not be visible in any {@code ReadContext}
  * created before the update occurred.
  *
- * @author pdoyle
- *
  * @param <R> The type of the state tree's root node
+ * @author pdoyle
  */
 public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
-	@Getter private final String name;
-	@Getter private final Identifier instanceID = Identifier.from(randomUUID().toString());
-	@Getter private final BoskDiagnosticContext diagnosticContext = new BoskDiagnosticContext();
+	private final String name;
+	private final Identifier instanceID = Identifier.from(randomUUID().toString());
+	private final BoskDiagnosticContext diagnosticContext = new BoskDiagnosticContext();
 
 	private final ValidatingDriver driver;
 	private final LocalDriver localDriver;
@@ -99,16 +94,15 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private volatile R currentRoot;
 
 	/**
-	 * @param name A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
-	 * @param rootType The @{link Type} of the root node of the state tree, whose {@link Reference#path path} is <code>"/"</code>.
+	 * @param name                A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
+	 * @param rootType            The @{link Type} of the root node of the state tree, whose {@link Reference#path path} is <code>"/"</code>.
 	 * @param defaultRootFunction The root object to use if the driver chooses not to supply one,
-	 *    and instead delegates {@link BoskDriver#initialRoot} all the way to the local driver.
-	 *    Note that this function may or may not be called, so don't use it as a means to initialize
-	 *    other state.
-	 * @param driverFactory Will be applied to this Bosk's local driver during
-	 * the Bosk's constructor, and the resulting {@link BoskDriver} will be the
-	 * one returned by {@link #getDriver}.
-	 *
+	 *                            and instead delegates {@link BoskDriver#initialRoot} all the way to the local driver.
+	 *                            Note that this function may or may not be called, so don't use it as a means to initialize
+	 *                            other state.
+	 * @param driverFactory       Will be applied to this Bosk's local driver during
+	 *                            the Bosk's constructor, and the resulting {@link BoskDriver} will be the
+	 *                            one returned by {@link #getDriver}.
 	 * @see DriverStack
 	 */
 	@SuppressWarnings("this-escape")
@@ -154,12 +148,28 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		this(name, rootType, defaultRootFunction, driverFactory, Bosk.simpleRegistrar());
 	}
 
+	@Override
+	public String name() {
+		return this.name;
+	}
+
+	@Override
+	public Identifier instanceID() {
+		return this.instanceID;
+	}
+
+	@Override
+	public BoskDiagnosticContext diagnosticContext() {
+		return this.diagnosticContext;
+	}
+
 	/**
 	 * Convenience method to create a bosk with only the basic functionality,
 	 * to get going quickly.
 	 * To customize the bosk behaviour later,
 	 * you can inline this into your call site and modify it as desired.
-	 * @param name A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
+	 *
+	 * @param name        A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
 	 * @param initialRoot The starting value of the bosk state tree, before any updates.
 	 */
 	public static <RR extends StateTreeNode> Bosk<RR> simple(String name, RR initialRoot) {
@@ -202,14 +212,14 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @return a {@link DriverFactory} with only the basic functionality.
 	 */
 	public static <RR extends StateTreeNode> DriverFactory<RR> simpleDriver() {
-		return (b,d) -> d;
+		return (b, d) -> d;
 	}
 
 	/**
 	 * @return a {@link RegistrarFactory} with only the basic functionality.
 	 */
 	public static RegistrarFactory simpleRegistrar() {
-		return (b,d) -> d;
+		return (b, d) -> d;
 	}
 
 	/**
@@ -237,7 +247,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	public <D extends BoskDriver> D getDriver(Class<? super D> driverType) {
 		var userSuppliedDriver = driver.downstream;
 		if (driverType.isInstance(userSuppliedDriver)) {
-			return (D)driverType.cast(userSuppliedDriver);
+			return (D) driverType.cast(userSuppliedDriver);
 		} else {
 			throw new NotYetImplementedException("Can't look up driver of type " + driverType);
 		}
@@ -247,9 +257,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * We wrap the user-supplied driver with one of these to ensure the error-checking
 	 * requirements of the {@link BoskDriver} are enforced.
 	 */
-	@RequiredArgsConstructor
 	final class ValidatingDriver implements BoskDriver {
 		final BoskDriver downstream;
+
+		public ValidatingDriver(BoskDriver downstream) {
+			this.downstream = downstream;
+		}
 
 		@Override
 		public <T> void submitReplacement(Reference<T> target, T newValue) {
@@ -304,7 +317,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			// On the other hand, there's a certain symmetry to requiring the references to have the right
 			// bosk for both reads and writes, and forcing this discipline on users might help them avoid
 			// some pretty confusing mistakes.
-			assert ((Bosk<?>.RootRef)target.root()).bosk() == Bosk.this: "Reference supplied to driver operation must refer to the correct bosk";
+			assert ((Bosk<?>.RootRef) target.root()).bosk() == Bosk.this : "Reference supplied to driver operation must refer to the correct bosk";
 		}
 
 	}
@@ -327,22 +340,24 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * hooks triggered by one update run before any hooks triggered by subsequent updates,
 	 * even if those hooks themselves submit more updates.
 	 * </li></ol>
-	 *
+	 * <p>
 	 * Satisfying all of these simultaneously is tricky, especially because we can't just put
 	 * "synchronized" on the submit methods because that could cause deadlock. We also don't
 	 * want to require a background thread for hook processing, partly on principle: if our
 	 * execution model is so complex that it requires a background thread just to make updates
 	 * to objects in memory, it feels like we've taken a step in the wrong direction.
 	 *
-	 * @see #drainQueueIfAllowed() for algorithm details
-	 *
 	 * @author pdoyle
+	 * @see #drainQueueIfAllowed() for algorithm details
 	 */
-	@RequiredArgsConstructor
 	private final class LocalDriver implements BoskDriver {
 		final DefaultRootFunction<R> initialRootFunction;
 		final Deque<Runnable> hookExecutionQueue = new ConcurrentLinkedDeque<>();
 		final Semaphore hookExecutionPermit = new Semaphore(1);
+
+		public LocalDriver(DefaultRootFunction<R> initialRootFunction) {
+			this.initialRootFunction = initialRootFunction;
+		}
 
 		@Override
 		public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException {
@@ -504,7 +519,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 		private <T> void queueHooks(Reference<T> target, @Nullable R priorRoot) {
 			R rootForHook = currentRoot;
-			for (HookRegistration<?> reg: hooks) {
+			for (HookRegistration<?> reg : hooks) {
 				triggerQueueingOfHooks(target, priorRoot, rootForHook, reg);
 			}
 		}
@@ -515,13 +530,13 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		 * when <code>target</code> was updated. If <code>priorRoot</code> is null, the hook is called
 		 * on every matching object that exists in <code>rootForHook</code>.
 		 */
-		private <T,S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
+		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
 			MapValue<String> attributes = diagnosticContext.getAttributes();
 			reg.triggerAction(priorRoot, rootForHook, target, changedRef -> {
 				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
-					try(
+					try (
 						@SuppressWarnings("unused") DiagnosticScope foo = diagnosticContext.withOnly(attributes)
 					) {
 						try (@SuppressWarnings("unused") ReadContext executionContext = new ReadContext(rootForHook)) {
@@ -688,20 +703,26 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		return unmodifiableCollection(hooks);
 	}
 
-	@Value // Inner class can't be a record
-	public class HookRegistration<S> {
-		String name;
-		Reference<S> scope;
-		@Getter(NONE) BoskHook<S> hook;
+	// Inner class can't be a record
+	public final class HookRegistration<S> {
+		private final String name;
+		private final Reference<S> scope;
+		private final BoskHook<S> hook;
+
+		public HookRegistration(String name, Reference<S> scope, BoskHook<S> hook) {
+			this.name = name;
+			this.scope = scope;
+			this.hook = hook;
+		}
 
 		/**
 		 * Calls <code>action</code> for every object whose path matches <code>scope</code> that
 		 * was changed by a driver event targeting <code>target</code>.
 		 *
 		 * @param priorRoot The bosk root object before the driver event occurred
-		 * @param newRoot The bosk root object after the driver event occurred
-		 * @param target The object specified by the driver event
-		 * @param action The operation to perform for each matching object that could have changed
+		 * @param newRoot   The bosk root object after the driver event occurred
+		 * @param target    The object specified by the driver event
+		 * @param action    The operation to perform for each matching object that could have changed
 		 */
 		private void triggerAction(@Nullable R priorRoot, R newRoot, Reference<?> target, Consumer<Reference<S>> action) {
 			Reference<S> effectiveScope;
@@ -725,6 +746,34 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			}
 			triggerCascade(effectiveScope, priorRoot, newRoot, action);
 		}
+
+		public String name() {
+			return this.name;
+		}
+
+		public Reference<S> scope() {
+			return this.scope;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (o == null || getClass() != o.getClass()) return false;
+			@SuppressWarnings("unchecked")
+			HookRegistration<?> that = (HookRegistration<?>) o;
+			return Objects.equals(name, that.name)
+				&& Objects.equals(scope, that.scope)
+				&& Objects.equals(hook, that.hook);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(name, scope, hook);
+		}
+
+		@Override
+		public String toString() {
+			return "Bosk.HookRegistration(name=" + this.name() + ", scope=" + this.scope() + ", hook=" + this.hook + ")";
+		}
 	}
 
 	/**
@@ -734,12 +783,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * for the base case, this calls <code>action</code> unless the prior and current values are the same object.
 	 *
 	 * @param effectiveScope The hook scope with zero or more of its parameters filled in
-	 * @param priorRoot The root before the change that triggered the hook; or null during initialization when running
-	 *                  hooks on the {@link BoskDriver#initialRoot initial root}.
-	 * @param newRoot The root after the change that triggered the hook. This will be the root in the {@link ReadContext}
-	 *                during hook execution.
-	 * @param action The operation to perform for each matching object that is different between the two roots
-	 * @param <S> The type of the hook scope object
+	 * @param priorRoot      The root before the change that triggered the hook; or null during initialization when running
+	 *                       hooks on the {@link BoskDriver#initialRoot initial root}.
+	 * @param newRoot        The root after the change that triggered the hook. This will be the root in the {@link ReadContext}
+	 *                       during hook execution.
+	 * @param action         The operation to perform for each matching object that is different between the two roots
+	 * @param <S>            The type of the hook scope object
 	 */
 	private <S> void triggerCascade(Reference<S> effectiveScope, @Nullable R priorRoot, R newRoot, Consumer<Reference<S>> action) {
 		if (effectiveScope.path().numParameters() == 0) {
@@ -787,7 +836,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				// Then process updated items
 				//
 				if (newContainer != null) {
-					for (Identifier id: newContainer.ids()) {
+					for (Identifier id : newContainer.ids()) {
 						if (priorContainer == null || priorContainer.get(id) != newContainer.get(id)) {
 							triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
 						}
@@ -893,13 +942,13 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		 * Hence, a recommended idiom for scope inheritance looks like this:
 		 *
 		 * <blockquote><pre>
-try (ReadContext originalThReadContext = bosk.readContext()) {
-	workQueue.submit(() -> {
-		try (ReadContext workerThReadContext = bosk.adopt(originalThReadContext)) {
-			// Code in here can read from the bosk just like the original thread.
-		}
-	});
-}
+		 * try (ReadContext originalThReadContext = bosk.readContext()) {
+		 *     workQueue.submit(() -> {
+		 *         try (ReadContext workerThReadContext = bosk.adopt(originalThReadContext)) {
+		 *             // Code in here can read from the bosk just like the original thread.
+		 *         }
+		 *     });
+		 * }
 		 * </pre></blockquote>
 		 *
 		 * Note, though, that this will prevent the garbage collector from
@@ -998,7 +1047,9 @@ try (ReadContext originalThReadContext = bosk.readContext()) {
 			super(Path.empty(), targetType);
 		}
 
-		Bosk<?> bosk() { return Bosk.this; }
+		Bosk<?> bosk() {
+			return Bosk.this;
+		}
 
 		@Override
 		public <U> Reference<U> then(Class<U> requestedClass, Path path) throws InvalidTypeException {
@@ -1036,7 +1087,7 @@ try (ReadContext originalThReadContext = bosk.readContext()) {
 
 		@Override
 		public <K extends Entity, V> SideTableReference<K, V> thenSideTable(Class<K> keyClass, Class<V> valueClass, Path path) throws InvalidTypeException {
-			Reference<SideTable<K,V>> ref = this.then(Classes.sideTable(keyClass, valueClass), path);
+			Reference<SideTable<K, V>> ref = this.then(Classes.sideTable(keyClass, valueClass), path);
 			return new SideTableRef<>(ref, keyClass, valueClass);
 		}
 
@@ -1056,16 +1107,29 @@ try (ReadContext originalThReadContext = bosk.readContext()) {
 		}
 	}
 
-	@Getter
-	@RequiredArgsConstructor
 	sealed abstract class ReferenceImpl<T> implements Reference<T> {
 		protected final Path path;
 		protected final Type targetType;
 
+		public ReferenceImpl(Path path, Type targetType) {
+			this.path = path;
+			this.targetType = targetType;
+		}
+
+		@Override
+		public Path path() {
+			return this.path;
+		}
+
+		@Override
+		public Type targetType() {
+			return this.targetType;
+		}
+
 		@Override
 		@SuppressWarnings("unchecked")
 		public final Class<T> targetClass() {
-			return (Class<T>)rawClass(targetType());
+			return (Class<T>) rawClass(targetType());
 		}
 
 		@Override
@@ -1114,14 +1178,15 @@ try (ReadContext originalThReadContext = bosk.readContext()) {
 			if (path.isEmpty()) {
 				throw new IllegalArgumentException("Root reference has no enclosing references");
 			}
-			for (Path p = this.path.truncatedBy(1); !p.isEmpty(); p = p.truncatedBy(1)) try {
-				Type targetType = pathCompiler.targetTypeOf(p);
-				if (targetClass.isAssignableFrom(rawClass(targetType))) {
-					return rootReference().then(targetClass, p);
+			for (Path p = this.path.truncatedBy(1); !p.isEmpty(); p = p.truncatedBy(1))
+				try {
+					Type targetType = pathCompiler.targetTypeOf(p);
+					if (targetClass.isAssignableFrom(rawClass(targetType))) {
+						return rootReference().then(targetClass, p);
+					}
+				} catch (InvalidTypeException e) {
+					throw new IllegalArgumentException("Error looking up enclosing " + targetClass.getSimpleName() + " from " + path);
 				}
-			} catch (InvalidTypeException e) {
-				throw new IllegalArgumentException("Error looking up enclosing " + targetClass.getSimpleName() + " from " + path);
-			}
 			// Might be the root
 			if (targetClass.isAssignableFrom(rootRef.targetClass())) {
 				return (Reference<TT>) rootReference();
@@ -1270,13 +1335,16 @@ try (ReadContext originalThReadContext = bosk.readContext()) {
 	 * It differs from {@link NonexistentReferenceException},
 	 * which is a user-facing exception that is part of the contract of {@link Reference#value()}.
 	 */
-	@Getter
 	public static final class NonexistentEntryException extends Exception {
 		final Path path;
 
 		public NonexistentEntryException(Path path) {
 			super("No object at path \"" + path.toString() + "\"");
 			this.path = path;
+		}
+
+		public Path path() {
+			return this.path;
 		}
 	}
 
@@ -1308,9 +1376,10 @@ try (ReadContext originalThReadContext = bosk.readContext()) {
 		return currentRoot;
 	}
 
-	@SuppressWarnings({"unchecked","rawtypes"})
+	@SuppressWarnings({"unchecked", "rawtypes"})
 	private static Class<EnumerableByIdentifier<?>> enumerableByIdentifierClass() {
 		return (Class) EnumerableByIdentifier.class;
 	}
+
 	private static final Logger LOGGER = LoggerFactory.getLogger(Bosk.class);
 }

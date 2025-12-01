@@ -5,20 +5,49 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.Parameter;
 import works.bosk.boson.codec.JsonReader;
+import works.bosk.boson.codec.Token;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static works.bosk.boson.codec.Token.NUMBER;
+import static works.bosk.boson.codec.Token.STRING;
+import static works.bosk.boson.codec.Token.WHITESPACE;
 import static works.bosk.boson.codec.io.ByteChunkJsonReader.MIN_CHUNK_SIZE;
 
 public class AbstractJsonReaderTest {
 	@Parameter
-	Function<String, ? extends JsonReader> readerSupplier;
+	@SuppressWarnings("unused") // Initialized by JUnit
+	private Function<String, ? extends JsonReader> readerSupplier;
+
+	static Token consumeNonWhitespaceToken(JsonReader reader) {
+		Token token = reader.peekNonWhitespaceToken();
+		assert token != WHITESPACE;
+		if (token.isInsignificant()) {
+			reader.consumeFixedToken(token);
+			return token;
+		} else {
+			return consumeValueToken(reader);
+		}
+	}
+
+	static Token consumeValueToken(JsonReader reader) {
+		Token token = reader.peekValueToken();
+		if (token.hasFixedRepresentation()) {
+			reader.consumeFixedToken(token);
+		} else if (token == STRING) {
+			reader.startConsumingString();
+			reader.skipToEndOfString();
+		} else if (token == NUMBER) {
+			reader.consumeNumber();
+		}
+		return token;
+	}
 
 	protected JsonReader readerFor(String json) {
 		return readerSupplier.apply(json);
 	}
 
 	@SuppressWarnings("unused") // Subclasses use this to parameterize tests
-	static Stream<Function<String, ? extends JsonReader>> readerSuppliers() {
+	static Stream<Function<String, JsonReader>> readerSuppliers() {
 		return Stream.of(
 			new ByteArray(),
 			new ByteChunks(),

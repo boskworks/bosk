@@ -20,6 +20,7 @@ import works.bosk.Reference;
 import works.bosk.boson.codec.Codec;
 import works.bosk.boson.codec.CodecBuilder;
 import works.bosk.boson.codec.Generator;
+import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Parser;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.mapping.TypeMap;
@@ -97,8 +98,12 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 			if (variant == Variant.B2J) {
 				return jackson.readerFor(referenceType).readValue(jsonString);
 			} else {
+				JsonReader json = CharArrayJsonReader.forString(jsonString);
+				if (variant == Variant.VALIDATING) {
+					json = json.withValidation();
+				}
 				try {
-					Object parsed = parser.parse(CharArrayJsonReader.forString(jsonString));
+					Object parsed = parser.parse(json);
 					return reference.targetClass().cast(parsed);
 				} catch (IOException e) {
 					throw new AssertionError("Unexpected exception", e);
@@ -119,7 +124,7 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 		}
 	}
 
-	public enum Variant {B2B, J2B, B2J}
+	public enum Variant {FAST, VALIDATING, J2B, B2J}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(BosonRoundTripConformanceTest.class);
 }

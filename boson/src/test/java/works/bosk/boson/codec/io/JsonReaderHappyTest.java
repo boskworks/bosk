@@ -9,6 +9,8 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static works.bosk.boson.codec.Token.COLON;
+import static works.bosk.boson.codec.Token.COMMA;
 import static works.bosk.boson.codec.Token.END_ARRAY;
 import static works.bosk.boson.codec.Token.END_OBJECT;
 import static works.bosk.boson.codec.Token.END_TEXT;
@@ -19,6 +21,7 @@ import static works.bosk.boson.codec.Token.START_ARRAY;
 import static works.bosk.boson.codec.Token.START_OBJECT;
 import static works.bosk.boson.codec.Token.STRING;
 import static works.bosk.boson.codec.Token.TRUE;
+import static works.bosk.boson.codec.Token.WHITESPACE;
 
 @ParameterizedClass
 @MethodSource("readerSuppliers")
@@ -29,7 +32,7 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 		try (JsonReader reader = readerFor("\"hello\"")) {
 			assertEquals(STRING, peekValueToken(reader));
 			assertEquals("hello", reader.consumeString());
-			assertEquals(END_TEXT, consumeToken(reader));
+			assertEquals(END_TEXT, consumeValueToken(reader));
 		}
 	}
 
@@ -57,7 +60,7 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 			}
 
 			assertEquals(-2, reader.nextStringChar());
-			assertEquals(END_TEXT, consumeToken(reader));
+			assertEquals(END_TEXT, consumeValueToken(reader));
 		}
 	}
 
@@ -72,7 +75,7 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 			reader.startConsumingString();
 			reader.skipStringChars(3);
 			assertEquals(-2, reader.nextStringChar());
-			assertEquals(END_TEXT, consumeToken(reader));
+			assertEquals(END_TEXT, consumeValueToken(reader));
 		}
 	}
 
@@ -86,7 +89,7 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 			assertEquals(0xd83d, reader.nextStringChar(),
 				"Second surrogate");
 			assertEquals(-2, reader.nextStringChar());
-			assertEquals(END_TEXT, consumeToken(reader));
+			assertEquals(END_TEXT, consumeValueToken(reader));
 		}
 	}
 
@@ -176,29 +179,33 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 	@Test
 	void structuralTokens() {
 		try (JsonReader reader = readerFor("{\"a\": [1, 2]}")) {
-			assertEquals(START_OBJECT, consumeToken(reader));
+			assertEquals(START_OBJECT, consumeValueToken(reader));
 			assertEquals(STRING, peekValueToken(reader));
 			assertEquals("a", reader.consumeString());
-			assertEquals(START_ARRAY, consumeToken(reader));
+			assertEquals(COLON, reader.peekRawToken());
+			assertEquals(START_ARRAY, consumeValueToken(reader));
 			assertEquals(NUMBER, peekValueToken(reader));
 			assertEquals("1", reader.consumeNumber().toString());
 			assertEquals(NUMBER, peekValueToken(reader));
 			assertEquals("2", reader.consumeNumber().toString());
-			assertEquals(END_ARRAY, consumeToken(reader));
-			assertEquals(END_OBJECT, consumeToken(reader));
-			assertEquals(END_TEXT, consumeToken(reader));
+			assertEquals(END_ARRAY, consumeValueToken(reader));
+			assertEquals(END_OBJECT, consumeValueToken(reader));
+			assertEquals(END_TEXT, consumeValueToken(reader));
 		}
 	}
 
 	@Test
 	void trueFalseNull() {
-		try (JsonReader reader = readerFor("[true,false,null]")) {
-			assertEquals(START_ARRAY, consumeToken(reader));
-			assertEquals(TRUE, consumeToken(reader));
-			assertEquals(FALSE, consumeToken(reader));
-			assertEquals(NULL, consumeToken(reader));
-			assertEquals(END_ARRAY, consumeToken(reader));
-			assertEquals(END_TEXT, consumeToken(reader));
+		try (JsonReader reader = readerFor("[true, false,null]")) {
+			assertEquals(START_ARRAY, consumeValueToken(reader));
+			assertEquals(TRUE, consumeValueToken(reader));
+			assertEquals(COMMA, reader.peekRawToken());
+			reader.consumeFixedToken(COMMA);
+			assertEquals(WHITESPACE, reader.peekRawToken());
+			assertEquals(FALSE, consumeValueToken(reader));
+			assertEquals(NULL, consumeValueToken(reader));
+			assertEquals(END_ARRAY, consumeValueToken(reader));
+			assertEquals(END_TEXT, consumeValueToken(reader));
 		}
 	}
 
@@ -210,19 +217,26 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 		}
 	}
 
+	@Test
+	void peekNonWhitespaceToken() {
+		try (JsonReader reader = readerFor("  \n { \t \"key\" \r : \t [ \r 123 , 456 \n ] }  ")) {
+			assertEquals(START_OBJECT, consumeNonWhitespaceToken(reader));
+			assertEquals(STRING, consumeNonWhitespaceToken(reader));
+			assertEquals(COLON, consumeNonWhitespaceToken(reader));
+			assertEquals(START_ARRAY, consumeNonWhitespaceToken(reader));
+			assertEquals(NUMBER, consumeNonWhitespaceToken(reader));
+			assertEquals(COMMA, consumeNonWhitespaceToken(reader));
+			assertEquals(NUMBER, consumeNonWhitespaceToken(reader));
+			assertEquals(END_ARRAY, consumeNonWhitespaceToken(reader));
+			assertEquals(END_OBJECT, consumeNonWhitespaceToken(reader));
+			assertEquals(END_TEXT, consumeNonWhitespaceToken(reader));
+			assertEquals(END_TEXT, consumeNonWhitespaceToken(reader),
+				"Unlimited END_TEXT tokens at end of input is valid");
+		}
+	}
+
 	private static Token peekValueToken(JsonReader reader) {
 		return reader.peekValueToken();
 	}
 
-	private static Token consumeToken(JsonReader reader) {
-		Token token = reader.peekValueToken();
-		if (token.hasFixedRepresentation()) {
-			reader.consumeFixedToken(token);
-		} else if (token == STRING) {
-			reader.skipToEndOfString();
-		} else if (token == NUMBER) {
-			reader.consumeNumber();
-		}
-		return token;
-	}
 }

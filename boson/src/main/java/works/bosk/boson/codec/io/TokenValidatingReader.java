@@ -8,15 +8,25 @@ import works.bosk.boson.exceptions.JsonSyntaxException;
 import static works.bosk.boson.codec.Token.ERROR;
 
 /**
- * Stackable layer that adds lexical and syntactical validation to a given {@link JsonReader}.
+ * Stackable layer that adds lexical validation to a given {@link JsonReader}.
  * <p>
  * The {@link JsonReader} interface itself is vague as to how much validation it does,
  * specifying only a bare minimum.
- * This class ensures that the input is free of errors that would cause a
- * {@link JsonSyntaxException}.
- * Without this, a reader typically does only the validation required
+ * This class catches invalid numbers, strings, and literals other than {@code true}, {@code false}, and {@code null};
+ * and ensures that the input is free of errors that would cause it
+ * to emit an {@link Token#ERROR}
+ * or to run past the end of input in the middle of a token.
+ * Without this, a reader typically does only the minimum validation required
  * by the {@link JsonReader} interface.
- *
+ * <p>
+ * This class does not detect invalid sequences of tokens, such as unbalanced braces,
+ * so it does not detect all possible invalid JSON inputs;
+ * but it does reduce the problem of validating JSON syntax to merely validating token sequences.
+ * <p>
+ * This class does not necessarily catch invalid tokens as early as possible.
+ * In particular, the {@code peek} methods only check the first character,
+ * so if the rest of the token is invalid, the error will only be detected
+ * when the rest of the token is consumed.
  */
 public record TokenValidatingReader(JsonReader downstream) implements JsonReader {
 
@@ -34,6 +44,18 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	@Override
 	public Token peekValueToken() {
 		Token result = downstream.peekValueToken();
+		if (result == ERROR) {
+			throw new JsonSyntaxException("Invalid JSON syntax at offset " + currentOffset());
+		}
+		return result;
+	}
+
+	/**
+	 * @throws JsonSyntaxException if the next token is invalid; never returns {@link Token#ERROR}
+	 */
+	@Override
+	public Token peekNonWhitespaceToken() {
+		Token result = downstream.peekNonWhitespaceToken();
 		if (result == ERROR) {
 			throw new JsonSyntaxException("Invalid JSON syntax at offset " + currentOffset());
 		}
@@ -81,7 +103,12 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 				i++;
 			}
 			switch (seq.charAt(i)) {
-				case '0' -> i++;
+				case '0' -> {
+					i++;
+					if (i == seq.length()) {
+						return;
+					}
+				}
 				case '1', '2', '3', '4', '5', '6', '7', '8', '9' -> {
 					do {
 						i++;
@@ -139,12 +166,6 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	@Override
 	public void startConsumingString() {
 		downstream.startConsumingString();
-	}
-
-	@Override
-	public JsonReader withValidation() {
-		// Already validating
-		return this;
 	}
 
 	@Override

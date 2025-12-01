@@ -5,6 +5,7 @@ import works.bosk.boson.codec.io.ByteArrayChunkFiller;
 import works.bosk.boson.codec.io.ByteChunkJsonReader;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.codec.io.SynchronousChunkFiller;
+import works.bosk.boson.codec.io.SyntaxValidatingReader;
 import works.bosk.boson.codec.io.TokenValidatingReader;
 import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.exceptions.JsonFormatException;
@@ -31,7 +32,8 @@ import static java.lang.Character.MIN_SURROGATE;
 public sealed interface JsonReader extends AutoCloseable permits
 	ByteChunkJsonReader,
 	CharArrayJsonReader,
-	TokenValidatingReader
+	TokenValidatingReader,
+	SyntaxValidatingReader
 {
 	/**
 	 * Returned by {@link #nextStringChar()} to indicate the closing quote has been reached.
@@ -67,7 +69,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	}
 
 	default JsonReader withValidation() {
-		return new TokenValidatingReader(this);
+		return new SyntaxValidatingReader(new TokenValidatingReader(this));
 	}
 
 	/**
@@ -75,6 +77,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * Skips insignificant characters (whitespace, commas, and colons)
 	 * and returns the next token encountered that is either the first
 	 * or last token of a JSON value, or {@link Token#END_TEXT}.
+	 * These are the tokens for which {@link Token#isInsignificant() isInsignificant} returns false.
 	 * <p>
 	 * Depending on the token returned, the next method called must be one of the following:
 	 * <ul>
@@ -96,6 +99,9 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * For example, if the next character is a digit,
 	 * this will return {@link Token#NUMBER},
 	 * even though the full token might turn out to be invalid.
+	 *
+	 * @return the next <em>significant</em> token.
+	 * @see Token#isInsignificant()
 	 */
 	Token peekValueToken();
 
@@ -118,15 +124,26 @@ public sealed interface JsonReader extends AutoCloseable permits
 	}
 
 	/**
-	 * Returns the next token without skipping insignificant characters.
+	 * Like {@link #peekValueToken}, but skips only whitespace characters.
+	 * For any {@link Token#isInsignificant() insignificant} token,
+	 * no further processing is needed,
+	 * and another {@code peek} method can be called immediately.
+	 * Significant tokens must be treated as if returned by {@link #peekValueToken}.
+	 *
+	 * @return the next token after any whitespace, including {@link Token#COMMA} or {@link Token#COLON}.
+	 */
+	Token peekNonWhitespaceToken();
+
+	/**
+	 * Returns the next token without skipping any characters.
 	 * Has no side effects.
 	 * <p>
 	 * This is useful for implementations that need to process
 	 * the exact structure of the input, including commas, colons,
 	 * and whitespace.
 	 *
-	 * @return the token we're currently positioned at, including {@link Token#INSIGNIFICANT} or {@link Token#ERROR}
-	 * if we're not positioned at the start of a meaningful token.
+	 * @return the token we're currently positioned at, including
+	 * {@link Token#COMMA}, {@link Token#COLON}, or {@link Token#WHITESPACE}.
 	 */
 	Token peekRawToken();
 

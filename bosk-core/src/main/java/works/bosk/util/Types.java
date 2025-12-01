@@ -5,7 +5,8 @@ import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.Objects;
 
-public abstract class Types {
+public final class Types {
+	private Types() {}
 	public static ParameterizedType parameterizedType(Class<?> rawClass, Type... parameters) {
 		return new ParameterizedType() {
 			@Override public Type[] getActualTypeArguments() { return parameters; }

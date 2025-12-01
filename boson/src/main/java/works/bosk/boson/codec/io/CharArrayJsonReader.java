@@ -32,6 +32,12 @@ public final class CharArrayJsonReader implements JsonReader {
 		return peekRawToken();
 	}
 
+	@Override
+	public Token peekNonWhitespaceToken() {
+		skipWhitespace();
+		return peekRawToken();
+	}
+
 	/**
 	 * @return NOT a code point!
 	 */
@@ -45,6 +51,12 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	private void skipInsignificant() {
 		while (Util.fast_isInsignificant(peekRawChar())) {
+			pos++;
+		}
+	}
+
+	private void skipWhitespace() {
+		while (Util.fast_isWhitespace(peekRawChar())) {
 			pos++;
 		}
 	}
@@ -98,7 +110,12 @@ public final class CharArrayJsonReader implements JsonReader {
 					for (int i = 0; i < 4; i++) {
 						char b = chars[pos++];
 						value <<= 4;
-						value |= Character.digit(b, 16);
+						int digit = Character.digit(b, 16);
+						if (digit == -1) {
+							throw new JsonSyntaxException("Invalid hex digit in Unicode escape: '" + b + "'");
+						} else {
+							value |= digit;
+						}
 					}
 					yield value;
 				}
