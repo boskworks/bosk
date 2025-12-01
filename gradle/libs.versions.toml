@@ -43,7 +43,7 @@ spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter
 spring-boot-starter-webmvc = { module="org.springframework.boot:spring-boot-starter-webmvc", version.ref="spring-boot" }
 spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
 spring-boot-starter-webmvc-test = { module="org.springframework.boot:spring-boot-starter-webmvc-test", version.ref="spring-boot" }
-sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.51.0.0" }
+sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.51.1.0" }
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 testcontainers-mongodb = { module = "org.testcontainers:testcontainers-mongodb", version.ref = "testcontainers" }
@@ -53,4 +53,4 @@ testcontainers-toxiproxy = { module = "org.testcontainers:testcontainers-toxipro
 
 [plugins]
 nexus = { id = "io.github.gradle-nexus.publish-plugin", version="2.0.0" }
-spotbugs = { id = "com.github.spotbugs", version = "6.4.6" }
+spotbugs = { id = "com.github.spotbugs", version = "6.4.7" }
