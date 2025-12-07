@@ -55,9 +55,9 @@
  *         in terms of another that is already defined.
  *     </li>
  *     <li>
- *         {@link works.bosk.boson.mapping.spec.FixedMapNode.Wrangler1}
+ *         {@link works.bosk.boson.mapping.spec.FixedObjectNode.Wrangler1}
  *         can specify a JSON object with one member,
- *         and {@link works.bosk.boson.mapping.spec.FixedMapNode.Wrangler2}
+ *         and {@link works.bosk.boson.mapping.spec.FixedObjectNode.Wrangler2}
  *         can specify one with two members.
  *     </li>
  *     <li>

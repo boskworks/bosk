@@ -1,14 +1,20 @@
 package works.bosk.boson.mapping.spec;
 
+import works.bosk.boson.mapping.spec.handles.MemberPresenceCondition;
 import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.types.DataType;
 
 /**
  * Represents a portion of the in-memory structure that is returned by {@code supplier}
- * and does not correspond * to any JSON text.
+ * and does not correspond to any JSON text.
  * <p>
  * When parsing, {@code supplier} is called to produce the in-memory value.
  * When generating JSON, nothing is emitted.
+ * <p>
+ * This is something like a {@link MaybeAbsentSpec}
+ * with a {@link MemberPresenceCondition} of {@link MemberPresenceCondition#never() never},
+ * but that would be cumbersome because
+ * there's no meaningful value for {@link MaybeAbsentSpec#ifPresent() ifPresent}.
  *
  * @param supplier
  */

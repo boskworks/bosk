@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.ComputedSpec;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;
@@ -95,7 +95,7 @@ public class Optimizer {
 				postorderWalk(c1, typeMap, checklist, postorder);
 				postorderWalk(c2, typeMap, checklist, postorder);
 			}
-			case FixedMapNode(var memberSpecs, _) -> memberSpecs.values().forEach(child ->
+			case FixedObjectNode(var memberSpecs, _) -> memberSpecs.values().forEach(child ->
 				postorderWalk(child.valueSpec(), typeMap, checklist, postorder)
 			);
 		}

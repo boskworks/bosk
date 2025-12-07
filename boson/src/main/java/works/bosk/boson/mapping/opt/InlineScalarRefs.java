@@ -12,8 +12,8 @@ import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.ArraySpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
-import works.bosk.boson.mapping.spec.FixedMapMember;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
@@ -68,8 +68,8 @@ public class InlineScalarRefs {
 					new ArrayNode(optimize(x.elementNode()), x.accumulator(), x.emitter()));
 				case UniformMapNode n -> transform(n, x ->
 					new UniformMapNode(optimize(x.keyNode()), optimize(x.valueNode()), x.accumulator(), x.emitter())); // TODO: optimize keyNode?
-				case FixedMapNode n -> transform(n, x ->
-					new FixedMapNode(optimizeMembers(x.memberSpecs()), x.finisher()));
+				case FixedObjectNode n -> transform(n, x ->
+					new FixedObjectNode(optimizeMembers(x.memberSpecs()), x.finisher()));
 			};
 			LOGGER.debug("Optimized {}", result);
 			inProgress.remove(node);
@@ -92,10 +92,10 @@ public class InlineScalarRefs {
 		};
 	}
 
-	private SequencedMap<String, FixedMapMember> optimizeMembers(SequencedMap<String, FixedMapMember> memberSpecs) {
-		var result = new LinkedHashMap<String, FixedMapMember>();
+	private SequencedMap<String, RecognizedMember> optimizeMembers(SequencedMap<String, RecognizedMember> memberSpecs) {
+		var result = new LinkedHashMap<String, RecognizedMember>();
 		memberSpecs.forEach((k,v) ->
-			result.put(k, new FixedMapMember(optimize(v.valueSpec()), v.accessor())));
+			result.put(k, new RecognizedMember(optimize(v.valueSpec()), v.accessor())));
 		return result;
 	}
 
