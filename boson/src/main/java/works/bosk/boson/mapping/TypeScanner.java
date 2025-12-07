@@ -115,7 +115,7 @@ public final class TypeScanner {
 			enumType -> switch (enumType) {
 				case BoundType bt -> EnumByNameNode.of(bt.rawClass());
 				default ->
-					throw new JsonContentException("Expected enum type but got " + enumType);
+					throw new IllegalArgumentException("Expected enum type but got " + enumType);
 			}
 		));
 
@@ -179,7 +179,7 @@ public final class TypeScanner {
 					}
 				});
 				default ->
-					throw new JsonContentException("Expected ArrayType but got " + arrayType);
+					throw new IllegalArgumentException("Expected ArrayType but got " + arrayType);
 			}
 		));
 
@@ -188,7 +188,7 @@ public final class TypeScanner {
 			recordType -> switch (recordType) {
 				case BoundType bt -> scanRecord(bt);
 				default ->
-					throw new JsonContentException("Expected record type but got " + recordType);
+					throw new IllegalArgumentException("Expected record type but got " + recordType);
 			}
 		));
 
@@ -710,7 +710,7 @@ public final class TypeScanner {
 		try {
 			mh = lookupFor(c.getDeclaringRecord()).unreflect(c.getAccessor());
 		} catch (IllegalAccessException e) {
-			throw new IllegalStateException("Unexpected error accessing record component accessor for " + c, e);
+			throw new JsonProcessingException("Unexpected error accessing record component accessor for " + c, e);
 		}
 		KnownType returnType = (KnownType) DataType.of(c.getGenericType()).substitute(recordTypeArguments);
 		KnownType parameterType = (KnownType) DataType.of(c.getDeclaringRecord()).substitute(recordTypeArguments);
