@@ -54,7 +54,7 @@ public class SubstitutionTest {
 	}
 
 	@Test
-	<T> void fixedMap() {
+	<T> void fixedObject() {
 		record TestRecord<T>(T field) {}
 		DataType unknownType = DataType.of(new TypeReference<TestRecord<List<T>>>() { });
 		DataType knownType = DataType.of(new TypeReference<TestRecord<List<String>>>() { });
@@ -63,7 +63,7 @@ public class SubstitutionTest {
 			.scan(unknownType)
 			.build()
 			.get(unknownType);
-		FixedMapNode actual = (FixedMapNode) original.specialize(Map.of("T", STRING));
+		FixedObjectNode actual = (FixedObjectNode) original.specialize(Map.of("T", STRING));
 		assertEquals(knownType, actual.dataType());
 		assertEquals(LIST_OF_STRING, actual.finisher().parameterTypes().getFirst());
 	}

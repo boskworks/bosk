@@ -47,7 +47,7 @@ import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.EnumByNameNode;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
@@ -407,7 +407,7 @@ public class SpecCompiler {
 				case MaybeNullSpec node -> _parseMaybeNull(node);
 				case ParseCallbackSpec node -> _parseCallBack(node);
 				case PrimitiveNumberNode node -> _parsePrimitiveNumber(node);
-				case FixedMapNode node -> _parseFixedMap(node);
+				case FixedObjectNode node -> _parseFixedObject(node);
 				case RepresentAsSpec node -> _parseAndConvert(node);
 				case StringNode _ -> _parseString();
 				case TypeRefNode node -> _parseTypeRef(node);
@@ -683,9 +683,9 @@ public class SpecCompiler {
 			);
 		}
 
-		private void _parseFixedMap(FixedMapNode fixedMapNode) {
-			LOGGER.debug("_parseFixedMap on:\n{}", fixedMapNode);
-			TrieNode trie = TrieNode.from(fixedMapNode.memberSpecs().keySet());
+		private void _parseFixedObject(FixedObjectNode fixedObjectNode) {
+			LOGGER.debug("_parseFixedObject on:\n{}", fixedObjectNode);
+			TrieNode trie = TrieNode.from(fixedObjectNode.memberSpecs().keySet());
 			LOGGER.debug(" -> trie: {}", trie);
 //			codeBuilder.dup(); // This causes a stack underflow that makes the classfile API dump the bytecode
 
@@ -698,7 +698,7 @@ public class SpecCompiler {
 
 				// Allocate locals
 				Map<String, LocalVariable> componentLocalsByName = new LinkedHashMap<>(); // ORDER MATTERS
-				fixedMapNode.memberSpecs().forEach((name, componentNode) -> {
+				fixedObjectNode.memberSpecs().forEach((name, componentNode) -> {
 					TypeKind typeKind = nodeReturnTypeKind(componentNode.valueSpec());
 					LocalVariable v = locals.allocate(typeKind);
 					componentLocalsByName.put(name, v);
@@ -725,18 +725,18 @@ public class SpecCompiler {
 
 				codeBuilder.labelBinding(member);
 				_startConsumingString();
-				generateCodePointSwitch(trie, fixedMapNode, componentLocalsByName, loop, error);
+				generateCodePointSwitch(trie, fixedObjectNode, componentLocalsByName, loop, error);
 
 				codeBuilder.labelBinding(error);
-				_throwParseError("Unexpected character; was expecting one of " + fixedMapNode.memberSpecs().keySet());
+				_throwParseError("Unexpected character; was expecting one of " + fixedObjectNode.memberSpecs().keySet());
 
 				codeBuilder.labelBinding(endObject);
 				_skipToken(END_OBJECT);
 
 				// All the local variables should have their values now.
 				// Time to call the finisher
-				var mt = curryAndLoad(fixedMapNode.finisher().handle(), "fixedMap_finisher");
-				fixedMapNode.memberSpecs().forEach((name, node) -> {
+				var mt = curryAndLoad(fixedObjectNode.finisher().handle(), "fixedObject_finisher");
+				fixedObjectNode.memberSpecs().forEach((name, node) -> {
 					var local = componentLocalsByName.get(name);
 					local.load(codeBuilder);
 					if (local.typeKind() == REFERENCE) {
@@ -763,12 +763,12 @@ public class SpecCompiler {
 		/**
 		 * Recursively a nest of switches to match the strings described by the given trie.
 		 */
-		private void generateCodePointSwitch(TrieNode node, FixedMapNode fixedMapNode, Map<String, LocalVariable> componentLocalsByName, Label loop, Label error) {
+		private void generateCodePointSwitch(TrieNode node, FixedObjectNode fixedObjectNode, Map<String, LocalVariable> componentLocalsByName, Label loop, Label error) {
 			LOGGER.debug("generateCodePointSwitch({})", node);
 			switch (node) {
 				case TrieNode.LeafNode(String memberName, int matchedPrefix) -> {
 					_skipToEnd(memberName.length() - matchedPrefix);
-					var child = fixedMapNode.memberSpecs().get(memberName);
+					var child = fixedObjectNode.memberSpecs().get(memberName);
 					LOGGER.debug("-> leaf({})", child);
 					switch (child.valueSpec()) {
 						case JsonValueSpec v -> {
@@ -796,7 +796,7 @@ public class SpecCompiler {
 						}
 						LOGGER.debug("-> skip({})", numSkips);
 						_skipStringChars(numSkips);
-						generateCodePointSwitch(child, fixedMapNode, componentLocalsByName, loop, error);
+						generateCodePointSwitch(child, fixedObjectNode, componentLocalsByName, loop, error);
 					} else {
 						LOGGER.debug("-> switch({})", edges.stream().map(TrieEdge::codePoint).toList());
 						_nextStringChar();
@@ -807,7 +807,7 @@ public class SpecCompiler {
 						Iterator<TrieEdge> iter = edges.iterator();
 						cases.forEach(c -> {
 							codeBuilder.labelBinding(c.target());
-							generateCodePointSwitch(iter.next().child(), fixedMapNode, componentLocalsByName, loop, error);
+							generateCodePointSwitch(iter.next().child(), fixedObjectNode, componentLocalsByName, loop, error);
 						});
 					}
 				}

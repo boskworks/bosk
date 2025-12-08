@@ -23,8 +23,8 @@ import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.EnumByNameNode;
-import works.bosk.boson.mapping.spec.FixedMapMember;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
@@ -102,9 +102,9 @@ public final class RoundTripTest {
 			new ComputedSpec(constant(STRING, "default")),
 			presenceCondition
 			);
-		var node = new FixedMapNode(
+		var node = new FixedObjectNode(
 			new LinkedHashMap<>(Map.of(
-				"field", new FixedMapMember(
+				"field", new RecognizedMember(
 					maybeAbsent,
 					TypedHandles.componentAccessor(RecordWithOptionalField.class.getRecordComponents()[0], lookup))
 			)),
@@ -141,7 +141,7 @@ public final class RoundTripTest {
 	 * {@link Parser#parse} can't return a primitive, so to really test them,
 	 * we need to put them in a record.
 	 * <p>
-	 * Also acts as a test for {@link FixedMapNode}.
+	 * Also acts as a test for {@link FixedObjectNode}.
 	 * <p>
 	 * This must be public because {@link TypeScanner} can only see public methods.
 	 * TODO: Add Lookup support to TypeScanner

@@ -28,8 +28,8 @@ import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.EnumByNameNode;
-import works.bosk.boson.mapping.spec.FixedMapMember;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
@@ -105,7 +105,7 @@ public class SpecInterpretingParser implements Parser {
 				case UniformMapNode n -> parseUniformMap(n);
 				case MaybeNullSpec n -> parseMaybeNull(n);
 				case ParseCallbackSpec n -> parseCallback(n);
-				case FixedMapNode n -> parseFixedMap(n);
+				case FixedObjectNode n -> parseFixedObject(n);
 				case RepresentAsSpec n -> parseAndConvert(n);
 				case TypeRefNode n -> parseAny_recursive(typeMap.get(n.type()));
 			};
@@ -208,14 +208,14 @@ public class SpecInterpretingParser implements Parser {
 							continue;
 						}
 					}
-					case FixedMapNode n -> {
+					case FixedObjectNode n -> {
 						expect(START_OBJECT);
 						if (nextTokenIs(END_OBJECT)) {
 							resultValue = n.finisher().invoke(); // Finisher must have no args
 						} else {
 							String memberName = parseString();
-							stack.push(new FixedMapAccumulator(n, memberName));
-							FixedMapMember member = requireNonNull(n.memberSpecs().get(memberName),
+							stack.push(new FixedObjectAccumulator(n, memberName));
+							RecognizedMember member = requireNonNull(n.memberSpecs().get(memberName),
 								"Unexpected member name [" + memberName + "]");
 							node = switch (member.valueSpec()) {
 								case JsonValueSpec j -> j; // The normal case: proceed with the member's value
@@ -353,13 +353,13 @@ public class SpecInterpretingParser implements Parser {
 			}
 		}
 
-		private class FixedMapAccumulator implements Accumulator {
-			private final FixedMapNode n;
+		private class FixedObjectAccumulator implements Accumulator {
+			private final FixedObjectNode n;
 			private final Object[] ctorArgs;
-			private final FixedMapInfo mapInfo;
-			private KeyInfo currentKey;
+			private final FixedObjectInfo objectInfo;
+			private MemberInfo currentMember;
 
-			public FixedMapAccumulator(FixedMapNode n, String firstKey) {
+			public FixedObjectAccumulator(FixedObjectNode n, String firstMember) {
 				this.n = n;
 				this.ctorArgs = new Object[n.memberSpecs().size()];
 				var iter = n.memberSpecs().values().iterator();
@@ -370,16 +370,16 @@ public class SpecInterpretingParser implements Parser {
 						case JsonValueSpec _ -> {} // Leave as null for now
 					}
 				}
-				this.mapInfo = mapInfo(n);
-				this.currentKey = keyInfo(firstKey);
+				this.objectInfo = objectInfo(n);
+				this.currentMember = memberInfo(firstMember);
 			}
 
 			@Override
 			public JsonValueSpec valueSpec() {
 				// We know the current key is present because we just parsed it.
 				// Absent key handling is not relevant here.
-				return switch(currentKey.valueSpec()) {
-					case ComputedSpec _ -> throw new JsonContentException("Invalid input: Unexpected value for computed member " + currentKey.index());
+				return switch(currentMember.valueSpec()) {
+					case ComputedSpec _ -> throw new JsonContentException("Invalid input: Unexpected value for computed member " + currentMember.index());
 					case JsonValueSpec spec -> spec;
 					case MaybeAbsentSpec(var ifPresent, _, _) -> ifPresent;
 				};
@@ -392,17 +392,17 @@ public class SpecInterpretingParser implements Parser {
 				// accumulation snippet for each record component, and
 				// we'd need to jump dynamically back to the right snippet
 				// after parsing the component's value.
-				ctorArgs[currentKey.index()] = value;
+				ctorArgs[currentMember.index()] = value;
 				if (nextTokenIs(END_OBJECT)) {
 					return n.finisher().invoke(ctorArgs);
 				} else {
-					this.currentKey = keyInfo(parseString());
+					this.currentMember = memberInfo(parseString());
 					return NO_RESULT;
 				}
 			}
 
-			private KeyInfo keyInfo(String firstKey) {
-				return requireNonNull(mapInfo.keyInfoByName().get(firstKey));
+			private MemberInfo memberInfo(String firstKey) {
+				return requireNonNull(objectInfo.members().get(firstKey));
 			}
 
 		}
@@ -533,14 +533,14 @@ public class SpecInterpretingParser implements Parser {
 			return parsePrimitiveNumber(valueOfHandle(boxedType));
 		}
 
-		private Object parseFixedMap(FixedMapNode node) throws IOException {
-			logEntry("parseFixedMap", node);
+		private Object parseFixedObject(FixedObjectNode node) throws IOException {
+			logEntry("parseFixedObject", node);
 			input.expectFixedToken(START_OBJECT);
 			List<Object> memberValues = readMembers(node.memberSpecs());
 			return node.finisher().invoke(memberValues.toArray());
 		}
 
-		private List<Object> readMembers(SequencedMap<String, FixedMapMember> componentsByName) throws IOException {
+		private List<Object> readMembers(SequencedMap<String, RecognizedMember> componentsByName) throws IOException {
 			Map<String, Object> memberValues = new HashMap<>();
 			componentsByName.forEach((name, node) -> {
 				switch (node.valueSpec()) {
@@ -604,7 +604,7 @@ public class SpecInterpretingParser implements Parser {
 				case MaybeNullSpec n -> Stream.of(expectedTokens(n.child()).stream(), Stream.of(NULL)).flatMap(identity()).collect(toSet());
 				case ParseCallbackSpec n -> expectedTokens(n.child());
 				case PrimitiveNumberNode _ -> Set.of(NUMBER);
-				case FixedMapNode _ -> Set.of(START_OBJECT);
+				case FixedObjectNode _ -> Set.of(START_OBJECT);
 				case RepresentAsSpec n -> expectedTokens(n.representation());
 				case StringNode _ -> Set.of(STRING);
 				case ComputedSpec _ -> EnumSet.allOf(Token.class);
@@ -621,16 +621,16 @@ public class SpecInterpretingParser implements Parser {
 
 	}
 
-	private static FixedMapInfo mapInfo(FixedMapNode node) {
-		Map<String, KeyInfo> keyInfoByName = new LinkedHashMap<>();
+	private static FixedObjectInfo objectInfo(FixedObjectNode node) {
+		Map<String, MemberInfo> members = new LinkedHashMap<>();
 		node.memberSpecs().forEach((name, member) -> {
-			keyInfoByName.put(name, new KeyInfo(keyInfoByName.size(), member.valueSpec()));
+			members.put(name, new MemberInfo(members.size(), member.valueSpec()));
 		});
-		return new FixedMapInfo(Map.copyOf(keyInfoByName));
+		return new FixedObjectInfo(Map.copyOf(members));
 	}
 
-	record FixedMapInfo(Map<String, KeyInfo> keyInfoByName){}
-	record KeyInfo(int index, SpecNode valueSpec){}
+	record FixedObjectInfo(Map<String, MemberInfo> members){}
+	record MemberInfo(int index, SpecNode valueSpec){}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SpecInterpretingParser.class);
 }

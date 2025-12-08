@@ -16,8 +16,8 @@ import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.EnumByNameNode;
-import works.bosk.boson.mapping.spec.FixedMapMember;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
@@ -90,7 +90,7 @@ public class SpecInterpretingGenerator implements Generator {
 					}
 					case UniformMapNode node -> generateUniformMap(node, value);
 					case ParseCallbackSpec node -> generateAny(node.child(), value);
-					case FixedMapNode node -> generateFixedMap(node, value);
+					case FixedObjectNode node -> generateFixedObject(node, value);
 					case RepresentAsSpec node -> convertAndGenerate(node, value);
 					case StringNode _ -> generateString(value);
 					case TypeRefNode node -> generateAny(typeMap.get(node.type()), value);
@@ -180,17 +180,17 @@ public class SpecInterpretingGenerator implements Generator {
 
 		}
 
-		private void generateFixedMap(FixedMapNode node, Object map) {
+		private void generateFixedObject(FixedObjectNode node, Object map) {
 			LOGGER.debug("Generating fixed map for value of type {} using spec {}", map.getClass(), node);
 			out.print("{");
 			String sep = "";
-			for (Map.Entry<String, FixedMapMember> entry : node.memberSpecs().entrySet()) {
-				FixedMapMember member = entry.getValue();
+			for (Map.Entry<String, RecognizedMember> entry : node.memberSpecs().entrySet()) {
+				RecognizedMember member = entry.getValue();
 				switch (member.valueSpec()) {
 					case JsonValueSpec v -> {
 						out.print(sep);
 						sep = ",";
-						generateFixedMapMember(entry.getKey(), v, member.accessor().invoke(map));
+						generateFixedObjectMember(entry.getKey(), v, member.accessor().invoke(map));
 					}
 					case ComputedSpec _ -> {}
 					case MaybeAbsentSpec(var v, _, var presenceCondition) -> {
@@ -203,7 +203,7 @@ public class SpecInterpretingGenerator implements Generator {
 						if (isPresent) {
 							out.print(sep);
 							sep = ",";
-							generateFixedMapMember(entry.getKey(), v, member.accessor().invoke(map));
+							generateFixedObjectMember(entry.getKey(), v, member.accessor().invoke(map));
 						}
 					}
 				}
@@ -211,7 +211,7 @@ public class SpecInterpretingGenerator implements Generator {
 			out.print("}");
 		}
 
-		private void generateFixedMapMember(String componentName, JsonValueSpec valueSpec, Object value) {
+		private void generateFixedObjectMember(String componentName, JsonValueSpec valueSpec, Object value) {
 			generateString(componentName);
 			out.print(":");
 			generateAny(valueSpec, value);

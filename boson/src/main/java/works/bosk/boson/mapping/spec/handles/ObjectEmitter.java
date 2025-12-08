@@ -231,6 +231,13 @@ public record ObjectEmitter(
 		);
 	}
 
+	/**
+	 * @param <T> the type of the value object representing the object in memory
+	 * @param <I> the iterator type
+	 * @param <M> the member type
+	 * @param <K> the map key type
+	 * @param <V> the map value type
+	 */
 	public interface IteratorWrangler<T, I, M, K, V> {
 		I start(T obj);
 		boolean hasNext(I iter);

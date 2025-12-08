@@ -34,8 +34,8 @@ import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.TypeScanner.Directive;
 import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.ComputedSpec;
-import works.bosk.boson.mapping.spec.FixedMapMember;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.StringNode;
@@ -107,7 +107,7 @@ public class BosonSerializer extends StateTreeSerializer {
 		));
 
 		directives.add(Directive.fixed(
-			FixedMapNode.of(new FixedMapNode.Wrangler2<Listing<E>, CatalogReference<E>, List<Identifier>>(
+			FixedObjectNode.of(new FixedObjectNode.Wrangler2<Listing<E>, CatalogReference<E>, List<Identifier>>(
 				"domain",
 				"ids"
 			) {
@@ -185,7 +185,7 @@ public class BosonSerializer extends StateTreeSerializer {
 					} catch (InvalidTypeException e) {
 						throw new IllegalArgumentException(e);
 					}
-					SequencedMap<String, FixedMapMember> members = new LinkedHashMap<>();
+					SequencedMap<String, RecognizedMember> members = new LinkedHashMap<>();
 					variantCaseMap.forEach((name, caseType) -> {
 						var ifPresent = new TypeRefNode(DataType.of(caseType));
 						var ifAbsent = new ComputedSpec(supplier(
@@ -200,7 +200,7 @@ public class BosonSerializer extends StateTreeSerializer {
 							taggedUnionType,
 							DataType.known(caseType),
 							TaggedUnion::variant);
-						members.put(name, new FixedMapMember(
+						members.put(name, new RecognizedMember(
 							new MaybeAbsentSpec(
 								ifPresent,
 								ifAbsent,
@@ -208,7 +208,7 @@ public class BosonSerializer extends StateTreeSerializer {
 							accessor
 						));
 					});
-					yield FixedMapNode.withArrayFinisher(
+					yield FixedObjectNode.withArrayFinisher(
 						taggedUnionType,
 						members,
 						(Object[] args) -> {
@@ -271,7 +271,7 @@ public class BosonSerializer extends StateTreeSerializer {
 					// because there'd be no way to make that omit the member name from the containing object.
 
 					Class<? extends Record> recordClass = bt.rawClass().asSubclass(Record.class);
-					SequencedMap<String, FixedMapMember> componentsByName = new LinkedHashMap<>();
+					SequencedMap<String, RecognizedMember> componentsByName = new LinkedHashMap<>();
 					for (var rc : recordClass.getRecordComponents()) {
 						// Look for record components requiring special handling
 						if (Optional.class.isAssignableFrom(rc.getType())) {
@@ -288,25 +288,25 @@ public class BosonSerializer extends StateTreeSerializer {
 								Optional::empty));
 							var presenceCondition = memberValue(TypedHandles.<Optional<?>>predicate(DataType.known(rc.getGenericType()),
 								Optional::isPresent));
-							componentsByName.put(rc.getName(), new FixedMapMember(
+							componentsByName.put(rc.getName(), new RecognizedMember(
 								new MaybeAbsentSpec(ifPresent, ifAbsent, presenceCondition),
 								componentAccessor(rc, lookup)
 							));
 						} else if (Phantom.class.isAssignableFrom(rc.getType())) {
-							componentsByName.put(rc.getName(), new FixedMapMember(
+							componentsByName.put(rc.getName(), new RecognizedMember(
 								new ComputedSpec(supplier(DataType.known(rc.getGenericType()),
 									Phantom::empty)),
 								componentAccessor(rc, lookup)
 							));
 						} else {
 							// A simple TypeRefNode will do
-							componentsByName.put(rc.getName(), new FixedMapMember(
+							componentsByName.put(rc.getName(), new RecognizedMember(
 								new TypeRefNode(DataType.known(rc.getGenericType())),
 								componentAccessor(rc, lookup)
 							));
 						}
 					}
-					yield new FixedMapNode(
+					yield new FixedObjectNode(
 						componentsByName,
 						canonicalConstructor(recordClass, lookup)
 					);

@@ -12,8 +12,8 @@ import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
-import works.bosk.boson.mapping.spec.FixedMapMember;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.TypeRefNode;
@@ -135,34 +135,34 @@ class InlineScalarRefsTest {
 	}
 
 	@Test
-	void fixedMap() {
-		var memberSpecs = new LinkedHashMap<String, FixedMapMember>();
+	void fixedObject() {
+		var memberSpecs = new LinkedHashMap<String, RecognizedMember>();
 		var stringIdentity = TypedHandles.function(STRING, STRING, Function.identity());
-		memberSpecs.put("theField", new FixedMapMember(
+		memberSpecs.put("theField", new RecognizedMember(
 			new StringNode(),
 			stringIdentity
 		));
-		var original = new FixedMapNode(memberSpecs, stringIdentity);
+		var original = new FixedObjectNode(memberSpecs, stringIdentity);
 		var optimized = new InlineScalarRefs(typeMap).optimize(original);
 		assertEquals(original, optimized,
-			"FixedMapNode member TypeRefs are not inlined");
+			"FixedObjectNode member TypeRefs are not inlined");
 	}
 
 	@Test
-	void fixedMapMember() {
-		var memberSpecs = new LinkedHashMap<String, FixedMapMember>();
+	void recognizedMember() {
+		var memberSpecs = new LinkedHashMap<String, RecognizedMember>();
 		TypedHandle stringIdentity = TypedHandles.function(STRING, STRING, Function.identity());
-		memberSpecs.put("theField", new FixedMapMember(
+		memberSpecs.put("theField", new RecognizedMember(
 			new TypeRefNode(STRING), // Should get inlined
 			stringIdentity
 		));
-		var original = new FixedMapNode(memberSpecs, stringIdentity);
-		var expectedMemberSpecs = new LinkedHashMap<String, FixedMapMember>();
-		expectedMemberSpecs.put("theField", new FixedMapMember(
+		var original = new FixedObjectNode(memberSpecs, stringIdentity);
+		var expectedMemberSpecs = new LinkedHashMap<String, RecognizedMember>();
+		expectedMemberSpecs.put("theField", new RecognizedMember(
 			new StringNode(), // Inlined node
 			stringIdentity
 		));
-		var expected = new FixedMapNode(expectedMemberSpecs, stringIdentity);
+		var expected = new FixedObjectNode(expectedMemberSpecs, stringIdentity);
 		var actual = new InlineScalarRefs(typeMap).optimize(original);
 		assertEquals(expected, actual);
 	}

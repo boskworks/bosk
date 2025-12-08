@@ -14,7 +14,7 @@ import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.spec.ComputedSpec;
-import works.bosk.boson.mapping.spec.FixedMapMember;
+import works.bosk.boson.mapping.spec.RecognizedMember;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.TypeRefNode;
@@ -136,8 +136,8 @@ public class SpecCompilerTest {
 			.useLookup(MethodHandles.lookup())
 			.specify(DataType.known(Month.class), Month.specNode())
 			.specifyRecordFields(OneOfEach.class, Map.of(
-				"computedField", new FixedMapMember(new ComputedSpec(computedFieldValue), computedFieldValue),
-				"maybeAbsentField", new FixedMapMember(new MaybeAbsentSpec(
+				"computedField", new RecognizedMember(new ComputedSpec(computedFieldValue), computedFieldValue),
+				"maybeAbsentField", new RecognizedMember(new MaybeAbsentSpec(
 					testCallback(new StringNode()), new ComputedSpec(absentFieldValue), isPresent),
 					getMaybeAbsentField
 				)

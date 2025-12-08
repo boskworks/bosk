@@ -29,8 +29,8 @@ import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.EnumByNameNode;
-import works.bosk.boson.mapping.spec.FixedMapMember;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
@@ -87,7 +87,7 @@ public final class TypeScanner {
 	final Map<DataType, TypeRefNode> refs = new LinkedHashMap<>();
 	final TypeMap inProgress;
 	final Deque<Bundle> bundles = new ArrayDeque<>();
-	final Map<Class<? extends Record>, Map<String, FixedMapMember>> recordComponentOverrides = new HashMap<>();
+	final Map<Class<? extends Record>, Map<String, RecognizedMember>> recordComponentOverrides = new HashMap<>();
 
 	public TypeScanner(TypeMap.Settings settings) {
 		this.inProgress = new TypeMap(settings);
@@ -115,7 +115,7 @@ public final class TypeScanner {
 			enumType -> switch (enumType) {
 				case BoundType bt -> EnumByNameNode.of(bt.rawClass());
 				default ->
-					throw new JsonContentException("Expected enum type but got " + enumType);
+					throw new IllegalArgumentException("Expected enum type but got " + enumType);
 			}
 		));
 
@@ -179,7 +179,7 @@ public final class TypeScanner {
 					}
 				});
 				default ->
-					throw new JsonContentException("Expected ArrayType but got " + arrayType);
+					throw new IllegalArgumentException("Expected ArrayType but got " + arrayType);
 			}
 		));
 
@@ -188,7 +188,7 @@ public final class TypeScanner {
 			recordType -> switch (recordType) {
 				case BoundType bt -> scanRecord(bt);
 				default ->
-					throw new JsonContentException("Expected record type but got " + recordType);
+					throw new IllegalArgumentException("Expected record type but got " + recordType);
 			}
 		));
 
@@ -498,7 +498,7 @@ public final class TypeScanner {
 		return this;
 	}
 
-	public TypeScanner specifyRecordFields(Class<? extends Record> type, Map<String, FixedMapMember> componentsByName) {
+	public TypeScanner specifyRecordFields(Class<? extends Record> type, Map<String, RecognizedMember> componentsByName) {
 		var old = recordComponentOverrides.put(type, Map.copyOf(componentsByName));
 		if (old != null) {
 			throw new IllegalStateException("Already specified record fields for " + type);
@@ -595,7 +595,7 @@ public final class TypeScanner {
 			case ArrayNode(var elementSpec, _, _) -> scrapeRefs(elementSpec);
 			case ParseCallbackSpec(_, var child, _) -> scrapeRefs(child);
 			case RepresentAsSpec(var representation, _, _) -> scrapeRefs(representation);
-			case FixedMapNode(var members, var _) -> {
+			case FixedObjectNode(var members, var _) -> {
 				members.values().forEach(m -> scrapeRefs(m.valueSpec()));
 			}
 			case UniformMapNode(var keySpec, var valueSpec, _, _) -> {
@@ -663,7 +663,7 @@ public final class TypeScanner {
 		var actualTypeArguments = recordType.actualArguments();
 		Class<?> recordClass = recordType.rawClass();
 		var componentOverrides = recordComponentOverrides.getOrDefault(recordClass, Map.of());
-		SequencedMap<String, FixedMapMember> collect = Stream.of(recordClass.getRecordComponents())
+		SequencedMap<String, RecognizedMember> collect = Stream.of(recordClass.getRecordComponents())
 			.collect(
 				Collectors.toMap(
 					RecordComponent::getName,
@@ -672,13 +672,13 @@ public final class TypeScanner {
 					LinkedHashMap::new
 				)
 			);
-		return new FixedMapNode(
+		return new FixedObjectNode(
 			collect,
 			recordFinisher(recordType, collect)
 		);
 	}
 
-	private TypedHandle recordFinisher(KnownType recordType, Map<String, FixedMapMember> componentsByName) {
+	private TypedHandle recordFinisher(KnownType recordType, Map<String, RecognizedMember> componentsByName) {
 		Class<?> recordClass = recordType.rawClass();
 		assert Record.class.isAssignableFrom(recordClass);
 		assert componentsByName.keySet().equals(
@@ -695,22 +695,22 @@ public final class TypeScanner {
 		} catch (NoSuchMethodException | IllegalAccessException e) {
 			throw new JsonProcessingException("Unexpected error accessing record constructor for " + recordClass, e);
 		}
-		List<DataType> memberTypes = componentsByName.values().stream().map(FixedMapMember::dataType).toList();
+		List<DataType> memberTypes = componentsByName.values().stream().map(RecognizedMember::dataType).toList();
 		return new TypedHandle(
 			constructor.asType(methodType(recordClass, memberTypes.stream().map(DataType::leastUpperBoundClass).toArray(Class<?>[]::new))),
 			recordType,
 			memberTypes);
 	}
 
-	private FixedMapMember scanRecordComponent(RecordComponent c, Map<String, DataType> recordTypeArguments, Map<String, FixedMapMember> overrides) {
-		if (overrides.get(c.getName()) instanceof FixedMapMember n) {
+	private RecognizedMember scanRecordComponent(RecordComponent c, Map<String, DataType> recordTypeArguments, Map<String, RecognizedMember> overrides) {
+		if (overrides.get(c.getName()) instanceof RecognizedMember n) {
 			return n;
 		}
 		MethodHandle mh;
 		try {
 			mh = lookupFor(c.getDeclaringRecord()).unreflect(c.getAccessor());
 		} catch (IllegalAccessException e) {
-			throw new IllegalStateException("Unexpected error accessing record component accessor for " + c, e);
+			throw new JsonProcessingException("Unexpected error accessing record component accessor for " + c, e);
 		}
 		KnownType returnType = (KnownType) DataType.of(c.getGenericType()).substitute(recordTypeArguments);
 		KnownType parameterType = (KnownType) DataType.of(c.getDeclaringRecord()).substitute(recordTypeArguments);
@@ -722,9 +722,9 @@ public final class TypeScanner {
 		DataType type = DataType.of(c.getGenericType()).substitute(recordTypeArguments);
 		JsonValueSpec componentSpec = refNode(type);
 		if (c.isAnnotationPresent(Nullable.class)) {
-			return new FixedMapMember(new MaybeNullSpec(componentSpec), accessor);
+			return new RecognizedMember(new MaybeNullSpec(componentSpec), accessor);
 		} else {
-			return new FixedMapMember(componentSpec, accessor);
+			return new RecognizedMember(componentSpec, accessor);
 		}
 	}
 

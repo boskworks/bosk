@@ -23,8 +23,8 @@ import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.EnumByNameNode;
-import works.bosk.boson.mapping.spec.FixedMapMember;
-import works.bosk.boson.mapping.spec.FixedMapNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
+import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;
@@ -208,23 +208,23 @@ public class CodecHappyParseTest {
 	 * rather than the more obvious record or map.
 	 */
 	@InjectedTest
-	void fixedMap() throws IOException {
-		var memberSpecs = new LinkedHashMap<String, FixedMapMember>();
+	void fixedObject() throws IOException {
+		var memberSpecs = new LinkedHashMap<String, RecognizedMember>();
 		memberSpecs.put("intField",
-			new FixedMapMember(
+			new RecognizedMember(
 				new PrimitiveNumberNode(int.class),
 				TypedHandles.<String,Integer>function(STRING, INT, s ->
 					Integer.parseInt(s.split(":", 2)[0]))
 			)
 		);
 		memberSpecs.put("strField",
-			new FixedMapMember(
+			new RecognizedMember(
 				new StringNode(),
 				TypedHandles.<String,String>function(STRING, STRING, s ->
 					s.split(":", 2)[1])
 			)
 		);
-		var spec = new FixedMapNode(
+		var spec = new FixedObjectNode(
 			memberSpecs,
 			TypedHandles.<Integer, String, String>biFunction(INT, STRING, STRING,
 				(i, s) -> i + ":" + s
@@ -247,7 +247,7 @@ public class CodecHappyParseTest {
 	@InjectedTest
 	void optionalField() throws IOException {
 		record TestRecord(int intField, String strField) {}
-		var optional = new FixedMapMember(
+		var optional = new RecognizedMember(
 			new MaybeAbsentSpec(
 				new StringNode(),
 				new ComputedSpec(TypedHandles.supplier(STRING, () -> "TEST_DEFAULT")),
