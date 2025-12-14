@@ -115,7 +115,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			throw new IllegalArgumentException("Invalid root type " + rootType + ": " + e.getMessage(), e);
 		}
 
-		UnderConstruction<R> boskInfo = new UnderConstruction<>(
+		Info<R> boskInfo = new Info<>(
 			name, instanceID, rootRef, diagnosticContext, this::registerHooks, new AtomicReference<>());
 
 		// We do this as late as possible because the driver factory is allowed
@@ -170,7 +170,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		RR apply(Bosk<RR> bosk) throws InvalidTypeException;
 	}
 
-	record UnderConstruction<RR extends StateTreeNode>(
+	record Info<RR extends StateTreeNode>(
 		String name,
 		Identifier instanceID,
 		RootReference<RR> rootReference,
