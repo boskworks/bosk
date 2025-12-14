@@ -14,6 +14,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
+import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.BufferingDriver;
@@ -41,19 +43,22 @@ class OpenTelemetryDriverTest {
 
 	@Test
 	void wrapping_propagatesTraceId() throws InterruptedException, IOException {
-		var bosk = new Bosk<Root>(
+		DriverFactory<Root> driverFactory = DriverStack.of(
+			OpenTelemetryDriver.wrapping(
+				// Use a driver that does not call its downstream driver synchronously on the same thread
+				// so that the OpenTelemetry thread context is not propagated implicitly.
+				// Otherwise, this isn't much of a test.
+				BufferingDriver.factory()
+			)
+		);
+		var bosk = new Bosk<>(
 			"test-bosk",
 			Root.class,
 			_ -> new Root(0),
-			DriverStack.of(
-				OpenTelemetryDriver.wrapping(
-					// Use a driver that does not call its downstream driver synchronously on the same thread
-					// so that the OpenTelemetry thread context is not propagated implicitly.
-					// Otherwise, this isn't much of a test.
-					BufferingDriver.factory()
-				)
-			),
-			OpenTelemetryRegistrar.factory());
+			BoskConfig.<Root>builder()
+				.driverFactory(driverFactory)
+				.registrarFactory(OpenTelemetryRegistrar.factory())
+				.build());
 		record Observation(int revision, String traceID) { }
 		BlockingQueue<Observation> observations = new LinkedBlockingQueue<>();
 		bosk.registerHook("attribute observer", bosk.rootReference(), ref -> {

@@ -2,6 +2,7 @@ package works.bosk.drivers.mongo.example;
 
 import com.mongodb.MongoClientSettings;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.DriverFactory;
 import works.bosk.Reference;
 import works.bosk.annotations.ReferencePath;
@@ -12,12 +13,14 @@ import works.bosk.exceptions.InvalidTypeException;
 
 public final class ExampleBosk extends Bosk<ExampleState> {
 	public ExampleBosk() throws InvalidTypeException {
+		DriverFactory<ExampleState> driverFactory = driverFactory();
 		super(
 			"ExampleBosk",
 			ExampleState.class,
 			_ -> defaultRoot(),
-			driverFactory(),
-			Bosk.simpleRegistrar());
+			BoskConfig.<ExampleState>builder()
+				.driverFactory(driverFactory).build()
+		);
 	}
 
 	public interface Refs {

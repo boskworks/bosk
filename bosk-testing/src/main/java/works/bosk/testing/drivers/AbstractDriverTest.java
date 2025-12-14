@@ -8,6 +8,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
@@ -56,18 +57,17 @@ public abstract class AbstractDriverTest {
 
 	protected void setupBosksAndReferences(DriverFactory<TestEntity> driverFactory) {
 		// This is the bosk whose behaviour we'll consider to be correct by definition
-		canonicalBosk = new Bosk<>(boskName("Canonical", 1), TestEntity.class, AbstractDriverTest::initialRoot, Bosk.simpleDriver(), Bosk.simpleRegistrar());
+		canonicalBosk = new Bosk<>(boskName("Canonical", 1), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.simple());
 
 		// This is the bosk we're testing
 		bosk = new Bosk<>(
 			boskName("Test", 1),
 			TestEntity.class,
 			AbstractDriverTest::initialRoot,
-			DriverStack.of(
+			BoskConfig.<TestEntity>builder().driverFactory(DriverStack.of(
 				ReplicaSet.mirroringTo(canonicalBosk),
 				DriverStateVerifier.wrap(driverFactory, TestEntity.class, AbstractDriverTest::initialRoot)
-			),
-			Bosk.simpleRegistrar());
+			)).build());
 		driver = bosk.driver();
 	}
 

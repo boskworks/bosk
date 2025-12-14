@@ -19,6 +19,7 @@ import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.util.Types;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static works.bosk.BoskConfig.simpleDriver;
 
 class BsonFormatterTest extends AbstractBoskTest {
 	Bosk<TestRoot> bosk;
@@ -30,7 +31,7 @@ class BsonFormatterTest extends AbstractBoskTest {
 
 	@BeforeEach
 	void setupFormatter() throws InvalidTypeException, IOException, InterruptedException {
-		bosk = setUpBosk(Bosk.simpleDriver());
+		bosk = setUpBosk(simpleDriver());
 		TestEntityBuilder builder = new TestEntityBuilder(bosk);
 		entitiesRef = builder.entitiesRef();
 		weirdRef = builder.entityRef(Identifier.from(WEIRD_ID));

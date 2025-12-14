@@ -2,6 +2,7 @@ package works.bosk.testing.drivers;
 
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.Reference;
@@ -20,13 +21,12 @@ public class ForgottenFlushTest extends AbstractDriverTest {
 
 	@Test
 	void testForgottenFlush() throws InvalidTypeException {
+		DriverFactory<TestEntity> driverFactory = DriverStateVerifier.wrap(ForgetfulDriver.factory(), TestEntity.class, AbstractDriverTest::initialRoot);
 		var bosk = new Bosk<>(
 			"ForgottenFlushTest",
 			TestEntity.class,
 			AbstractDriverTest::initialRoot,
-			DriverStateVerifier.wrap(ForgetfulDriver.factory(), TestEntity.class, AbstractDriverTest::initialRoot),
-			Bosk.simpleRegistrar()
-		);
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		var refs = bosk.buildReferences(Refs.class);
 		var driver = bosk.driver();
 		driver.submitReplacement(refs.string(), "new value");

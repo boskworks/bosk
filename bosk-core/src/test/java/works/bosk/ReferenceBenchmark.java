@@ -15,6 +15,7 @@ import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.openjdk.jmh.annotations.Mode.AverageTime;
+import static works.bosk.BoskConfig.simpleDriver;
 
 @Fork(0)
 @Warmup(iterations = 5, time = 1)
@@ -36,7 +37,7 @@ public class ReferenceBenchmark extends AbstractBoskTest {
 
 		@Setup(Level.Trial)
 		public void setup() throws InvalidTypeException {
-			this.bosk = setUpBosk(Bosk.simpleDriver());
+			this.bosk = setUpBosk(simpleDriver());
 			context = bosk.readContext();
 			rootRef = bosk.rootReference();
 			TestRoot localRoot = root = rootRef.value();

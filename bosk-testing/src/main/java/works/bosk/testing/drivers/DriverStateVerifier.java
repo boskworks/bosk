@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
@@ -66,8 +67,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 			boskName(),
 			rootType,
 			defaultRootFunction,
-			Bosk.simpleDriver(),
-			Bosk.simpleRegistrar());
+			BoskConfig.simple());
 		DriverStateVerifier<RR> verifier = new DriverStateVerifier<>(
 			stateTrackingBosk,
 			ReplicaSet.redirectingTo(stateTrackingBosk)

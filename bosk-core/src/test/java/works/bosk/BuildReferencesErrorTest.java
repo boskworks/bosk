@@ -6,13 +6,14 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static works.bosk.BoskConfig.simpleDriver;
 
 public class BuildReferencesErrorTest extends AbstractBoskTest {
 	static Bosk<TestRoot> bosk;
 
 	@BeforeAll
 	static void setup() {
-		bosk = setUpBosk(Bosk.simpleDriver());
+		bosk = setUpBosk(simpleDriver());
 	}
 
 	@Test

@@ -57,6 +57,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static tools.jackson.databind.SerializationFeature.INDENT_OUTPUT;
+import static works.bosk.BoskConfig.simpleDriver;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 
 class JacksonSerializerTest extends AbstractBoskTest {
@@ -82,7 +83,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	@BeforeEach
 	void setUpJackson() throws Exception {
-		bosk = setUpBosk(Bosk.simpleDriver());
+		bosk = setUpBosk(simpleDriver());
 		teb = new TestEntityBuilder(bosk);
 		refs = bosk.buildReferences(Refs.class);
 

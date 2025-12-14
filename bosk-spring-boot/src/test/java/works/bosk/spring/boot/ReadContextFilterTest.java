@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.StateTreeNode;
 import works.bosk.exceptions.NoReadContextException;
 import works.bosk.testing.drivers.ReportingDriver;
@@ -36,9 +37,10 @@ class ReadContextFilterTest {
 		bosk = new Bosk<>(
 			ReadContextFilterTest.class.getSimpleName(),
 			State.class,
-			b->new State(),
-			ReportingDriver.factory(op -> events.add(op.getClass().getSimpleName())),
-			Bosk.simpleRegistrar()
+			_->new State(),
+			BoskConfig.<State>builder()
+				.driverFactory(ReportingDriver.factory(op -> events.add(op.getClass().getSimpleName())))
+				.build()
 		);
 		filter = new ReadContextFilter(bosk);
 		req = new MockHttpServletRequest();

@@ -10,6 +10,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -51,8 +52,7 @@ public class JsonNodeSurgeonTest {
 			boskName(),
 			JsonRoot.class,
 			b -> JsonRoot.empty(b.buildReferences(Refs.class)),
-			Bosk.simpleDriver(),
-			Bosk.simpleRegistrar());
+			BoskConfig.simple());
 		refs = bosk.buildReferences(Refs.class);
 		jacksonSerializer = new JacksonSerializer();
 		mapper = JsonMapper.builder()

@@ -17,6 +17,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
 import works.bosk.Listing;
 import works.bosk.drivers.mongo.MongoDriver;
@@ -99,7 +100,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		tearDownActions.add(()->mongoService.restoreConnection());
 
 		LOGGER.debug("Create a new bosk that can't connect");
-		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
+		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, this::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		MongoDriverSpecialTest.Refs refs = bosk.buildReferences(MongoDriverSpecialTest.Refs.class);
 		BoskDriver driver = bosk.driver();
@@ -231,7 +232,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before deletion");
 
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = bosk.readContext()) {
 			assertEquals(beforeState, bosk.rootReference().value());
@@ -279,12 +280,11 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				boskName("Prep " + getClass().getSimpleName()),
 				TestEntity.class,
 				bosk -> initialRoot(bosk).withString(distinctiveString),
-				(b, d) -> {
+				BoskConfig.<TestEntity>builder().driverFactory((b, d) -> {
 					var mongoDriver = (MongoDriver) driverFactory.build(b, d);
 					driverRef.set(mongoDriver);
 					return mongoDriver;
-				},
-				Bosk.simpleRegistrar());
+				}).build());
 			var driver = driverRef.get();
 			waitFor(driver);
 			driver.close();
@@ -299,7 +299,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before disruption");
 
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, driverFactory, Bosk.simpleRegistrar());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = bosk.readContext()) {
 			assertEquals(beforeState, bosk.rootReference().value());

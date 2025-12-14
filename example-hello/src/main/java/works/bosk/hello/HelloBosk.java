@@ -2,6 +2,7 @@ package works.bosk.hello;
 
 import org.springframework.stereotype.Component;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
@@ -20,7 +21,14 @@ import works.bosk.opentelemetry.OpenTelemetryDriver;
 public class HelloBosk extends Bosk<BoskState> {
 
 	public HelloBosk(LogController logController) throws InvalidTypeException {
-		super("Hello", BoskState.class, HelloBosk::defaultRoot, driverFactory(logController), Bosk.simpleRegistrar());
+		super(
+			"Hello",
+			BoskState.class,
+			HelloBosk::defaultRoot,
+			BoskConfig.<BoskState>builder()
+				.driverFactory(driverFactory(logController))
+				.build()
+		);
 	}
 
 	private static DriverFactory<BoskState> driverFactory(LogController logController) {

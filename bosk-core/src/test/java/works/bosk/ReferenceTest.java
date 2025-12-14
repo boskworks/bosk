@@ -15,6 +15,7 @@ import static java.util.stream.Collectors.toList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static works.bosk.BoskConfig.simpleDriver;
 
 class ReferenceTest extends AbstractBoskTest {
 	private Bosk<TestRoot> bosk;
@@ -33,7 +34,7 @@ class ReferenceTest extends AbstractBoskTest {
 
 	@BeforeEach
 	void setup() throws InvalidTypeException {
-		this.bosk = setUpBosk(Bosk.simpleDriver());
+		this.bosk = setUpBosk(simpleDriver());
 		context = bosk.readContext();
 		this.root = bosk.rootReference().value();
 		this.refs = bosk.buildReferences(Refs.class);

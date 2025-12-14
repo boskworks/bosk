@@ -17,6 +17,7 @@ import org.junit.jupiter.api.TestFactory;
 import works.bosk.AbstractBoskTest;
 import works.bosk.Bosk;
 import works.bosk.Bosk.NonexistentEntryException;
+import works.bosk.BoskConfig;
 import works.bosk.Catalog;
 import works.bosk.Entity;
 import works.bosk.Identifier;
@@ -38,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
+import static works.bosk.BoskConfig.simpleDriver;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -53,7 +55,7 @@ public class PathCompilerTest extends AbstractBoskTest {
 	@BeforeEach
 	void setup() throws InvalidTypeException, InterruptedException, IOException {
 		pathCompiler = PathCompiler.withSourceType(TestRoot.class);
-		bosk = setUpBosk(Bosk.simpleDriver());
+		bosk = setUpBosk(simpleDriver());
 		teb = new TestEntityBuilder(bosk);
 		root = initialRoot(bosk);
 		bosk.driver().submitReplacement(bosk.rootReference(), root);
@@ -271,8 +273,7 @@ public class PathCompilerTest extends AbstractBoskTest {
 			boskName("Different"),
 			differentRootClass,
 			_ -> initialRoot,
-			Bosk.simpleDriver(),
-			Bosk.simpleRegistrar());
+			BoskConfig.simple());
 		Reference<Identifier> idRef = differentBosk.rootReference().then(Identifier.class, Path.parse(
 			"/id" ));
 

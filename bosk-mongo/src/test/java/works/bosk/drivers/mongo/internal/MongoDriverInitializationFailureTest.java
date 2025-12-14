@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
 import works.bosk.testing.drivers.state.TestEntity;
@@ -30,7 +31,14 @@ public class MongoDriverInitializationFailureTest extends AbstractMongoDriverTes
 		mongoService.cutConnection();
 		tearDownActions.add(()->mongoService.restoreConnection());
 		assertThrows(InitialRootFailureException.class, ()->{
-			new Bosk<TestEntity>(boskName("Fail"), TestEntity.class, this::initialRoot, super.createDriverFactory(logController, testInfo), Bosk.simpleRegistrar());
+			new Bosk<>(
+				boskName("Fail"),
+				TestEntity.class,
+				this::initialRoot,
+				BoskConfig.<TestEntity>builder()
+					.driverFactory(super.createDriverFactory(logController, testInfo))
+					.build()
+			);
 		});
 	}
 

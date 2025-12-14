@@ -61,7 +61,7 @@ class BoskLocalReferenceTest {
 	void initializeBosk() throws InvalidTypeException {
 		boskName = boskName();
 		Root initialRoot = new Root(1, Catalog.empty());
-		bosk = new Bosk<>(boskName, Root.class, _ -> initialRoot, Bosk.simpleDriver(), Bosk.simpleRegistrar());
+		bosk = new Bosk<>(boskName, Root.class, _ -> initialRoot, BoskConfig.simple());
 		refs = bosk.rootReference().buildReferences(Refs.class);
 		Identifier ernieID = Identifier.from("ernie");
 		Identifier bertID = Identifier.from("bert");

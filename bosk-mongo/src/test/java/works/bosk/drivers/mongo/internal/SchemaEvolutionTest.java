@@ -14,6 +14,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.Reference;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriver;
@@ -183,7 +184,7 @@ public class SchemaEvolutionTest {
 	}
 
 	private static Bosk<TestEntity> newBosk(Helper helper) {
-		return new Bosk<>(boskName(helper.toString()), TestEntity.class, helper::initialRoot, helper.driverFactory, Bosk.simpleRegistrar());
+		return new Bosk<>(boskName(helper.toString()), TestEntity.class, helper::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(helper.driverFactory).build());
 	}
 
 	record Configuration(

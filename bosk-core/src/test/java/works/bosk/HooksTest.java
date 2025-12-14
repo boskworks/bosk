@@ -25,6 +25,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
+import static works.bosk.BoskConfig.simpleDriver;
 
 public class HooksTest extends AbstractBoskTest {
 	Bosk<TestRoot> bosk;
@@ -52,7 +53,7 @@ public class HooksTest extends AbstractBoskTest {
 
 	@BeforeEach
 	void setupBosk() throws InvalidTypeException {
-		bosk = setUpBosk(Bosk.simpleDriver());
+		bosk = setUpBosk(simpleDriver());
 		refs = bosk.rootReference().buildReferences(Refs.class);
 		try (var _ = bosk.readContext()) {
 			originalParent = refs.parent().value();

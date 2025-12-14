@@ -100,13 +100,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 *                            and instead delegates {@link BoskDriver#initialRoot} all the way to the local driver.
 	 *                            Note that this function may or may not be called, so don't use it as a means to initialize
 	 *                            other state.
-	 * @param driverFactory       Will be applied to this Bosk's local driver during
-	 *                            the Bosk's constructor, and the resulting {@link BoskDriver} will be the
-	 *                            one returned by {@link #getDriver}.
+	 * @param boskConfig          Customizations for this bosk.
 	 * @see DriverStack
 	 */
 	@SuppressWarnings("this-escape")
-	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, DriverFactory<R> driverFactory, RegistrarFactory registrarFactory) {
+	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, BoskConfig<R> boskConfig) {
 		this.name = requireNonNull(name);
 		this.pathCompiler = PathCompiler.withSourceType(requireNonNull(rootType)); // Required before rootRef
 		this.localDriver = new LocalDriver(requireNonNull(defaultRootFunction));
@@ -124,8 +122,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		// to do such things as create References, so it needs the rest of the
 		// initialization to have completed already.
 		//
-		this.driver = new ValidatingDriver(requireNonNull(driverFactory.build(boskInfo, this.localDriver)));
-		this.hookRegistrar = requireNonNull(registrarFactory.build(boskInfo, this::localRegisterHook));
+		this.driver = new ValidatingDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
+		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
 
 		try {
 			this.currentRoot = rootRef.targetClass().cast(requireNonNull(driver.initialRoot(rootType)));
@@ -165,7 +163,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @param initialRoot The starting value of the bosk state tree, before any updates.
 	 */
 	public static <RR extends StateTreeNode> Bosk<RR> simple(String name, RR initialRoot) {
-		return new Bosk<>(requireNonNull(name), initialRoot.getClass(), b -> initialRoot, simpleDriver(), simpleRegistrar());
+		return new Bosk<>(requireNonNull(name), initialRoot.getClass(), _ -> initialRoot, BoskConfig.simple());
 	}
 
 	public interface DefaultRootFunction<RR extends StateTreeNode> {
@@ -198,20 +196,6 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 	private interface RegisterHooksMethod {
 		void registerHooks(Object receiver) throws InvalidTypeException;
-	}
-
-	/**
-	 * @return a {@link DriverFactory} with only the basic functionality.
-	 */
-	public static <RR extends StateTreeNode> DriverFactory<RR> simpleDriver() {
-		return (b, d) -> d;
-	}
-
-	/**
-	 * @return a {@link RegistrarFactory} with only the basic functionality.
-	 */
-	public static RegistrarFactory simpleRegistrar() {
-		return (b, d) -> d;
 	}
 
 	/**

@@ -35,11 +35,10 @@ public class BoskConstructorTest {
 			name,
 			rootType,
 			_ -> root,
-			(_, d) -> {
+			BoskConfig.builder().driverFactory((_, d) -> {
 				driver.set(new ForwardingDriver(d));
 				return driver.get();
-			},
-			Bosk.simpleRegistrar());
+			}).build());
 
 		assertEquals(name, bosk.name());
 		assertEquals(rootType, bosk.rootReference().targetType());
@@ -64,9 +63,8 @@ public class BoskConstructorTest {
 			new Bosk<TypeValidationTest.ArrayField>(
 				boskName("Invalid root type"),
 				TypeValidationTest.ArrayField.class,
-				bosk -> new TypeValidationTest.ArrayField(Identifier.from("test"), new String[0]),
-				Bosk.simpleDriver(),
-				Bosk.simpleRegistrar()));
+				_ -> new TypeValidationTest.ArrayField(Identifier.from("test"), new String[0]),
+				BoskConfig.simple()));
 	}
 
 	@Test
@@ -92,8 +90,7 @@ public class BoskConstructorTest {
 				boskName("Mismatched root"),
 				BoxedPrimitives.class,
 				bosk -> newEntity(),
-				Bosk.simpleDriver(),
-				Bosk.simpleRegistrar())
+				BoskConfig.simple())
 		);
 	}
 
@@ -104,8 +101,7 @@ public class BoskConstructorTest {
 			boskName(),
 			SimpleTypes.class,
 			_ -> { throw new AssertionError("Shouldn't be called"); },
-			initialRootDriver(() -> root),
-			Bosk.simpleRegistrar());
+			BoskConfig.builder().driverFactory(initialRootDriver(() -> root)).build());
 		try (var _ = bosk.readContext()) {
 			assertSame(root, bosk.rootReference().value());
 		}
@@ -132,8 +128,10 @@ public class BoskConstructorTest {
 			boskName(),
 			SimpleTypes.class,
 			_ -> newEntity(),
-			initialRootDriver(initialRootFunction),
-			Bosk.simpleRegistrar()));
+			BoskConfig.builder()
+				.driverFactory(initialRootDriver(initialRootFunction))
+				.build()
+		));
 	}
 
 	/**
@@ -144,8 +142,7 @@ public class BoskConstructorTest {
 			boskName(),
 			SimpleTypes.class,
 			defaultRootFunction,
-			Bosk.simpleDriver(),
-			Bosk.simpleRegistrar()));
+			BoskConfig.simple()));
 	}
 
 	@NotNull
