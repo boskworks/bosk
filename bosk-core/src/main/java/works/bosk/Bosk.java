@@ -640,7 +640,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	}
 
 	public void registerHooks(Object receiver) throws InvalidTypeException {
-		HookScanner.registerHooks(receiver, this);
+		HookScanner.registerHooks(receiver, this.rootReference(), this.hookRegistrar());
 	}
 
 	@Override
