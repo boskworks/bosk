@@ -12,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.Bosk;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.EnumerableByIdentifier;
@@ -30,6 +29,7 @@ import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static works.bosk.BoskConfig.simpleDriver;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 
 public class BsonSurgeonTest extends AbstractDriverTest {
@@ -53,7 +53,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 
 	@BeforeEach
 	void setup() throws InvalidTypeException, IOException, InterruptedException {
-		setupBosksAndReferences(Bosk.simpleDriver());
+		setupBosksAndReferences(simpleDriver());
 		bsonSerializer = new BsonSerializer();
 		formatter = new BsonFormatter(bosk, bsonSerializer);
 

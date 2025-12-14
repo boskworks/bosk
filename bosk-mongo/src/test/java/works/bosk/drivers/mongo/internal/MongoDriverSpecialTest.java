@@ -23,6 +23,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -92,8 +93,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Setup"),
 			TestEntity.class,
 			this::initialRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Refs refs = setupBosk.buildReferences(Refs.class);
 
 		// Make a change to the bosk so it's not just the initial root
@@ -106,8 +106,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Latecomer"),
 			TestEntity.class,
 			b -> { throw new AssertionError("Default root function should not be called"); },
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = latecomerBosk.readContext()) {
 			TestEntity actual = latecomerBosk.rootReference().value();
@@ -124,14 +123,13 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName(),
 			TestEntity.class,
 			this::initialRoot,
-			(b, d) -> driverFactory.build(b, new BufferingDriver(d, b.diagnosticContext()) {
+			BoskConfig.<TestEntity>builder().driverFactory((b, d) -> driverFactory.build(b, new BufferingDriver(d, b.diagnosticContext()) {
 				@Override
 				public <T> void submitReplacement(Reference<T> target, T newValue) {
 					super.submitReplacement(target, newValue);
 					replacementsSeen.add(target);
 				}
-			}),
-			Bosk.simpleRegistrar());
+			})).build());
 
 		CatalogReference<TestEntity> catalogRef = bosk.rootReference().thenCatalog(TestEntity.class,
 			TestEntity.Fields.catalog);
@@ -180,8 +178,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName(),
 			TestEntity.class,
 			this::initialRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		BoskDriver driver = bosk.driver();
 		CatalogReference<TestEntity> catalogRef = bosk.rootReference().thenCatalog(TestEntity.class,
 			TestEntity.Fields.catalog);
@@ -225,8 +222,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Main"),
 			TestEntity.class,
 			this::initialRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Refs refs = bosk.buildReferences(Refs.class);
 		BoskDriver driver = bosk.driver();
 
@@ -238,8 +234,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Latecomer"),
 			TestEntity.class,
 			this::initialRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		LOGGER.debug("Cut connection");
 		mongoService.cutConnection();
@@ -281,13 +276,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName(),
 			TestEntity.class,
 			this::initialRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Refs refs = bosk.buildReferences(Refs.class);
 		BoskDriver driver = bosk.driver();
 		CountDownLatch listingEntry124Exists = new CountDownLatch(1);
 
-		bosk.registerHook("notice 124", refs.listingEntry(entity124), ref -> {
+		bosk.hookRegistrar().registerHook("notice 124", refs.listingEntry(entity124), ref -> {
 			if (ref.exists()) {
 				listingEntry124Exists.countDown();
 			}
@@ -303,7 +297,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertThrows(FlushFailureException.class, driver::flush);
 
 		LOGGER.debug("Register hook");
-		bosk.registerHook("populateListing", refs.catalog(), ref -> {
+		bosk.hookRegistrar().registerHook("populateListing", refs.catalog(), ref -> {
 			LOGGER.debug("Hook populating listing with all ids from catalog");
 			try {
 				bosk.driver().submitReplacement(refs.listing(), Listing.of(refs.catalog(), ref.value().ids()));
@@ -342,16 +336,14 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Newer"),
 			TestEntity.class,
 			this::initialRootWithValues,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		// Upon creating prevBosk, the state in the database will be loaded into the local.
 		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
 			OldEntity.class,
 			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<OldEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		OldEntity expected = OldEntity.withString(rootID.toString(), prevBosk);
 
@@ -370,14 +362,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Newer"),
 			TestEntity.class,
 			this::initialRootWithEmptyCatalog,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
 			OldEntity.class,
 			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<OldEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		TestEntity initialRoot = initialRootWithEmptyCatalog(bosk);
 		bosk.driver().submitReplacement(bosk.rootReference(),
@@ -405,16 +395,14 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Newer"),
 			TestEntity.class,
 			this::initialRootWithEmptyCatalog,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
 			OldEntity.class,
 			_ -> {
 				throw new AssertionError("prevBosk should use the state from MongoDB");
 			},
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<OldEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		Refs refs = bosk.buildReferences(Refs.class);
 		bosk.driver().submitReplacement(refs.values(),
@@ -441,14 +429,12 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Newer"),
 			TestEntity.class,
 			this::initialRootWithEmptyCatalog,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
 			OldEntity.class,
 			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<OldEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		Refs refs = newerBosk.buildReferences(Refs.class);
 		newerBosk.driver().submitDeletion(refs.values());
@@ -475,16 +461,14 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Setup"),
 			OptionalEntity.class,
 			b -> OptionalEntity.withString(Optional.empty(), b),
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<OptionalEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		LOGGER.debug("Connect another bosk where the string field is mandatory");
 		Bosk<TestEntity> testBosk = new Bosk<>(
 			boskName("Test"),
 			TestEntity.class,
 			this::initialRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		TestEntity expected1 = initialRoot(testBosk); // NOT what was put there by the setup bosk!
 		TestEntity actual1;
 		try (var _ = testBosk.readContext()) {
@@ -540,8 +524,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName(),
 			TestEntity.class,
 			this::initialRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		MongoCollection<Document> counterfeitCollection = mongoService.client()
 			.getDatabase(databaseName)
@@ -575,16 +558,14 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Original"),
 			TestEntity.class,
 			this::initialRoot,
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		LOGGER.debug("Create Upgradeable bosk");
 		Bosk<UpgradeableEntity> upgradeableBosk = new Bosk<>(
 			boskName("Upgradeable"),
 			UpgradeableEntity.class,
 			_ -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<UpgradeableEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		LOGGER.debug("Check state before");
 		Optional<TestValues> before;
@@ -614,8 +595,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName(),
 			TestEntity.class,
 			this::initialRoot,
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		LOGGER.debug("Flush should work");
 		bosk.driver().flush();
@@ -647,8 +627,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Initial"),
 			TestEntity.class,
 			this::initialRoot,
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		// (Close this so it doesn't crash when we delete the "path" field)
 		initialBosk.getDriver(MongoDriver.class).close();
@@ -664,8 +643,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName("Main"),
 			TestEntity.class,
 			this::initialRoot,
-			createDriverFactory(logController, testInfo),
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		// Get the new bosk reconnected
 		bosk.driver().flush();

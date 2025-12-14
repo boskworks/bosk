@@ -52,13 +52,13 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 	}
 
 	public static <R extends Entity> DriverFactory<R> directFactory() {
-		return Bosk.simpleDriver();
+		return BoskConfig.simpleDriver();
 	}
 
 	public static <R extends Entity> DriverFactory<R> factoryThatMakesAReference() {
 		return (boskInfo, downstream) -> {
 			boskInfo.rootReference();
-			return Bosk.<R>simpleDriver().build(boskInfo, downstream);
+			return BoskConfig.<R>simpleDriver().build(boskInfo, downstream);
 		};
 	}
 

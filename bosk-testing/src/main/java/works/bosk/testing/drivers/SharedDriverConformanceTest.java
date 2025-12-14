@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.DriverFactory;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.junit.InjectedTest;
@@ -24,7 +25,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 	@Override
 	protected void assertCorrectBoskContents() {
 		super.assertCorrectBoskContents();
-		var latecomer = new Bosk<>(BoskTestUtils.boskName("latecomer"), TestEntity.class, AbstractDriverTest::initialRoot, driverFactory, Bosk.simpleRegistrar());
+		var latecomer = new Bosk<>(BoskTestUtils.boskName("latecomer"), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		try {
 			latecomer.driver().flush();
 		} catch (Exception e) {
@@ -48,8 +49,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 			boskName("Original"),
 			TestEntity.class,
 			AbstractDriverTest::initialRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		LOGGER.debug("Create Upgradeable bosk");
 		@SuppressWarnings({"rawtypes","unchecked"})
@@ -58,8 +58,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 			boskName("Upgradeable"),
 			UpgradeableEntity.class,
 			(b) -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
-			upgradeableDriverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<UpgradeableEntity>builder().driverFactory(upgradeableDriverFactory).build());
 
 		LOGGER.debug("Ensure polyfill returns the right value on read");
 		TestValues polyfill;

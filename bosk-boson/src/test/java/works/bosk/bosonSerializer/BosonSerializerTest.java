@@ -6,6 +6,7 @@ import java.io.Writer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -56,9 +57,7 @@ public class BosonSerializerTest {
 				Refs refs = b.buildReferences(Refs.class);
 				return new Root(Catalog.empty(), SideTable.empty(refs.keys()));
 			},
-			Bosk.simpleDriver(),
-			Bosk.simpleRegistrar()
-		);
+			BoskConfig.simple());
 		refs = bosk.buildReferences(Refs.class);
 		typeMap = new TypeScanner(TypeMap.Settings.DEFAULT)
 			.addBundle(new BosonSerializer().bundleFor(bosk))

@@ -33,8 +33,7 @@ public class CatalogBenchmark {
 				boskName(),
 				AbstractBoskTest.TestRoot.class,
 				AbstractBoskTest::initialRoot,
-				Bosk.simpleDriver(),
-				Bosk.simpleRegistrar());
+				BoskConfig.simple());
 			TestEntityBuilder teb = new TestEntityBuilder(bosk);
 			int initialSize = 100_000;
 			catalog = Catalog.of(IntStream.rangeClosed(1, initialSize).mapToObj(i ->

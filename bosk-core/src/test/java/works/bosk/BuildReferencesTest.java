@@ -6,6 +6,7 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static works.bosk.BoskConfig.simpleDriver;
 
 public class BuildReferencesTest extends AbstractBoskTest {
 	static Bosk<TestRoot> bosk;
@@ -17,7 +18,7 @@ public class BuildReferencesTest extends AbstractBoskTest {
 
 	@BeforeAll
 	static void setup() throws InvalidTypeException {
-		bosk = setUpBosk(Bosk.simpleDriver());
+		bosk = setUpBosk(simpleDriver());
 		refs = bosk.buildReferences(Refs.class);
 
 		teb = new TestEntityBuilder(bosk);

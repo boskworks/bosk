@@ -28,7 +28,7 @@ public class ExampleTest {
 
 	@Test
 	void hook() {
-		bosk.registerHook("Greetings", bosk.refs.name(), ref -> {
+		bosk.hookRegistrar().registerHook("Greetings", bosk.refs.name(), ref -> {
 			System.out.println("Name is now: " + ref.value());
 		});
 	}

@@ -21,7 +21,7 @@ import static works.bosk.util.ReflectionHelpers.getDeclaredMethodsInOrder;
  * Finds methods annotated with {@link Hook} in the given {@code object} and registers them in the given {@link Bosk}.
  */
 final class HookScanner {
-	static <T> void registerHooks(T receiverObject, Bosk<?> bosk) throws InvalidTypeException {
+	static <T> void registerHooks(T receiverObject, RootReference<?> rootReference, HookRegistrar hookRegistrar) throws InvalidTypeException {
 		int hookCounter = 0;
 		for (
 			Class<?> receiverClass = receiverObject.getClass();
@@ -40,7 +40,7 @@ final class HookScanner {
 				}
 
 				try {
-					registerOneHookMethod(receiverObject, bosk, method, Path.parseParameterized(hookAnnotation.value()));
+					registerOneHookMethod(receiverObject, method, Path.parseParameterized(hookAnnotation.value()), rootReference, hookRegistrar);
 					hookCounter++;
 				} catch (InvalidTypeException e) {
 					throw new InvalidTypeException("Unable to register hook method " + receiverClass.getSimpleName() + "." + method.getName() + ": " + e.getMessage(), e);
@@ -54,23 +54,23 @@ final class HookScanner {
 		}
 	}
 
-	private static <T> void registerOneHookMethod(T receiverObject, Bosk<?> bosk, Method method, Path path) throws InvalidTypeException {
-		Reference<?> plainRef = bosk.rootReference().then(Object.class, path);
+	private static <T> void registerOneHookMethod(T receiverObject, Method method, Path path, RootReference<?> rootReference, HookRegistrar hookRegistrar) throws InvalidTypeException {
+		Reference<?> plainRef = rootReference.then(Object.class, path);
 
 		// Now substitute one of the handy Reference subtypes where possible
 		Reference<?> scope;
 		if (Catalog.class.isAssignableFrom(plainRef.targetClass())) {
-			scope = bosk.rootReference().thenCatalog(Entity.class, path);
+			scope = rootReference.thenCatalog(Entity.class, path);
 		} else if (Listing.class.isAssignableFrom(plainRef.targetClass())) {
-			scope = bosk.rootReference().thenListing(Entity.class, path);
+			scope = rootReference.thenListing(Entity.class, path);
 		} else if (SideTable.class.isAssignableFrom(plainRef.targetClass())) {
-			scope = bosk.rootReference().thenSideTable(Entity.class, Object.class, path);
+			scope = rootReference.thenSideTable(Entity.class, Object.class, path);
 		} else {
 			scope = plainRef;
 		}
 
 		List<Function<Reference<?>, Object>> argumentFunctions = new ArrayList<>(method.getParameterCount());
-		argumentFunctions.add(ref -> receiverObject); // The "this" pointer
+		argumentFunctions.add(_ -> receiverObject); // The "this" pointer
 		for (Parameter p : method.getParameters()) {
 			if (Reference.class.isAssignableFrom(p.getType())) {
 				Type referenceType = ReferenceUtils.parameterType(p.getParameterizedType(), Reference.class, 0);
@@ -92,7 +92,7 @@ final class HookScanner {
 		} catch (IllegalAccessException e) {
 			throw new IllegalArgumentException(e);
 		}
-		bosk.registerHook(method.getName(), scope, ref -> {
+		hookRegistrar.registerHook(method.getName(), scope, ref -> {
 			try {
 				List<Object> arguments = new ArrayList<>(argumentFunctions.size());
 				argumentFunctions.forEach(f -> arguments.add(f.apply(ref)));
@@ -102,6 +102,8 @@ final class HookScanner {
 			}
 		});
 	}
+
+	private HookScanner() {}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(HookScanner.class);
 }

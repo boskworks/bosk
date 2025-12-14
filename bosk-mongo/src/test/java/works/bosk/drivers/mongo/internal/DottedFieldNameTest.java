@@ -7,6 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.Path;
 import works.bosk.Reference;
 import works.bosk.exceptions.InvalidTypeException;
@@ -21,7 +22,7 @@ class DottedFieldNameTest {
 
 	@BeforeEach
 	void setUpStuff() {
-		bosk = new Bosk<>(boskName(), TestEntity.class, AbstractDriverTest::initialRoot, Bosk.simpleDriver(), Bosk.simpleRegistrar());
+		bosk = new Bosk<>(boskName(), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.simple());
 	}
 
 	static Stream<Arguments> pathArgumentSource() {

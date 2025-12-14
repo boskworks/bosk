@@ -1,9 +1,9 @@
 package works.bosk.testing.drivers;
 
-import works.bosk.Bosk;
+import static works.bosk.BoskConfig.simpleDriver;
 
 public class HanoiMetaTest extends HanoiTest {
 	public HanoiMetaTest() {
-		driverFactory = Bosk.simpleDriver();
+		driverFactory = simpleDriver();
 	}
 }

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BindingEnvironment;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
@@ -60,8 +61,7 @@ public abstract class HanoiTest {
 			boskName(),
 			HanoiState.class,
 			this::defaultRoot,
-			driverFactory,
-			Bosk.simpleRegistrar());
+			BoskConfig.<HanoiState>builder().driverFactory(driverFactory).build());
 		refs = bosk.rootReference().buildReferences(Refs.class);
 		numSolved = new LinkedBlockingDeque<>();
 		bosk.registerHooks(this);

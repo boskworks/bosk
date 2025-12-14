@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static works.bosk.BoskConfig.simpleDriver;
 import static works.bosk.SideTable.toSideTable;
 
 class SideTableTest extends AbstractBoskTest {
@@ -37,7 +38,7 @@ class SideTableTest extends AbstractBoskTest {
 
 	@BeforeEach
 	void setup() throws InvalidTypeException {
-		bosk = setUpBosk(Bosk.simpleDriver());
+		bosk = setUpBosk(simpleDriver());
 		refs = bosk.buildReferences(Refs.class);
 
 		readContext = bosk.readContext();
