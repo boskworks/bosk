@@ -78,7 +78,7 @@ public class HooksTest extends AbstractBoskTest {
 
 	@Test
 	void basic_hooksRunWhenRegistered() {
-		bosk.registerHook("child2", refs.child(child2), recorder.hookNamed("child2"));
+		bosk.hookRegistrar().registerHook("child2", refs.child(child2), recorder.hookNamed("child2"));
 		assertEquals(
 			singletonList(
 				new HookRecorder.Event("child2", HookRecorder.Event.Kind.CHANGED, refs.child(child2), originalChild2)),
@@ -91,7 +91,7 @@ public class HooksTest extends AbstractBoskTest {
 		ThreadLocal<String> threadLocal = ThreadLocal.withInitial(() -> "initial");
 		threadLocal.set("updated");
 		BlockingQueue<String> queue = new LinkedBlockingQueue<>();
-		bosk.registerHook("foo", bosk.rootReference(), ref -> {
+		bosk.hookRegistrar().registerHook("foo", bosk.rootReference(), _ -> {
 			try {
 				queue.put(threadLocal.get());
 			} catch (InterruptedException e) {
@@ -105,7 +105,7 @@ public class HooksTest extends AbstractBoskTest {
 	@ParameterizedTest
 	@EnumSource(Variant.class)
 	void basic_noIrrelevantHooks(Variant variant) {
-		bosk.registerHook("child2", refs.child(child2), recorder.hookNamed("child2"));
+		bosk.hookRegistrar().registerHook("child2", refs.child(child2), recorder.hookNamed("child2"));
 		recorder.restart();
 		variant.submit.replacement(bosk, refs, refs.childString(child1), "Child 1 only");
 		assertEquals(emptyList(), recorder.events(), "Hook shouldn't see updates for objects that neither enclose nor are enclosed by them");
@@ -329,11 +329,11 @@ public class HooksTest extends AbstractBoskTest {
 	 * Provides a good test that hooks are run in registration order.
 	 */
 	private void registerInterleavedHooks() {
-		bosk.registerHook("child2 A", refs.child(child2), recorder.hookNamed("child2 A"));
-		bosk.registerHook("parent B", refs.parent(), recorder.hookNamed("parent B"));
-		bosk.registerHook("child2 C", refs.child(child2), recorder.hookNamed("child2 C"));
-		bosk.registerHook("parent D", refs.parent(), recorder.hookNamed("parent D"));
-		bosk.registerHook("Any child", refs.anyChild(), recorder.hookNamed("Any child"));
+		bosk.hookRegistrar().registerHook("child2 A", refs.child(child2), recorder.hookNamed("child2 A"));
+		bosk.hookRegistrar().registerHook("parent B", refs.parent(), recorder.hookNamed("parent B"));
+		bosk.hookRegistrar().registerHook("child2 C", refs.child(child2), recorder.hookNamed("child2 C"));
+		bosk.hookRegistrar().registerHook("parent D", refs.parent(), recorder.hookNamed("parent D"));
+		bosk.hookRegistrar().registerHook("Any child", refs.anyChild(), recorder.hookNamed("Any child"));
 		recorder.restart();
 	}
 
@@ -360,7 +360,7 @@ public class HooksTest extends AbstractBoskTest {
 
 		// Child 1 update triggers A and B, and A triggers C
 
-		bosk.registerHook("A", refs.childString(child1), recorder.hookNamed("A", ref -> {
+		bosk.hookRegistrar().registerHook("A", refs.childString(child1), recorder.hookNamed("A", ref -> {
 			if (initializing.get()) {
 				assertEquals("child1", ref.value(),
 					"Upon registration, hooks runs on initial state");
@@ -375,7 +375,7 @@ public class HooksTest extends AbstractBoskTest {
 				"Subsequent change to child3 is not visible");
 			bosk.driver().submitReplacement(refs.childString(child2), ref.value() + "_child2_hookA");
 		}));
-		bosk.registerHook("B", refs.childString(child1), recorder.hookNamed("B", ref -> {
+		bosk.hookRegistrar().registerHook("B", refs.childString(child1), recorder.hookNamed("B", ref -> {
 			if (initializing.get()) {
 				assertEquals("child1", ref.value(),
 					"Upon registration, hooks runs on initial state");
@@ -390,7 +390,7 @@ public class HooksTest extends AbstractBoskTest {
 				"Subsequent change to child3 is not visible");
 			bosk.driver().submitReplacement(refs.childString(child3), ref.value() + "_child3_hookB");
 		}));
-		bosk.registerHook("C", refs.childString(child2), recorder.hookNamed("C", ref -> {
+		bosk.hookRegistrar().registerHook("C", refs.childString(child2), recorder.hookNamed("C", ref -> {
 			if (initializing.get()) {
 				assertEquals("child2", ref.value(),
 					"Upon registration, hooks runs on initial state");
@@ -427,19 +427,19 @@ public class HooksTest extends AbstractBoskTest {
 	@Test
 	void nestedMultipleUpdates_breadthFirst() {
 		// Register hooks to propagate string updates from parent -> child 1 -> 2 -> 3 with a tag
-		bosk.registerHook("+P", refs.parentString(), recorder.hookNamed("P", ref -> {
+		bosk.hookRegistrar().registerHook("+P", refs.parentString(), recorder.hookNamed("P", ref -> {
 			bosk.driver().submitReplacement(refs.childString(child1), ref.value() + "+P");
 			bosk.driver().submitReplacement(refs.childString(child2), ref.value() + "+P");
 			bosk.driver().submitReplacement(refs.childString(child3), ref.value() + "+P");
 		}));
-		bosk.registerHook("+C1", refs.childString(child1), recorder.hookNamed("C1", ref -> {
+		bosk.hookRegistrar().registerHook("+C1", refs.childString(child1), recorder.hookNamed("C1", ref -> {
 			bosk.driver().submitReplacement(refs.childString(child2), ref.value() + "+C1");
 			bosk.driver().submitReplacement(refs.childString(child3), ref.value() + "+C1");
 		}));
-		bosk.registerHook("+C2", refs.childString(child2), recorder.hookNamed("C2", ref -> {
+		bosk.hookRegistrar().registerHook("+C2", refs.childString(child2), recorder.hookNamed("C2", ref -> {
 			bosk.driver().submitReplacement(refs.childString(child3), ref.value() + "+C2");
 		}));
-		bosk.registerHook("C3", refs.childString(child3), recorder.hookNamed("C3"));
+		bosk.hookRegistrar().registerHook("C3", refs.childString(child3), recorder.hookNamed("C3"));
 
 		List<HookRecorder.Event> expectedEvents = asList(
 			new HookRecorder.Event("P", HookRecorder.Event.Kind.CHANGED, refs.parentString(), "replacement"),
@@ -477,7 +477,7 @@ public class HooksTest extends AbstractBoskTest {
 
 	@Test
 	void nested_correctReadContext() {
-		bosk.registerHook("stringCopier", refs.child(child2), recorder.hookNamed("stringCopier", ref ->
+		bosk.hookRegistrar().registerHook("stringCopier", refs.child(child2), recorder.hookNamed("stringCopier", ref ->
 			bosk.driver().submitReplacement(refs.childString(child1), ref.value().string())));
 		recorder.restart();
 		String expectedString = "expected string";

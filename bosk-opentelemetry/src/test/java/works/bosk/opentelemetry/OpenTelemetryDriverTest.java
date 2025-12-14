@@ -61,7 +61,7 @@ class OpenTelemetryDriverTest {
 				.build());
 		record Observation(int revision, String traceID) { }
 		BlockingQueue<Observation> observations = new LinkedBlockingQueue<>();
-		bosk.registerHook("attribute observer", bosk.rootReference(), ref -> {
+		bosk.hookRegistrar().registerHook("attribute observer", bosk.rootReference(), ref -> {
 			observations.add(new Observation(ref.value().revision(),
 				Span.current().getSpanContext().getTraceId()));
 		});

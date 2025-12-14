@@ -281,7 +281,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		BoskDriver driver = bosk.driver();
 		CountDownLatch listingEntry124Exists = new CountDownLatch(1);
 
-		bosk.registerHook("notice 124", refs.listingEntry(entity124), ref -> {
+		bosk.hookRegistrar().registerHook("notice 124", refs.listingEntry(entity124), ref -> {
 			if (ref.exists()) {
 				listingEntry124Exists.countDown();
 			}
@@ -297,7 +297,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertThrows(FlushFailureException.class, driver::flush);
 
 		LOGGER.debug("Register hook");
-		bosk.registerHook("populateListing", refs.catalog(), ref -> {
+		bosk.hookRegistrar().registerHook("populateListing", refs.catalog(), ref -> {
 			LOGGER.debug("Hook populating listing with all ids from catalog");
 			try {
 				bosk.driver().submitReplacement(refs.listing(), Listing.of(refs.catalog(), ref.value().ids()));

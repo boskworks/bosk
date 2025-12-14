@@ -92,7 +92,7 @@ final class HookScanner {
 		} catch (IllegalAccessException e) {
 			throw new IllegalArgumentException(e);
 		}
-		bosk.registerHook(method.getName(), scope, ref -> {
+		bosk.hookRegistrar().registerHook(method.getName(), scope, ref -> {
 			try {
 				List<Object> arguments = new ArrayList<>(argumentFunctions.size());
 				argumentFunctions.forEach(f -> arguments.add(f.apply(ref)));

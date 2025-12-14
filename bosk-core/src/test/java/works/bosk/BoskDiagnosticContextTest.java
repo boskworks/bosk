@@ -39,7 +39,7 @@ class BoskDiagnosticContextTest extends AbstractDriverTest {
 		Semaphore diagnosticsVerified = new Semaphore(0);
 		bosk.driver().flush();
 		try (var _ = bosk.diagnosticContext().withAttribute("attributeName", "attributeValue")) {
-			bosk.registerHook("contextPropagatesToHook", bosk.rootReference(), ref -> {
+			bosk.hookRegistrar().registerHook("contextPropagatesToHook", bosk.rootReference(), _ -> {
 				assertEquals("attributeValue", bosk.diagnosticContext().getAttribute("attributeName"));
 				assertEquals(MapValue.singleton("attributeName", "attributeValue"), bosk.diagnosticContext().getAttributes());
 				diagnosticsVerified.release();

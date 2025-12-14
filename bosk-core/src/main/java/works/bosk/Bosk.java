@@ -47,7 +47,7 @@ import static works.bosk.TypeValidation.validateType;
  * A mutable container for an immutable object tree with cross-tree {@link Reference}s,
  * providing snapshot-at-start semantics via {@link ReadContext ReadContext},
  * managing updates via {@link BoskDriver},
- * and notifying listeners of changes via {@link #registerHook registerHook}.
+ * and notifying listeners of changes via {@link #hookRegistrar() hookRegistrar}.
  *
  * <p>
  * The intent is that there would be one of these injected into your
@@ -66,8 +66,8 @@ import static works.bosk.TypeValidation.validateType;
  * according to their {@link Reference#path}.
  *
  * <p>
- * Updates are performed by submitting an update via {@link
- * BoskDriver#submitReplacement(Reference, Object) submitReplacement} and similar,
+ * Updates are performed by submitting an update via
+ * {@link BoskDriver#submitReplacement(Reference, Object) submitReplacement} and similar,
  * rather than by modifying the in-memory state directly.
  * The driver will apply the changes either immediately or at a later time.
  * Regardless, updates will not be visible in any {@code ReadContext}
@@ -116,7 +116,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		Info<R> boskInfo = new Info<>(
-			name, instanceID, rootRef, diagnosticContext, this::registerHooks, new AtomicReference<>());
+			name, instanceID, rootRef, diagnosticContext, new AtomicReference<>());
 
 		// We do this as late as possible because the driver factory is allowed
 		// to do such things as create References, so it needs the rest of the
@@ -175,14 +175,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		Identifier instanceID,
 		RootReference<RR> rootReference,
 		BoskDiagnosticContext diagnosticContext,
-		RegisterHooksMethod m,
 		AtomicReference<Bosk<RR>> boskRef
 	) implements BoskInfo<RR> {
-		@Override
-		public void registerHooks(Object receiver) throws InvalidTypeException {
-			m.registerHooks(receiver);
-		}
-
 		@Override
 		public Bosk<RR> bosk() {
 			var result = boskRef.get();
@@ -192,10 +186,6 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				return result;
 			}
 		}
-	}
-
-	private interface RegisterHooksMethod {
-		void registerHooks(Object receiver) throws InvalidTypeException;
 	}
 
 	/**
@@ -208,6 +198,18 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 */
 	public BoskDriver driver() {
 		return driver;
+	}
+
+	/**
+	 * Provides access to the {@link HookRegistrar} object to use for registering hooks on this bosk.
+	 * <p>
+	 * The bosk's hook registrar is fixed for the lifetime of the bosk.
+	 * You can hold on to the returned object if that suits you; there's no need to re-fetch it.
+	 *
+	 * @return the {@link HookRegistrar} to use for registering hooks on this bosk.
+	 */
+	public HookRegistrar hookRegistrar() {
+		return hookRegistrar;
 	}
 
 	/**
@@ -628,36 +630,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	}
 
 	/**
-	 * Causes the given {@link BoskHook} to be called when the given scope
-	 * object is updated.
-	 *
-	 * <p>
-	 * The <code>scope</code> reference can be parameterized.
-	 * Upon any change to any matching node, or any parent or child of a matching node,
-	 * the <code>action</code> will be called with a {@link ReadContext} that captures
-	 * the state immediately after the update was applied.
-	 * The <code>action</code> will receive an argument that is the <code>scope</code> reference
-	 * with all its parameters (if any) bound.
-	 *
-	 * <p>
-	 * For a given update, hooks are called in the order they were registered.
-	 * Updates performed by the <code>action</code> could themselves trigger hooks.
-	 * Such "hook cascades" are performed in breadth-first order, and are queued
-	 * as necessary to achieve this; hooks are <em>not</em> called recursively.
-	 * Hooks may be called on any thread, including one of the threads that
-	 * submitted one of the updates, but they will be called in sequence, such
-	 * that each <em>happens-before</em> the next.
-	 *
-	 * <p>
-	 * Before returning, runs the hook on the current bosk state.
-	 *
-	 */
-	public <T> void registerHook(String name, @NotNull Reference<T> scope, @NotNull BoskHook<T> action) {
-		hookRegistrar.registerHook(name, scope, action);
-	}
-
-	/**
-	 * The unadorned version of {@link #registerHook} that simply registers the hook as given.
+	 * The unadorned version of {@link #hookRegistrar()}.{@link HookRegistrar#registerHook(String, Reference, BoskHook) registerHook}
+	 * that simply registers the hook as given.
 	 */
 	private <T> void localRegisterHook(String name, @NotNull Reference<T> scope, @NotNull BoskHook<T> action) {
 		HookRegistration<T> reg = new HookRegistration<>(name, requireNonNull(scope), requireNonNull(action));
@@ -665,7 +639,6 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		localDriver.triggerEverywhere(reg);
 	}
 
-	@Override
 	public void registerHooks(Object receiver) throws InvalidTypeException {
 		HookScanner.registerHooks(receiver, this);
 	}

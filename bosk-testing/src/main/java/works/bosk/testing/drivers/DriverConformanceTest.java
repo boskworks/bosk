@@ -575,7 +575,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	private void testDiagnosticContextPropagation(Runnable operation) throws IOException, InterruptedException {
 		AtomicBoolean diagnosticsAreReady = new AtomicBoolean(false);
 		Semaphore diagnosticsVerified = new Semaphore(0);
-		bosk.registerHook("contextPropagatesToHook", bosk.rootReference(), ref -> {
+		bosk.hookRegistrar().registerHook("contextPropagatesToHook", bosk.rootReference(), _1 -> {
 			// Note that this will run as soon as it's registered
 			if (diagnosticsAreReady.get()) {
 				BoskDiagnosticContext boskDiagnosticContext = bosk.diagnosticContext();
