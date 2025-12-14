@@ -140,14 +140,6 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		boskInfo.boskRef().set(this); // @SuppressWarnings("this-escape")
 	}
 
-	/**
-	 * @deprecated This constructor is going to be removed. You can inline it into your code to get its replacement.
-	 */
-	@Deprecated(forRemoval = true)
-	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, DriverFactory<R> driverFactory) {
-		this(name, rootType, defaultRootFunction, driverFactory, Bosk.simpleRegistrar());
-	}
-
 	@Override
 	public String name() {
 		return this.name;
