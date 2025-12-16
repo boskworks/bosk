@@ -1,6 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
@@ -52,7 +51,7 @@ import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
  */
 final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatDriver<R> {
 	private final String description;
-	private final MongoCollection<BsonDocument> collection;
+	private final TransactionalCollection collection;
 	private final BoskDriver downstream;
 	private final FlushLock flushLock;
 
@@ -62,7 +61,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	SequoiaFormatDriver(
 		BoskInfo<R> boskInfo,
-		MongoCollection<BsonDocument> collection,
+		TransactionalCollection collection,
 		MongoDriverSettings driverSettings,
 		BsonSerializer bsonSerializer,
 		FlushLock flushLock,

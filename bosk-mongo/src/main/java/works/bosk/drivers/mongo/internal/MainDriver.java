@@ -68,7 +68,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BsonSerializer bsonSerializer;
 	private final BoskDriver downstream;
 	private final MongoClient mongoClient;
-	private final TransactionalCollection<BsonDocument> collection;
+	private final TransactionalCollection collection;
 	private final Listener listener;
 	final Formatter formatter;
 
