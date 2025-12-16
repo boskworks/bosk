@@ -71,7 +71,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private final String description;
 	private final PandoFormat format;
 	private final MongoDriverSettings settings;
-	private final TransactionalCollection<BsonDocument> collection;
+	private final TransactionalCollection collection;
 	private final BoskDriver downstream;
 	private final FlushLock flushLock;
 	private final BsonSurgeon bsonSurgeon;
@@ -84,7 +84,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	PandoFormatDriver(
 		BoskInfo<R> boskInfo,
-		TransactionalCollection<BsonDocument> collection,
+		TransactionalCollection collection,
 		MongoDriverSettings driverSettings,
 		PandoFormat format, BsonSerializer bsonSerializer,
 		FlushLock flushLock,
