@@ -22,6 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL_FAST;
 import static works.bosk.drivers.mongo.internal.MongoService.MONGODB_IMAGE_NAME;
 
+/**
+ * Separated out from other tests because this involves booting a custom
+ * MongoDB container with various kinds of damage.
+ */
 public class ServerMisconfigurationTest {
 
 	@Test
