@@ -1,9 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoClientSettings;
-import com.mongodb.ReadConcern;
 import com.mongodb.ServerAddress;
-import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import eu.rekawek.toxiproxy.Proxy;
@@ -20,11 +18,9 @@ import org.testcontainers.mongodb.MongoDBContainer;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import static com.mongodb.ReadPreference.secondaryPreferred;
 import static eu.rekawek.toxiproxy.model.ToxicDirection.DOWNSTREAM;
 import static eu.rekawek.toxiproxy.model.ToxicDirection.UPSTREAM;
 import static java.util.Collections.singletonList;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * An interface to the dockerized MongoDB replica set,
@@ -141,20 +137,10 @@ public class MongoService implements Closeable {
 	@NotNull
 	static MongoClientSettings mongoClientSettings(ServerAddress serverAddress) {
 		LOGGER.info("MongoDB: {}", serverAddress);
-		int initialTimeoutMS = 60_000;
-		int queryTimeoutMS = 5_000; // Don't wait an inordinately long time for network outage testing
 		return MongoClientSettings.builder()
-			.readPreference(secondaryPreferred())
-			.writeConcern(WriteConcern.MAJORITY)
-			.readConcern(ReadConcern.MAJORITY)
-			.applyToClusterSettings(builder -> {
-				builder.hosts(singletonList(serverAddress));
-				builder.serverSelectionTimeout(initialTimeoutMS, MILLISECONDS);
-			})
-			.applyToSocketSettings(builder -> {
-				builder.connectTimeout(initialTimeoutMS, MILLISECONDS);
-				builder.readTimeout(queryTimeoutMS, MILLISECONDS);
-			})
+			.applyToClusterSettings(builder ->
+				builder.hosts(singletonList(serverAddress))
+			)
 			.build();
 	}
 }
