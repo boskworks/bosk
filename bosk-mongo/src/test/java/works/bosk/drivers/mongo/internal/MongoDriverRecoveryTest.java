@@ -100,7 +100,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		tearDownActions.add(()->mongoService.restoreConnection());
 
 		LOGGER.debug("Create a new bosk that can't connect");
-		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, this::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		MongoDriverSpecialTest.Refs refs = bosk.buildReferences(MongoDriverSpecialTest.Refs.class);
 		BoskDriver driver = bosk.driver();
@@ -232,7 +232,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before deletion");
 
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = bosk.readContext()) {
 			assertEquals(beforeState, bosk.rootReference().value());
@@ -299,7 +299,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before disruption");
 
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, this::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = bosk.readContext()) {
 			assertEquals(beforeState, bosk.rootReference().value());

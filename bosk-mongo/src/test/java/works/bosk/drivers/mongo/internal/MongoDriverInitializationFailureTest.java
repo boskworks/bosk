@@ -34,7 +34,7 @@ public class MongoDriverInitializationFailureTest extends AbstractMongoDriverTes
 			new Bosk<>(
 				boskName("Fail"),
 				TestEntity.class,
-				this::initialRoot,
+				AbstractMongoDriverTest::initialRoot,
 				BoskConfig.<TestEntity>builder()
 					.driverFactory(super.createDriverFactory(logController, testInfo))
 					.build()
