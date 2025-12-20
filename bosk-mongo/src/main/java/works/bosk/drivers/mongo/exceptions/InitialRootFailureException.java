@@ -5,7 +5,7 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
 
 /**
  * Thrown from {@link BoskDriver#initialRoot} if the initial root
- * can't be loaded from the database and {@link MongoDriverSettings.InitialDatabaseUnavailableMode#FAIL}
+ * can't be loaded from the database and {@link MongoDriverSettings.InitialDatabaseUnavailableMode#FAIL_FAST FAIL_FAST}
  * is in effect.
  */
 public class InitialRootFailureException extends RuntimeException {

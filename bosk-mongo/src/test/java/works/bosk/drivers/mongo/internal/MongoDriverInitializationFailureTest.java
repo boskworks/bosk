@@ -10,18 +10,18 @@ import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL;
+import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL_FAST;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
- * Tests the functionality of {@link MongoDriverSettings.InitialDatabaseUnavailableMode#FAIL FAIL} mode.
+ * Tests the functionality of {@link MongoDriverSettings.InitialDatabaseUnavailableMode#FAIL_FAST FAIL_FAST} mode.
  * The other tests in {@link MongoDriverRecoveryTest} exercise {@link MongoDriverSettings.InitialDatabaseUnavailableMode#DISCONNECT DISCONNECT} mode.
  */
 public class MongoDriverInitializationFailureTest extends AbstractMongoDriverTest {
 	public MongoDriverInitializationFailureTest() {
 		super(MongoDriverSettings.builder()
 			.database(MongoDriverInitializationFailureTest.class.getSimpleName())
-			.initialDatabaseUnavailableMode(FAIL));
+			.initialDatabaseUnavailableMode(FAIL_FAST));
 	}
 
 	@Test
