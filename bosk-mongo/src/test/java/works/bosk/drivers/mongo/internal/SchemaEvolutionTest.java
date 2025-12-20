@@ -184,7 +184,7 @@ public class SchemaEvolutionTest {
 	}
 
 	private static Bosk<TestEntity> newBosk(Helper helper) {
-		return new Bosk<>(boskName(helper.toString()), TestEntity.class, helper::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(helper.driverFactory).build());
+		return new Bosk<>(boskName(helper.toString()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(helper.driverFactory).build());
 	}
 
 	record Configuration(

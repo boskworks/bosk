@@ -192,7 +192,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * @throws DownstreamInitialRootException if we attempt to delegate {@link #initialRoot} to
 	 * the {@link #downstream} driver and it throws an exception; this is a fatal initialization error.
 	 * @throws InitialRootFailureException if unable to load the initial root from the database,
-	 * and {@link InitialDatabaseUnavailableMode#FAIL} is active.
+	 * and {@link InitialDatabaseUnavailableMode#FAIL_FAST} is active.
 	 */
 	private R doInitialRoot(Type rootType) {
 		// This establishes a safe fallback in case things go wrong. It also causes any
@@ -230,7 +230,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			}
 		} catch (RuntimeException | UnrecognizedFormatException | IOException | FailedSessionException e) {
 			switch (driverSettings.initialDatabaseUnavailableMode()) {
-				case FAIL:
+				case FAIL_FAST:
 					LOGGER.debug("Unable to load initial root from database; aborting initialization", e);
 					throw new InitialRootFailureException("Unable to load initial state from MongoDB", e);
 				case DISCONNECT:

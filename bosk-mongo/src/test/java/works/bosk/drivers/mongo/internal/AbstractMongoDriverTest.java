@@ -103,7 +103,7 @@ abstract class AbstractMongoDriverTest {
 	}
 
 
-	public TestEntity initialRoot(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
+	public static TestEntity initialRoot(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
 		Refs refs = testEntityBosk.buildReferences(Refs.class);
 		return initialRootWithEmptyCatalog(testEntityBosk)
 			.withCatalog(Catalog.of(
@@ -112,12 +112,12 @@ abstract class AbstractMongoDriverTest {
 			));
 	}
 
-	public TestEntity initialRootWithValues(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
+	public static TestEntity initialRootWithValues(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
 		return initialRootWithEmptyCatalog(testEntityBosk)
 			.withValues(Optional.of(TestValues.blank()));
 	}
 
-	public TestEntity initialRootWithEmptyCatalog(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
+	public static TestEntity initialRootWithEmptyCatalog(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
 		Refs refs = testEntityBosk.buildReferences(Refs.class);
 		return new TestEntity(rootID,
 			rootID.toString(),

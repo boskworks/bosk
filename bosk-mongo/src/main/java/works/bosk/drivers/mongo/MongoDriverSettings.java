@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo;
 import lombok.Builder;
 import lombok.Builder.Default;
 import lombok.Value;
+import works.bosk.Bosk;
 import works.bosk.BoskDriver;
 
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
@@ -39,6 +40,12 @@ public class MongoDriverSettings {
 	 * @see PandoFormat
 	 */
 	@Default DatabaseFormat preferredDatabaseFormat = SEQUOIA;
+
+	/**
+	 * Default is {@link InitialDatabaseUnavailableMode#DISCONNECT DISCONNECT}
+	 * because it simplifies production deployments and repairs,
+	 * but these very fault-tolerance features can be confusing during development.
+	 */
 	@Default InitialDatabaseUnavailableMode initialDatabaseUnavailableMode = InitialDatabaseUnavailableMode.DISCONNECT;
 
 	@Default Experimental experimental = Experimental.builder().build();
@@ -96,17 +103,17 @@ public class MongoDriverSettings {
 		 * but during development, it can cause confusing behaviour if the database is misconfigured.
 		 * <p>
 		 * In the spirit of making things "just work in production", this is the default,
-		 * but you might want to consider using {@link #FAIL} in non-production settings.
+		 * but you might want to consider using {@link #FAIL_FAST} in non-production settings.
 		 */
 		DISCONNECT,
 
 		/**
 		 * If the database state can't be loaded during {@link BoskDriver#initialRoot},
-		 * throw an exception.
-		 * This is probably the desired "fail fast" behaviour during development,
+		 * throw an exception from the {@link Bosk#Bosk Bosk constructor} call.
+		 * This is probably the desired behaviour during development,
 		 * but in production, it creates a boot sequencing dependency between the application and the database.
 		 */
-		FAIL
+		FAIL_FAST
 	}
 
 	public enum OrphanDocumentMode {
