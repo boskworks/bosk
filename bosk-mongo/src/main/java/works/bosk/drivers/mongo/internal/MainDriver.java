@@ -156,26 +156,20 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			try {
 				return task.get();
 			} catch (ExecutionException e) {
-				Throwable exception = e.getCause();
-				if (exception instanceof DownstreamInitialRootException) {
-					// Try to throw the downstream exception directly,
-					// as though we had called it without using a FutureTask
-					Throwable cause = exception.getCause();
-					if (cause instanceof IOException i) {
-						throw i;
-					} else if (cause instanceof InvalidTypeException i) {
-						throw i;
-					} else if (cause instanceof InterruptedException i) {
-						throw i;
-					} else if (cause instanceof RuntimeException r) {
-						throw r;
-					} else {
-						throw new AssertionError("Unexpected exception during initialRoot: " + e.getClass().getSimpleName(), e);
+				switch (e.getCause()) {
+					case InitialRootFailureException i -> throw i;
+					case DownstreamInitialRootException d -> {
+						// Try to throw the downstream exception directly,
+						// as though we had called it without using a FutureTask
+						switch (d.getCause()) {
+							case IOException i -> throw i;
+							case InvalidTypeException i -> throw i;
+							case InterruptedException i -> throw i;
+							case RuntimeException r -> throw r;
+							case null, default -> throw new AssertionError("Unexpected exception during initialRoot: " + e.getClass().getSimpleName(), e);
+						}
 					}
-				} else if (exception instanceof InitialRootFailureException i) {
-					throw i;
-				} else {
-					throw new AssertionError("Exception from initialRoot was not wrapped in DownstreamInitialRootException: " + e.getClass().getSimpleName(), e);
+					case null, default -> throw new AssertionError("Exception from initialRoot was not wrapped in DownstreamInitialRootException: " + e.getClass().getSimpleName(), e);
 				}
 			} finally {
 				// For better or worse, we're done initialRoot. Clear taskRef so that Listener
