@@ -105,7 +105,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> latecomerBosk = new Bosk<>(
 			boskName("Latecomer"),
 			TestEntity.class,
-			b -> { throw new AssertionError("Default root function should not be called"); },
+			_ -> { throw new AssertionError("Default root function should not be called"); },
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = latecomerBosk.readContext()) {
