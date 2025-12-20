@@ -1,6 +1,9 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoCommandException;
+import com.mongodb.MongoException;
 import com.mongodb.MongoInterruptedException;
+import com.mongodb.MongoOperationTimeoutException;
 import com.mongodb.client.MongoChangeStreamCursor;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
@@ -18,10 +21,14 @@ import org.slf4j.MDC;
 import works.bosk.Identifier;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
+import works.bosk.drivers.mongo.exceptions.InitialCursorCommandException;
+import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
+import works.bosk.drivers.mongo.exceptions.InitialCursorTimeoutException;
 import works.bosk.logging.MdcKeys;
 
 import static java.lang.Thread.currentThread;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL_FAST;
 import static works.bosk.logging.MappedDiagnosticContext.MDCScope;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
@@ -58,12 +65,29 @@ class ChangeReceiver implements Closeable {
 		this.settings = settings;
 		this.collection = collection;
 		this.creationPoint = new Exception("Additional context: ChangeReceiver creation stack trace:");
+		if (settings.initialDatabaseUnavailableMode() == FAIL_FAST) {
+			// User requested fail-fast behaviour; try to open the cursor right away
+			// to ensure the database is set up for change streams.
+			probeChangeStreamCursor();
+		}
 		ex.scheduleWithFixedDelay(
 			this::connectionLoop,
 			0,
 			settings.timescaleMS(),
 			MILLISECONDS
 		);
+	}
+
+	private void probeChangeStreamCursor() {
+		try (var _ = openCursor()) {
+			LOGGER.debug("Successfully opened MongoDB cursor");
+		} catch (MongoOperationTimeoutException e) {
+			throw new InitialCursorTimeoutException("Timed out attempting to open MongoDB cursor; check database connectivity", e);
+		} catch (MongoCommandException e) {
+			throw new InitialCursorCommandException("Failed to open change stream cursor; ensure MongoDB server configured as a replica set", e);
+		} catch (MongoException e) {
+			throw new InitialRootFailureException("Unexpected failure opening MongoDB cursor", e);
+		}
 	}
 
 	@Override
@@ -193,6 +217,7 @@ class ChangeReceiver implements Closeable {
 	private void addContextToException(Throwable x) {
 		x.addSuppressed(creationPoint);
 	}
+
 	private MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> openCursor() {
 		MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> result = collection
 			.watch()

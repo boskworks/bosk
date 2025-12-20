@@ -6,6 +6,7 @@ import ch.qos.logback.classic.turbo.TurboFilter;
 import ch.qos.logback.core.spi.FilterReply;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -61,7 +62,11 @@ public class BoskLogFilter extends TurboFilter {
 		// We'd like to use SLF4J's "Level" but that doesn't support OFF
 		public void setLogging(Level level, Class<?>... loggers) {
 			// Put them all in one atomic operation
-			overrides.putAll(Stream.of(loggers).collect(toMap(Class::getName, c->level)));
+			overrides.putAll(Stream.of(loggers).collect(toMap(Class::getName, _->level)));
+		}
+
+		public void setLogging(Level level, String... loggers) {
+			overrides.putAll(Stream.of(loggers).collect(toMap(Function.identity(),_->level)));
 		}
 	}
 
