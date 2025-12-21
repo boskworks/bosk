@@ -109,7 +109,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.bsonSerializer = bsonSerializer;
 			this.downstream = downstream;
 
-			MongoClientSettings.Builder builder = MongoClientSettings.builder(clientSettings);
+			MongoClientSettings.Builder builder = MongoClientSettings
+				.builder(clientSettings);
 
 			// By default, we deal only with durable data that won't get rolled back.
 			// In some circumstances, we need the very latest possible data for correctness,
@@ -117,6 +118,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			builder
 				.readConcern(ReadConcern.MAJORITY)
 				.writeConcern(WriteConcern.MAJORITY);
+
+			// Override timeouts to make them compatible with driverSettings.timescaleMS()
+			builder
+				.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS);
 
 			mongoClient = MongoClients.create(builder.build());
 			MongoCollection<BsonDocument> rawCollection = mongoClient
