@@ -666,8 +666,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 							throw new DisconnectedException(e);
 						}
 					} else {
-						LOGGER.debug("MongoException is not recoverable; rethrowing", e);
-						throw e;
+						LOGGER.debug("MongoException is not recoverable; disconnecting", e);
+						setDisconnectedDriver(e);
+						throw new DisconnectedException(e);
 					}
 				}
 				break;
