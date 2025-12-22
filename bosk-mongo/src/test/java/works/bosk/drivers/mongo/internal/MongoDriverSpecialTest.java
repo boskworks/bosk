@@ -17,6 +17,8 @@ import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedClass;
@@ -70,6 +72,19 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 @ParameterizedClass
 @MethodSource("parameterSets")
 class MongoDriverSpecialTest extends AbstractMongoDriverTest {
+	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
+
+	@BeforeEach
+	void setupErrorRecording() {
+		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
+		MainDriver.LISTENER_FACTORY.set(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream));
+	}
+
+	@AfterEach
+	void resetErrorRecording() {
+		MainDriver.LISTENER_FACTORY.remove();
+	}
+
 	public MongoDriverSpecialTest(ParameterSet parameters) {
 		super(parameters.driverSettingsBuilder());
 	}
@@ -170,6 +185,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			assertEquals(expected, actual, "MongoDriver.flush() should reliably update the bosk");
 		}
 
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -211,6 +227,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			Listing<TestEntity> expected = Listing.of(catalogRef, entity124);
 			assertEquals(expected, actual);
 		}
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -235,6 +253,9 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			TestEntity.class,
 			AbstractMongoDriverTest::initialRoot,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+
+
+		errorRecorder.assertAllClear("before cut connection");
 
 		LOGGER.debug("Cut connection");
 		mongoService.cutConnection();
@@ -289,6 +310,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Wait till MongoDB is up and running");
 		driver.flush();
+
+		errorRecorder.assertAllClear("before cut connection");
 
 		LOGGER.debug("Cut connection");
 		mongoService.cutConnection();
@@ -352,6 +375,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			actual = prevBosk.rootReference().value();
 		}
 		assertEquals(expected, actual);
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -385,6 +410,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		assertEquals(oldEntity, actual);
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -419,6 +446,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		assertEquals(expected, actual);
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -449,6 +478,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		assertEquals(oldEntity, actual);
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -501,6 +532,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		assertEquals(expected2, actual2, "Reconnected bosk should see the state from the database");
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -548,6 +581,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			TestEntity actual = bosk.rootReference().value();
 			assertEquals(expected, actual);
 		}
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -584,6 +619,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			after = originalBosk.rootReference().value().values();
 		}
 		assertEquals(Optional.of(TestValues.blank()), after); // Now it's there
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -599,6 +636,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Flush should work");
 		bosk.driver().flush();
+
+		errorRecorder.assertAllClear("before manifest version bump");
 
 		LOGGER.debug("Upgrade to an unsupported manifest version");
 		MongoCollection<Document> collection = mongoService.client()
@@ -691,6 +730,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				assertNull(doc.get(field.name()));
 			}
 		}
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@NotNull

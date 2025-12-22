@@ -34,6 +34,19 @@ class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 	private static MongoService mongoService;
 	private final MongoDriverSettings driverSettings;
 	private final AtomicInteger numOpenDrivers = new AtomicInteger(0);
+	private ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
+
+	@BeforeEach
+	void setupErrorRecording() {
+		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
+		MainDriver.LISTENER_FACTORY.set(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream));
+	}
+
+	@AfterEach
+	void teardownErrorRecording() {
+		errorRecorder.assertAllClear("after test");
+		MainDriver.LISTENER_FACTORY.remove();
+	}
 
 	public MongoDriverConformanceTest(ParameterSet parameters) {
 		this.driverSettings = parameters.driverSettingsBuilder().build();

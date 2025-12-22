@@ -11,6 +11,7 @@ import org.bson.BsonInt64;
 import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.Document;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -44,12 +45,24 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 @ParameterizedClass
 @MethodSource("classParameters")
 public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
-	FlushOrWait flushOrWait;
+	final FlushOrWait flushOrWait;
+	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
 
 	@BeforeEach
 	void overrideLogging() {
 		// This test deliberately provokes a lot of warnings, so log errors only
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+	}
+
+	@BeforeEach
+	void setupErrorRecording() {
+		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
+		MainDriver.LISTENER_FACTORY.set(d -> new ErrorRecordingChangeListener(errorRecorder, d));
+	}
+
+	@AfterEach
+	void resetErrorRecording() {
+		MainDriver.LISTENER_FACTORY.remove();
 	}
 
 	MongoDriverRecoveryTest(FlushOrWait flushOrWait, TestParameters.ParameterSet parameters) {
@@ -305,6 +318,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			assertEquals(beforeState, bosk.rootReference().value());
 		}
 
+		errorRecorder.assertAllClear("before disruption");
 		LOGGER.debug("Run disruptive action");
 		disruptiveAction.run();
 
