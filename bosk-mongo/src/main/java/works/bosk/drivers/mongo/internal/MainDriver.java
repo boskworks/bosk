@@ -10,8 +10,12 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import java.io.Closeable;
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeoutException;
@@ -67,7 +71,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final MongoDriverSettings driverSettings;
 	private final BsonSerializer bsonSerializer;
 	private final BoskDriver downstream;
-	private final MongoClient mongoClient;
+	private final Deque<Closeable> closeables = new ArrayDeque<>();
 	private final TransactionalCollection queryCollection;
 	private final Listener listener;
 	final Formatter formatter;
@@ -123,7 +127,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			builder
 				.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS);
 
-			mongoClient = MongoClients.create(builder.build());
+			var mongoClient = MongoClients.create(builder.build());
+			closeables.addFirst(mongoClient);
 			MongoCollection<BsonDocument> changeStreamCollection = mongoClient
 				.getDatabase(driverSettings.database())
 				.getCollection(COLLECTION_NAME, BsonDocument.class);
@@ -373,9 +378,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	public void close() {
 		receiver.close();
 		formatDriver.close();
+		var suppressedExceptions = new ArrayList<IOException>();
 		if (!isClosed.getAndSet(true)) {
-			// It's important we don't call this twice, or else it will throw
-			mongoClient.close();
+			// It's important we don't call these twice, or else they will throw
+			closeables.forEach(closeable -> {
+				try {
+					closeable.close();
+				} catch (IOException e) {
+					suppressedExceptions.add(e);
+				}
+			});
+		}
+		if (!suppressedExceptions.isEmpty()) {
+			var e = new IllegalStateException("Exceptions occurred while closing MainDriver");
+			suppressedExceptions.forEach(e::addSuppressed);
+			throw e;
 		}
 	}
 
