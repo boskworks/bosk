@@ -124,16 +124,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS);
 
 			mongoClient = MongoClients.create(builder.build());
-			MongoCollection<BsonDocument> rawCollection = mongoClient
+			MongoCollection<BsonDocument> changeStreamCollection = mongoClient
 				.getDatabase(driverSettings.database())
 				.getCollection(COLLECTION_NAME, BsonDocument.class);
-			this.queryCollection = TransactionalCollection.of(rawCollection, mongoClient);
+			this.queryCollection = TransactionalCollection.of(changeStreamCollection, mongoClient);
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
 			Type rootType = boskInfo.rootReference().targetType();
 			this.listener = new Listener(new FutureTask<>(() -> doInitialRoot(rootType)));
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
-			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, rawCollection);
+			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, changeStreamCollection);
 		}
 
 		// Flushes work by waiting for the latest version to arrive on the change stream.
