@@ -80,7 +80,7 @@ public class MongoService implements Closeable {
 		} catch (IOException e) {
 			// The proxy offers no way to check if a toxic exists,
 			// and no way to remove it without first getting it.
-			LOGGER.debug("This can happen if the connection was not already cut; ignoring", e);
+			LOGGER.trace("This can happen if the connection was not already cut; ignoring", e);
 		}
 	}
 
