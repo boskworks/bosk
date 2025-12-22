@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.UnaryOperator;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonString;
@@ -100,6 +101,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	private volatile FormatDriver<R> formatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
 
+	/**
+	 * Allows tests to interpose on the {@link ChangeListener}
+	 * to observe, alter, or inject events.
+	 * <p>
+	 * This works because {@code MainDriver} is instantiated
+	 * on the same thread as the {@code Bosk}.
+	 */
+	static final ThreadLocal<UnaryOperator<ChangeListener>> LISTENER_FACTORY = new ThreadLocal<>();
+
 	public MainDriver(
 		BoskInfo<R> boskInfo,
 		MongoClientSettings clientSettings,
@@ -135,9 +145,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.queryCollection = TransactionalCollection.of(changeStreamCollection, mongoClient);
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
-			Type rootType = boskInfo.rootReference().targetType();
-			this.listener = new Listener(new FutureTask<>(() -> doInitialRoot(rootType)));
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
+
+			Type rootType = boskInfo.rootReference().targetType();
+			ChangeListener listener = this.listener = new Listener(new FutureTask<>(() -> doInitialRoot(rootType)));
+			var factory = LISTENER_FACTORY.get();
+			if (factory != null) {
+				listener = factory.apply(listener);
+			}
 			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, changeStreamCollection);
 		}
 
