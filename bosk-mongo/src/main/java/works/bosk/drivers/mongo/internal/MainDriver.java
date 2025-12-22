@@ -727,13 +727,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * better driver to arrive instead.
 	 */
 	void setDisconnectedDriver(Throwable reason) {
-		LOGGER.debug("quietlySetDisconnectedDriver({}) (previously {})", reason.getClass().getSimpleName(), formatDriver.getClass().getSimpleName());
+		LOGGER.debug("setDisconnectedDriver({}) (previously {})", reason.getClass().getSimpleName(), formatDriver.getClass().getSimpleName());
+		FormatDriver<R> oldDriver;
 		try {
 			formatDriverLock.lock();
-			formatDriver.close();
+			oldDriver = formatDriver;
+			oldDriver.close();
 			formatDriver = new DisconnectedDriver<>(reason);
 		} finally {
 			formatDriverLock.unlock();
+		}
+
+		if (!(oldDriver instanceof DisconnectedDriver<?>)) {
+			// The receiver is what reconnects us. Poke it to make sure it knows things
+			// have gone south, and we need to try to reconnect.
+			receiver.interrupt();
 		}
 	}
 
