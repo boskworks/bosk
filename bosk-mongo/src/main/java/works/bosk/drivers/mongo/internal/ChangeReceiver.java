@@ -243,7 +243,6 @@ class ChangeReceiver implements Closeable {
 	private MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> openCursor() {
 		MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> result = collection
 			.watch()
-			.maxAwaitTime(settings.timescaleMS(), MILLISECONDS)
 			.cursor();
 		LOGGER.debug("Cursor is open");
 		return result;
