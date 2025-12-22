@@ -68,7 +68,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BsonSerializer bsonSerializer;
 	private final BoskDriver downstream;
 	private final MongoClient mongoClient;
-	private final TransactionalCollection collection;
+	private final TransactionalCollection queryCollection;
 	private final Listener listener;
 	final Formatter formatter;
 
@@ -127,7 +127,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			MongoCollection<BsonDocument> rawCollection = mongoClient
 				.getDatabase(driverSettings.database())
 				.getCollection(COLLECTION_NAME, BsonDocument.class);
-			this.collection = TransactionalCollection.of(rawCollection, mongoClient);
+			this.queryCollection = TransactionalCollection.of(rawCollection, mongoClient);
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
 			Type rootType = boskInfo.rootReference().targetType();
@@ -210,7 +210,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// by other processes.
 
 		R root;
-		try (var _ = collection.newReadOnlySession()){
+		try (var _ = queryCollection.newReadOnlySession()){
 			FormatDriver<R> detectedDriver = detectFormat();
 			StateAndMetadata<R> loadedState = detectedDriver.loadAllState();
 			root = loadedState.state();
@@ -221,7 +221,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
 			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. ({})", e.getMessage());
 			root = callDownstreamInitialRoot(rootType);
-			try (var session = collection.newSession()) {
+			try (var session = queryCollection.newSession()) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
 				preferredDriver.initializeCollection(new StateAndMetadata<>(root, REVISION_ZERO, boskInfo.diagnosticContext().getAttributes()));
 				session.commitTransactionIfAny();
@@ -270,7 +270,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * which would be catastrophic.
 	 */
 	private void refurbishTransaction() throws IOException {
-		collection.ensureTransactionStarted();
+		queryCollection.ensureTransactionStarted();
 		LOGGER.debug("Refurbishing to {}", driverSettings.preferredDatabaseFormat());
 		try {
 			// Design note: this operation shouldn't do any special coordination with
@@ -285,13 +285,13 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// which is a burden. Let's just not.
 			BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
 			LOGGER.trace("Deleting state documents: {}", deletionFilter);
-			collection.deleteMany(deletionFilter);
+			queryCollection.deleteMany(deletionFilter);
 
 			newFormatDriver.initializeCollection(result);
 
 			// We must rudely commit the transaction here, since correctness requires that
 			// the database updates commit before we publish newFormatDriver.
-			collection.commitTransaction();
+			queryCollection.commitTransaction();
 
 			publishFormatDriver(newFormatDriver);
 		} catch (UninitializedCollectionException e) {
@@ -361,7 +361,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public MongoStatus readStatus() throws Exception {
 		try (
-			var _ = collection.newReadOnlySession()
+			var _ = queryCollection.newReadOnlySession()
 		) {
 			MongoStatus partialResult = detectFormat().readStatus();
 			Manifest manifest = loadManifest(); // TODO: Avoid loading the manifest again
@@ -405,7 +405,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			if (initialRootAction == null) {
 				FormatDriver<R> newDriver;
 				StateAndMetadata<R> loadedState;
-				try (var _ = collection.newReadOnlySession()) {
+				try (var _ = queryCollection.newReadOnlySession()) {
 					LOGGER.debug("Loading database state to submit to downstream driver");
 					newDriver = detectFormat();
 					loadedState = newDriver.loadAllState();
@@ -517,7 +517,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		BsonString documentId = (format == SEQUOIA)
 			? SequoiaFormatDriver.DOCUMENT_ID
 			: PandoFormatDriver.ROOT_DOCUMENT_ID;
-		FindIterable<BsonDocument> result = collection.find(new BsonDocument("_id", documentId));
+		FindIterable<BsonDocument> result = queryCollection.find(new BsonDocument("_id", documentId));
 		try (MongoCursor<BsonDocument> cursor = result.cursor()) {
 			if (cursor.hasNext()) {
 				BsonInt64 revision = cursor
@@ -549,7 +549,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private Manifest loadManifest() throws UnrecognizedFormatException {
-		try (MongoCursor<BsonDocument> cursor = collection.find(new BsonDocument("_id", MANIFEST_ID)).cursor()) {
+		try (MongoCursor<BsonDocument> cursor = queryCollection.find(new BsonDocument("_id", MANIFEST_ID)).cursor()) {
 			if (cursor.hasNext()) {
 				LOGGER.debug("Found manifest");
 				return formatter.decodeManifest(cursor.next());
@@ -565,7 +565,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		if (format.equals(SEQUOIA)) {
 			return new SequoiaFormatDriver<>(
 				boskInfo,
-				collection,
+				queryCollection,
 				driverSettings,
 				bsonSerializer,
 				new FlushLock(revisionAlreadySeen, flushTimeout),
@@ -573,7 +573,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		} else if (format instanceof PandoFormat pandoFormat) {
 			return new PandoFormatDriver<>(
 				boskInfo,
-				collection,
+				queryCollection,
 				driverSettings,
 				pandoFormat,
 				bsonSerializer,
@@ -605,7 +605,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		RetryableOperation<X,Y> operationInSession = () -> {
 			int immediateRetriesLeft = 2;
 			while (true) {
-				try (var session = collection.newSession()) {
+				try (var session = queryCollection.newSession()) {
 					operation.run();
 					session.commitTransactionIfAny();
 				} catch (FailedSessionException e) {
