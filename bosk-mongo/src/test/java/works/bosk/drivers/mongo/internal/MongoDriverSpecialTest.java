@@ -103,6 +103,23 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
+	void quiescent_noErrors() throws InterruptedException, IOException {
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("quiescent"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialRoot,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+
+		Thread.sleep(10*SHORT_TIMESCALE);
+
+		errorRecorder.assertAllClear("after quiescent period");
+
+		bosk.driver().flush();
+
+		errorRecorder.assertAllClear("after flush");
+	}
+
+	@Test
 	void warmStart_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
 		Bosk<TestEntity> setupBosk = new Bosk<>(
 			boskName("Setup"),
