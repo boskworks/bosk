@@ -631,7 +631,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			try {
 				operationInSession.run();
 			} catch (DisconnectedException e) {
-				LOGGER.debug("Driver is disconnected ({}); will wait and retry operation", e.getMessage());
+				LOGGER.debug("Driver is disconnected; will wait and retry operation ({})", e.getMessage());
 				waitAndRetry(operationInSession, description, args);
 			} catch (Exception e) {
 				LOGGER.debug("Unexpected exception; will wait and retry operation", e);
