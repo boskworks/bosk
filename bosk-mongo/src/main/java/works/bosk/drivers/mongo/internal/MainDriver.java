@@ -137,12 +137,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			builder
 				.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS);
 
-			var mongoClient = MongoClients.create(builder.build());
-			closeables.addFirst(mongoClient);
-			MongoCollection<BsonDocument> changeStreamCollection = mongoClient
+			var changeStreamClient = MongoClients.create(builder.build());
+			closeables.addFirst(changeStreamClient);
+
+			var queryClient = MongoClients.create(builder.build());
+			closeables.addFirst(queryClient);
+
+			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class);
-			this.queryCollection = TransactionalCollection.of(changeStreamCollection, mongoClient);
+				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient);
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -153,6 +156,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			if (factory != null) {
 				listener = factory.apply(listener);
 			}
+
+			MongoCollection<BsonDocument> changeStreamCollection = changeStreamClient
+				.getDatabase(driverSettings.database())
+				.getCollection(COLLECTION_NAME, BsonDocument.class);
 			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, changeStreamCollection);
 		}
 
