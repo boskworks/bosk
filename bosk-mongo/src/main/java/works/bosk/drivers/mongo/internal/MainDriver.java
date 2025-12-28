@@ -135,7 +135,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// TODO: Justify this calculation.
 		initialRootTimeout = 5L * driverSettings.timescaleMS();
 
-		// TODO: Justify this calculation.
+		// The ChangeStream resets itself after timescaleMS, so it needs
+		// several times that long to restore itself and publish a new driver.
 		driverReinitializeTimeout = 5L * driverSettings.timescaleMS();
 	}
 
