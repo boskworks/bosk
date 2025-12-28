@@ -133,12 +133,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				.readConcern(ReadConcern.MAJORITY)
 				.writeConcern(WriteConcern.MAJORITY);
 
+			var changeStreamClient = MongoClients.create(builder.build());
+			closeables.addFirst(changeStreamClient);
+
 			// Override timeouts to make them compatible with driverSettings.timescaleMS()
 			builder
 				.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS);
-
-			var changeStreamClient = MongoClients.create(builder.build());
-			closeables.addFirst(changeStreamClient);
 
 			var queryClient = MongoClients.create(builder.build());
 			closeables.addFirst(queryClient);
