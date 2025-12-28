@@ -1,7 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
 import ch.qos.logback.classic.Level;
-import com.mongodb.MongoClientSettings;
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -35,7 +34,6 @@ import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 
 abstract class AbstractMongoDriverTest {
@@ -133,15 +131,7 @@ abstract class AbstractMongoDriverTest {
 	protected <E extends Entity> DriverFactory<E> createDriverFactory(BoskLogFilter.LogController logController, TestInfo testInfo) {
 		DriverFactory<E> mongoDriverFactory = (boskInfo, downstream) -> {
 			MongoDriver driver = MongoDriver.<E>factory(
-				MongoClientSettings.builder(mongoService.clientSettings(testInfo))
-					.applyToClusterSettings(builder -> {
-						builder.serverSelectionTimeout(5, SECONDS);
-					})
-					.applyToSocketSettings(builder -> {
-						// We're testing timeouts. Let's not wait too long.
-						builder.readTimeout(5, SECONDS);
-					})
-					.build(),
+				mongoService.clientSettings(testInfo),
 				driverSettings,
 				new BsonSerializer()
 			).build(boskInfo, downstream);

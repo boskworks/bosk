@@ -3,7 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.MongoCommandException;
 import com.mongodb.MongoException;
 import com.mongodb.MongoInterruptedException;
-import com.mongodb.MongoOperationTimeoutException;
+import com.mongodb.MongoTimeoutException;
 import com.mongodb.client.MongoChangeStreamCursor;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
@@ -22,8 +22,8 @@ import works.bosk.Identifier;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.exceptions.InitialCursorCommandException;
-import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
 import works.bosk.drivers.mongo.exceptions.InitialCursorTimeoutException;
+import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
 import works.bosk.logging.MdcKeys;
 
 import static java.lang.Thread.currentThread;
@@ -81,7 +81,7 @@ class ChangeReceiver implements Closeable {
 	private void probeChangeStreamCursor() {
 		try (var _ = openCursor()) {
 			LOGGER.debug("Successfully opened MongoDB cursor");
-		} catch (MongoOperationTimeoutException e) {
+		} catch (MongoTimeoutException e) {
 			throw new InitialCursorTimeoutException("Timed out attempting to open MongoDB cursor; check database connectivity", e);
 		} catch (MongoCommandException e) {
 			throw new InitialCursorCommandException("Failed to open change stream cursor; ensure MongoDB server configured as a replica set", e);

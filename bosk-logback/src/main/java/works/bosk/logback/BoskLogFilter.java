@@ -96,7 +96,10 @@ public class BoskLogFilter extends TurboFilter {
 	@Override
 	public FilterReply decide(Marker marker, Logger logger, Level messageLevel, String format, Object[] params, Throwable t) {
 		if (logger.getLevel() != null) {
-			// Respect user-supplied log levels
+			// Respect user-supplied log levels.
+			// Note that this only works for the exact logger, not a parent logger.
+			// Ideally, any non-root parent logger with an explicit setting would override this,
+			// but Logback sadly doesn't provide a way to check that.
 			return NEUTRAL;
 		}
 		String boskID = MDC.get(BOSK_INSTANCE_ID);

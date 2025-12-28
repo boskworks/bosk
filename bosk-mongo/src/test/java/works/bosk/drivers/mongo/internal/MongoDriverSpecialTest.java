@@ -17,6 +17,7 @@ import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -44,7 +45,6 @@ import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.junit.InjectedTest;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.testing.drivers.state.UpgradeableEntity;
@@ -87,7 +87,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		)).toList();
 	}
 
-	@InjectedTest
+	@Test
 	void warmStart_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
 		Bosk<TestEntity> setupBosk = new Bosk<>(
 			boskName("Setup"),
@@ -105,7 +105,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> latecomerBosk = new Bosk<>(
 			boskName("Latecomer"),
 			TestEntity.class,
-			b -> { throw new AssertionError("Default root function should not be called"); },
+			_ -> { throw new AssertionError("Default root function should not be called"); },
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = latecomerBosk.readContext()) {
@@ -114,7 +114,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@InjectedTest
+	@Test
 	void flush_localStateUpdated() throws InvalidTypeException, InterruptedException, IOException {
 		// Set up MongoDriver writing to a modified BufferingDriver that lets us
 		// have tight control over all the comings and goings from MongoDriver.
@@ -172,7 +172,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	}
 
-	@InjectedTest
+	@Test
 	void listing_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),
@@ -213,7 +213,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@InjectedTest
+	@Test
 	@DisruptsMongoProxy
 	void networkOutage_boskRecovers() throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
@@ -267,7 +267,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected, latecomerActual);
 	}
 
-	@InjectedTest
+	@Test
 	@DisruptsMongoProxy
 	void hookRegisteredDuringNetworkOutage_works() throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
@@ -327,7 +327,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	@InjectedTest
+	@Test
 	void initialStateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException {
 		setLogging(ERROR, StateTreeSerializer.class);
 
@@ -354,7 +354,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	@InjectedTest
+	@Test
 	void updateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, StateTreeSerializer.class);
 
@@ -387,7 +387,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(oldEntity, actual);
 	}
 
-	@InjectedTest
+	@Test
 	void updateNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class, StateTreeSerializer.class);
 
@@ -421,7 +421,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	@InjectedTest
+	@Test
 	void deleteNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, StateTreeSerializer.class);
 
@@ -451,7 +451,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(oldEntity, actual);
 	}
 
-	@InjectedTest
+	@Test
 	@Slow
 	void databaseMissingField_fallsBackToDefaultState(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, ChangeReceiver.class);
@@ -503,18 +503,18 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(expected2, actual2, "Reconnected bosk should see the state from the database");
 	}
 
-	@InjectedTest
+	@Test
 	void unrelatedDatabase_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		tearDownActions.addFirst(mongoService.client().getDatabase("unrelated")::drop);
 		doUnrelatedChangeTest("unrelated", MainDriver.COLLECTION_NAME, rootDocumentID().getValue());
 	}
 
-	@InjectedTest
+	@Test
 	void unrelatedCollection_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		doUnrelatedChangeTest(driverSettings.database(), "unrelated", rootDocumentID().getValue());
 	}
 
-	@InjectedTest
+	@Test
 	void unrelatedDoc_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		doUnrelatedChangeTest(driverSettings.database(), MainDriver.COLLECTION_NAME, "unrelated");
 	}
@@ -550,7 +550,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@InjectedTest
+	@Test
 	void refurbish_createsField(TestInfo testInfo) throws IOException, InterruptedException {
 		// We'll use this as an honest observer of the actual state
 		LOGGER.debug("Create Original bosk");
@@ -586,7 +586,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(Optional.of(TestValues.blank()), after); // Now it's there
 	}
 
-	@InjectedTest
+	@Test
 	@Slow
 	void manifestVersionBump_disconnects(TestInfo testInfo) throws IOException, InterruptedException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
@@ -620,7 +620,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Finished");
 	}
 
-	@InjectedTest
+	@Test
 	void refurbish_fixesMetadata(TestInfo testInfo) throws IOException, InterruptedException {
 		// Set up the database so it looks basically right
 		Bosk<TestEntity> initialBosk = new Bosk<>(

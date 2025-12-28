@@ -10,8 +10,12 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import java.io.Closeable;
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeoutException;
@@ -19,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.UnaryOperator;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonString;
@@ -67,8 +72,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final MongoDriverSettings driverSettings;
 	private final BsonSerializer bsonSerializer;
 	private final BoskDriver downstream;
-	private final MongoClient mongoClient;
-	private final TransactionalCollection collection;
+	private final Deque<Closeable> closeables = new ArrayDeque<>();
+	private final TransactionalCollection queryCollection;
 	private final Listener listener;
 	final Formatter formatter;
 
@@ -96,6 +101,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	private volatile FormatDriver<R> formatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
 
+	/**
+	 * Allows tests to interpose on the {@link ChangeListener}
+	 * to observe, alter, or inject events.
+	 * <p>
+	 * This works because {@code MainDriver} is instantiated
+	 * on the same thread as the {@code Bosk}.
+	 */
+	static final ThreadLocal<UnaryOperator<ChangeListener>> LISTENER_FACTORY = new ThreadLocal<>();
+
 	public MainDriver(
 		BoskInfo<R> boskInfo,
 		MongoClientSettings clientSettings,
@@ -109,22 +123,37 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.bsonSerializer = bsonSerializer;
 			this.downstream = downstream;
 
-			mongoClient = MongoClients.create(
-				MongoClientSettings.builder(clientSettings)
-					// By default, let's deal only with durable data that won't get rolled back
-					.readConcern(ReadConcern.MAJORITY)
-					.writeConcern(WriteConcern.MAJORITY)
-					.build());
-			MongoCollection<BsonDocument> rawCollection = mongoClient
+			MongoClientSettings.Builder builder = MongoClientSettings
+				.builder(clientSettings);
+
+			// By default, we deal only with durable data that won't get rolled back.
+			// In some circumstances, we need the very latest possible data for correctness,
+			// so we override the ReadConcern in those cases.
+			builder
+				.readConcern(ReadConcern.MAJORITY)
+				.writeConcern(WriteConcern.MAJORITY);
+
+			// Override timeouts to make them compatible with driverSettings.timescaleMS()
+			builder
+				.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS);
+
+			var mongoClient = MongoClients.create(builder.build());
+			closeables.addFirst(mongoClient);
+			MongoCollection<BsonDocument> changeStreamCollection = mongoClient
 				.getDatabase(driverSettings.database())
 				.getCollection(COLLECTION_NAME, BsonDocument.class);
-			this.collection = TransactionalCollection.of(rawCollection, mongoClient);
+			this.queryCollection = TransactionalCollection.of(changeStreamCollection, mongoClient);
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
-			Type rootType = boskInfo.rootReference().targetType();
-			this.listener = new Listener(new FutureTask<>(() -> doInitialRoot(rootType)));
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
-			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, rawCollection);
+
+			Type rootType = boskInfo.rootReference().targetType();
+			ChangeListener listener = this.listener = new Listener(new FutureTask<>(() -> doInitialRoot(rootType)));
+			var factory = LISTENER_FACTORY.get();
+			if (factory != null) {
+				listener = factory.apply(listener);
+			}
+			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, changeStreamCollection);
 		}
 
 		// Flushes work by waiting for the latest version to arrive on the change stream.
@@ -135,7 +164,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// TODO: Justify this calculation.
 		initialRootTimeout = 5L * driverSettings.timescaleMS();
 
-		// TODO: Justify this calculation.
+		// The ChangeStream resets itself after timescaleMS, so it needs
+		// several times that long to restore itself and publish a new driver.
 		driverReinitializeTimeout = 5L * driverSettings.timescaleMS();
 	}
 
@@ -151,26 +181,20 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			try {
 				return task.get();
 			} catch (ExecutionException e) {
-				Throwable exception = e.getCause();
-				if (exception instanceof DownstreamInitialRootException) {
-					// Try to throw the downstream exception directly,
-					// as though we had called it without using a FutureTask
-					Throwable cause = exception.getCause();
-					if (cause instanceof IOException i) {
-						throw i;
-					} else if (cause instanceof InvalidTypeException i) {
-						throw i;
-					} else if (cause instanceof InterruptedException i) {
-						throw i;
-					} else if (cause instanceof RuntimeException r) {
-						throw r;
-					} else {
-						throw new AssertionError("Unexpected exception during initialRoot: " + e.getClass().getSimpleName(), e);
+				switch (e.getCause()) {
+					case InitialRootFailureException i -> throw i;
+					case DownstreamInitialRootException d -> {
+						// Try to throw the downstream exception directly,
+						// as though we had called it without using a FutureTask
+						switch (d.getCause()) {
+							case IOException i -> throw i;
+							case InvalidTypeException i -> throw i;
+							case InterruptedException i -> throw i;
+							case RuntimeException r -> throw r;
+							case null, default -> throw new AssertionError("Unexpected exception during initialRoot: " + e.getClass().getSimpleName(), e);
+						}
 					}
-				} else if (exception instanceof InitialRootFailureException i) {
-					throw i;
-				} else {
-					throw new AssertionError("Exception from initialRoot was not wrapped in DownstreamInitialRootException: " + e.getClass().getSimpleName(), e);
+					case null, default -> throw new AssertionError("Exception from initialRoot was not wrapped in DownstreamInitialRootException: " + e.getClass().getSimpleName(), e);
 				}
 			} finally {
 				// For better or worse, we're done initialRoot. Clear taskRef so that Listener
@@ -206,7 +230,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// by other processes.
 
 		R root;
-		try (var _ = collection.newReadOnlySession()){
+		try (var _ = queryCollection.newReadOnlySession()){
 			FormatDriver<R> detectedDriver = detectFormat();
 			StateAndMetadata<R> loadedState = detectedDriver.loadAllState();
 			root = loadedState.state();
@@ -217,7 +241,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
 			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. ({})", e.getMessage());
 			root = callDownstreamInitialRoot(rootType);
-			try (var session = collection.newSession()) {
+			try (var session = queryCollection.newSession()) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
 				preferredDriver.initializeCollection(new StateAndMetadata<>(root, REVISION_ZERO, boskInfo.diagnosticContext().getAttributes()));
 				session.commitTransactionIfAny();
@@ -266,7 +290,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * which would be catastrophic.
 	 */
 	private void refurbishTransaction() throws IOException {
-		collection.ensureTransactionStarted();
+		queryCollection.ensureTransactionStarted();
 		LOGGER.debug("Refurbishing to {}", driverSettings.preferredDatabaseFormat());
 		try {
 			// Design note: this operation shouldn't do any special coordination with
@@ -281,13 +305,13 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// which is a burden. Let's just not.
 			BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
 			LOGGER.trace("Deleting state documents: {}", deletionFilter);
-			collection.deleteMany(deletionFilter);
+			queryCollection.deleteMany(deletionFilter);
 
 			newFormatDriver.initializeCollection(result);
 
 			// We must rudely commit the transaction here, since correctness requires that
 			// the database updates commit before we publish newFormatDriver.
-			collection.commitTransaction();
+			queryCollection.commitTransaction();
 
 			publishFormatDriver(newFormatDriver);
 		} catch (UninitializedCollectionException e) {
@@ -357,7 +381,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public MongoStatus readStatus() throws Exception {
 		try (
-			var _ = collection.newReadOnlySession()
+			var _ = queryCollection.newReadOnlySession()
 		) {
 			MongoStatus partialResult = detectFormat().readStatus();
 			Manifest manifest = loadManifest(); // TODO: Avoid loading the manifest again
@@ -369,9 +393,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	public void close() {
 		receiver.close();
 		formatDriver.close();
+		var suppressedExceptions = new ArrayList<IOException>();
 		if (!isClosed.getAndSet(true)) {
-			// It's important we don't call this twice, or else it will throw
-			mongoClient.close();
+			// It's important we don't call these twice, or else they will throw
+			closeables.forEach(closeable -> {
+				try {
+					closeable.close();
+				} catch (IOException e) {
+					suppressedExceptions.add(e);
+				}
+			});
+		}
+		if (!suppressedExceptions.isEmpty()) {
+			var e = new IllegalStateException("Exceptions occurred while closing MainDriver");
+			suppressedExceptions.forEach(e::addSuppressed);
+			throw e;
 		}
 	}
 
@@ -401,7 +437,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			if (initialRootAction == null) {
 				FormatDriver<R> newDriver;
 				StateAndMetadata<R> loadedState;
-				try (var _ = collection.newReadOnlySession()) {
+				try (var _ = queryCollection.newReadOnlySession()) {
 					LOGGER.debug("Loading database state to submit to downstream driver");
 					newDriver = detectFormat();
 					loadedState = newDriver.loadAllState();
@@ -513,7 +549,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		BsonString documentId = (format == SEQUOIA)
 			? SequoiaFormatDriver.DOCUMENT_ID
 			: PandoFormatDriver.ROOT_DOCUMENT_ID;
-		FindIterable<BsonDocument> result = collection.find(new BsonDocument("_id", documentId));
+		FindIterable<BsonDocument> result = queryCollection.find(new BsonDocument("_id", documentId));
 		try (MongoCursor<BsonDocument> cursor = result.cursor()) {
 			if (cursor.hasNext()) {
 				BsonInt64 revision = cursor
@@ -545,7 +581,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private Manifest loadManifest() throws UnrecognizedFormatException {
-		try (MongoCursor<BsonDocument> cursor = collection.find(new BsonDocument("_id", MANIFEST_ID)).cursor()) {
+		try (MongoCursor<BsonDocument> cursor = queryCollection.find(new BsonDocument("_id", MANIFEST_ID)).cursor()) {
 			if (cursor.hasNext()) {
 				LOGGER.debug("Found manifest");
 				return formatter.decodeManifest(cursor.next());
@@ -561,7 +597,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		if (format.equals(SEQUOIA)) {
 			return new SequoiaFormatDriver<>(
 				boskInfo,
-				collection,
+				queryCollection,
 				driverSettings,
 				bsonSerializer,
 				new FlushLock(revisionAlreadySeen, flushTimeout),
@@ -569,7 +605,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		} else if (format instanceof PandoFormat pandoFormat) {
 			return new PandoFormatDriver<>(
 				boskInfo,
-				collection,
+				queryCollection,
 				driverSettings,
 				pandoFormat,
 				bsonSerializer,
@@ -601,7 +637,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		RetryableOperation<X,Y> operationInSession = () -> {
 			int immediateRetriesLeft = 2;
 			while (true) {
-				try (var session = collection.newSession()) {
+				try (var session = queryCollection.newSession()) {
 					operation.run();
 					session.commitTransactionIfAny();
 				} catch (FailedSessionException e) {
@@ -630,7 +666,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			try {
 				operationInSession.run();
 			} catch (DisconnectedException e) {
-				LOGGER.debug("Driver is disconnected ({}); will wait and retry operation", e.getMessage());
+				LOGGER.debug("Driver is disconnected; will wait and retry operation ({})", e.getMessage());
 				waitAndRetry(operationInSession, description, args);
 			} catch (Exception e) {
 				LOGGER.debug("Unexpected exception; will wait and retry operation", e);
