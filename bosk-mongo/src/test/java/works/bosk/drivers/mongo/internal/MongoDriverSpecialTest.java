@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 import lombok.With;
 import org.bson.BsonDocument;
@@ -289,7 +290,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		TestEntity expected = initialRoot(bosk)
 			.withListing(Listing.of(refs.catalog(), entity123));
 
-
 		driver.flush();
 		TestEntity actual;
 		try (var _ = bosk.readContext()) {
@@ -360,6 +360,79 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		TestEntity expected = initialRoot(bosk)
 			.withListing(Listing.of(refs.catalog(), entity123, entity124));
 
+		TestEntity actual;
+		try (var _ = bosk.readContext()) {
+			actual = bosk.rootReference().value();
+		}
+		assertEquals(expected, actual);
+	}
+
+	@Test
+	@DisruptsMongoProxy
+	void networkOutage_changeStreamDoesntNotice_boskRecovers() throws InvalidTypeException, InterruptedException, IOException {
+		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+
+		// Make the ChangeReceiver wait when it sees an error.
+		// We want the flush operation to encounter the outage first.
+		var lock = new Object(){};
+		MainDriver.LISTENER_FACTORY.set(d -> new ForwardingChangeListener(d) {
+			@Override
+			public void onConnectionFailed() throws InterruptedException, TimeoutException {
+				waitUp();
+				super.onConnectionFailed();
+			}
+
+			@Override
+			public void onDisconnect(Throwable e) {
+				waitUp();
+				super.onDisconnect(e);
+			}
+
+			private void waitUp() {
+				try {
+					LOGGER.debug("Waiting for lock");
+					synchronized (lock) { lock.wait(); }
+					LOGGER.debug("Got notified");
+				} catch (InterruptedException ex) {
+					throw new AssertionError(ex);
+				} finally {
+					LOGGER.debug("Done waiting for lock");
+				}
+			}
+		});
+
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Main"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialRoot,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Refs refs = bosk.buildReferences(Refs.class);
+		BoskDriver driver = bosk.driver();
+
+		LOGGER.debug("Wait till MongoDB is up and running");
+		driver.flush();
+
+		LOGGER.debug("Cut connection");
+		mongoService.cutConnection();
+		tearDownActions.add(()->mongoService.restoreConnection());
+
+		LOGGER.debug("Attempt doomed flush");
+		assertThrows(FlushFailureException.class, driver::flush);
+
+		LOGGER.debug("Reestablish connection");
+		mongoService.restoreConnection();
+
+		synchronized (lock) {
+			LOGGER.debug("Notifying lock");
+			lock.notifyAll();
+		}
+
+		LOGGER.debug("Make a change to the bosk and verify that it gets through");
+		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
+		TestEntity expected = initialRoot(bosk)
+			.withListing(Listing.of(refs.catalog(), entity123));
+
+		driver.flush();
 		TestEntity actual;
 		try (var _ = bosk.readContext()) {
 			actual = bosk.rootReference().value();
