@@ -544,6 +544,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private FormatDriver<R> detectFormat() throws UninitializedCollectionException, UnrecognizedFormatException {
+		LOGGER.debug("Detecting format");
 		Manifest manifest = loadManifest();
 		DatabaseFormat format = manifest.pando().isPresent()? manifest.pando().get() : SEQUOIA;
 		BsonString documentId = (format == SEQUOIA)
@@ -621,7 +622,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			throw new IllegalStateException("Driver is closed");
 		}
 		MDCScope ex = setupMDC(boskInfo.name(), boskInfo.instanceID());
-		LOGGER.debug(description, args);
+		LOGGER.debug(description + " w/" + this.formatDriver.getClass().getSimpleName(), args);
 		if (driverSettings.testing().eventDelayMS() < 0) {
 			LOGGER.debug("| eventDelayMS {}ms ", driverSettings.testing().eventDelayMS());
 			try {
@@ -705,7 +706,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		} finally {
 			formatDriverLock.unlock();
 		}
-		LOGGER.debug("Retrying " + description, args);
+		LOGGER.debug("Retrying " + description + " w/" + this.formatDriver.getClass().getSimpleName(), args);
 		operation.run();
 	}
 
