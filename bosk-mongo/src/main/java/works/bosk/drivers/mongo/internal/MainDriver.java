@@ -123,24 +123,27 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.bsonSerializer = bsonSerializer;
 			this.downstream = downstream;
 
-			MongoClientSettings.Builder builder = MongoClientSettings
+			MongoClientSettings.Builder commonSettingsBuilder = MongoClientSettings
 				.builder(clientSettings);
 
 			// By default, we deal only with durable data that won't get rolled back.
 			// In some circumstances, we need the very latest possible data for correctness,
 			// so we override the ReadConcern in those cases.
-			builder
+			commonSettingsBuilder
 				.readConcern(ReadConcern.MAJORITY)
 				.writeConcern(WriteConcern.MAJORITY);
 
-			var changeStreamClient = MongoClients.create(builder.build());
+			var changeStreamSettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build());
+
+			var changeStreamClient = MongoClients.create(changeStreamSettingsBuilder.build());
 			closeables.addFirst(changeStreamClient);
 
 			// Override timeouts to make them compatible with driverSettings.timescaleMS()
-			builder
+			var querySettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build());
+			querySettingsBuilder
 				.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS);
 
-			var queryClient = MongoClients.create(builder.build());
+			var queryClient = MongoClients.create(querySettingsBuilder.build());
 			closeables.addFirst(queryClient);
 
 			this.queryCollection = TransactionalCollection.of(queryClient
