@@ -17,7 +17,7 @@ public class TestParameters {
 	 * Too short, and the tests might not be testing the right thing.
 	 * This should be much larger than the expected latency of MongoDB and the network.
 	 */
-	public static final int SHORT_TIMESCALE = 100;
+	public static final int SHORT_TIMESCALE = 50;
 
 	/**
 	 * For tests that are not expecting timeouts. A nice long value makes spurious test failures unlikely.

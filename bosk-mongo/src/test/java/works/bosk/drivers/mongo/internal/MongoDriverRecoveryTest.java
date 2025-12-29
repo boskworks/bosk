@@ -11,6 +11,7 @@ import org.bson.BsonInt64;
 import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.Document;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -44,12 +45,24 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 @ParameterizedClass
 @MethodSource("classParameters")
 public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
-	FlushOrWait flushOrWait;
+	final FlushOrWait flushOrWait;
+	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
 
 	@BeforeEach
 	void overrideLogging() {
 		// This test deliberately provokes a lot of warnings, so log errors only
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+	}
+
+	@BeforeEach
+	void setupErrorRecording() {
+		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
+		MainDriver.LISTENER_FACTORY.set(d -> new ErrorRecordingChangeListener(errorRecorder, d));
+	}
+
+	@AfterEach
+	void resetErrorRecording() {
+		MainDriver.LISTENER_FACTORY.remove();
 	}
 
 	MongoDriverRecoveryTest(FlushOrWait flushOrWait, TestParameters.ParameterSet parameters) {
@@ -101,6 +114,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Create a new bosk that can't connect");
 		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		LOGGER.debug("Done creating bosk");
 
 		MongoDriverSpecialTest.Refs refs = bosk.buildReferences(MongoDriverSpecialTest.Refs.class);
 		BoskDriver driver = bosk.driver();
@@ -120,7 +134,9 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Restore mongo connection");
 		mongoService.restoreConnection();
 
-		LOGGER.debug("Flush and check that the state updates");
+		LOGGER.debug("Wait and check that the state updates");
+		// With FLUSH this succeeds almost immediately.
+		// With WAIT it is artificially delayed.
 		waitFor(driver);
 		try (var _ = bosk.readContext()) {
 			assertEquals(initialState, bosk.rootReference().value(),
@@ -147,13 +163,15 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				break;
 			case WAIT:
 				// The user really has no business expecting updates to occur promptly.
-				// Let's wait several times the timescale so that the test
-				// can set a short timescale to make FLUSH fast without risking
-				// failures in the WAIT tests.
+				// Because this is sometimes used when the bosk is (deliberately)
+				// malfunctioning, we should wait much longer than the recovery time.
 				//
 				// Unfortunately, this makes these tests inevitably slow.
 				//
-				Thread.sleep(10L * driverSettings.timescaleMS());
+				long sleepTime = 12L * driverSettings.timescaleMS();
+				LOGGER.debug("Waiting for {} ms", sleepTime);
+				Thread.sleep(sleepTime);
+				LOGGER.debug("...done waiting");
 				break;
 		}
 	}
@@ -305,6 +323,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			assertEquals(beforeState, bosk.rootReference().value());
 		}
 
+		errorRecorder.assertAllClear("before disruption");
 		LOGGER.debug("Run disruptive action");
 		disruptiveAction.run();
 

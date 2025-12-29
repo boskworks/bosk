@@ -8,6 +8,8 @@ import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.Map;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.TestInfo;
@@ -18,8 +20,6 @@ import org.testcontainers.mongodb.MongoDBContainer;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import static eu.rekawek.toxiproxy.model.ToxicDirection.DOWNSTREAM;
-import static eu.rekawek.toxiproxy.model.ToxicDirection.UPSTREAM;
 import static java.util.Collections.singletonList;
 
 /**
@@ -57,17 +57,13 @@ public class MongoService implements Closeable {
 
 	private static final Proxy MONGO_PROXY = createMongoProxy();
 	private static final int PROXY_PORT = 8666;
-	private static final MongoClientSettings disruptableClientSettings = mongoClientSettings(
-		new ServerAddress(TOXIPROXY_CONTAINER.getHost(), TOXIPROXY_CONTAINER.getMappedPort(PROXY_PORT))
-	);
-
-	private static final String CUT_CONNECTION_DOWNSTREAM = "CUT_CONNECTION_DOWNSTREAM";
-	private static final String CUT_CONNECTION_UPSTREAM = "CUT_CONNECTION_UPSTREAM";
+	private static final ServerAddress DISRUPTABLE_SERVER_ADDRESS = new ServerAddress(TOXIPROXY_CONTAINER.getHost(), TOXIPROXY_CONTAINER.getMappedPort(PROXY_PORT));
+	private static final int TCP_CONNECTION_TIMEOUT_MS = 1000;
+	private static final MongoClientSettings disruptableClientSettings = mongoClientSettings(DISRUPTABLE_SERVER_ADDRESS);
 
 	public void cutConnection() {
 		try {
-			MONGO_PROXY.toxics().bandwidth(CUT_CONNECTION_DOWNSTREAM, DOWNSTREAM, 0);
-			MONGO_PROXY.toxics().bandwidth(CUT_CONNECTION_UPSTREAM, UPSTREAM, 0);
+			MONGO_PROXY.disable();
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to cut connection", e);
 		}
@@ -75,12 +71,19 @@ public class MongoService implements Closeable {
 
 	public void restoreConnection() {
 		try {
-			MONGO_PROXY.toxics().get(CUT_CONNECTION_DOWNSTREAM).remove();
-			MONGO_PROXY.toxics().get(CUT_CONNECTION_UPSTREAM).remove();
+			MONGO_PROXY.enable();
+			awaitTcpConnection();
 		} catch (IOException e) {
-			// The proxy offers no way to check if a toxic exists,
-			// and no way to remove it without first getting it.
-			LOGGER.trace("This can happen if the connection was not already cut; ignoring", e);
+			throw new IllegalStateException("Failed to restore connection", e);
+		}
+	}
+
+	void awaitTcpConnection() throws IOException {
+		try (Socket socket = new Socket()) {
+			socket.connect(
+				new InetSocketAddress(DISRUPTABLE_SERVER_ADDRESS.getHost(), DISRUPTABLE_SERVER_ADDRESS.getPort()),
+				TCP_CONNECTION_TIMEOUT_MS
+			);
 		}
 	}
 

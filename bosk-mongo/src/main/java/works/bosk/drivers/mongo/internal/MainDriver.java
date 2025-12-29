@@ -78,8 +78,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	final Formatter formatter;
 
 	final long flushTimeout;
-	final long initialRootTimeout;
-	final long driverReinitializeTimeout;
+	final long initializeTimeout;
+	final long reinitializationTimeout;
 
 	/**
 	 * {@link MongoClient#close()} throws if called more than once.
@@ -123,26 +123,77 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.bsonSerializer = bsonSerializer;
 			this.downstream = downstream;
 
-			MongoClientSettings.Builder builder = MongoClientSettings
-				.builder(clientSettings);
+			// Flushes work by waiting for the latest version to arrive on the change stream.
+			// If we wait for two heartbeats and don't see the update, something has gone wrong.
+			//
+			// (Note that flush does a retry, so it will actually take
+			// twice as long as this before throwing a FlushFailureException.)
+			flushTimeout = 2L * driverSettings.timescaleMS();
+
+			// Initialization must wait for a heartbeat to succeed, so we wait twice that long,
+			// plus one more for the network connection and initial query.
+			initializeTimeout = 3L * driverSettings.timescaleMS();
+
+			// The sum of the steps required to reinitialize after a disconnect,
+			// plus a little extra to make sure we don't cut it off when it's about to succeed.
+			reinitializationTimeout =
+				2L * driverSettings.timescaleMS() // ChangeStream reconnect
+					+ initializeTimeout // Initialize after reconnecting
+					+ driverSettings.timescaleMS() // Extra buffer
+			;
+
+			MongoClientSettings.Builder commonSettingsBuilder = MongoClientSettings
+				.builder(clientSettings)
+				.applyToServerSettings(s ->
+					// If timescaleMS is shorter than the default min heartbeat,
+					// then we need to reduce this setting to prevent the client
+					// from using a stale view of the server state for too long.
+					// If timescaleMS is longer, then the user has told us
+					// they don't mind longer delays and want the increased
+					// efficiency of fewer heartbeats.
+					// Either way, timescaleMS is the right value for this setting.
+					//
+					// Note that this doesn't set the heartbeat frequency itself.
+					// That is left at the default value, since it is only used
+					// to "notice" connectivity problems when the driver is quiescent,
+					// which is not time-critical and is not governed by timescaleMS:
+					// the actual behaviour of the bosk during a network partition
+					// is that its contents remain fixed, and it doesn't matter much
+					// whether that is achieved by formally disconnecting or simply
+					// by doing nothing.
+					s.minHeartbeatFrequency(driverSettings.timescaleMS(), MILLISECONDS))
+				;
 
 			// By default, we deal only with durable data that won't get rolled back.
 			// In some circumstances, we need the very latest possible data for correctness,
 			// so we override the ReadConcern in those cases.
-			builder
+			commonSettingsBuilder
 				.readConcern(ReadConcern.MAJORITY)
 				.writeConcern(WriteConcern.MAJORITY);
 
-			// Override timeouts to make them compatible with driverSettings.timescaleMS()
-			builder
-				.timeout(2L * driverSettings.timescaleMS(), MILLISECONDS);
+			var changeStreamSettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build())
+				.applyToClusterSettings(c ->
+					c.serverSelectionTimeout(initializeTimeout, MILLISECONDS))
+				.applyToSocketSettings(s ->
+					s.connectTimeout(initializeTimeout, MILLISECONDS)
+						// No read timeout for change streams; they can be idle indefinitely
+						.readTimeout(0, MILLISECONDS))
+				;
 
-			var mongoClient = MongoClients.create(builder.build());
-			closeables.addFirst(mongoClient);
-			MongoCollection<BsonDocument> changeStreamCollection = mongoClient
+			var changeStreamClient = MongoClients.create(changeStreamSettingsBuilder.build());
+			closeables.addFirst(changeStreamClient);
+
+			// Override timeouts to make them compatible with driverSettings.timescaleMS()
+			var querySettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build());
+			querySettingsBuilder
+				.timeout(flushTimeout, MILLISECONDS);
+
+			var queryClient = MongoClients.create(querySettingsBuilder.build());
+			closeables.addFirst(queryClient);
+
+			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class);
-			this.queryCollection = TransactionalCollection.of(changeStreamCollection, mongoClient);
+				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient);
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -153,20 +204,13 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			if (factory != null) {
 				listener = factory.apply(listener);
 			}
+
+			MongoCollection<BsonDocument> changeStreamCollection = changeStreamClient
+				.getDatabase(driverSettings.database())
+				.getCollection(COLLECTION_NAME, BsonDocument.class);
 			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, changeStreamCollection);
 		}
 
-		// Flushes work by waiting for the latest version to arrive on the change stream.
-		// If we wait twice as long as that takes, and we don't see the update, something
-		// has gone wrong.
-		flushTimeout = 2L * driverSettings.timescaleMS();
-
-		// TODO: Justify this calculation.
-		initialRootTimeout = 5L * driverSettings.timescaleMS();
-
-		// The ChangeStream resets itself after timescaleMS, so it needs
-		// several times that long to restore itself and publish a new driver.
-		driverReinitializeTimeout = 5L * driverSettings.timescaleMS();
 	}
 
 	@Override
@@ -478,7 +522,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		private void runInitialRootAction(FutureTask<R> initialRootAction) throws InterruptedException, TimeoutException, InitialRootActionException {
 			initialRootAction.run();
 			try {
-				initialRootAction.get(initialRootTimeout, MILLISECONDS);
+				initialRootAction.get(initializeTimeout, MILLISECONDS);
 				LOGGER.debug("initialRoot action completed successfully");
 			} catch (ExecutionException e) {
 				LOGGER.debug("initialRoot action failed", e);
@@ -544,6 +588,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private FormatDriver<R> detectFormat() throws UninitializedCollectionException, UnrecognizedFormatException {
+		LOGGER.debug("Detecting format");
 		Manifest manifest = loadManifest();
 		DatabaseFormat format = manifest.pando().isPresent()? manifest.pando().get() : SEQUOIA;
 		BsonString documentId = (format == SEQUOIA)
@@ -621,7 +666,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			throw new IllegalStateException("Driver is closed");
 		}
 		MDCScope ex = setupMDC(boskInfo.name(), boskInfo.instanceID());
-		LOGGER.debug(description, args);
+		LOGGER.debug(description + " w/" + this.formatDriver.getClass().getSimpleName(), args);
 		if (driverSettings.testing().eventDelayMS() < 0) {
 			LOGGER.debug("| eventDelayMS {}ms ", driverSettings.testing().eventDelayMS());
 			try {
@@ -655,8 +700,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 							throw new DisconnectedException(e);
 						}
 					} else {
-						LOGGER.debug("MongoException is not recoverable; rethrowing", e);
-						throw e;
+						LOGGER.debug("MongoException is not recoverable; disconnecting", e);
+						setDisconnectedDriver(e);
+						throw new DisconnectedException(e);
 					}
 				}
 				break;
@@ -680,8 +726,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private <X extends Exception, Y extends Exception> void waitAndRetry(RetryableOperation<X, Y> operation, String description, Object... args) throws X, Y {
 		try {
 			formatDriverLock.lock();
-			LOGGER.debug("Waiting for new FormatDriver for {} ms", driverReinitializeTimeout);
-			boolean success = formatDriverChanged.await(driverReinitializeTimeout, MILLISECONDS);
+			LOGGER.debug("Waiting for new FormatDriver for {} ms", reinitializationTimeout);
+			boolean success = formatDriverChanged.await(reinitializationTimeout, MILLISECONDS);
 			if (!success) {
 				LOGGER.warn("Timed out waiting for MongoDB to recover; will retry anyway, but the operation may fail");
 			}
@@ -705,7 +751,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		} finally {
 			formatDriverLock.unlock();
 		}
-		LOGGER.debug("Retrying " + description, args);
+		LOGGER.debug("Retrying " + description + " w/" + this.formatDriver.getClass().getSimpleName(), args);
 		operation.run();
 	}
 
@@ -716,13 +762,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * better driver to arrive instead.
 	 */
 	void setDisconnectedDriver(Throwable reason) {
-		LOGGER.debug("quietlySetDisconnectedDriver({}) (previously {})", reason.getClass().getSimpleName(), formatDriver.getClass().getSimpleName());
+		LOGGER.debug("setDisconnectedDriver({}) (previously {})", reason.getClass().getSimpleName(), formatDriver.getClass().getSimpleName());
+		FormatDriver<R> oldDriver;
 		try {
 			formatDriverLock.lock();
-			formatDriver.close();
+			oldDriver = formatDriver;
+			oldDriver.close();
 			formatDriver = new DisconnectedDriver<>(reason);
 		} finally {
 			formatDriverLock.unlock();
+		}
+
+		if (!(oldDriver instanceof DisconnectedDriver<?>)) {
+			// The receiver is what reconnects us. Poke it to make sure it knows things
+			// have gone south, and we need to try to reconnect.
+			receiver.interrupt();
 		}
 	}
 

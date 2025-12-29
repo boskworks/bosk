@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 import lombok.With;
 import org.bson.BsonDocument;
@@ -17,6 +18,8 @@ import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedClass;
@@ -70,6 +73,19 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 @ParameterizedClass
 @MethodSource("parameterSets")
 class MongoDriverSpecialTest extends AbstractMongoDriverTest {
+	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
+
+	@BeforeEach
+	void setupErrorRecording() {
+		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
+		MainDriver.LISTENER_FACTORY.set(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream));
+	}
+
+	@AfterEach
+	void resetErrorRecording() {
+		MainDriver.LISTENER_FACTORY.remove();
+	}
+
 	public MongoDriverSpecialTest(ParameterSet parameters) {
 		super(parameters.driverSettingsBuilder());
 	}
@@ -85,6 +101,23 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		).map(b -> b.applyDriverSettings(s -> s
 			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
 		)).toList();
+	}
+
+	@Test
+	void quiescent_noErrors() throws InterruptedException, IOException {
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("quiescent"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialRoot,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+
+		Thread.sleep(12*SHORT_TIMESCALE);
+
+		errorRecorder.assertAllClear("after quiescent period");
+
+		bosk.driver().flush();
+
+		errorRecorder.assertAllClear("after flush");
 	}
 
 	@Test
@@ -170,6 +203,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			assertEquals(expected, actual, "MongoDriver.flush() should reliably update the bosk");
 		}
 
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -211,6 +245,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			Listing<TestEntity> expected = Listing.of(catalogRef, entity124);
 			assertEquals(expected, actual);
 		}
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -236,6 +272,9 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			AbstractMongoDriverTest::initialRoot,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
+
+		errorRecorder.assertAllClear("before cut connection");
+
 		LOGGER.debug("Cut connection");
 		mongoService.cutConnection();
 		tearDownActions.add(()->mongoService.restoreConnection());
@@ -250,7 +289,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
 		TestEntity expected = initialRoot(bosk)
 			.withListing(Listing.of(refs.catalog(), entity123));
-
 
 		driver.flush();
 		TestEntity actual;
@@ -290,6 +328,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Wait till MongoDB is up and running");
 		driver.flush();
 
+		errorRecorder.assertAllClear("before cut connection");
+
 		LOGGER.debug("Cut connection");
 		mongoService.cutConnection();
 		tearDownActions.add(()->mongoService.restoreConnection());
@@ -328,6 +368,79 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
+	@DisruptsMongoProxy
+	void networkOutage_changeStreamDoesntNotice_boskRecovers() throws InvalidTypeException, InterruptedException, IOException {
+		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+
+		// Make the ChangeReceiver wait when it sees an error.
+		// We want the flush operation to encounter the outage first.
+		var lock = new Object(){};
+		MainDriver.LISTENER_FACTORY.set(d -> new ForwardingChangeListener(d) {
+			@Override
+			public void onConnectionFailed() throws InterruptedException, TimeoutException {
+				waitUp();
+				super.onConnectionFailed();
+			}
+
+			@Override
+			public void onDisconnect(Throwable e) {
+				waitUp();
+				super.onDisconnect(e);
+			}
+
+			private void waitUp() {
+				try {
+					LOGGER.debug("Waiting for lock");
+					synchronized (lock) { lock.wait(); }
+					LOGGER.debug("Got notified");
+				} catch (InterruptedException ex) {
+					throw new AssertionError(ex);
+				} finally {
+					LOGGER.debug("Done waiting for lock");
+				}
+			}
+		});
+
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Main"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialRoot,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Refs refs = bosk.buildReferences(Refs.class);
+		BoskDriver driver = bosk.driver();
+
+		LOGGER.debug("Wait till MongoDB is up and running");
+		driver.flush();
+
+		LOGGER.debug("Cut connection");
+		mongoService.cutConnection();
+		tearDownActions.add(()->mongoService.restoreConnection());
+
+		LOGGER.debug("Attempt doomed flush");
+		assertThrows(FlushFailureException.class, driver::flush);
+
+		LOGGER.debug("Reestablish connection");
+		mongoService.restoreConnection();
+
+		synchronized (lock) {
+			LOGGER.debug("Notifying lock");
+			lock.notifyAll();
+		}
+
+		LOGGER.debug("Make a change to the bosk and verify that it gets through");
+		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
+		TestEntity expected = initialRoot(bosk)
+			.withListing(Listing.of(refs.catalog(), entity123));
+
+		driver.flush();
+		TestEntity actual;
+		try (var _ = bosk.readContext()) {
+			actual = bosk.rootReference().value();
+		}
+		assertEquals(expected, actual);
+	}
+
+	@Test
 	void initialStateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException {
 		setLogging(ERROR, StateTreeSerializer.class);
 
@@ -352,6 +465,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			actual = prevBosk.rootReference().value();
 		}
 		assertEquals(expected, actual);
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -385,6 +500,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		assertEquals(oldEntity, actual);
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -419,6 +536,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		assertEquals(expected, actual);
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -449,6 +568,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		assertEquals(oldEntity, actual);
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -501,6 +622,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		assertEquals(expected2, actual2, "Reconnected bosk should see the state from the database");
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -548,6 +671,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			TestEntity actual = bosk.rootReference().value();
 			assertEquals(expected, actual);
 		}
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -584,6 +709,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			after = originalBosk.rootReference().value().values();
 		}
 		assertEquals(Optional.of(TestValues.blank()), after); // Now it's there
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@Test
@@ -599,6 +726,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Flush should work");
 		bosk.driver().flush();
+
+		errorRecorder.assertAllClear("before manifest version bump");
 
 		LOGGER.debug("Upgrade to an unsupported manifest version");
 		MongoCollection<Document> collection = mongoService.client()
@@ -691,6 +820,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				assertNull(doc.get(field.name()));
 			}
 		}
+
+		errorRecorder.assertAllClear("after test");
 	}
 
 	@NotNull

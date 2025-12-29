@@ -15,6 +15,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.bson.BsonDocument;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -56,6 +57,7 @@ class ChangeReceiver implements Closeable {
 	private final MongoCollection<BsonDocument> collection;
 	private final ScheduledExecutorService ex = Executors.newScheduledThreadPool(1);
 	private final Exception creationPoint;
+	private volatile @Nullable Thread thread = null;
 	private volatile boolean isClosed = false;
 
 	ChangeReceiver(String boskName, Identifier boskID, ChangeListener listener, MongoDriverSettings settings, MongoCollection<BsonDocument> collection) {
@@ -70,12 +72,30 @@ class ChangeReceiver implements Closeable {
 			// to ensure the database is set up for change streams.
 			probeChangeStreamCursor();
 		}
+		LOGGER.debug("Scheduling ChangeReceiver connectionLoop task with {} ms interval", settings.timescaleMS());
 		ex.scheduleWithFixedDelay(
 			this::connectionLoop,
 			0,
 			settings.timescaleMS(),
 			MILLISECONDS
 		);
+	}
+
+	/**
+	 * If the connectionLoop is running, interrupt it.
+	 * (Otherwise it's going to reinitialize on its own anyway,
+	 * so there's no need to do anything because the effect is the same.)
+	 */
+	public void interrupt() {
+		Thread t = thread;
+		if (t == null) {
+			LOGGER.debug("ChangeReceiver thread is not running; no need to interrupt");
+		} else if (t == currentThread()) {
+			LOGGER.debug("ChangeReceiver thread is doing the disconnecting; no need to interrupt");
+		} else {
+			LOGGER.debug("Interrupting ChangeReceiver thread {}", t.getName());
+			t.interrupt();
+		}
 	}
 
 	private void probeChangeStreamCursor() {
@@ -109,6 +129,7 @@ class ChangeReceiver implements Closeable {
 		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("Starting connectionLoop task");
 			try {
+				thread = currentThread();
 				while (!isClosed) {
 					// Design notes:
 					//
@@ -197,6 +218,7 @@ class ChangeReceiver implements Closeable {
 			} finally {
 				LOGGER.debug("Ending connectionLoop task; isClosed={}", isClosed);
 				currentThread().setName(oldThreadName);
+				thread = null;
 			}
 		} catch (RuntimeException e) {
 			addContextToException(e);
@@ -221,7 +243,6 @@ class ChangeReceiver implements Closeable {
 	private MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> openCursor() {
 		MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> result = collection
 			.watch()
-			.maxAwaitTime(settings.timescaleMS(), MILLISECONDS)
 			.cursor();
 		LOGGER.debug("Cursor is open");
 		return result;
