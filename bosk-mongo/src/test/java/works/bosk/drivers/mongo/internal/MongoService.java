@@ -8,6 +8,8 @@ import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.Map;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.TestInfo;
@@ -55,9 +57,9 @@ public class MongoService implements Closeable {
 
 	private static final Proxy MONGO_PROXY = createMongoProxy();
 	private static final int PROXY_PORT = 8666;
-	private static final MongoClientSettings disruptableClientSettings = mongoClientSettings(
-		new ServerAddress(TOXIPROXY_CONTAINER.getHost(), TOXIPROXY_CONTAINER.getMappedPort(PROXY_PORT))
-	);
+	private static final ServerAddress DISRUPTABLE_SERVER_ADDRESS = new ServerAddress(TOXIPROXY_CONTAINER.getHost(), TOXIPROXY_CONTAINER.getMappedPort(PROXY_PORT));
+	private static final int TCP_CONNECTION_TIMEOUT_MS = 1000;
+	private static final MongoClientSettings disruptableClientSettings = mongoClientSettings(DISRUPTABLE_SERVER_ADDRESS);
 
 	public void cutConnection() {
 		try {
@@ -70,8 +72,18 @@ public class MongoService implements Closeable {
 	public void restoreConnection() {
 		try {
 			MONGO_PROXY.enable();
+			awaitTcpConnection();
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to restore connection", e);
+		}
+	}
+
+	void awaitTcpConnection() throws IOException {
+		try (Socket socket = new Socket()) {
+			socket.connect(
+				new InetSocketAddress(DISRUPTABLE_SERVER_ADDRESS.getHost(), DISRUPTABLE_SERVER_ADDRESS.getPort()),
+				TCP_CONNECTION_TIMEOUT_MS
+			);
 		}
 	}
 
