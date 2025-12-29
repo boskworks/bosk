@@ -111,7 +111,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			AbstractMongoDriverTest::initialRoot,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
-		Thread.sleep(10*SHORT_TIMESCALE);
+		Thread.sleep(12*SHORT_TIMESCALE);
 
 		errorRecorder.assertAllClear("after quiescent period");
 

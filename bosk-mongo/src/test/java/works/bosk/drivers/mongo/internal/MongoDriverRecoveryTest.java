@@ -168,7 +168,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				//
 				// Unfortunately, this makes these tests inevitably slow.
 				//
-				long sleepTime = 10L * driverSettings.timescaleMS();
+				long sleepTime = 12L * driverSettings.timescaleMS();
 				LOGGER.debug("Waiting for {} ms", sleepTime);
 				Thread.sleep(sleepTime);
 				LOGGER.debug("...done waiting");
