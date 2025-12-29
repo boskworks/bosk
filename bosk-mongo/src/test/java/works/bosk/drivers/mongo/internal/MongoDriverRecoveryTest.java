@@ -136,7 +136,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Wait and check that the state updates");
 		// With FLUSH this succeeds almost immediately.
-		// With WAIT it is artificially delayed.
+		// With WAIT, it is artificially delayed.
 		waitFor(driver);
 		try (var _ = bosk.readContext()) {
 			assertEquals(initialState, bosk.rootReference().value(),
@@ -253,6 +253,9 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = bosk.readContext()) {
+			// This can fail on very short timescales; see testRecovery.
+			// This isn't related to the revision deletion issues described above
+			// and shouldn't really be grounds for removing this test.
 			assertEquals(beforeState, bosk.rootReference().value());
 		}
 
@@ -320,6 +323,9 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = bosk.readContext()) {
+			// Note: with very short timescales, this assertion can fail because the newly created bosk
+			// times out trying to read the database contents and instead uses AbstractMongoDriverTest::initialRoot.
+			// This is actually valid behaviour for a sufficiently impatient user.
 			assertEquals(beforeState, bosk.rootReference().value());
 		}
 
