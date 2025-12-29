@@ -15,10 +15,16 @@ public class MongoDriverSettings {
 	String database;
 
 	/**
-	 * The general responsiveness of the system. Changes to the database will be
-	 * "noticed" in about this many milliseconds, and other time-related behaviours
-	 * will be scaled accordingly. Lower values are more responsive, while higher
-	 * values are more efficient because they'll do less polling.
+	 * The general responsiveness of the system under unusual circumstances.
+	 * Changes to the database connectivity and status will be "noticed"
+	 * in about this many milliseconds, and other time-related behaviours
+	 * are scaled accordingly.
+	 * Lower values recover more quickly, but will also give up sooner
+	 * and cause more network traffic;
+	 * higher values are more patient and efficient, but slower to recover.
+	 * <p>
+	 * Under normal circumstances, the system responds promptly
+	 * and efficiently regardless of this setting.
 	 * <p>
 	 * For test cases,
 	 *
@@ -32,6 +38,9 @@ public class MongoDriverSettings {
 	 *         to avoid spurious test failures.
 	 *     </li>
 	 * </ul>
+	 *
+	 * In Bosk's own tests, we use even more extreme values to ensure
+	 * this works across a wide range of values.
 	 */
 	@Default int timescaleMS = 1000;
 
