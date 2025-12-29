@@ -114,6 +114,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Create a new bosk that can't connect");
 		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		LOGGER.debug("Done creating bosk");
 
 		MongoDriverSpecialTest.Refs refs = bosk.buildReferences(MongoDriverSpecialTest.Refs.class);
 		BoskDriver driver = bosk.driver();
@@ -133,7 +134,9 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Restore mongo connection");
 		mongoService.restoreConnection();
 
-		LOGGER.debug("Flush and check that the state updates");
+		LOGGER.debug("Wait and check that the state updates");
+		// With FLUSH this succeeds almost immediately.
+		// With WAIT it is artificially delayed.
 		waitFor(driver);
 		try (var _ = bosk.readContext()) {
 			assertEquals(initialState, bosk.rootReference().value(),
@@ -160,13 +163,15 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				break;
 			case WAIT:
 				// The user really has no business expecting updates to occur promptly.
-				// Let's wait several times the timescale so that the test
-				// can set a short timescale to make FLUSH fast without risking
-				// failures in the WAIT tests.
+				// Because this is sometimes used when the bosk is (deliberately)
+				// malfunctioning, we should wait much longer than the recovery time.
 				//
 				// Unfortunately, this makes these tests inevitably slow.
 				//
-				Thread.sleep(10L * driverSettings.timescaleMS());
+				long sleepTime = 10L * driverSettings.timescaleMS();
+				LOGGER.debug("Waiting for {} ms", sleepTime);
+				Thread.sleep(sleepTime);
+				LOGGER.debug("...done waiting");
 				break;
 		}
 	}
