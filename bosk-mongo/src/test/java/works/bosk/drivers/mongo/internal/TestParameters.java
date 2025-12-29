@@ -14,7 +14,12 @@ public class TestParameters {
 
 	/**
 	 * For tests that are expecting timeouts. A short value makes the tests run faster.
-	 * Too short, and the tests might not be testing the right thing.
+	 * <p>
+	 * Too short, and the tests might end up exhibiting fallback behaviour as though
+	 * there's a database outage. At initialization, it may proceed with the fallback
+	 * initial state from the downstream driver, and other operations may throw
+	 * {@link works.bosk.drivers.mongo.exceptions.DisconnectedException DisconnectException} or similar.
+	 * <p>
 	 * This should be much larger than the expected latency of MongoDB and the network.
 	 */
 	public static final int SHORT_TIMESCALE = 50;
@@ -22,7 +27,7 @@ public class TestParameters {
 	/**
 	 * For tests that are not expecting timeouts. A nice long value makes spurious test failures unlikely.
 	 */
-	public static final int LONG_TIMESCALE = 90_000;
+	public static final int LONG_TIMESCALE = 150_000;
 
 	@Value
 	public static class ParameterSet {

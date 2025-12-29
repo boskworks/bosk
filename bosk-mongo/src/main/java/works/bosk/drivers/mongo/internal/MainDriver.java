@@ -522,7 +522,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		private void runInitialRootAction(FutureTask<R> initialRootAction) throws InterruptedException, TimeoutException, InitialRootActionException {
 			initialRootAction.run();
 			try {
-				initialRootAction.get(initializeTimeout, MILLISECONDS);
+				// You might think this ought to have a timeout,
+				// but the underlying initialRootAction logic already has one,
+				// so this already can't run forever.
+				initialRootAction.get();
 				LOGGER.debug("initialRoot action completed successfully");
 			} catch (ExecutionException e) {
 				LOGGER.debug("initialRoot action failed", e);

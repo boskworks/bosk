@@ -13,6 +13,7 @@ import org.bson.BsonString;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
@@ -26,7 +27,6 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.junit.InjectedTest;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.junit.Slow;
 
@@ -102,7 +102,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 	}
 
 
-	@InjectedTest
+	@Test
 	@DisruptsMongoProxy
 	void initialOutage_recovers() throws InvalidTypeException, InterruptedException, IOException {
 		LOGGER.debug("Set up the database contents to be different from initialRoot");
@@ -163,12 +163,17 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				break;
 			case WAIT:
 				// The user really has no business expecting updates to occur promptly.
-				// Because this is sometimes used when the bosk is (deliberately)
-				// malfunctioning, we should wait much longer than the recovery time.
 				//
-				// Unfortunately, this makes these tests inevitably slow.
+				// This is used in two circumstances:
+				// 1. If the operation is expected to succeed, then the worst-case
+				// delay is the delay time for the connection loop, plus the time
+				// to detect and publish the new format driver,
+				// plus the time to execute the operation itself.
+				// 4*timescaleMS ought to be plenty for all that.
+				// 2. If the operation is expected to fail, no amount of waiting
+				// will make it succeed, so we can ignore this case.
 				//
-				long sleepTime = 12L * driverSettings.timescaleMS();
+				long sleepTime = 4L * driverSettings.timescaleMS();
 				LOGGER.debug("Waiting for {} ms", sleepTime);
 				Thread.sleep(sleepTime);
 				LOGGER.debug("...done waiting");
@@ -176,7 +181,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@InjectedTest
+	@Test
 	void databaseDropped_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Drop database");
@@ -187,7 +192,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}, (_) -> initializeDatabase("after drop"));
 	}
 
-	@InjectedTest
+	@Test
 	void collectionDropped_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Drop collection");
@@ -198,7 +203,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}, (_) -> initializeDatabase("after drop"));
 	}
 
-	@InjectedTest
+	@Test
 	void documentDeleted_recovers() throws InterruptedException, IOException {
 		testRecovery(() -> {
 			LOGGER.debug("Delete document");
@@ -209,7 +214,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		}, (_) -> initializeDatabase("after deletion"));
 	}
 
-	@InjectedTest
+	@Test
 	void documentReappears_recovers() throws InterruptedException, IOException {
 		MongoCollection<Document> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
@@ -236,7 +241,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		});
 	}
 
-	@InjectedTest
+	@Test
 	void revisionDeleted_recovers() throws InterruptedException, IOException {
 		// It's not clear that this is a valid test. If this test is a burden to support,
 		// we can consider removing it.
@@ -321,6 +326,12 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		TestEntity beforeState = initializeDatabase("before disruption");
 
 		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+
+		// With short timescales or slow networks, the bosk initial state
+		// can time out trying to read the database and instead uses AbstractMongoDriverTest::initialRoot.
+		// This is actually valid behaviour for a sufficiently impatient user.
+		// Let's wait first to ensure we have the state from the database.
+		waitFor(bosk.driver());
 
 		try (var _ = bosk.readContext()) {
 			// Note: with very short timescales, this assertion can fail because the newly created bosk

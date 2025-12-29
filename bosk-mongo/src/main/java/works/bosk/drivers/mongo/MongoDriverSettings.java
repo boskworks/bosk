@@ -21,7 +21,8 @@ public class MongoDriverSettings {
 	 * are scaled accordingly.
 	 * Lower values recover more quickly, but will also give up sooner
 	 * and cause more network traffic;
-	 * higher values are more patient and efficient, but slower to recover.
+	 * higher values are more patient and efficient, and can tolerate
+	 * longer network disruptions, but are slower to recover.
 	 * <p>
 	 * Under normal circumstances, the system responds promptly
 	 * and efficiently regardless of this setting.
@@ -31,18 +32,20 @@ public class MongoDriverSettings {
 	 * <ul>
 	 *     <li>
 	 *         If you are exercising timeout conditions, set this to a low value
-	 *         (say, 1/10 of its default) to make your tests run quickly;
+	 *         (say, 10x the expected network round-trip delay)
+	 *         to make your tests run quickly;
 	 *     </li>
 	 *     <li>
-	 *         otherwise, set it to a high value (say, 10x its default)
-	 *         to avoid spurious test failures.
+	 *         otherwise, you can set it to a high value (say, 5x its default)
+	 *         to avoid spurious test failures,
+	 *         though the default should also be fine.
 	 *     </li>
 	 * </ul>
 	 *
 	 * In Bosk's own tests, we use even more extreme values to ensure
 	 * this works across a wide range of values.
 	 */
-	@Default int timescaleMS = 1000;
+	@Default int timescaleMS = 10_000;
 
 	/**
 	 * @see DatabaseFormat#SEQUOIA
