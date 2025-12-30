@@ -327,12 +327,6 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
-		// With short timescales or slow networks, the bosk initial state
-		// can time out trying to read the database and instead uses AbstractMongoDriverTest::initialRoot.
-		// This is actually valid behaviour for a sufficiently impatient user.
-		// Let's wait first to ensure we have the state from the database.
-		waitFor(bosk.driver());
-
 		try (var _ = bosk.readContext()) {
 			// Note: with very short timescales, this assertion can fail because the newly created bosk
 			// times out trying to read the database contents and instead uses AbstractMongoDriverTest::initialRoot.
