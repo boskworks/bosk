@@ -36,15 +36,17 @@ public abstract class AbstractDriverTest {
 
 	@BeforeEach
 	void logStart(TestInfo testInfo) {
-		logTest("/=== Start", testInfo);
 		oldThreadName = Thread.currentThread().getName();
-		Thread.currentThread().setName(testInfo.getDisplayName());
+		String newThreadName = "test: " + testInfo.getDisplayName();
+		Thread.currentThread().setName(newThreadName);
+		logTest("/=== Start", testInfo);
+		LOGGER.debug("Old thread name was {}", oldThreadName);
 	}
 
 	@AfterEach
 	void logDone(TestInfo testInfo) {
-		Thread.currentThread().setName(oldThreadName);
 		logTest("\\=== Done", testInfo);
+		Thread.currentThread().setName(oldThreadName);
 	}
 
 	private static void logTest(String verb, TestInfo testInfo) {

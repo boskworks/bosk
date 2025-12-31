@@ -87,8 +87,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final ThreadLocal<R> rootSnapshot = new ThreadLocal<>();
 	private final HookRegistrar hookRegistrar;
 	private final Queue<HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
-	private final ExecutorService hookExecutor = Executors.newVirtualThreadPerTaskExecutor();
 	private final PathCompiler pathCompiler;
+
+	private final Thread.Builder hookThreadBuilder = Thread
+		.ofVirtual()
+		.name("bosk-hook-", 1);
+	private final ExecutorService hookExecutor = Executors.newThreadPerTaskExecutor(hookThreadBuilder::unstarted);
 
 	// Mutable state
 	private volatile R currentRoot;

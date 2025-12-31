@@ -8,8 +8,10 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -17,6 +19,7 @@ import works.bosk.annotations.Hook;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 
+import static java.lang.Thread.currentThread;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
@@ -30,6 +33,7 @@ import static works.bosk.BoskConfig.simpleDriver;
 public class HooksTest extends AbstractBoskTest {
 	Bosk<TestRoot> bosk;
 	Refs refs;
+	String oldThreadName;
 
 	public interface Refs {
 		@ReferencePath("/id") Reference<Identifier> rootID();
@@ -62,6 +66,17 @@ public class HooksTest extends AbstractBoskTest {
 			originalChild3 = refs.child(child3).value();
 		}
 		recorder = new HookRecorder();
+	}
+
+	@BeforeEach
+	void setThreadName(TestInfo testInfo) {
+		oldThreadName = Thread.currentThread().getName();
+		currentThread().setName("test: " + testInfo.getDisplayName());
+	}
+
+	@AfterEach
+	void restoreThreadName() {
+		currentThread().setName(oldThreadName);
 	}
 
 	@ParameterizedTest
