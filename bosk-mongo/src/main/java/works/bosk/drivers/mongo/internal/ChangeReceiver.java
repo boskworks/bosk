@@ -55,7 +55,8 @@ class ChangeReceiver implements Closeable {
 	private final ChangeListener listener;
 	private final MongoDriverSettings settings;
 	private final MongoCollection<BsonDocument> collection;
-	private final ScheduledExecutorService ex = Executors.newScheduledThreadPool(1);
+	private final Thread.Builder threadBuilder = Thread.ofPlatform().name("bosk-mongo-change-receiver");
+	private final ScheduledExecutorService ex = Executors.newScheduledThreadPool(1, threadBuilder::unstarted);
 	private final Exception creationPoint;
 	private volatile @Nullable Thread thread = null;
 	private volatile boolean isClosed = false;
@@ -124,8 +125,6 @@ class ChangeReceiver implements Closeable {
 	 * around the loop.
 	 */
 	private void connectionLoop() {
-		String oldThreadName = currentThread().getName();
-		currentThread().setName(getClass().getSimpleName() + " [" + boskName + "]");
 		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("Starting connectionLoop task");
 			try {
@@ -217,7 +216,6 @@ class ChangeReceiver implements Closeable {
 				}
 			} finally {
 				LOGGER.debug("Ending connectionLoop task; isClosed={}", isClosed);
-				currentThread().setName(oldThreadName);
 				thread = null;
 			}
 		} catch (RuntimeException e) {
