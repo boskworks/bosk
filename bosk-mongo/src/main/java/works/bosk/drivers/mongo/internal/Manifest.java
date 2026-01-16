@@ -15,17 +15,10 @@ public record Manifest(
 	Optional<EmptyNode> sequoia,
 	Optional<PandoFormat> pando
 ) implements StateTreeNode {
-	public Manifest(Integer version, Optional<EmptyNode> sequoia, Optional<PandoFormat> pando) {
-		// Note: this could be a compact constructor, but then it won't work:
-		// https://github.com/adoptium/adoptium-support/issues/1025
-		// UPDATE 2025-08-07: The fix is tagged with jdk-23-ga, so presumably once
-		// we bump the min supported Java version to at least 23, we can simplify this.
+	public Manifest {
 		if (sequoia.isPresent() == pando.isPresent()) {
 			throw new IllegalArgumentException("Exactly one format (sequoia or pando) must be specified in manifest");
 		}
-		this.version = version;
-		this.sequoia = sequoia;
-		this.pando = pando;
 	}
 
 	public record EmptyNode() implements StateTreeNode { }
