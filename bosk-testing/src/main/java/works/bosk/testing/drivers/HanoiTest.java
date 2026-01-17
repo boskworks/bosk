@@ -35,7 +35,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  *
  * <p>
  * (Note that this doesn't provoke quite as many race conditions as one might think
- * when using just {@link Bosk#simpleDriver}, because hooks are usually executed on
+ * when using just {@link BoskConfig#simpleDriver}, because hooks are usually executed on
  * the same thread that submitted the triggering update.)
  */
 public abstract class HanoiTest {
