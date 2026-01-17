@@ -26,6 +26,10 @@ If you'd rather use SQL instead of MongoDB, there's an experimental [SQL library
 ## Documentation
 - [User's Guide](docs/USERS.md)
 
+Each of the published libraries has its own `README.md` and its own Javadocs;
+for example, the `bosk-core` library has a [`README.md`](bosk-core/README.md)
+and [Javadocs](https://javadoc.io/doc/works.bosk/bosk-core/latest/works.bosk.core/module-summary.html).
+
 ## Getting Started
 
 The [bosk-core](bosk-core) library is enough to create a `Bosk` object and start writing your application.
