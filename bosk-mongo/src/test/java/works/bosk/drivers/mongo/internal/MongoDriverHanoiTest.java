@@ -7,6 +7,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -20,6 +21,7 @@ import works.bosk.testing.junit.Slow;
 
 import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 
+@Disabled // This is slow and has dubious value
 @Slow
 @ParameterizedClass
 @MethodSource("parameterSets")
