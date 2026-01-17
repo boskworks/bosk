@@ -1,8 +1,8 @@
 package works.bosk.junit;
 
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
@@ -11,6 +11,7 @@ import org.junit.jupiter.params.Parameter;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import static java.util.Collections.newSetFromMap;
 import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -21,7 +22,7 @@ public class ParameterizedClassTest {
 	@Parameter
 	int intValue;
 
-	static final Set<Observation> observations = new LinkedHashSet<>();
+	static final Set<Observation> observations = newSetFromMap(new ConcurrentHashMap<>());
 	record Observation(int intValue, String strValue) {}
 
 	@BeforeAll
