@@ -50,19 +50,23 @@ Now declare your singleton `Bosk` class to house and manage your application sta
 
 ```
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.DriverFactory;
 import works.bosk.Reference;
 import annotations.works.bosk.ReferencePath;
 import exceptions.works.bosk.InvalidTypeException;
 
 @Singleton // You can use your framework's dependency injection for this
-public class ExampleBosk extends Bosk<ExampleState> {
+public final class ExampleBosk extends Bosk<ExampleState> {
 	public ExampleBosk() throws InvalidTypeException {
 		super(
 			"ExampleBosk",
 			ExampleState.class,
-			defaultRoot(),
-			driverFactory());
+			_ -> defaultRoot(),
+			BoskConfig.<ExampleState>builder()
+				.driverFactory(driverFactory())
+				.build()
+		);
 	}
 
 	public interface Refs {
@@ -76,9 +80,8 @@ public class ExampleBosk extends Bosk<ExampleState> {
 		return new ExampleState("world");
 	}
 
-	// Start off simple
 	private static DriverFactory<ExampleState> driverFactory() {
-		return Bosk.simpleDriver();
+		return BoskConfig.simpleDriver(); // Start off simple
 	}
 }
 ```
