@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.BoskDiagnosticContext;
 import works.bosk.BoskDriver;
 import works.bosk.Catalog;
@@ -64,7 +64,7 @@ import static works.bosk.util.ReflectionHelpers.boxedClass;
  * Tests the basic functionality of {@link BoskDriver}
  * across a variety of state tree situations by performing some series
  * of operations and then asserting that the resulting state matches
- * that computed by {@link Bosk#simpleDriver} performing the same operations.
+ * that computed by {@link BoskConfig#simpleDriver} performing the same operations.
  * <p>
  *
  * Use this by extending it and supplying a value for
