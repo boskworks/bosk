@@ -13,13 +13,13 @@ import works.bosk.exceptions.InvalidTypeException;
 
 public final class ExampleBosk extends Bosk<ExampleState> {
 	public ExampleBosk() throws InvalidTypeException {
-		DriverFactory<ExampleState> driverFactory = driverFactory();
 		super(
 			"ExampleBosk",
 			ExampleState.class,
 			_ -> defaultRoot(),
 			BoskConfig.<ExampleState>builder()
-				.driverFactory(driverFactory).build()
+				.driverFactory(driverFactory())
+				.build()
 		);
 	}
 
