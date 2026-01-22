@@ -13,7 +13,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.boson.types.DataType.INT;
 import static works.bosk.boson.types.DataType.OBJECT;
 
-public class DataTypeAssignableTest {
+/**
+ * Tests {@link DataType#isAssignableFrom} and {@link DataType#isBindableFrom}.
+ */
+public class DataTypeConformanceTest {
 
 	@Test
 	void simpleSubtype() {
@@ -27,6 +30,8 @@ public class DataTypeAssignableTest {
 	void boxing() {
 		// Boxing/unboxing are allowed by assignment conversion (JLS §5.1.7 / §5.2)
 		// but Class.isAssignableFrom returns false for these, so who are we to argue?
+		// Besides, this is useful when we use them in Directives, since typically
+		// code dealing with primitives doesn't want to deal with boxed types.
 		assertFalse(INT.isAssignableFrom(Integer.class));
 		assertFalse(DataType.of(Integer.class).isAssignableFrom(INT));
 	}

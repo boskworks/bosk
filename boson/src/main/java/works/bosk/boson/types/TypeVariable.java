@@ -13,6 +13,10 @@ import java.util.Map;
  * <p>
  * When processing the bounds, you can always convert them to {@link DataType}s
  * as needed, but be careful to avoid infinite recursion.
+ * <p>
+ * TODO: Consider whether {@link #equals} is right here.
+ * Should two type variables declared in two different places,
+ * but with the same name and bounds, be considered equal?
  */
 public record TypeVariable(String name, List<Type> bounds) implements UnknownType {
 

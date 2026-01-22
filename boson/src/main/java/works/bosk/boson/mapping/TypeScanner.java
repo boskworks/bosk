@@ -76,6 +76,13 @@ import static works.bosk.boson.types.DataType.STRING;
  * the directive's {@link Directive#spec spec function} will provide a specification
  * that is further {@link JsonValueSpec#specialize specialized} to handle the actual type.
  * <p>
+ * In other words, the specification of which types to handle uses
+ * Java type expressions, interpreted according to {@link DataType#isBindableFrom(DataType)},
+ * making it relatively intuitive.
+ * You can use {@code String} to match exactly that type,
+ * or you can define a type variable like {@code T extends CharSequence}
+ * and use that.
+ * <p>
  * The scan aggressively follows any types referenced in {@link TypeRefNode}s,
  * so the specifications returned from directives can use those freely,
  * rather than needing to recursively specify every referenced type.

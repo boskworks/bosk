@@ -93,8 +93,8 @@ public sealed interface DataType permits KnownType, UnknownType {
 	 * handle generics. Note, in particular, that it returns {@code false}
 	 * for boxing and unboxing conversions, as does {@link Class#isAssignableFrom}.
 	 * <p>
-	 * Note that this is neither weaker nor stronger than {@link #isBindableFrom}.
-	 * Type variables will only accept themselves or other type variables
+	 * Note that this is neither weaker nor stronger than {@link #isBindableFrom(DataType)}:
+	 * type variables will only accept themselves or other type variables
 	 * that are nominally subtypes of them,
 	 * but concrete types can be assigned from subtypes.
 	 */
@@ -103,12 +103,29 @@ public sealed interface DataType permits KnownType, UnknownType {
 	}
 
 	/**
-	 * {@code A.isBindableFrom(B)} if a value of type List<B>
-	 * can be passed to a method expecting List<A>.
+	 * {@code A.isBindableFrom(B)} if there exists a set of <em>bindings</em>
+	 * that would make {@code A} equal to {@code B}.
+	 * Type variables are bound by their name, so two type variables
+	 * with the same name must be bound to the same type;
+	 * wildcards can be bound to any type that conforms to their bounds.
 	 * <p>
-	 * Note that this is neither weaker nor stronger than {@link #isAssignableFrom(DataType)}.
-	 * Type variables will accept types that conform to their bounds,
-	 * but concrete types cannot be assigned from subtypes.
+	 * This "bindable" concept does not correspond to any operation
+	 * in the Java language, but it is powerful and useful for describing
+	 * sets of related types.
+	 * For example, a type {@code List<Set<?>>} is considered bindable from
+	 * {@code List<Set<String>>}, but Java does not consider them
+	 * to match because {@code List<Set<?>>} describes a list of individually homogeneous sets
+	 * that might differ from each other,
+	 * so {@code list.add(Set.of(1,2,3))} would be allowed
+	 * even though this is not a set of {@code String}s.
+	 * Similarly, {@code List<Set<T>>} where {@code T extends CharSequence}
+	 * is bindable from {@code List<Set<String>>},
+	 * but Java does not consider them to match simply because {@code T}
+	 * represents some specific subtype of {@code CharSequence} that might not be {@code String}.
+	 * <p>
+	 * Note that this is neither weaker nor stronger than {@link #isAssignableFrom(DataType)}:
+	 * type variables will accept types that conform to their bounds,
+	 * but concrete types are invariant and don't match subtypes.
 	 */
 	default boolean isBindableFrom(DataType other) {
 		return isBindableFrom(other, IS_BINDABLE, new HashMap<>());
@@ -121,12 +138,12 @@ public sealed interface DataType permits KnownType, UnknownType {
 	 * @param freeVariables if false, unbound type variables match only themselves
 	 */
 	record BindableOptions(boolean allowSubtypes, boolean freeVariables){
-		public static final BindableOptions IS_BINDABLE = new BindableOptions(false, true);
-		public static final BindableOptions IS_ASSIGNABLE = new BindableOptions(true, false);
+		static final BindableOptions IS_ASSIGNABLE = new BindableOptions(true, false);
+		static final BindableOptions IS_BINDABLE = new BindableOptions(false, true);
 
 		/**
 		 * Often, whether subtypes are allowed varies during the matching process.
-		 * This lets us assert a new value for that flag while keeping the other the same.
+		 * This lets us assert a new value for that flag while keeping the rest unchanged.
 		 */
 		public BindableOptions withAllowSubtypes(boolean v) {
 			return new BindableOptions(v, this.freeVariables);
