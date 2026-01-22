@@ -14,7 +14,6 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.pcollections.OrderedPSet;
 import works.bosk.exceptions.NonexistentReferenceException;
@@ -35,12 +34,15 @@ import static java.util.stream.Collectors.toList;
 @EqualsAndHashCode(callSuper = false)
 @RequiredArgsConstructor(access=AccessLevel.PACKAGE)
 public final class Listing<E extends Entity> extends AbstractCollection<Reference<E>> {
+	private final CatalogReference<E> domain;
+	private final OrderedPSet<Identifier> ids;
+
 	/**
 	 * The {@link Catalog} in which all the {@link #ids()} reside.
 	 */
-	@Getter
-	private final CatalogReference<E> domain;
-	private final OrderedPSet<Identifier> ids;
+	public CatalogReference<E> domain() {
+		return domain;
+	}
 
 	@Override
 	public String toString() {

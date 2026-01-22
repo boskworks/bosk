@@ -15,7 +15,6 @@ import java.util.stream.Collector;
 import java.util.stream.Stream;
 import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.pcollections.OrderedPMap;
 import org.pcollections.OrderedPSet;
@@ -33,7 +32,6 @@ import static java.util.Objects.requireNonNull;
 @EqualsAndHashCode
 @RequiredArgsConstructor(access=AccessLevel.PRIVATE)
 public final class SideTable<K extends Entity, V> implements EnumerableByIdentifier<V> {
-	@Getter
 	private final CatalogReference<K> domain;
 	private final OrderedPMap<Identifier, V> valuesById;
 
@@ -45,6 +43,11 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 
 	public boolean isEmpty() { return valuesById.isEmpty(); }
 	public int size() { return valuesById.size(); }
+
+	public CatalogReference<K> domain() {
+		return domain;
+	}
+
 	public List<Identifier> ids() { return List.copyOf(valuesById.keySet()); }
 	public Listing<K> keys() { return new Listing<>(domain, OrderedPSet.from(valuesById.keySet())); }
 	public Collection<V> values() { return valuesById.values(); }

@@ -13,7 +13,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import lombok.experimental.Delegate;
@@ -106,8 +105,16 @@ public final class ReferenceUtils {
 	static final class SideTableRef<K extends Entity,V> implements SideTableReference<K,V> {
 		@Delegate(excludes = {CovariantOverrides.class})
 		private final Reference<SideTable<K,V>> ref;
-		private final @Getter Class<K> keyClass;
-		private final @Getter Class<V> valueClass;
+		private final Class<K> keyClass;
+		private final Class<V> valueClass;
+
+		public Class<K> keyClass() {
+			return keyClass;
+		}
+
+		public Class<V> valueClass() {
+			return valueClass;
+		}
 
 		@Override
 		public Reference<V> then(Identifier id) {

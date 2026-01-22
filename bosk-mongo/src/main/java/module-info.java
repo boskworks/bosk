@@ -16,6 +16,7 @@ module works.bosk.mongo {
 	requires transitive works.bosk.core;
 
 	requires static lombok;
+	requires static jakarta.annotation;
 
 	exports works.bosk.drivers.mongo;
 	exports works.bosk.drivers.mongo.exceptions;

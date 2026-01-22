@@ -3,12 +3,14 @@ package works.bosk;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.EqualsAndHashCode;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 class HookRecorder {
-	@Getter
 	private final List<Event> events = new ArrayList<>();
+
+	public List<Event> events() {
+		return events;
+	}
 
 	/**
 	 * Call if you want to record just the events that happen after a certain point.
