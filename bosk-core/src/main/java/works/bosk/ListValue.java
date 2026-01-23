@@ -7,8 +7,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collector;
-import lombok.AccessLevel;
-import lombok.RequiredArgsConstructor;
 
 /**
  * An immutable {@link List} that can be used in a {@link Bosk}.
@@ -37,11 +35,14 @@ import lombok.RequiredArgsConstructor;
  *
  * @author pdoyle
  */
-@RequiredArgsConstructor(access = AccessLevel.PROTECTED)
 public class ListValue<T> extends AbstractList<T> {
 	protected final T[] entries;
 
-	@SuppressWarnings({ "unchecked" })
+	protected ListValue(T[] entries) {
+		this.entries = entries;
+	}
+
+	@SuppressWarnings({"unchecked"})
 	public static <TT> ListValue<TT> empty() {
 		return EMPTY;
 	}
@@ -62,7 +63,7 @@ public class ListValue<T> extends AbstractList<T> {
 		if (entries.isEmpty()) {
 			return empty();
 		} else {
-			return new ListValue<>((TT[])entries.toArray());
+			return new ListValue<>((TT[]) entries.toArray());
 		}
 	}
 
@@ -114,10 +115,10 @@ public class ListValue<T> extends AbstractList<T> {
 	Collector<TT, ?, ListValue<TT>> toListValue() {
 		Function<List<TT>, ListValue<TT>> finisher = ListValue::from;
 		return Collector.of(
-				ArrayList::new,
-				List::add,
-				(left, right) -> { left.addAll(right); return left; },
-				finisher);
+			ArrayList::new,
+			List::add,
+			(left, right) -> { left.addAll(right); return left; },
+			finisher);
 	}
 
 	@SuppressWarnings("rawtypes")

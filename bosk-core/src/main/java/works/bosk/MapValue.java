@@ -3,13 +3,11 @@ package works.bosk;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import lombok.AccessLevel;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
 import org.pcollections.OrderedPMap;
 
 import static java.util.Collections.emptyMap;
@@ -33,10 +31,12 @@ import static java.util.Objects.requireNonNull;
  *
  * @author pdoyle
  */
-@RequiredArgsConstructor(access= AccessLevel.PRIVATE)
-@EqualsAndHashCode
 public final class MapValue<V> implements Map<String, V> {
 	private final OrderedPMap<String, V> contents;
+
+	private MapValue(OrderedPMap<String, V> contents) {
+		this.contents = contents;
+	}
 
 	@SuppressWarnings("unchecked")
 	public static <VV> MapValue<VV> empty() {
@@ -48,13 +48,13 @@ public final class MapValue<V> implements Map<String, V> {
 	}
 
 	public static <VV> MapValue<VV> fromFunction(Iterable<String> keys, Function<String, VV> valueFunction) {
-		LinkedHashMap<String,VV> map = new LinkedHashMap<>();
+		LinkedHashMap<String, VV> map = new LinkedHashMap<>();
 		keys.forEach(key -> addToMap(map, key, valueFunction.apply(key)));
 		return new MapValue<>(OrderedPMap.from(map));
 	}
 
 	public static <VV> MapValue<VV> fromFunctions(Iterable<String> keys, Function<String, String> keyFunction, Function<String, VV> valueFunction) {
-		LinkedHashMap<String,VV> map = new LinkedHashMap<>();
+		LinkedHashMap<String, VV> map = new LinkedHashMap<>();
 		keys.forEach(key -> addToMap(map, keyFunction.apply(key), valueFunction.apply(key)));
 		return new MapValue<>(OrderedPMap.from(map));
 	}
@@ -72,7 +72,7 @@ public final class MapValue<V> implements Map<String, V> {
 	 */
 	public static <VV> MapValue<VV> copyOf(Map<String, ? extends VV> contents) {
 		OrderedPMap<String, VV> map = OrderedPMap.from(contents);
-		map.forEach((k,v) -> {
+		map.forEach((k, v) -> {
 			requireNonNull(k);
 			requireNonNull(v);
 		});
@@ -121,6 +121,20 @@ public final class MapValue<V> implements Map<String, V> {
 		return contents.toString();
 	}
 
+	@Override
+	public boolean equals(Object o) {
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		MapValue<?> mapValue = (MapValue<?>) o;
+		return Objects.equals(contents, mapValue.contents);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hashCode(contents);
+	}
+
 	/**
 	 * Note that if we use emptyMap on its own, it will not throw UnsupportedOperationException
 	 * under the same conditions as unmodifiableMap. Hence, this guy has emptyMap wrapped in
@@ -129,11 +143,8 @@ public final class MapValue<V> implements Map<String, V> {
 	@SuppressWarnings("rawtypes")
 	private static final MapValue EMPTY = copyOf(emptyMap());
 
-	///////////////////////
-	//
 	//  Delegated
 	//
-
 	@Override public int size() { return contents.size(); }
 	@Override public boolean isEmpty() { return contents.isEmpty(); }
 	@Override public boolean containsKey(Object key) { return contents.containsKey(key); }

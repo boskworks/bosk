@@ -13,8 +13,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
-import lombok.RequiredArgsConstructor;
-import lombok.Value;
 import lombok.experimental.Delegate;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.util.Types;
@@ -37,13 +35,10 @@ public final class ReferenceUtils {
 		Reference<T> boundTo(Identifier... ids);
 	}
 
-	@RequiredArgsConstructor
-	@Value // Unusual equals and hashcode doesn't suit being a record
-	static class CatalogRef<E extends Entity> implements CatalogReference<E> {
-		@Delegate(excludes = CovariantOverrides.class)
-		Reference<Catalog<E>> ref;
-		Class<E> entryClass;
-
+	record CatalogRef<E extends Entity>(
+		@Delegate(excludes = CovariantOverrides.class) Reference<Catalog<E>> ref,
+		Class<E> entryClass
+	) implements CatalogReference<E> {
 		@Override
 		public CatalogReference<E> boundBy(BindingEnvironment bindings) {
 			return new CatalogRef<>(ref.boundBy(bindings), entryClass());
@@ -58,7 +53,8 @@ public final class ReferenceUtils {
 			}
 		}
 
-		@Override public boolean equals(Object o) {
+		@Override
+		public boolean equals(Object o) {
 			if (this == o) {
 				return true;
 			} else {
@@ -70,11 +66,9 @@ public final class ReferenceUtils {
 		@Override public String toString() { return ref.toString(); }
 	}
 
-	@Value // Unusual equals and hashcode doesn't suit being a record
-	static class ListingRef<E extends Entity> implements ListingReference<E> {
-		@Delegate(excludes = {CovariantOverrides.class})
-		Reference<Listing<E>> ref;
-
+	record ListingRef<E extends Entity>(
+		@Delegate(excludes = {CovariantOverrides.class}) Reference<Listing<E>> ref
+	) implements ListingReference<E> {
 		@Override
 		public ListingReference<E> boundBy(BindingEnvironment bindings) {
 			return new ListingRef<>(ref.boundBy(bindings));
@@ -89,7 +83,8 @@ public final class ReferenceUtils {
 			}
 		}
 
-		@Override public boolean equals(Object o) {
+		@Override
+		public boolean equals(Object o) {
 			if (this == o) {
 				return true;
 			} else {
@@ -101,21 +96,11 @@ public final class ReferenceUtils {
 		@Override public String toString() { return ref.toString(); }
 	}
 
-	@RequiredArgsConstructor
-	static final class SideTableRef<K extends Entity,V> implements SideTableReference<K,V> {
-		@Delegate(excludes = {CovariantOverrides.class})
-		private final Reference<SideTable<K,V>> ref;
-		private final Class<K> keyClass;
-		private final Class<V> valueClass;
-
-		public Class<K> keyClass() {
-			return keyClass;
-		}
-
-		public Class<V> valueClass() {
-			return valueClass;
-		}
-
+	record SideTableRef<K extends Entity, V>(
+		@Delegate(excludes = {CovariantOverrides.class}) Reference<SideTable<K, V>> ref,
+		Class<K> keyClass,
+		Class<V> valueClass
+	) implements SideTableReference<K, V> {
 		@Override
 		public Reference<V> then(Identifier id) {
 			try {
@@ -132,7 +117,8 @@ public final class ReferenceUtils {
 			return new SideTableRef<>(ref.boundBy(bindings), keyClass(), valueClass());
 		}
 
-		@Override public boolean equals(Object o) {
+		@Override
+		public boolean equals(Object o) {
 			if (this == o) {
 				return true;
 			} else {

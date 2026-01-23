@@ -2,16 +2,14 @@ package works.bosk;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.BiConsumer;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
 import works.bosk.exceptions.ParameterAlreadyBoundException;
 import works.bosk.exceptions.ParameterUnboundException;
 
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonMap;
 import static java.util.Collections.unmodifiableMap;
-import static lombok.AccessLevel.PRIVATE;
 import static works.bosk.Path.isValidParameterName;
 import static works.bosk.Path.parameterNameFromSegment;
 
@@ -20,8 +18,6 @@ import static works.bosk.Path.parameterNameFromSegment;
  * Used to supply or extract values for parameters in a parameterized {@link Path}
  * or {@link Reference}.
  */
-@RequiredArgsConstructor(access = PRIVATE)
-@EqualsAndHashCode
 public final class BindingEnvironment {
 	/**
 	 * This should use an ordered map, like LinkedHashMap, because in some contexts,
@@ -29,6 +25,10 @@ public final class BindingEnvironment {
 	 * we don't want any surprises.
 	 */
 	private final Map<String, Identifier> bindings;
+
+	private BindingEnvironment(Map<String, Identifier> bindings) {
+		this.bindings = bindings;
+	}
 
 	/**
 	 * @return an environment with no names bound
@@ -39,7 +39,7 @@ public final class BindingEnvironment {
 
 	/**
 	 * @return an environment with the given <code>name</code> bound to the given <code>value</code>,
-	 *         and no other names bound
+	 * and no other names bound
 	 * @throws IllegalArgumentException if the given name is not a valid parameter name
 	 */
 	public static BindingEnvironment singleton(String name, Identifier value) {
@@ -68,9 +68,9 @@ public final class BindingEnvironment {
 
 	/**
 	 * @param name (without the surrounding hyphens)
-	 * @throws ParameterUnboundException if the name is not bound
-	 * @throws IllegalArgumentException if the name is not valid
 	 * @return The value bound to the given <code>name</code>
+	 * @throws ParameterUnboundException if the name is not bound
+	 * @throws IllegalArgumentException  if the name is not valid
 	 */
 	public Identifier get(String name) {
 		Identifier result = bindings.get(validParameterName(name));
@@ -135,6 +135,7 @@ public final class BindingEnvironment {
 
 		/**
 		 * Binds <code>name</code> to <code>value</code>.
+		 *
 		 * @return <code>this</code>
 		 * @throws ParameterAlreadyBoundException if <code>name</code> has a binding.
 		 */
@@ -149,6 +150,7 @@ public final class BindingEnvironment {
 
 		/**
 		 * Binds <code>name</code> to <code>value</code> regardless of whether <code>name</code> is already bound.
+		 *
 		 * @return <code>this</code>
 		 */
 		public Builder rebind(String name, Identifier value) {
@@ -158,6 +160,7 @@ public final class BindingEnvironment {
 
 		/**
 		 * Causes the given name to be unbound in this environment.
+		 *
 		 * @return <code>this</code>
 		 */
 		public Builder unbind(String name) {
@@ -167,6 +170,7 @@ public final class BindingEnvironment {
 
 		/**
 		 * Can be called more than once.
+		 *
 		 * @return a {@link BindingEnvironment} with the desired contents
 		 */
 		public BindingEnvironment build() {
@@ -178,6 +182,20 @@ public final class BindingEnvironment {
 	@Override
 	public String toString() {
 		return bindings.toString();
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		BindingEnvironment that = (BindingEnvironment) o;
+		return Objects.equals(bindings, that.bindings);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hashCode(bindings);
 	}
 
 	private static final BindingEnvironment EMPTY_ENVIRONMENT = new BindingEnvironment(emptyMap());

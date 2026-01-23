@@ -17,7 +17,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
-import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -47,7 +46,6 @@ import static java.util.Collections.synchronizedList;
 import static java.util.Collections.synchronizedMap;
 import static java.util.Locale.ROOT;
 import static java.util.stream.Collectors.joining;
-import static lombok.AccessLevel.PRIVATE;
 import static works.bosk.Path.isParameterSegment;
 import static works.bosk.ReferenceUtils.getterMethod;
 import static works.bosk.ReferenceUtils.gettersForConstructorParameters;
@@ -65,11 +63,14 @@ import static works.bosk.util.ReflectionHelpers.boxedClass;
  * others really can't. Whether you find this objectionable depends on your level of distaste
  * for inner classes.
  */
-@RequiredArgsConstructor(access = PRIVATE)
 public final class PathCompiler {
 	private final Type sourceType;
 	private final Map<Path, DereferencerBuilder> memoizedBuilders = synchronizedMap(new WeakHashMap<>());
 	private final Map<DereferencerBuilder, Dereferencer> memoizedDereferencers = synchronizedMap(new WeakHashMap<>());
+
+	private PathCompiler(Type sourceType) {
+		this.sourceType = sourceType;
+	}
 
 	/**
 	 * The weak hashmaps are a bit too weak. We can't use normal maps because there
@@ -334,7 +335,7 @@ public final class PathCompiler {
 		@Override
 		protected void generate_get() {
 			pushSourceObject(rawClass(sourceType));
-			for (Step step: steps) {
+			for (Step step : steps) {
 				step.generate_get();
 				castTo(step.targetClass());
 			}
@@ -361,7 +362,8 @@ public final class PathCompiler {
 			}
 		}
 
-		@Override public Type targetType() {
+		@Override
+		public Type targetType() {
 			return lastStep().targetType();
 		}
 
@@ -383,7 +385,7 @@ public final class PathCompiler {
 		 */
 		private void pushSegmentStack() {
 			pushSourceObject(rawClass(sourceType));
-			for (Step step: steps.subList(0, steps.size()-1)) {
+			for (Step step : steps.subList(0, steps.size() - 1)) {
 				dup();
 				step.generate_get();
 				castTo(step.targetClass());
@@ -399,7 +401,7 @@ public final class PathCompiler {
 		 * Final stack: newSourceObject
 		 */
 		private void generateVineFoldingSequence() {
-			for (int i = steps.size()-2; i >= 0; i--) {
+			for (int i = steps.size() - 2; i >= 0; i--) {
 				Step step = steps.get(i);
 				castTo(step.targetClass());
 				step.generate_with();
@@ -437,7 +439,7 @@ public final class PathCompiler {
 						!parametersAlreadyUsed.add(segment);
 						suffix++
 					) {
-						segment = initialSegment.substring(0, initialSegment.length()-1) + "_" + suffix + "-";
+						segment = initialSegment.substring(0, initialSegment.length() - 1) + "_" + suffix + "-";
 					}
 
 					segments[i] = segment;
@@ -451,7 +453,7 @@ public final class PathCompiler {
 		private String pathParameterName(Type targetType) {
 			String name = rawClass(targetType).getSimpleName();
 			return "-"
-				+ name.substring(0,1).toLowerCase(ROOT)
+				+ name.substring(0, 1).toLowerCase(ROOT)
 				+ name.substring(1)
 				+ "-";
 		}
@@ -462,14 +464,15 @@ public final class PathCompiler {
 		//
 
 		@Value
-		public class FieldStep implements Step {
+		class FieldStep implements Step {
 			String name;
 			Map<String, Method> gettersByName;
 			Constructor<?> constructor;
 
 			private Method getter() { return gettersByName.get(name); }
 
-			@Override public Type targetType() {
+			@Override
+			public Type targetType() {
 				var valueType = valueType();
 				if (valueType instanceof Class<?> c) {
 					return boxedClass(c);
@@ -482,12 +485,14 @@ public final class PathCompiler {
 
 			@Override public String fullyParameterizedPathSegment() { return name; }
 
-			@Override public void generate_get() {
+			@Override
+			public void generate_get() {
 				invoke(getter());
 				cb.autoBox(valueType());
 			}
 
-			@Override public void generate_with() {
+			@Override
+			public void generate_with() {
 				cb.autoUnbox(valueType());
 
 				// This is too complex to do on the stack. Put what we need in local variables.
@@ -502,7 +507,7 @@ public final class PathCompiler {
 				cb.dup();
 
 				// Push constructor parameters and invoke
-				for (Parameter parameter: constructor.getParameters()) {
+				for (Parameter parameter : constructor.getParameters()) {
 					if (parameter.getName().equals(name)) {
 						// This is the parameter we're substituting
 						cb.pushLocal(newValue);
@@ -522,15 +527,32 @@ public final class PathCompiler {
 		}
 
 		@Value
-		public class CatalogEntryStep implements DeletableStep {
+		class CatalogEntryStep implements DeletableStep {
 			Type targetType;
 			int segmentNum;
 
-			@Override public String fullyParameterizedPathSegment() { return pathParameterName(targetType); }
+			@Override
+			public String fullyParameterizedPathSegment() {
+				return pathParameterName(targetType);
+			}
 
-			@Override public void generate_get() { pushIdAt(segmentNum); pushReference(); invoke(CATALOG_GET); }
-			@Override public void generate_with() { invoke(CATALOG_WITH); }
-			@Override public void generate_without() { pushIdAt(segmentNum); invoke(CATALOG_WITHOUT); }
+			@Override
+			public void generate_get() {
+				pushIdAt(segmentNum);
+				pushReference();
+				invoke(CATALOG_GET);
+			}
+
+			@Override
+			public void generate_with() {
+				invoke(CATALOG_WITH);
+			}
+
+			@Override
+			public void generate_without() {
+				pushIdAt(segmentNum);
+				invoke(CATALOG_WITHOUT);
+			}
 
 			@Override
 			public String toString() {
@@ -539,7 +561,7 @@ public final class PathCompiler {
 		}
 
 		@Value
-		public class ListingEntryStep implements DeletableStep {
+		class ListingEntryStep implements DeletableStep {
 			Type entryType;
 			int segmentNum;
 
@@ -547,15 +569,35 @@ public final class PathCompiler {
 			 * A reference to a listing entry points at a {@link ListingEntry},
 			 * not the Listing's entry type.
 			 */
-			@Override public Type targetType() {
+			@Override
+			public Type targetType() {
 				return ListingEntry.class;
 			}
 
-			@Override public String fullyParameterizedPathSegment() { return pathParameterName(entryType); }
+			@Override
+			public String fullyParameterizedPathSegment() {
+				return pathParameterName(entryType);
+			}
 
-			@Override public void generate_get() { pushIdAt(segmentNum); pushReference(); invoke(LISTING_GET); }
-			@Override public void generate_with() { pushIdAt(segmentNum); swap(); invoke(LISTING_WITH); }
-			@Override public void generate_without() { pushIdAt(segmentNum); invoke(LISTING_WITHOUT); }
+			@Override
+			public void generate_get() {
+				pushIdAt(segmentNum);
+				pushReference();
+				invoke(LISTING_GET);
+			}
+
+			@Override
+			public void generate_with() {
+				pushIdAt(segmentNum);
+				swap();
+				invoke(LISTING_WITH);
+			}
+
+			@Override
+			public void generate_without() {
+				pushIdAt(segmentNum);
+				invoke(LISTING_WITHOUT);
+			}
 
 			@Override
 			public String toString() {
@@ -564,16 +606,35 @@ public final class PathCompiler {
 		}
 
 		@Value
-		public class SideTableEntryStep implements DeletableStep {
+		class SideTableEntryStep implements DeletableStep {
 			Type keyType;
 			Type targetType;
 			int segmentNum;
 
-			@Override public String fullyParameterizedPathSegment() { return pathParameterName(keyType); }
+			@Override
+			public String fullyParameterizedPathSegment() {
+				return pathParameterName(keyType);
+			}
 
-			@Override public void generate_get() { pushIdAt(segmentNum); pushReference(); invoke(SIDE_TABLE_GET); }
-			@Override public void generate_with() { pushIdAt(segmentNum); swap(); invoke(SIDE_TABLE_WITH); }
-			@Override public void generate_without() { pushIdAt(segmentNum); invoke(SIDE_TABLE_WITHOUT); }
+			@Override
+			public void generate_get() {
+				pushIdAt(segmentNum);
+				pushReference();
+				invoke(SIDE_TABLE_GET);
+			}
+
+			@Override
+			public void generate_with() {
+				pushIdAt(segmentNum);
+				swap();
+				invoke(SIDE_TABLE_WITH);
+			}
+
+			@Override
+			public void generate_without() {
+				pushIdAt(segmentNum);
+				invoke(SIDE_TABLE_WITHOUT);
+			}
 
 			@Override
 			public String toString() {
@@ -582,15 +643,33 @@ public final class PathCompiler {
 		}
 
 		@Value
-		public class OptionalValueStep implements DeletableStep {
+		class OptionalValueStep implements DeletableStep {
 			Type targetType;
 			Step fieldStep;
 
-			@Override public String fullyParameterizedPathSegment() { return fieldStep.fullyParameterizedPathSegment(); }
+			@Override
+			public String fullyParameterizedPathSegment() {
+				return fieldStep.fullyParameterizedPathSegment();
+			}
 
-			@Override public void generate_get() { fieldStep.generate_get(); pushReference(); invoke(OPTIONAL_OR_THROW); }
-			@Override public void generate_with() { invoke(OPTIONAL_OF); fieldStep.generate_with(); }
-			@Override public void generate_without() { invoke(OPTIONAL_EMPTY); fieldStep.generate_with(); }
+			@Override
+			public void generate_get() {
+				fieldStep.generate_get();
+				pushReference();
+				invoke(OPTIONAL_OR_THROW);
+			}
+
+			@Override
+			public void generate_with() {
+				invoke(OPTIONAL_OF);
+				fieldStep.generate_with();
+			}
+
+			@Override
+			public void generate_without() {
+				invoke(OPTIONAL_EMPTY);
+				fieldStep.generate_with();
+			}
 
 			@Override
 			public String toString() {
@@ -599,15 +678,32 @@ public final class PathCompiler {
 		}
 
 		@Value
-		public class PhantomValueStep implements DeletableStep {
+		class PhantomValueStep implements DeletableStep {
 			Type targetType;
 			String name;
 
-			@Override public String fullyParameterizedPathSegment() { return name; }
+			@Override
+			public String fullyParameterizedPathSegment() {
+				return name;
+			}
 
-			@Override public void generate_get() { pop(); pushReference(); invoke(THROW_NONEXISTENT_ENTRY); }
-			@Override public void generate_with() { pop(); pop(); pushReference(); invoke(THROW_CANNOT_REPLACE_PHANTOM); }
-			@Override public void generate_without() { /* No effect */ }
+			@Override
+			public void generate_get() {
+				pop();
+				pushReference();
+				invoke(THROW_NONEXISTENT_ENTRY);
+			}
+
+			@Override
+			public void generate_with() {
+				pop();
+				pop();
+				pushReference();
+				invoke(THROW_CANNOT_REPLACE_PHANTOM);
+			}
+
+			@Override
+			public void generate_without() { /* No effect */ }
 
 			@Override
 			public String toString() {
@@ -616,7 +712,7 @@ public final class PathCompiler {
 		}
 
 		@Value
-		public class VariantCaseStep implements Step {
+		class VariantCaseStep implements Step {
 			String name;
 			Type targetType;
 
@@ -643,7 +739,12 @@ public final class PathCompiler {
 			}
 
 			@Override
-			public void generate_with() { pop(); pop(); pushReference(); invoke(THROW_CANNOT_REPLACE_VARIANT_CASE); }
+			public void generate_with() {
+				pop();
+				pop();
+				pushReference();
+				invoke(THROW_CANNOT_REPLACE_VARIANT_CASE);
+			}
 
 			@Override
 			public String toString() {
@@ -652,13 +753,14 @@ public final class PathCompiler {
 		}
 
 		@Value
-		public class CustomStep implements Step {
+		class CustomStep implements Step {
 			Type valueType;
 			String fullyParameterizedPathSegment;
 			CallSite callSite_get;
 			CallSite callSite_with;
 
-			@Override public Type targetType() {
+			@Override
+			public Type targetType() {
 				if (valueType instanceof Class<?> c) {
 					return boxedClass(c);
 				} else {
@@ -666,14 +768,19 @@ public final class PathCompiler {
 				}
 			}
 
-			@Override public String fullyParameterizedPathSegment() { return fullyParameterizedPathSegment; }
+			@Override
+			public String fullyParameterizedPathSegment() {
+				return fullyParameterizedPathSegment;
+			}
 
-			@Override public void generate_get() {
+			@Override
+			public void generate_get() {
 				cb.invokeDynamic("get", callSite_get);
 				cb.autoBox(valueType);
 			}
 
-			@Override public void generate_with() {
+			@Override
+			public void generate_with() {
 				cb.autoUnbox(valueType);
 				cb.invokeDynamic("with", callSite_with);
 			}
@@ -692,15 +799,37 @@ public final class PathCompiler {
 	 * need to deal with it.
 	 */
 	private static final class RootDereferencer implements Dereferencer {
-		@Override public Object get(Object source, Reference<?> ref) { return source; }
-		@Override public Object with(Object source, Reference<?> ref, Object newValue) { return newValue; }
-		@Override public Object without(Object source, Reference<?> ref) { return DereferencerRuntime.invalidWithout(source, ref); }
+		@Override
+		public Object get(Object source, Reference<?> ref) {
+			return source;
+		}
+
+		@Override
+		public Object with(Object source, Reference<?> ref, Object newValue) {
+			return newValue;
+		}
+
+		@Override
+		public Object without(Object source, Reference<?> ref) {
+			return DereferencerRuntime.invalidWithout(source, ref);
+		}
 	}
 
 	private final DereferencerBuilder ROOT_BUILDER = new DereferencerBuilder() {
-		@Override public Type targetType() { return sourceType; }
-		@Override public Path fullyParameterizedPath() { return Path.empty(); }
-		@Override public Dereferencer buildInstance() { return new RootDereferencer(); }
+		@Override
+		public Type targetType() {
+			return sourceType;
+		}
+
+		@Override
+		public Path fullyParameterizedPath() {
+			return Path.empty();
+		}
+
+		@Override
+		public Dereferencer buildInstance() {
+			return new RootDereferencer();
+		}
 	};
 
 	//
@@ -744,7 +873,7 @@ public final class PathCompiler {
 	private static List<Path> pathList() {
 		List<Path> result = synchronizedList(new ArrayList<>());
 		if (LOGGER.isTraceEnabled()) {
-			Runtime.getRuntime().addShutdownHook(new Thread(()->
+			Runtime.getRuntime().addShutdownHook(new Thread(() ->
 				LOGGER.trace("keepAliveFullyParameterizedPaths:{}",
 					result.stream()
 						.map(Path::urlEncoded)

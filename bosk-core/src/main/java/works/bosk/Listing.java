@@ -8,13 +8,11 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Spliterator;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-import lombok.AccessLevel;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
 import org.pcollections.OrderedPSet;
 import works.bosk.exceptions.NonexistentReferenceException;
 
@@ -27,15 +25,31 @@ import static java.util.stream.Collectors.toList;
  * An immutable ordered collection of references to {@link Entity entities}
  * housed in a particular {@link #domain} {@link Catalog}.
  *
- * @author pdoyle
- *
  * @param <E> the type of {@link Entity} to which this listing's entries refer.
+ * @author pdoyle
  */
-@EqualsAndHashCode(callSuper = false)
-@RequiredArgsConstructor(access=AccessLevel.PACKAGE)
 public final class Listing<E extends Entity> extends AbstractCollection<Reference<E>> {
 	private final CatalogReference<E> domain;
 	private final OrderedPSet<Identifier> ids;
+
+	Listing(CatalogReference<E> domain, OrderedPSet<Identifier> ids) {
+		this.domain = domain;
+		this.ids = ids;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		Listing<?> listing = (Listing<?>) o;
+		return Objects.equals(domain, listing.domain) && Objects.equals(ids, listing.ids);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(domain, ids);
+	}
 
 	/**
 	 * The {@link Catalog} in which all the {@link #ids()} reside.
@@ -202,7 +216,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 
 	public Map<Identifier, E> valueMap() {
 		Map<Identifier, E> result = new LinkedHashMap<>();
-		for (Identifier id: ids) {
+		for (Identifier id : ids) {
 			result.put(id, getOrThrow(domain.value(), id));
 		}
 		return unmodifiableMap(result);
@@ -216,7 +230,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 		return new Listing<>(CatalogReference.from(domain), OrderedPSet.empty());
 	}
 
-	public static <TT extends Entity> Listing<TT> of(Reference<Catalog<TT>> domain, Identifier...ids) {
+	public static <TT extends Entity> Listing<TT> of(Reference<Catalog<TT>> domain, Identifier... ids) {
 		return of(domain, Arrays.asList(ids));
 	}
 
@@ -280,10 +294,14 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 	 *
 	 * @author pdoyle
 	 */
-	@RequiredArgsConstructor
 	private final class DomainLookupSpliterator implements Spliterator<E> {
 		private final Spliterator<Identifier> idSpliterator;
 		private final AddressableByIdentifier<E> domain;
+
+		public DomainLookupSpliterator(Spliterator<Identifier> idSpliterator, AddressableByIdentifier<E> domain) {
+			this.idSpliterator = idSpliterator;
+			this.domain = domain;
+		}
 
 		@Override
 		public boolean tryAdvance(Consumer<? super E> action) {
