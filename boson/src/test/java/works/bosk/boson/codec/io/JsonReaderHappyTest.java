@@ -200,7 +200,7 @@ class JsonReaderHappyTest extends AbstractJsonReaderTest {
 			assertEquals(START_ARRAY, consumeValueToken(reader));
 			assertEquals(TRUE, consumeValueToken(reader));
 			assertEquals(COMMA, reader.peekRawToken());
-			reader.consumeFixedToken(COMMA);
+			reader.consumeSyntax(COMMA);
 			assertEquals(WHITESPACE, reader.peekRawToken());
 			assertEquals(FALSE, consumeValueToken(reader));
 			assertEquals(NULL, consumeValueToken(reader));

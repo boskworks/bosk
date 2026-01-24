@@ -7,8 +7,6 @@ import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.codec.io.SynchronousChunkFiller;
 import works.bosk.boson.codec.io.SyntaxValidatingReader;
 import works.bosk.boson.codec.io.TokenValidatingReader;
-import works.bosk.boson.exceptions.JsonContentException;
-import works.bosk.boson.exceptions.JsonFormatException;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static java.lang.Character.MAX_SURROGATE;
@@ -83,7 +81,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * <ul>
 	 *     <li>
 	 *         for any token with a {@link Token#fixedRepresentation fixed representation},
-	 *         call {@link #consumeFixedToken};
+	 *         call {@link #consumeSyntax};
 	 *     </li>
 	 *     <li>
 	 *         for {@link Token#NUMBER}, call {@link #consumeNumber}; or
@@ -104,24 +102,6 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * @see Token#isInsignificant()
 	 */
 	Token peekValueToken();
-
-	/**
-	 * A variant of {@link #peekValueToken} that throws if the next token is not the expected one.
-	 * <p>
-	 * Since we don't know whether to throw {@link JsonSyntaxException} or {@link JsonContentException},
-	 * because that depends on the calling context,
-	 * we throw {@link JsonSyntaxException} itself.
-	 * Consider catching that and re-throwing a more specific subclass
-	 * based on your context.
-	 *
-	 * @throws JsonFormatException if the input is not valid JSON.
-	 */
-	default void peekValueToken(Token expected) {
-		Token actual = peekValueToken();
-		if (actual != expected) {
-			throw new JsonFormatException("Expected " + expected + " but got " + actual);
-		}
-	}
 
 	/**
 	 * Like {@link #peekValueToken}, but skips only whitespace characters.
@@ -160,15 +140,17 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 *
 	 * @param token must be the last token returned by {@link #peekValueToken}
 	 */
-	void consumeFixedToken(Token token);
+	void consumeSyntax(Token token);
 
 	/**
-	 * @throws JsonFormatException if the next token is not the expected one.
+	 * @throws JsonSyntaxException if the next token is not the expected one.
 	 */
-	default void expectFixedToken(Token expected) {
+	default void expectSyntax(Token expected) {
 		assert expected.hasFixedRepresentation();
-		peekValueToken(expected);
-		consumeFixedToken(expected);
+		if (expected != peekValueToken()) {
+			throw new JsonSyntaxException("Expected token " + expected + ", not " + peekValueToken());
+		}
+		consumeSyntax(expected);
 	}
 
 	/**
@@ -333,27 +315,21 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * Consumes the next characters in the input, verifying that they match
 	 * exactly the {@code expectedCharacters}.
 	 * If they match, nothing happens.
-	 * If they do not match, throws {@link JsonFormatException},
+	 * If they do not match, throws {@link JsonSyntaxException},
 	 * and consumes some unspecified number of characters.
 	 * In effect, this reader is no longer usable.
 	 * <p>
 	 * This can be used by callers that require a higher level of input validation
-	 * compared to other skipping methods like {@link #consumeFixedToken consumeFixedToken},
+	 * compared to other skipping methods like {@link #consumeSyntax consumeSyntax},
 	 * which simply assume that the input is correct.
 	 * <p>
 	 * This can only handle JSON syntax outside strings, which is always ASCII.
-	 * <p>
-	 * Since we don't know whether to throw {@link JsonSyntaxException} or {@link JsonContentException},
-	 * because that depends on the calling context,
-	 * we throw {@link JsonFormatException} itself.
-	 * Consider catching that and re-throwing a more specific subclass
-	 * based on your context.
 	 *
 	 * @param expectedCharacters the sequence of characters to consume
-	 * @throws JsonFormatException if the next characters in the input
+	 * @throws JsonSyntaxException if the next characters in the input
 	 *         do not match the expected characters
 	 */
-	void validateCharacters(CharSequence expectedCharacters);
+	void validateSyntax(CharSequence expectedCharacters);
 
 	/**
 	 * On a best-effort basis, return the upcoming characters in the input.

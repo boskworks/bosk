@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import works.bosk.boson.TestUtils.Month;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
+import works.bosk.boson.exceptions.JsonContentException;
+import works.bosk.boson.exceptions.JsonSyntaxException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.boson.TestUtils.ABSENT_FIELD_VALUE;
@@ -57,7 +59,7 @@ public class ManualTest {
 		String computedField = COMPUTED_FIELD_VALUE;
 		String maybeAbsentField = ABSENT_FIELD_VALUE;
 
-		input.expectFixedToken(START_OBJECT);
+		input.expectSyntax(START_OBJECT);
 		loop: while (true) {
 			Token token = input.peekValueToken();
 			switch (token) {
@@ -94,7 +96,7 @@ public class ManualTest {
 										}
 										case 'y' -> {
 											input.skipToEndOfString();
-											maybeAbsentField = readString();
+											maybeAbsentField = readStringValue();
 										}
 									}
 								}
@@ -109,7 +111,7 @@ public class ManualTest {
 							switch (input.nextStringChar()) {
 								case 'F' -> {
 									input.skipToEndOfString();
-									stringField = readString();
+									stringField = readStringValue();
 								}
 								case 'A' -> {
 									input.skipToEndOfString();
@@ -133,7 +135,7 @@ public class ManualTest {
 				}
 			}
 		}
-		input.consumeFixedToken(END_OBJECT);
+		input.consumeSyntax(END_OBJECT);
 		return new TestUtils.OneOfEach(
 			nullField,
 			trueField,
@@ -148,62 +150,62 @@ public class ManualTest {
 			maybeAbsentField);
 	}
 
-	private Map<TimeUnit, BigDecimal> readTimeUnitToBigDecimalMap() throws IOException {
-		input.expectFixedToken(START_OBJECT);
+	private Map<TimeUnit, BigDecimal> readTimeUnitToBigDecimalMap() {
+		input.expectSyntax(START_OBJECT);
 		Map<TimeUnit, BigDecimal> result = new java.util.LinkedHashMap<>();
 		while (input.peekValueToken() != END_OBJECT) {
-			var member = readString();
+			var member = readMemberName();
 			var value = readBigNumber();
 			result.put(TimeUnit.valueOf(member), (BigDecimal) value);
 		}
-		input.consumeFixedToken(END_OBJECT);
+		input.consumeSyntax(END_OBJECT);
 		return result;
 	}
 
 	private List<String> readStringList() {
-		input.expectFixedToken(START_ARRAY);
+		input.expectSyntax(START_ARRAY);
 		List<String> result = new java.util.ArrayList<>();
 		while (input.peekValueToken() != Token.END_ARRAY) {
 			result.add(input.consumeString());
 		}
-		input.consumeFixedToken(END_ARRAY);
+		input.consumeSyntax(END_ARRAY);
 		return result;
 	}
 
 	private List<Object> readAnyList() throws IOException {
-		input.expectFixedToken(START_ARRAY);
+		input.expectSyntax(START_ARRAY);
 		List<Object> result = new java.util.ArrayList<>();
 		while (input.peekValueToken() != Token.END_ARRAY) {
 			result.add(readAnyValue());
 		}
-		input.consumeFixedToken(END_ARRAY);
+		input.consumeSyntax(END_ARRAY);
 		return result;
 	}
 
 	private Map<String, Object> readAnyMap() throws IOException {
-		input.expectFixedToken(START_OBJECT);
+		input.expectSyntax(START_OBJECT);
 		Map<String, Object> result = new java.util.LinkedHashMap<>();
 		while (input.peekValueToken() != END_OBJECT) {
-			var member = readString();
+			var member = readMemberName();
 			var value = readAnyValue();
 			result.put(member, value);
 		}
-		input.consumeFixedToken(END_OBJECT);
+		input.consumeSyntax(END_OBJECT);
 		return result;
 	}
 
 	private Object readAnyValue() throws IOException {
 		switch (input.peekValueToken()) {
 			case NULL -> {
-				input.consumeFixedToken(NULL);
+				input.consumeSyntax(NULL);
 				return null;
 			}
 			case FALSE -> {
-				input.consumeFixedToken(FALSE);
+				input.consumeSyntax(FALSE);
 				return Boolean.FALSE;
 			}
 			case TRUE -> {
-				input.consumeFixedToken(TRUE);
+				input.consumeSyntax(TRUE);
 				return Boolean.TRUE;
 			}
 			case NUMBER -> {
@@ -216,7 +218,7 @@ public class ManualTest {
 				return readAnyList();
 			}
 			case STRING -> {
-				return readString();
+				return readStringValue();
 			}
 			default -> {
 				throw new IllegalStateException();
@@ -224,24 +226,39 @@ public class ManualTest {
 		}
 	}
 
-	private String readString() {
-		input.peekValueToken(STRING);
+	private String readStringValue() {
+		if (STRING != input.peekValueToken()) {
+			throw new JsonContentException("Expected string value");
+		}
+		return input.consumeString();
+	}
+
+	private String readMemberName() {
+		if (STRING != input.peekValueToken()) {
+			throw new JsonSyntaxException("Expected member name");
+		}
 		return input.consumeString();
 	}
 
 	private long readInteger() {
-		input.peekValueToken(NUMBER);
+		if (NUMBER != input.peekValueToken()) {
+			throw new JsonContentException("Expected integer value");
+		}
 		CharSequence s = input.consumeNumber();
 		return Long.parseLong(s, 0, s.length(), 10);
 	}
 
 	private double readDecimal() {
-		input.peekValueToken(NUMBER);
+		if (NUMBER != input.peekValueToken()) {
+			throw new JsonContentException("Expected decimal value");
+		}
 		return Double.parseDouble(input.consumeNumber().toString());
 	}
 
 	private Number readBigNumber() {
-		input.peekValueToken(NUMBER);
+		if (NUMBER != input.peekValueToken()) {
+			throw new JsonContentException("Expected BigNumber value");
+		}
 		return new BigDecimal(input.consumeNumber().toString());
 	}
 

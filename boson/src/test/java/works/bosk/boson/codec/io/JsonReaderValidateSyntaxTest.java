@@ -15,16 +15,16 @@ import static works.bosk.boson.codec.Token.END_TEXT;
 import static works.bosk.boson.codec.io.ByteChunkJsonReader.CARRYOVER_BYTES;
 
 /**
- * Tests the {@link JsonReader#validateCharacters(CharSequence)} method.
+ * Tests the {@link JsonReader#validateSyntax(CharSequence)} method.
  * The input we're testing here isn't even valid JSON;
  * we're just using the reader's ability to validate specified character sequences.
  */
 @ParameterizedClass
 @MethodSource("readers")
-public class JsonReaderValidateCharactersTest {
+public class JsonReaderValidateSyntaxTest {
 	private final JsonReader reader;
 
-	JsonReaderValidateCharactersTest(ReaderFactoryParameter p) {
+	JsonReaderValidateSyntaxTest(ReaderFactoryParameter p) {
 		// We do the happy parts that are expected to pass in here.
 		// This doubles as setup for later tests that
 		// expect failures, because those ruin the reader.
@@ -38,15 +38,15 @@ public class JsonReaderValidateCharactersTest {
 		// The number of characters per chunk will be 11-CARRYOVER_BYTES = 5
 
 		// Stop before chunk boundary
-		reader.validateCharacters("1234");
+		reader.validateSyntax("1234");
 		// Zero-sized string always matches
-		reader.validateCharacters("");
+		reader.validateSyntax("");
 		// Cross chunk boundary
-		reader.validateCharacters("56");
+		reader.validateSyntax("56");
 		// Stop on chunk boundary
-		reader.validateCharacters("7890");
+		reader.validateSyntax("7890");
 		// Make sure we're still good
-		reader.validateCharacters("1");
+		reader.validateSyntax("1");
 
 		// The reader is left with 2345, 67890, and 12 in three chunks
 	}
@@ -77,39 +77,39 @@ public class JsonReaderValidateCharactersTest {
 	@InjectedTest
 	void wrongImmediately() {
 		assertThrows(JsonFormatException.class,
-			() -> reader.validateCharacters("x"));
+			() -> reader.validateSyntax("x"));
 	}
 
 	@InjectedTest
 	void wrongAfterRight() {
 		assertThrows(JsonFormatException.class,
-			() -> reader.validateCharacters("234x"));
+			() -> reader.validateSyntax("234x"));
 	}
 
 	@InjectedTest
 	void wrongAfterBoundary() {
 		assertThrows(JsonFormatException.class,
-			() -> reader.validateCharacters("2345x"));
+			() -> reader.validateSyntax("2345x"));
 	}
 
 	@InjectedTest
 	void wrongOnLastCharacter() {
 		assertThrows(JsonFormatException.class,
-			() -> reader.validateCharacters("2345678901x"));
+			() -> reader.validateSyntax("2345678901x"));
 	}
 
 	@InjectedTest
 	void rightToTheEnd() {
-		reader.validateCharacters("23456789012");
+		reader.validateSyntax("23456789012");
 		// Empty string matches even at the end
-		reader.validateCharacters("");
+		reader.validateSyntax("");
 		assertEquals(END_TEXT, reader.peekValueToken());
 	}
 
 	@InjectedTest
 	void rightButTooLong() {
 		assertThrows(JsonFormatException.class,
-			() -> reader.validateCharacters("23456789012x"));
+			() -> reader.validateSyntax("23456789012x"));
 	}
 
 	interface ReaderFactory {

@@ -35,10 +35,15 @@ public abstract class SharedParserRuntime {
 
 	protected final boolean parseBoolean() {
 		Token token = input.peekValueToken();
-		skipToken(token);
 		return switch (token) {
-			case FALSE -> false;
-			case TRUE -> true;
+			case FALSE -> {
+				skipSyntax(token);
+				yield false;
+			}
+			case TRUE -> {
+				skipSyntax(token);
+				yield true;
+			}
 			default -> throw new JsonContentException("Expected boolean, not " + token);
 		};
 	}
@@ -92,7 +97,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final void expect(Token expectedToken) {
-		input.expectFixedToken(expectedToken);
+		input.expectSyntax(expectedToken);
 	}
 
 	/**
@@ -101,9 +106,10 @@ public abstract class SharedParserRuntime {
 	 * @return true if the token was the expected one
 	 */
 	protected final boolean nextTokenIs(Token expectedToken) {
+		assert expectedToken.hasFixedRepresentation();
 		Token readToken = input.peekValueToken();
 		if (readToken == expectedToken) {
-			input.consumeFixedToken(readToken);
+			input.consumeSyntax(readToken);
 			return true;
 		} else {
 			return false;
@@ -118,8 +124,17 @@ public abstract class SharedParserRuntime {
 //		map.put(parseEnumByName(null), new BigDecimal("0"));
 	}
 
-	protected final String parseString() {
-		input.peekValueToken(STRING);
+	protected final String parseStringValue() {
+		if (input.peekValueToken() != STRING) {
+			throw new JsonContentException("Expected string value");
+		}
+		return input.consumeString();
+	}
+
+	protected final String parseMemberName() {
+		if (input.peekValueToken() != STRING) {
+			throw new JsonSyntaxException("Expected member name");
+		}
 		return input.consumeString();
 	}
 
@@ -152,16 +167,18 @@ public abstract class SharedParserRuntime {
 
 	protected final void skipTokenWithOrdinal(int ord) {
 		Token token = values()[ord];
+		assert token.hasFixedRepresentation();
 //		LOGGER.debug("skipTokenWithOrdinal: {}", token);
-		skipToken(token);
+		skipSyntax(token);
 	}
 
-	protected final void skipToken(Token expectedToken) {
+	protected final void skipSyntax(Token expectedToken) {
+		assert expectedToken.hasFixedRepresentation();
 		var token = input.peekValueToken();
 		if (token != expectedToken) {
 			parseError("Expected token " + expectedToken + ", not " + token);
 		}
-		input.consumeFixedToken(expectedToken);
+		input.consumeSyntax(expectedToken);
 	}
 
 	protected final String readString(int firstChar) {

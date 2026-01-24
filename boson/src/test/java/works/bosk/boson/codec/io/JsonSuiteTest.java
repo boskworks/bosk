@@ -65,7 +65,7 @@ public class JsonSuiteTest extends AbstractJsonReaderTest {
 		while (reader.peekRawToken() != END_TEXT) {
 			consumeValueToken(reader);
 		}
-		reader.consumeFixedToken(END_TEXT);
+		reader.consumeSyntax(END_TEXT);
 	}
 
 	public static Stream<Arguments> yFiles() {
