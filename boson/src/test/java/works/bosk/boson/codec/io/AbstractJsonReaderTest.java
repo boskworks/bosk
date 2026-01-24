@@ -22,7 +22,7 @@ public class AbstractJsonReaderTest {
 		Token token = reader.peekNonWhitespaceToken();
 		assert token != WHITESPACE;
 		if (token.isInsignificant()) {
-			reader.consumeFixedToken(token);
+			reader.consumeSyntax(token);
 			return token;
 		} else {
 			return consumeValueToken(reader);
@@ -32,7 +32,7 @@ public class AbstractJsonReaderTest {
 	static Token consumeValueToken(JsonReader reader) {
 		Token token = reader.peekValueToken();
 		if (token.hasFixedRepresentation()) {
-			reader.consumeFixedToken(token);
+			reader.consumeSyntax(token);
 		} else if (token == STRING) {
 			reader.startConsumingString();
 			reader.skipToEndOfString();

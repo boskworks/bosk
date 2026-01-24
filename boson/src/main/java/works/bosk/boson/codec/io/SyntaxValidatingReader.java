@@ -186,7 +186,8 @@ public final class SyntaxValidatingReader implements JsonReader {
 		while (true) {
 			Token result = downstream.peekNonWhitespaceToken();
 			if (result.isInsignificant()) {
-				downstream.consumeFixedToken(result);
+				assert result.hasFixedRepresentation();
+				downstream.consumeSyntax(result);
 				doStateTransition(result);
 			} else {
 				return result;
@@ -205,8 +206,8 @@ public final class SyntaxValidatingReader implements JsonReader {
 	}
 
 	@Override
-	public void consumeFixedToken(Token token) {
-		downstream.consumeFixedToken(token);
+	public void consumeSyntax(Token token) {
+		downstream.consumeSyntax(token);
 		doStateTransition(token);
 	}
 
@@ -238,8 +239,8 @@ public final class SyntaxValidatingReader implements JsonReader {
 	}
 
 	@Override
-	public void validateCharacters(CharSequence expectedCharacters) {
-		downstream.validateCharacters(expectedCharacters);
+	public void validateSyntax(CharSequence expectedCharacters) {
+		downstream.validateSyntax(expectedCharacters);
 	}
 
 	@Override

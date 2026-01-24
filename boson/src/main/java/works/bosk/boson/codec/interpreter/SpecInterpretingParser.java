@@ -213,7 +213,7 @@ public class SpecInterpretingParser implements Parser {
 						if (nextTokenIs(END_OBJECT)) {
 							resultValue = n.finisher().invoke(); // Finisher must have no args
 						} else {
-							String memberName = parseString();
+							String memberName = parseMemberName();
 							stack.push(new FixedObjectAccumulator(n, memberName));
 							RecognizedMember member = requireNonNull(n.memberSpecs().get(memberName),
 								"Unexpected member name [" + memberName + "]");
@@ -396,7 +396,7 @@ public class SpecInterpretingParser implements Parser {
 				if (nextTokenIs(END_OBJECT)) {
 					return n.finisher().invoke(ctorArgs);
 				} else {
-					this.currentMember = memberInfo(parseString());
+					this.currentMember = memberInfo(parseMemberName());
 					return NO_RESULT;
 				}
 			}
@@ -461,7 +461,7 @@ public class SpecInterpretingParser implements Parser {
 				case BoxedPrimitiveSpec(var child) -> parsePrimitiveNumber(child.targetClass());
 				case EnumByNameNode n -> parseEnumByName(n);
 				case PrimitiveNumberNode n -> parsePrimitiveNumber(n.targetClass());
-				case StringNode _ -> parseString();
+				case StringNode _ -> parseStringValue();
 			};
 		}
 
@@ -492,7 +492,7 @@ public class SpecInterpretingParser implements Parser {
 
 		private Object parseArray(ArrayNode node) throws IOException {
 			logEntry("parseArray", node);
-			input.expectFixedToken(START_ARRAY);
+			input.expectSyntax(START_ARRAY);
 			works.bosk.boson.mapping.spec.handles.ArrayAccumulator acc = node.accumulator();
 			Object accumulator = acc.creator().invoke();
 			while (input.peekValueToken() != END_ARRAY) {
@@ -502,13 +502,13 @@ public class SpecInterpretingParser implements Parser {
 					accumulator = returned;
 				}
 			}
-			input.consumeFixedToken(END_ARRAY);
+			input.consumeSyntax(END_ARRAY);
 			return acc.finisher().invoke(accumulator);
 		}
 
 		private Object parseUniformMap(UniformMapNode node) throws IOException {
 			logEntry("parseUniformMap", node);
-			input.expectFixedToken(START_OBJECT);
+			input.expectSyntax(START_OBJECT);
 			ObjectAccumulator acc = node.accumulator();
 			Object accumulator = acc.creator().invoke();
 			while (input.peekValueToken() != END_OBJECT) {
@@ -520,7 +520,7 @@ public class SpecInterpretingParser implements Parser {
 					accumulator = returned;
 				}
 			}
-			input.consumeFixedToken(END_OBJECT);
+			input.consumeSyntax(END_OBJECT);
 			return acc.finisher().invoke(accumulator);
 		}
 
@@ -535,7 +535,7 @@ public class SpecInterpretingParser implements Parser {
 
 		private Object parseFixedObject(FixedObjectNode node) throws IOException {
 			logEntry("parseFixedObject", node);
-			input.expectFixedToken(START_OBJECT);
+			input.expectSyntax(START_OBJECT);
 			List<Object> memberValues = readMembers(node.memberSpecs());
 			return node.finisher().invoke(memberValues.toArray());
 		}
@@ -563,7 +563,7 @@ public class SpecInterpretingParser implements Parser {
 				};
 				memberValues.put(memberName, value);
 			}
-			input.consumeFixedToken(END_OBJECT);
+			input.consumeSyntax(END_OBJECT);
 			return componentsByName.keySet().stream().map(memberValues::get).toList();
 		}
 

@@ -75,14 +75,14 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	}
 
 	@Override
-	public void consumeFixedToken(Token token) {
+	public void consumeSyntax(Token token) {
 		if (!token.equals(peekRawToken())) {
 			throw new JsonSyntaxException(
 				"Expected token " + token + " but found " + peekRawToken() +
 				" at offset " + currentOffset());
 		}
 		try {
-			downstream.validateCharacters(token.fixedRepresentation());
+			downstream.validateSyntax(token.fixedRepresentation());
 		} catch (JsonFormatException e) {
 			throw new JsonSyntaxException(e.getMessage(), e);
 		}
@@ -188,8 +188,8 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	}
 
 	@Override
-	public void validateCharacters(CharSequence expectedCharacters) {
-		downstream.validateCharacters(expectedCharacters);
+	public void validateSyntax(CharSequence expectedCharacters) {
+		downstream.validateSyntax(expectedCharacters);
 	}
 
 	@Override

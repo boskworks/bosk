@@ -409,7 +409,7 @@ public class SpecCompiler {
 				case PrimitiveNumberNode node -> _parsePrimitiveNumber(node);
 				case FixedObjectNode node -> _parseFixedObject(node);
 				case RepresentAsSpec node -> _parseAndConvert(node);
-				case StringNode _ -> _parseString();
+				case StringNode _ -> _parseStringValue();
 				case TypeRefNode node -> _parseTypeRef(node);
 			}
 		}
@@ -489,7 +489,7 @@ public class SpecCompiler {
 				throw new IllegalStateException(e);
 			}
 			var mt = curryAndLoad(valueOf, node.enumType().getSimpleName() + "_valueOf");
-			_parseString();
+			_parseStringValue();
 			_invokeExact(mt);
 		}
 
@@ -847,10 +847,10 @@ public class SpecCompiler {
 			_callRuntime("skipTokenWithOrdinal", int.class);
 		}
 
-		private void _parseString() {
+		private void _parseStringValue() {
 			_loadRuntime();
 			lineInfo(codeBuilder);
-			_callRuntime(String.class, "parseString");
+			_callRuntime(String.class, "parseStringValue");
 		}
 
 		private void _readNumberAsCharSequence() {

@@ -140,7 +140,7 @@ class JsonReaderInvalidTokenTest extends AbstractJsonReaderTest {
 		try (JsonReader reader = readerFor(json)) {
 			assertEquals(FALSE, reader.peekValueToken());
 			assertThrows(JsonSyntaxException.class, ()-> {
-				reader.consumeFixedToken(FALSE);
+				reader.consumeSyntax(FALSE);
 				reader.peekValueToken();
 			});
 		}
@@ -179,7 +179,7 @@ class JsonReaderInvalidTokenTest extends AbstractJsonReaderTest {
 	void extendedLiteral() {
 		try (JsonReader reader = readerFor("falsely")) {
 			assertEquals(FALSE, reader.peekValueToken());
-			reader.consumeFixedToken(FALSE);
+			reader.consumeSyntax(FALSE);
 			assertThrows(JsonSyntaxException.class, reader::peekValueToken);
 		}
 	}
@@ -195,7 +195,7 @@ class JsonReaderInvalidTokenTest extends AbstractJsonReaderTest {
 	void unexpectedCharacterInArray() {
 		try (JsonReader reader = readerFor("[1, @]")) {
 			assertEquals(START_ARRAY, reader.peekValueToken());
-			reader.consumeFixedToken(Token.START_ARRAY);
+			reader.consumeSyntax(Token.START_ARRAY);
 			assertEquals(NUMBER, reader.peekValueToken());
 			reader.consumeNumber();
 			assertThrows(JsonSyntaxException.class, reader::peekValueToken);
@@ -285,7 +285,7 @@ class JsonReaderInvalidTokenTest extends AbstractJsonReaderTest {
 	void trailingCommaInArray() {
 		try (JsonReader reader = readerFor("[1,2,]")) {
 			assertEquals(START_ARRAY, reader.peekToken());
-			reader.consumeFixedToken(Token.START_ARRAY);
+			reader.consumeSyntax(Token.START_ARRAY);
 			assertEquals(NUMBER, reader.peekToken());
 			reader.consumeNumber();
 			assertEquals(NUMBER, reader.peekToken());
@@ -298,7 +298,7 @@ class JsonReaderInvalidTokenTest extends AbstractJsonReaderTest {
 	void trailingCommaInObject() {
 		try (JsonReader reader = readerFor("{\"a\":1,}")) {
 			assertEquals(START_OBJECT, reader.peekToken());
-			reader.consumeFixedToken(Token.START_OBJECT);
+			reader.consumeSyntax(Token.START_OBJECT);
 			assertEquals(STRING, reader.peekToken());
 			reader.consumeString();
 			assertEquals(NUMBER, reader.peekToken());

@@ -1,6 +1,9 @@
 package works.bosk.boson.exceptions;
 
-public sealed abstract class JsonException extends RuntimeException permits JsonFormatException, JsonProcessingException {
+public sealed abstract class JsonException extends RuntimeException permits
+	JsonFormatException,
+	JsonProcessingException
+{
 	protected JsonException(String message) {
 		super(message);
 	}
@@ -19,7 +22,6 @@ public sealed abstract class JsonException extends RuntimeException permits Json
 		return switch (exception) {
 			case JsonSyntaxException e -> (T)new JsonSyntaxException(newMessage, e);
 			case JsonContentException e -> (T)new JsonContentException(newMessage, e);
-			case JsonFormatException e -> (T)new JsonFormatException(newMessage, e);
 			case JsonProcessingException e -> (T)new JsonProcessingException(newMessage, e);
 		};
 	}
