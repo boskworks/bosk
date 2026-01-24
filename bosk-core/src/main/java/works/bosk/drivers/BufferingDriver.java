@@ -6,7 +6,6 @@ import java.util.Deque;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskDiagnosticContext;
@@ -17,8 +16,6 @@ import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
-
-import static lombok.AccessLevel.PROTECTED;
 
 /**
  * Queues updates and submits them to a downstream driver when {@link #flush()}
@@ -34,15 +31,19 @@ import static lombok.AccessLevel.PROTECTED;
  *
  * @author pdoyle
  */
-@RequiredArgsConstructor(access = PROTECTED)
 public class BufferingDriver implements BoskDriver {
 	private final BoskDriver downstream;
 	private final BoskDiagnosticContext diagnosticContext;
 	private final Deque<Consumer<BoskDriver>> updateQueue = new ConcurrentLinkedDeque<>();
 	private final AtomicLong changeID = new AtomicLong();
 
+	protected BufferingDriver(BoskDriver downstream, BoskDiagnosticContext diagnosticContext) {
+		this.downstream = downstream;
+		this.diagnosticContext = diagnosticContext;
+	}
+
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory() {
-		return (b,d) -> new BufferingDriver(d, b.diagnosticContext());
+		return (b, d) -> new BufferingDriver(d, b.diagnosticContext());
 	}
 
 	@Override

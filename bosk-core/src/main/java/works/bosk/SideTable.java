@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -13,10 +14,6 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
-import lombok.AccessLevel;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import org.pcollections.OrderedPMap;
 import org.pcollections.OrderedPSet;
 
@@ -30,12 +27,14 @@ import static java.util.Objects.requireNonNull;
  * @param <K> the key entity type
  * @param <V> the value type
  */
-@EqualsAndHashCode
-@RequiredArgsConstructor(access=AccessLevel.PRIVATE)
 public final class SideTable<K extends Entity, V> implements EnumerableByIdentifier<V> {
-	@Getter
 	private final CatalogReference<K> domain;
 	private final OrderedPMap<Identifier, V> valuesById;
+
+	private SideTable(CatalogReference<K> domain, OrderedPMap<Identifier, V> valuesById) {
+		this.domain = domain;
+		this.valuesById = valuesById;
+	}
 
 	public V get(Identifier id) { return valuesById.get(id); }
 	public V get(K key)         { return valuesById.get(key.id()); }
@@ -45,11 +44,16 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 
 	public boolean isEmpty() { return valuesById.isEmpty(); }
 	public int size() { return valuesById.size(); }
+
+	public CatalogReference<K> domain() {
+		return domain;
+	}
+
 	public List<Identifier> ids() { return List.copyOf(valuesById.keySet()); }
 	public Listing<K> keys() { return new Listing<>(domain, OrderedPSet.from(valuesById.keySet())); }
 	public Collection<V> values() { return valuesById.values(); }
-	public Set<Entry<Identifier, V>> idEntrySet() { return valuesById.entrySet(); }
 
+	public Set<Entry<Identifier, V>> idEntrySet() { return valuesById.entrySet(); }
 	public Map<Identifier, V> asMap() { return valuesById; }
 
 	public Stream<Entry<K, V>> valueEntryStream() {
@@ -74,15 +78,15 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 		valuesById.forEach(action);
 	}
 
-	public SideTable<K,V> with(Identifier id, V value) {
+	public SideTable<K, V> with(Identifier id, V value) {
 		return new SideTable<>(this.domain, valuesById.plus(id, value));
 	}
 
-	public SideTable<K,V> with(K key, V value) {
+	public SideTable<K, V> with(K key, V value) {
 		return this.with(key.id(), value);
 	}
 
-	public SideTable<K,V> updatedWith(Identifier id, Supplier<V> valueIfAbsent, UnaryOperator<V> valueIfPresent) {
+	public SideTable<K, V> updatedWith(Identifier id, Supplier<V> valueIfAbsent, UnaryOperator<V> valueIfPresent) {
 		V existing = valuesById.get(id);
 		V replacement;
 		if (existing == null) {
@@ -93,11 +97,11 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 		return this.with(id, replacement);
 	}
 
-	public SideTable<K,V> without(Identifier id) {
+	public SideTable<K, V> without(Identifier id) {
 		return new SideTable<>(this.domain, valuesById.minus(id));
 	}
 
-	public SideTable<K,V> without(K key) {
+	public SideTable<K, V> without(K key) {
 		return this.without(key.id());
 	}
 
@@ -105,19 +109,19 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 	 * If you get type inference errors with this one, try specifying the value class
 	 * with {@link #empty(Reference, Class)}.
 	 */
-	public static <KK extends Entity,VV> SideTable<KK,VV> empty(Reference<Catalog<KK>> domain) {
+	public static <KK extends Entity, VV> SideTable<KK, VV> empty(Reference<Catalog<KK>> domain) {
 		return new SideTable<>(CatalogReference.from(domain), OrderedPMap.empty());
 	}
 
-	public static <KK extends Entity,VV> SideTable<KK,VV> empty(Reference<Catalog<KK>> domain, Class<VV> ignored) {
+	public static <KK extends Entity, VV> SideTable<KK, VV> empty(Reference<Catalog<KK>> domain, Class<VV> ignored) {
 		return empty(domain);
 	}
 
-	public static <KK extends Entity, VV> SideTable<KK,VV> of(Reference<Catalog<KK>> domain, Identifier id, VV value) {
+	public static <KK extends Entity, VV> SideTable<KK, VV> of(Reference<Catalog<KK>> domain, Identifier id, VV value) {
 		return new SideTable<>(CatalogReference.from(domain), OrderedPMap.singleton(id, value));
 	}
 
-	public static <KK extends Entity, VV> SideTable<KK,VV> of(Reference<Catalog<KK>> domain, KK key, VV value) {
+	public static <KK extends Entity, VV> SideTable<KK, VV> of(Reference<Catalog<KK>> domain, KK key, VV value) {
 		return of(domain, key.id(), value);
 	}
 
@@ -125,21 +129,21 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 	 * Use {@link #copyOf}.
 	 */
 	@Deprecated(forRemoval = true)
-	public static <KK extends Entity,VV> SideTable<KK,VV> fromOrderedMap(Reference<Catalog<KK>> domain, Map<Identifier, VV> contents) {
+	public static <KK extends Entity, VV> SideTable<KK, VV> fromOrderedMap(Reference<Catalog<KK>> domain, Map<Identifier, VV> contents) {
 		return copyOf(domain, contents);
 	}
 
-	public static <KK extends Entity,VV> SideTable<KK,VV> copyOf(Reference<Catalog<KK>> domain, Map<Identifier, VV> contents) {
+	public static <KK extends Entity, VV> SideTable<KK, VV> copyOf(Reference<Catalog<KK>> domain, Map<Identifier, VV> contents) {
 		OrderedPMap<Identifier, VV> map = OrderedPMap.from(contents);
-		map.forEach((k,v) -> {
+		map.forEach((k, v) -> {
 			requireNonNull(k);
 			requireNonNull(v);
 		});
 		return new SideTable<>(CatalogReference.from(domain), map);
 	}
 
-	public static <KK extends Entity,VV> SideTable<KK,VV> fromFunction(Reference<Catalog<KK>> domain, Stream<Identifier> keyIDs, Function<Identifier, VV> function) {
-		LinkedHashMap<Identifier,VV> map = new LinkedHashMap<>();
+	public static <KK extends Entity, VV> SideTable<KK, VV> fromFunction(Reference<Catalog<KK>> domain, Stream<Identifier> keyIDs, Function<Identifier, VV> function) {
+		LinkedHashMap<Identifier, VV> map = new LinkedHashMap<>();
 		keyIDs.forEachOrdered(id -> {
 			VV existing = map.put(id, function.apply(id));
 			if (existing != null) {
@@ -168,8 +172,8 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 		);
 	}
 
-	public static <KK extends Entity,VV> SideTable<KK,VV> fromEntries(Reference<Catalog<KK>> domain, Stream<Entry<Identifier, VV>> entries) {
-		LinkedHashMap<Identifier,VV> map = new LinkedHashMap<>();
+	public static <KK extends Entity, VV> SideTable<KK, VV> fromEntries(Reference<Catalog<KK>> domain, Stream<Entry<Identifier, VV>> entries) {
+		LinkedHashMap<Identifier, VV> map = new LinkedHashMap<>();
 		entries.forEachOrdered(entry -> {
 			Identifier id = entry.getKey();
 			VV value = entry.getValue();
@@ -212,4 +216,17 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 		return domain + "/" + valuesById;
 	}
 
+	@Override
+	public boolean equals(Object o) {
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		SideTable<?, ?> sideTable = (SideTable<?, ?>) o;
+		return Objects.equals(domain, sideTable.domain) && Objects.equals(valuesById, sideTable.valuesById);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(domain, valuesById);
+	}
 }

@@ -2,7 +2,6 @@ package works.bosk.drivers;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
-import lombok.RequiredArgsConstructor;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.Identifier;
@@ -19,12 +18,15 @@ import works.bosk.exceptions.InvalidTypeException;
  * point to the right bosk: the references must already be from the bosk controlled
  * by the downstream driver.
  */
-@RequiredArgsConstructor
 public class ForwardingDriver implements BoskDriver {
 	protected final BoskDriver downstream;
 
+	public ForwardingDriver(BoskDriver downstream) {
+		this.downstream = downstream;
+	}
+
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory() {
-		return (b,d) -> new ForwardingDriver(d);
+		return (_, d) -> new ForwardingDriver(d);
 	}
 
 	@Override

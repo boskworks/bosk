@@ -2,12 +2,12 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.UpdateDescription;
+import jakarta.annotation.Nonnull;
 import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import lombok.NonNull;
 import org.bson.BsonBinaryWriter;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
@@ -169,7 +169,7 @@ final class Formatter extends BsonFormatter {
 		return fullDocument.getInt64(DocumentFields.revision.name(), null);
 	}
 
-	@NonNull MapValue<String> eventDiagnosticAttributesFromFullDocument(BsonDocument fullDocument) {
+	@Nonnull MapValue<String> eventDiagnosticAttributesFromFullDocument(BsonDocument fullDocument) {
 		return getOrSetEventDiagnosticAttributes(getDiagnosticAttributesFromFullDocument(fullDocument));
 	}
 
@@ -186,7 +186,7 @@ final class Formatter extends BsonFormatter {
 		return updatedFields.getInt64(DocumentFields.revision.name(), null);
 	}
 
-	@NonNull MapValue<String> eventDiagnosticAttributesFromUpdate(ChangeStreamDocument<BsonDocument> event) {
+	@Nonnull MapValue<String> eventDiagnosticAttributesFromUpdate(ChangeStreamDocument<BsonDocument> event) {
 		return getOrSetEventDiagnosticAttributes(getDiagnosticAttributesFromUpdateEvent(event));
 	}
 
@@ -214,7 +214,7 @@ final class Formatter extends BsonFormatter {
 		return fullDocument.getDocument(DocumentFields.diagnostics.name(), null);
 	}
 
-	@NonNull private MapValue<String> getOrSetEventDiagnosticAttributes(MapValue<String> fromEvent) {
+	@Nonnull private MapValue<String> getOrSetEventDiagnosticAttributes(MapValue<String> fromEvent) {
 		if (fromEvent == null) {
 			LOGGER.debug("No diagnostic attributes in event; assuming they are unchanged");
 			return lastEventDiagnosticAttributes;

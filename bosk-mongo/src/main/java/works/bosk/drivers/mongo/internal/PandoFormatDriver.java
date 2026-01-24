@@ -12,6 +12,7 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.lang.Nullable;
+import jakarta.annotation.Nonnull;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -21,7 +22,6 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
-import lombok.NonNull;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
@@ -408,7 +408,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			.collect(toCollection(ArrayList::new));
 	}
 
-	private @NonNull BsonDocument fullDocumentForSubPart(ChangeStreamDocument<BsonDocument> event) {
+	private @Nonnull BsonDocument fullDocumentForSubPart(ChangeStreamDocument<BsonDocument> event) {
 		BsonDocument result = event.getFullDocument();
 		if (result == null) {
 			throw new IllegalStateException("No full document in change stream event for subpart: " + event.getOperationType() + " on " + event.getDocumentKey());

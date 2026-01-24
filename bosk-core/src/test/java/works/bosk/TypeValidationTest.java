@@ -4,10 +4,7 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
-import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.experimental.FieldDefaults;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -504,13 +501,16 @@ class TypeValidationTest {
 		Identifier id,
 		Subclass badField
 	) implements Entity {
-		@Getter @FieldDefaults(level=AccessLevel.PRIVATE)
 		@EqualsAndHashCode(callSuper = true)
 		public static final class Subclass extends ListValue<String> {
-			int mutableField;
+			private int mutableField;
 
 			Subclass(String[] entries) {
 				super(entries);
+			}
+
+			public int mutableField() {
+				return this.mutableField;
 			}
 		}
 
@@ -524,12 +524,12 @@ class TypeValidationTest {
 		Identifier id,
 		Subclass badField
 	) implements Entity {
-		@Getter @FieldDefaults(level=AccessLevel.PRIVATE)
 		@EqualsAndHashCode(callSuper = true)
 		public static final class Subclass extends ListValue<String> {
 			Subclass(String[] entries) {
 				super(entries);
 			}
+
 			Subclass() {
 				super(new String[]{"Hello"});
 			}
@@ -546,7 +546,6 @@ class TypeValidationTest {
 		Identifier id,
 		Subclass badField
 	) implements Entity {
-		@Getter @FieldDefaults(level=AccessLevel.PRIVATE)
 		@EqualsAndHashCode(callSuper = true)
 		public static final class Subclass extends ListValue<String> {
 			Subclass() {

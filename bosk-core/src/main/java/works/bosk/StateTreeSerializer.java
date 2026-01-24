@@ -14,13 +14,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import lombok.EqualsAndHashCode;
-import lombok.Value;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.pcollections.ConsPStack;
@@ -173,16 +172,47 @@ public abstract class StateTreeSerializer {
 	 * Closing this scope restores the previous (outer) scope as the current
 	 * thread-local scope.
 	 */
-	@Value // Can't be a record because this is an inner class
-	@EqualsAndHashCode(callSuper = false)
-	private class NestedDeserializationScope implements DeserializationScope {
-		DeserializationScope outer;
-		Path path;
-		BindingEnvironment bindingEnvironment;
+	// Can't be a record because this is an inner class
+	private final class NestedDeserializationScope implements DeserializationScope {
+		private final DeserializationScope outer;
+		private final Path path;
+		private final BindingEnvironment bindingEnvironment;
+
+		public NestedDeserializationScope(DeserializationScope outer, Path path, BindingEnvironment bindingEnvironment) {
+			this.outer = outer;
+			this.path = path;
+			this.bindingEnvironment = bindingEnvironment;
+		}
 
 		@Override
 		public void close() {
 			currentScope.set(requireNonNull(outer));
+		}
+
+		@Override
+		public Path path() {
+			return this.path;
+		}
+
+		@Override
+		public BindingEnvironment bindingEnvironment() {
+			return this.bindingEnvironment;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (o == null || getClass() != o.getClass()) {
+				return false;
+			}
+			NestedDeserializationScope that = (NestedDeserializationScope) o;
+			return Objects.equals(outer, that.outer)
+				&& Objects.equals(path, that.path)
+				&& Objects.equals(bindingEnvironment, that.bindingEnvironment);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(outer, path, bindingEnvironment);
 		}
 	}
 

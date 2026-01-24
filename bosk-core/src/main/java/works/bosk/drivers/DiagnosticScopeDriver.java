@@ -3,7 +3,6 @@ package works.bosk.drivers;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.function.Function;
-import lombok.RequiredArgsConstructor;
 import works.bosk.BoskDiagnosticContext;
 import works.bosk.BoskDiagnosticContext.DiagnosticScope;
 import works.bosk.BoskDriver;
@@ -13,21 +12,24 @@ import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
 
-import static lombok.AccessLevel.PRIVATE;
-
 /**
  * Automatically sets a {@link DiagnosticScope} around each driver operation
  * based on a user-supplied function.
  * Allows diagnostic context to be supplied automatically to every operation.
  */
-@RequiredArgsConstructor(access = PRIVATE)
 public final class DiagnosticScopeDriver implements BoskDriver {
 	final BoskDriver downstream;
 	final BoskDiagnosticContext diagnosticContext;
 	final Function<BoskDiagnosticContext, DiagnosticScope> scopeSupplier;
 
+	private DiagnosticScopeDriver(BoskDriver downstream, BoskDiagnosticContext diagnosticContext, Function<BoskDiagnosticContext, DiagnosticScope> scopeSupplier) {
+		this.downstream = downstream;
+		this.diagnosticContext = diagnosticContext;
+		this.scopeSupplier = scopeSupplier;
+	}
+
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Function<BoskDiagnosticContext, DiagnosticScope> scopeSupplier) {
-		return (b,d) -> new DiagnosticScopeDriver(d, b.diagnosticContext(), scopeSupplier);
+		return (b, d) -> new DiagnosticScopeDriver(d, b.diagnosticContext(), scopeSupplier);
 	}
 
 	@Override

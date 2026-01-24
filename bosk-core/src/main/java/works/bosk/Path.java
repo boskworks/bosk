@@ -15,7 +15,6 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.exceptions.MalformedPathException;
@@ -26,7 +25,6 @@ import static java.lang.System.identityHashCode;
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
-import static lombok.AccessLevel.PACKAGE;
 
 /**
  * Represents a sequence of steps from one object to another object via fields.
@@ -47,8 +45,9 @@ import static lombok.AccessLevel.PACKAGE;
  *
  * @author pdoyle
  */
-@RequiredArgsConstructor(access = PACKAGE)
 public abstract class Path implements Iterable<String> {
+	Path(){}
+
 	public abstract int length();
 
 	public final boolean isEmpty() { return length() == 0; }

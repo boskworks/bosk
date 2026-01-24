@@ -1,18 +1,19 @@
 package works.bosk;
 
-import lombok.AccessLevel;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
+import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 
 /**
  * The means by which {@link Entity entities} are identified within
  * a particular domain, such as a {@link Catalog} or {@link SideTable}.
  */
-@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-@EqualsAndHashCode
 public final class Identifier {
-	@NotNull final String value;
+	@NotNull
+	final String value;
+
+	private Identifier(@NotNull String value) {
+		this.value = value;
+	}
 
 	// TODO: Intern these.  No need to have several Identifier objects for the same value
 	public static Identifier from(String value) {
@@ -35,5 +36,22 @@ public final class Identifier {
 
 	private static long uniqueIdCounter = 1000;
 
-	@Override public String toString() { return value; }
+	@Override
+	public String toString() {
+		return value;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		Identifier that = (Identifier) o;
+		return Objects.equals(value, that.value);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hashCode(value);
+	}
 }

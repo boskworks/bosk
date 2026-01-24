@@ -5,10 +5,9 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Spliterator;
 import java.util.stream.Stream;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
 import org.pcollections.OrderedPMap;
 
 import static java.util.Arrays.asList;
@@ -16,7 +15,6 @@ import static java.util.Collections.unmodifiableCollection;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.LinkedHashMap.newLinkedHashMap;
 import static java.util.Objects.requireNonNull;
-import static lombok.AccessLevel.PRIVATE;
 
 /**
  * An ordered collection of entities included by value. Mainly useful to represent
@@ -34,14 +32,20 @@ import static lombok.AccessLevel.PRIVATE;
  * @author pdoyle
  *
  */
-@RequiredArgsConstructor(access=PRIVATE)
-@EqualsAndHashCode
 public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableByIdentifier<E> {
 	private final OrderedPMap<Identifier, E> contents;
 
-	public int size() { return contents.size(); }
+	private Catalog(OrderedPMap<Identifier, E> contents) {
+		this.contents = contents;
+	}
 
-	public boolean isEmpty() { return contents.isEmpty(); }
+	public int size() {
+		return contents.size();
+	}
+
+	public boolean isEmpty() {
+		return contents.isEmpty();
+	}
 
 	@Override
 	public E get(Identifier key) {
@@ -98,7 +102,7 @@ public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableB
 	}
 
 	public boolean containsAllIDs(Iterable<Identifier> keys) {
-		for (Identifier key: keys) {
+		for (Identifier key : keys) {
 			if (!containsID(key)) {
 				return false;
 			}
@@ -115,7 +119,7 @@ public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableB
 	}
 
 	public boolean containsAll(Iterable<E> entities) {
-		for (E entity: entities) {
+		for (E entity : entities) {
 			if (!contains(entity)) {
 				return false;
 			}
@@ -139,7 +143,7 @@ public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableB
 
 	public static <TT extends Entity> Catalog<TT> of(Collection<TT> entities) {
 		Map<Identifier, TT> newValues = newLinkedHashMap(entities.size());
-		for (TT entity: entities) {
+		for (TT entity : entities) {
 			TT old = newValues.put(requireNonNull(entity.id()), entity);
 			if (old != null) {
 				throw new IllegalArgumentException("Multiple entities with id " + old.id());
@@ -171,4 +175,17 @@ public final class Catalog<E extends Entity> implements Iterable<E>, EnumerableB
 		return contents.toString();
 	}
 
+	@Override
+	public boolean equals(Object o) {
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		Catalog<?> catalog = (Catalog<?>) o;
+		return Objects.equals(contents, catalog.contents);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hashCode(contents);
+	}
 }

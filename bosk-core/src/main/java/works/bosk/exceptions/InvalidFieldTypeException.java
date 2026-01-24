@@ -1,11 +1,16 @@
 package works.bosk.exceptions;
 
-import lombok.Getter;
-
-@Getter
 public class InvalidFieldTypeException extends InvalidTypeException {
 	private final Class<?> containingClass;
 	private final String fieldName;
+
+	public Class<?> containingClass() {
+		return this.containingClass;
+	}
+
+	public String fieldName() {
+		return this.fieldName;
+	}
 
 	public InvalidFieldTypeException(Class<?> containingClass, String fieldName, String message) {
 		super(fullMessage(containingClass, fieldName, message));

@@ -68,6 +68,8 @@ configure(subprojects.findAll {
 	// It's important that bosk-annotations has no deps so other projects won't hesitate to use it
 	if (name != "bosk-annotations") {
 		dependencies {
+			implementation "jakarta.annotation:jakarta.annotation-api:3.0.0"
+
 			annotationProcessor libs.lombok
 			compileOnly libs.lombok
 			implementation libs.slf4j.api
