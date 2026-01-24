@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.status;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.internal.Manifest;
 
@@ -15,7 +16,7 @@ public record MongoStatus(
 	ManifestStatus manifest,
 	StateStatus state
 ) {
-	public MongoStatus with(DatabaseFormat preferredFormat, Manifest actualManifest) {
+	public MongoStatus with(DatabaseFormat preferredFormat, StateTreeNode actualManifest) {
 		return new MongoStatus(
 			this.error,
 			new ManifestStatus(
