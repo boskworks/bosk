@@ -11,7 +11,7 @@ by supporting reactive, idempotent, deterministic control logic design patterns,
 using an immutable in-memory state tree for ultra-fast reads (~50ns).
 
 First, you start with just the `bosk-core` library, writing your application's control plane logic using Bosk.
-The the built-in integrations with things like Jackson and Spring Boot help you get your application up and running.
+Then the built-in integrations with things like Jackson and Spring Boot help you get your application up and running.
 
 Then, when the time comes to turn your standalone application into a high-availability replica set,
 you can bring in the optional [MongoDB library](bosk-mongo).
