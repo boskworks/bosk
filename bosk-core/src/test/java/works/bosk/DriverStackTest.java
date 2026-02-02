@@ -17,15 +17,14 @@ class DriverStackTest {
 	}
 
 	@Test
-	@SuppressWarnings("unchecked")
 	void stackedDrivers_correctOrder() {
 		DriverStack<AbstractBoskTest.TestEntity> stack = DriverStack.of(
-			(b,d) -> new TestDriver<>("first", d),
-			(b,d) -> new TestDriver<>("second", d)
+			(_, d) -> new TestDriver("first", d),
+			(_, d) -> new TestDriver("second", d)
 		);
 
-		TestDriver<AbstractBoskTest.TestEntity> firstDriver = (TestDriver<AbstractBoskTest.TestEntity>) stack.build(null, baseDriver);
-		TestDriver<AbstractBoskTest.TestEntity> secondDriver = (TestDriver<AbstractBoskTest.TestEntity>) firstDriver.downstream();
+		TestDriver firstDriver = (TestDriver) stack.build(null, baseDriver);
+		TestDriver secondDriver = (TestDriver) firstDriver.downstream();
 		BoskDriver thirdDriver = secondDriver.downstream();
 
 		assertEquals("first", firstDriver.name);
@@ -33,7 +32,7 @@ class DriverStackTest {
 		assertSame(baseDriver, thirdDriver);
 	}
 
-	static class TestDriver<R extends Entity> extends ForwardingDriver {
+	static class TestDriver extends ForwardingDriver {
 		final String name;
 
 		public TestDriver(String name, BoskDriver downstream) {
