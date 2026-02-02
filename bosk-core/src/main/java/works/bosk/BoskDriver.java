@@ -28,7 +28,7 @@ public interface BoskDriver {
 	 * downstream implementation of this method whenever the layer itself has
 	 * no initial state to supply. For example, a driver backed by a database
 	 * could delegate to its downstream driver in the case that the database
-	 * is empty, and could use the resulting initial state to initialize th
+	 * is empty, and could use the resulting initial state to initialize the
 	 * database.
 	 *
 	 * @param rootType The full {@link Type} of the root object, including any
