@@ -9,7 +9,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: "docker"
-    directory: "/*/src/test/resources/*.dockerfile"
+    directory: "/bosk-mongo/src/test/resources"
     schedule:
       interval: "weekly"
     groups:
