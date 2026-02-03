@@ -1067,7 +1067,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		 * in the order they appear.
 		 * There can be one or more {@link Identifier} values to bind individual parameters,
 		 * optionally followed by a {@link BindingEnvironment}, {@link Identifier} array,
-		 * or {@link Identifier} varags, to bind any remaining parameters.
+		 * or {@link Identifier} varargs, to bind any remaining parameters.
 		 * The path may contain more placeholders than can be bound by the method parameters,
 		 * in which case the returned {@link Reference} will still have unbound parameters.
 		 * <p>
