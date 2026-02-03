@@ -41,7 +41,7 @@ public class MongoService implements Closeable {
 	// We do logging in some static initializers, so this needs to be initialized first
 	private static final Logger LOGGER = LoggerFactory.getLogger(MongoService.class);
 
-	public static final DockerImageName MONGODB_IMAGE_NAME = DockerImageName.parse("mongo:8.0");
+	private static final DockerImageName MONGODB_IMAGE_NAME = DockerImageName.parse("mongo:8.0");
 
 	private final MongoClient mongoClient = MongoClients.create(normalClientSettings);
 
@@ -101,12 +101,19 @@ public class MongoService implements Closeable {
 	}
 
 	private static MongoDBContainer mongoContainer() {
-		MongoDBContainer container = new MongoDBContainer(MONGODB_IMAGE_NAME)
-			.withReplicaSet()
+		MongoDBContainer container = newPlainMongoContainer()
 			.withTmpFs(Map.of("/data/db", "rw"))
-			.withNetwork(NETWORK);
+			.withNetwork(NETWORK)
+			.withReplicaSet();
 		container.start();
 		return container;
+	}
+
+	/**
+	 * @return just the {@link MongoDBContainer} with no options, and not yet started
+	 */
+	static MongoDBContainer newPlainMongoContainer() {
+		return new MongoDBContainer(MONGODB_IMAGE_NAME);
 	}
 
 	private static ToxiproxyContainer toxiproxyContainer() {
