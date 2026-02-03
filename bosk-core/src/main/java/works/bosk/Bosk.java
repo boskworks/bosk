@@ -26,6 +26,7 @@ import works.bosk.BoskDiagnosticContext.DiagnosticScope;
 import works.bosk.ReferenceUtils.CatalogRef;
 import works.bosk.ReferenceUtils.ListingRef;
 import works.bosk.ReferenceUtils.SideTableRef;
+import works.bosk.annotations.ReferencePath;
 import works.bosk.dereferencers.Dereferencer;
 import works.bosk.dereferencers.PathCompiler;
 import works.bosk.exceptions.InvalidTypeException;
@@ -1054,6 +1055,49 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			return this.then(Classes.taggedUnion(variantCaseClass), path);
 		}
 
+		/**
+		 * Build a runtime implementation of a "Refs" interface that provides typed
+		 * accessor methods for {@link Reference} objects based on the given <code>bosk</code>.
+		 * <p>
+		 * Each method of <code>refsClass</code> must be annotated with {@link ReferencePath}
+		 * and must return a subtype of {@link Reference}.
+		 * <p>
+		 * The path string in {@link ReferencePath} may contain parameter placeholders (e.g. <code>-id-</code>).
+		 * Any parameters in the method signature are used to bind those placeholders
+		 * in the order they appear.
+		 * There can be one or more {@link Identifier} values to bind individual parameters,
+		 * optionally followed by a {@link BindingEnvironment}, {@link Identifier} array,
+		 * or {@link Identifier} varags, to bind any remaining parameters.
+		 * The path may contain more placeholders than can be bound by the method parameters,
+		 * in which case the returned {@link Reference} will still have unbound parameters.
+		 * <p>
+		 * An example {@code Refs} interface:
+		 * <pre>{@code
+		 * public interface Refs {
+		 *     // A specialized Catalog reference
+		 *     @ReferencePath("/widgets")
+		 *     CatalogReference<Widget> widgets();
+		 *
+		 *     // A parameterized reference
+		 *     @ReferencePath("/widgets/-widget-")
+		 *     Reference<Widget> widget(Identifier widgetId);
+		 *
+		 *     // Zero or more of the IDs can be bound.
+		 *     // The resulting reference will have unbound parameters if not all are provided.
+		 *     @ReferencePath("/users/-user-/widgets/-widget-")
+		 *     Reference<UserPref> userWidget(Identifier... ids);
+		 *
+		 *     // Zero or more of the IDs can be bound by name.
+		 *     @ReferencePath("/users/-user-/widgets/-widget-")
+		 *     Reference<UserPref> userWidget(BindingEnvironment env);
+		 * }</pre>
+		 *
+		 * @param refsClass interface describing desired reference-accessor methods
+		 * @param <T> the type of {@code refsClass}
+		 * @return an implementation of <code>refsClass</code> based on this bosk
+		 * @throws InvalidTypeException if the interface is missing annotations,
+		 * methods return unexpected types, or method parameters use unsupported types
+		 */
 		@Override
 		public <T> T buildReferences(Class<T> refsClass) throws InvalidTypeException {
 			return ReferenceBuilder.buildReferences(refsClass, Bosk.this);
