@@ -5,7 +5,6 @@ import com.mongodb.ServerAddress;
 import java.io.IOException;
 import java.net.ServerSocket;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.mongodb.MongoDBContainer;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.DriverStack;
@@ -19,8 +18,9 @@ import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL_FAST;
-import static works.bosk.drivers.mongo.internal.MongoService.MONGODB_IMAGE_NAME;
+import static works.bosk.drivers.mongo.internal.MongoService.newPlainMongoContainer;
 
 /**
  * Separated out from other tests because this involves booting a custom
@@ -48,7 +48,7 @@ public class ServerMisconfigurationTest {
 	 */
 	@Test
 	void notAReplicaSet() {
-		try (var mongo = new MongoDBContainer(MONGODB_IMAGE_NAME)) {
+		try (var mongo = newPlainMongoContainer()) {
 			mongo.start();
 			MongoClientSettings clientSettings = MongoService.mongoClientSettings(
 				new ServerAddress(
@@ -56,7 +56,9 @@ public class ServerMisconfigurationTest {
 					mongo.getFirstMappedPort()
 				)
 			);
-			assertThrows(InitialCursorCommandException.class, () -> createBosk(clientSettings));
+			var e = assertThrows(InitialCursorCommandException.class, () -> createBosk(clientSettings));
+			assertTrue(e.getMessage().contains("replica set"),
+				"Error message must mention replica set: [" + e.getMessage() + "]");
 		}
 	}
 

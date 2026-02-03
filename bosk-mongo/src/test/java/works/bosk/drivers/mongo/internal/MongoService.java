@@ -10,12 +10,14 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.file.Paths;
 import java.util.Map;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
+import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.mongodb.MongoDBContainer;
 import org.testcontainers.toxiproxy.ToxiproxyContainer;
 import org.testcontainers.utility.DockerImageName;
@@ -40,17 +42,21 @@ import static java.util.Collections.singletonList;
 public class MongoService implements Closeable {
 	// We do logging in some static initializers, so this needs to be initialized first
 	private static final Logger LOGGER = LoggerFactory.getLogger(MongoService.class);
-
-	public static final DockerImageName MONGODB_IMAGE_NAME = DockerImageName.parse("mongo:8.0");
-
 	private final MongoClient mongoClient = MongoClients.create(normalClientSettings);
 
 	// Expensive stuff shared among instances as much as possible, hence static
 	private static final Network NETWORK = Network.newNetwork();
+	private static final DockerImageName MONGO_IMAGE = newImageFromDockerfile(
+		"mongo",
+		"src/test/resources/mongo.dockerfile");
 	private static final MongoDBContainer MONGO_CONTAINER = mongoContainer();
 	private static final MongoClientSettings normalClientSettings = mongoClientSettings(
 		new ServerAddress(MONGO_CONTAINER.getHost(), MONGO_CONTAINER.getFirstMappedPort())
 	);
+
+	public static final DockerImageName TOXIPROXY_IMAGE = newImageFromDockerfile(
+		"shopify/toxiproxy",
+		"src/test/resources/toxiproxy.dockerfile");
 
 	private static final ToxiproxyContainer TOXIPROXY_CONTAINER = toxiproxyContainer();
 	private static final ToxiproxyClient TOXIPROXY_CLIENT = createToxiproxyClient();
@@ -101,21 +107,32 @@ public class MongoService implements Closeable {
 	}
 
 	private static MongoDBContainer mongoContainer() {
-		MongoDBContainer container = new MongoDBContainer(MONGODB_IMAGE_NAME)
-			.withReplicaSet()
+		MongoDBContainer container = newPlainMongoContainer()
 			.withTmpFs(Map.of("/data/db", "rw"))
-			.withNetwork(NETWORK);
+			.withNetwork(NETWORK)
+			.withReplicaSet();
 		container.start();
 		return container;
 	}
 
+	/**
+	 * @return just the {@link MongoDBContainer} with no options, and not yet started
+	 */
+	static MongoDBContainer newPlainMongoContainer() {
+		return new MongoDBContainer(MONGO_IMAGE);
+	}
+
 	private static ToxiproxyContainer toxiproxyContainer() {
-		ToxiproxyContainer result = new ToxiproxyContainer(
-			DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.12.0")
-				.asCompatibleSubstituteFor("shopify/toxiproxy"))
+		ToxiproxyContainer result = new ToxiproxyContainer(TOXIPROXY_IMAGE)
 			.withNetwork(NETWORK);
 		result.start();
 		return result;
+	}
+
+	private static DockerImageName newImageFromDockerfile(String otherImageName, String filePath) {
+		return DockerImageName.parse(new ImageFromDockerfile()
+			.withDockerfile(Paths.get(filePath)).get()
+		).asCompatibleSubstituteFor(otherImageName);
 	}
 
 	private static ToxiproxyClient createToxiproxyClient() {
