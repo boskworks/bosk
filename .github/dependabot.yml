@@ -9,7 +9,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/*/src/test/resources/*.dockerfile"
     schedule:
       interval: "weekly"
     groups:
