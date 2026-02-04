@@ -53,9 +53,9 @@ public enum Token {
 	public boolean hasFixedRepresentation() {
 		return switch (this) {
 			case END_TEXT,
-				 NULL, FALSE, TRUE,
-				 START_OBJECT, END_OBJECT, START_ARRAY, END_ARRAY,
-				 COMMA, COLON ->
+				NULL, FALSE, TRUE,
+				START_OBJECT, END_OBJECT, START_ARRAY, END_ARRAY,
+				COMMA, COLON ->
 				true;
 			default ->
 				false;

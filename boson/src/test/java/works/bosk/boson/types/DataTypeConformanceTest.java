@@ -424,10 +424,10 @@ public class DataTypeConformanceTest {
 			.isBindableFrom(DataType.of(Object[].class)));
 
 		assertTrue(new LowerBoundedWildcardType(DataType.of(String[].class))
-			.isAssignableFrom(OBJECT),
+				.isAssignableFrom(OBJECT),
 			"Object conforms to ? super String[]");
 		assertTrue(new LowerBoundedWildcardType(DataType.of(String[].class))
-				.isBindableFrom(OBJECT));
+			.isBindableFrom(OBJECT));
 	}
 
 	@Test
@@ -493,23 +493,23 @@ public class DataTypeConformanceTest {
 
 	@Test
 	<T> void arrayOfUnboundedVariable() {
-	    var arrayOfT = DataType.of(new TypeReference<T[]>() { });
+		var arrayOfT = DataType.of(new TypeReference<T[]>() { });
 		DataType arrayOfString = DataType.of(String[].class);
 		assertFalse(arrayOfT.isAssignableFrom(arrayOfString));
-	    assertTrue(arrayOfT.isBindableFrom(arrayOfString));
+		assertTrue(arrayOfT.isBindableFrom(arrayOfString));
 	}
 
 	@Test
 	<T extends CharSequence> void arrayOfBoundedVariable() {
-	    var arrayOfT = DataType.of(new TypeReference<T[]>() { });
+		var arrayOfT = DataType.of(new TypeReference<T[]>() { });
 
 		DataType arrayOfString = DataType.of(String[].class);
-	    assertFalse(arrayOfT.isAssignableFrom(arrayOfString));
-	    assertTrue(arrayOfT.isBindableFrom(arrayOfString));
+		assertFalse(arrayOfT.isAssignableFrom(arrayOfString));
+		assertTrue(arrayOfT.isBindableFrom(arrayOfString));
 
 		DataType arrayOfObject = DataType.of(Object[].class);
-	    assertFalse(arrayOfT.isAssignableFrom(arrayOfObject));
-	    assertFalse(arrayOfT.isBindableFrom(arrayOfObject));
+		assertFalse(arrayOfT.isAssignableFrom(arrayOfObject));
+		assertFalse(arrayOfT.isBindableFrom(arrayOfObject));
 	}
 
 	@Test
@@ -582,7 +582,7 @@ public class DataTypeConformanceTest {
 
 		var arrayOfString = DataType.of(new TypeReference<String[]>() { });
 		assertTrue(arrayOfWildcard
-			.isAssignableFrom(arrayOfString),
+				.isAssignableFrom(arrayOfString),
 			"Arrays are covariant, so the lower bound is not relevant");
 		assertFalse(arrayOfWildcard
 			.isBindableFrom(arrayOfString));
@@ -606,16 +606,16 @@ public class DataTypeConformanceTest {
 
 	@Test
 	<T> void invariantListWithTypeVariable() {
-	    var listT = DataType.of(new TypeReference<List<T>>() { });
-	    var listString = DataType.of(new TypeReference<List<String>>() { });
+		var listT = DataType.of(new TypeReference<List<T>>() { });
+		var listString = DataType.of(new TypeReference<List<String>>() { });
 
-	    // Assignment to a variable of type List<T> should NOT accept List<String>
-	    assertFalse(listT.isAssignableFrom(listString),
-	      "List<T>.isAssignableFrom(List<String>) must be false (invariant for parameterized types)");
+		// Assignment to a variable of type List<T> should NOT accept List<String>
+		assertFalse(listT.isAssignableFrom(listString),
+			"List<T>.isAssignableFrom(List<String>) must be false (invariant for parameterized types)");
 
-	    // But type-argument conformance (passing List<String> as a type-argument to List<T>) remains true
-	    assertTrue(listT.isBindableFrom(listString),
-	      "List<T>.isBindableFrom(List<String>) should be true (type-argument/bounds semantics)");
+		// But type-argument conformance (passing List<String> as a type-argument to List<T>) remains true
+		assertTrue(listT.isBindableFrom(listString),
+			"List<T>.isBindableFrom(List<String>) should be true (type-argument/bounds semantics)");
 	}
 
 	@Test

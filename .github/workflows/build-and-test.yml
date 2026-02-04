@@ -30,9 +30,9 @@ jobs:
           # First version is for Bosk to use, and the second is for Gradle
           java-version: |
             25
-            17
+            25
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: false # OR: ${{ github.ref != 'refs/heads/develop' }}
 

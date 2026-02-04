@@ -16,13 +16,13 @@ import works.bosk.boson.mapping.spec.BooleanNode;
 import works.bosk.boson.mapping.spec.BoxedPrimitiveSpec;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.EnumByNameNode;
-import works.bosk.boson.mapping.spec.RecognizedMember;
 import works.bosk.boson.mapping.spec.FixedObjectNode;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
+import works.bosk.boson.mapping.spec.RecognizedMember;
 import works.bosk.boson.mapping.spec.RepresentAsSpec;
 import works.bosk.boson.mapping.spec.StringNode;
 import works.bosk.boson.mapping.spec.TypeRefNode;
@@ -75,9 +75,9 @@ public class SpecInterpretingGenerator implements Generator {
 			try {
 				switch (spec) {
 					case BigNumberNode _,
-						 BooleanNode _,
-						 BoxedPrimitiveSpec _,
-						 PrimitiveNumberNode _ -> out.print(value);
+						BooleanNode _,
+						BoxedPrimitiveSpec _,
+						PrimitiveNumberNode _ -> out.print(value);
 
 					case EnumByNameNode _ -> generateEnumByName(value);
 					case ArrayNode node -> generateArray(node, value);
@@ -158,10 +158,10 @@ public class SpecInterpretingGenerator implements Generator {
 				// For-loop form
 				assert next.parameterTypes().size() == 2;
 				for (var iter = start.invoke(value);
-					 Boolean.TRUE.equals((hasNext.parameterTypes().size() == 1)
-						 ? hasNext.invoke(iter)
-						 : hasNext.invoke(iter, value));
-					 iter = next.invoke(iter, value)
+					Boolean.TRUE.equals((hasNext.parameterTypes().size() == 1)
+						? hasNext.invoke(iter)
+						: hasNext.invoke(iter, value));
+					iter = next.invoke(iter, value)
 				) {
 					var memberKey = (getKey.parameterTypes().size() == 1)
 						? getKey.invoke(iter)
