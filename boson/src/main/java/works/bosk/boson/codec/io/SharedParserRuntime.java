@@ -235,7 +235,7 @@ public abstract class SharedParserRuntime {
 			}
 		}
 	}
-	
+
 	protected final void logEntry(String methodName, Object arg) {
 		if (false) {
 			if (LOGGER.isTraceEnabled()) {
@@ -244,7 +244,7 @@ public abstract class SharedParserRuntime {
 			assert !(arg instanceof JsonValueSpec) : "Why are we passing SpecNodes here instead of in the interpreter?";
 		}
 	}
-	
+
 	private static final Logger LOGGER = LoggerFactory.getLogger(SharedParserRuntime.class);
 
 }

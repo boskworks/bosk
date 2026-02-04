@@ -180,7 +180,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	 * Expand each branch by instantiating all injectors of the given type.
 	 */
 	private List<Branch> expandedBranches(List<Branch> currentBranches,
-										  Class<? extends ParameterInjector> injectorType) {
+										Class<? extends ParameterInjector> injectorType) {
 		List<Branch> expanded = new ArrayList<>();
 		for (Branch branch : currentBranches) {
 			expanded.addAll(branch.withInjectors(injectorType));
