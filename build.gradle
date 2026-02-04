@@ -138,32 +138,36 @@ configure(subprojects.findAll { it.name.startsWith("bosk-") || it.name == "boson
 	}
 }
 
-// TODO: Spotless currently isn't doing anything and I can't figure out why
-spotless {
-	enforceCheck = false
-	java {
-		importOrder '', '\\#' // Static imports after regular imports, as per mt-server standard and IntelliJ default
-		removeUnusedImports()
-		trimTrailingWhitespace()
-		leadingSpacesToTabs()
-		replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
-		replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
-	}
-	format 'gradle', {
-		target '**/*.gradle'
+// Spotless configuration
+subprojects {
+	apply plugin: 'com.diffplug.spotless'
+	spotless {
+		java {
+			importOrder '', '\\#' // Static imports after regular imports, as per mt-server standard and IntelliJ default
+			removeUnusedImports()
+			expandWildcardImports()
+			forbidModuleImports()
+			trimTrailingWhitespace()
+			leadingSpacesToTabs()
+			replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
+			replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
+		}
+		format 'gradle', {
+			target '**/*.gradle'
 
-		trimTrailingWhitespace()
-		leadingSpacesToTabs()
-		endWithNewline()
-	}
-	format 'misc', {
-		target '**/*.md', '**/.gitignore'
+			trimTrailingWhitespace()
+			leadingSpacesToTabs()
+			endWithNewline()
+		}
+		format 'misc', {
+			target '**/*.md', '**/.gitignore'
 
-		trimTrailingWhitespace()
-		//leadingSpacesToTabs() For markdown, we want to align some code examples very carefully, so we use spaces
-		replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
-		replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
-		endWithNewline()
+			trimTrailingWhitespace()
+			//leadingSpacesToTabs() For markdown, we want to align some code examples very carefully, so we use spaces
+			replaceRegex 'class-level javadoc indentation fix', /^\*/, ' *'
+			replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
+			endWithNewline()
+		}
 	}
 }
 
