@@ -5,7 +5,7 @@ jackson = "3.0.4"
 jetbrains-annotations = "26.0.2-1"
 jmh = "1.37"
 junit = "6.0.2"
-logback = "1.5.28"
+logback = "1.5.29"
 lombok = "1.18.42"
 pcollections = "5.0.0"
 slf4j = "2.0.17"
@@ -36,14 +36,14 @@ mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.6.3" }
 mysql = { module = "com.mysql:mysql-connector-j", version = "9.6.0" }
 opentelemetry = { module="io.opentelemetry:opentelemetry-sdk", version="1.59.0" }
 pcollections = { module = "org.pcollections:pcollections", version.ref="pcollections" }
-postgresql = { module = "org.postgresql:postgresql", version = "42.7.9" }
+postgresql = { module = "org.postgresql:postgresql", version = "42.7.10" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 spring-boot-annotation-processor = { module="org.springframework.boot:spring-boot-configuration-processor", version.ref="spring-boot" }
 spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter-web", version.ref="spring-boot" }
 spring-boot-starter-webmvc = { module="org.springframework.boot:spring-boot-starter-webmvc", version.ref="spring-boot" }
 spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
 spring-boot-starter-webmvc-test = { module="org.springframework.boot:spring-boot-starter-webmvc-test", version.ref="spring-boot" }
-sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.51.1.0" }
+sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.51.2.0" }
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 testcontainers-mongodb = { module = "org.testcontainers:testcontainers-mongodb", version.ref = "testcontainers" }
