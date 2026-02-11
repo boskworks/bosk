@@ -494,14 +494,14 @@ For example, if the layer receives a conditional update whose precondition match
 Another example: if the layer receives an update that has no effect on the state, it is allowed to ignore that update and decline to submit it downstream.
 These rules are checked during the `DriverConformanceTest` suite via the `DriverStateVerifier` class.
 
-Taking advantage of these state-based rules require that the driver maintains an awareness of the current bosk state,
+Taking advantage of these state-based rules requires that the driver maintains an awareness of the current bosk state,
 which _most drivers do not_,
 and so most drivers are rarely able to exploit the flexibility provided
 because they can't generally determine what effect an update will have.
-However, for drivers that do track the bosk state,
-these rules allow flexibility that might otherwise make driver implementations tricky to write if they were required to emit the exact same sequence of updates they received;
+However, even for drivers that do _not_ track the bosk state,
+these rules can allow some flexibility that might otherwise make driver implementations tricky to write if they were required to emit the exact same sequence of updates they received;
 for instance, it means a queue system does not require exactly-once message delivery because
-a duplicated message is ok as long as messages arrive in order.
+a duplicated update, being idempotent, is fine as long as the messages arrive in order.
 
 ### Hooks
 
