@@ -1,0 +1,5 @@
+# Custom forbidden API signatures
+# Add custom signatures here
+# Format: method signature @ optional message
+# Example:
+# java.lang.String#substring(int) @ Use substring(int, int) for clarity
