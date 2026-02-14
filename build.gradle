@@ -1,6 +1,7 @@
 plugins {
 	id 'java'
 	id 'com.diffplug.spotless' version '8.2.1'
+	id 'de.thetaphi.forbiddenapis' version '3.10' apply false
 	alias(libs.plugins.nexus)
 	alias(libs.plugins.spotbugs) apply false
 }
@@ -34,6 +35,7 @@ configure(subprojects.findAll {
 }) {
 	apply plugin: 'java-library'
 	apply plugin: 'com.github.spotbugs'
+	apply plugin: 'de.thetaphi.forbiddenapis'
 
 	java {
 		toolchain {
@@ -128,6 +130,19 @@ configure(subprojects.findAll {
 	}
 
 	tasks.matching { it.name == "spotbugsTest" }.configureEach { enabled = false }
+
+	forbiddenApis {
+		bundledSignatures = ['jdk-unsafe', 'jdk-deprecated', 'jdk-non-portable', 'jdk-reflection']
+		signaturesFiles = files("${rootProject.projectDir}/forbidden-apis-signatures.txt")
+		ignoreFailures = false
+		failOnMissingClasses = false // Forbidden APIs struggles with the Classfile API
+	}
+
+	forbiddenApisTest {
+		bundledSignatures = ['jdk-unsafe', 'jdk-deprecated', 'jdk-non-portable', 'jdk-reflection']
+		signaturesFiles = files("${rootProject.projectDir}/forbidden-apis-signatures.txt")
+		failOnMissingClasses = false // Forbidden APIs struggles with the Classfile API
+	}
 
 }
 

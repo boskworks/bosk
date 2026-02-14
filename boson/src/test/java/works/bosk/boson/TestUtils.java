@@ -27,6 +27,7 @@ import works.bosk.boson.types.DataType;
 import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
 import static java.lang.Math.min;
 import static java.lang.invoke.MethodHandles.explicitCastArguments;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestUtils {
@@ -216,7 +217,7 @@ public class TestUtils {
 			.limit(count)
 			.toList();
 		var jackson = new ObjectMapper().writerWithDefaultPrettyPrinter();
-		try (var writer = new java.io.FileWriter(file.toFile())) {
+		try (var writer = new java.io.FileWriter(file.toFile(), UTF_8)) {
 			jackson.writeValue(writer, list);
 		}
 	}

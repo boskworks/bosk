@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import ch.qos.logback.classic.Level;
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -205,7 +206,7 @@ public class SchemaEvolutionTest {
 				.preferredDatabaseFormat(config.preferredFormat())
 				.experimental(MongoDriverSettings.Experimental.builder()
 					.build()));
-			this.name = config.preferredFormat().toString().toLowerCase();
+			this.name = config.preferredFormat().toString().toLowerCase(Locale.ROOT);
 		}
 
 		@Override
