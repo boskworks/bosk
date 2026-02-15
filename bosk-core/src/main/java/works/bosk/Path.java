@@ -255,6 +255,10 @@ public abstract class Path implements Iterable<String> {
 	public abstract String lastSegment();
 
 	public abstract int numParameters();
+
+	/**
+	 * @throws IllegalArgumentException if {@link #numParameters()} is 0
+	 */
 	public abstract int firstParameterIndex();
 
 	@Override

@@ -754,48 +754,41 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				action.accept(effectiveScope);
 			}
 		} else {
-			try {
-				// There's at least one parameter that hasn't been bound yet. This means
-				// we need to locate all the matching objects that may have changed.
-				// We do so by filling in the first parameter with all possible values that
-				// could correspond to changed objects and then recursing.
-				//
-				Path containerPath = effectiveScope.path().truncatedTo(effectiveScope.path().firstParameterIndex());
-				Reference<EnumerableByIdentifier<?>> containerRef = rootReference().then(enumerableByIdentifierClass(), containerPath);
-				EnumerableByIdentifier<?> priorContainer = refValueIfExists(containerRef, priorRoot);
-				EnumerableByIdentifier<?> newContainer = refValueIfExists(containerRef, newRoot);
+			// There's at least one parameter that hasn't been bound yet. This means
+			// we need to locate all the matching objects that may have changed.
+			// We do so by filling in the first parameter with all possible values that
+			// could correspond to changed objects and then recursing.
+			//
+			Reference<EnumerableByIdentifier<?>> containerRef = effectiveScope.truncatedBeforeFirstParameter();
+			EnumerableByIdentifier<?> priorContainer = refValueIfExists(containerRef, priorRoot);
+			EnumerableByIdentifier<?> newContainer = refValueIfExists(containerRef, newRoot);
 
-				// TODO: If priorContainer == newContainer, can we stop immediately?
+			// TODO: If priorContainer == newContainer, can we stop immediately?
 
-				// Process any deleted items first. This can allow the hook to free some memory
-				// that can be used by subsequent hooks.
-				// We do them in reverse order just because that's likely to be the preferred
-				// order for cleanup activities.
-				//
-				// TODO: Should we actually process the hooks themselves in reverse order for the same reason?
-				//
-				if (priorContainer != null) {
-					List<Identifier> priorIDs = priorContainer.ids();
-					for (Identifier id : priorIDs.reversed()) {
-						if (newContainer == null || newContainer.get(id) == null) {
-							triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
-						}
+			// Process any deleted items first. This can allow the hook to free some memory
+			// that can be used by subsequent hooks.
+			// We do them in reverse order just because that's likely to be the preferred
+			// order for cleanup activities.
+			//
+			// TODO: Should we actually process the hooks themselves in reverse order for the same reason?
+			//
+			if (priorContainer != null) {
+				List<Identifier> priorIDs = priorContainer.ids();
+				for (Identifier id : priorIDs.reversed()) {
+					if (newContainer == null || newContainer.get(id) == null) {
+						triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
 					}
 				}
+			}
 
-				// Then process updated items
-				//
-				if (newContainer != null) {
-					for (Identifier id : newContainer.ids()) {
-						if (priorContainer == null || priorContainer.get(id) != newContainer.get(id)) {
-							triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
-						}
+			// Then process updated items
+			//
+			if (newContainer != null) {
+				for (Identifier id : newContainer.ids()) {
+					if (priorContainer == null || priorContainer.get(id) != newContainer.get(id)) {
+						triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
 					}
 				}
-			} catch (InvalidTypeException e) {
-				// TODO: Add truncation methods to Reference so we can refactor this to create
-				// the container reference without risking an InvalidTypeException
-				throw new AssertionError("Parameterized reference must be truncatable at the location of the parameter", e);
 			}
 		}
 	}

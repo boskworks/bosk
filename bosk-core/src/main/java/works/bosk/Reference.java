@@ -173,6 +173,26 @@ public sealed interface Reference<T> permits
 	}
 
 	/**
+	 * Returns a {@link Reference} to the container of the first parameter in this reference's path.
+	 * The returned reference has no parameters.
+	 * <p>
+	 * For example, if this reference's path is <code>/countries/-country-/cities/-city-</code>,
+	 * this returns a reference to <code>/countries</code>.
+	 *
+	 * @throws IllegalArgumentException if this reference has no parameters
+	 */
+	@SuppressWarnings({"rawtypes", "unchecked"})
+	default Reference<EnumerableByIdentifier<?>> truncatedBeforeFirstParameter() {
+		try {
+			Reference<EnumerableByIdentifier<?>> result = (Reference) root().then(EnumerableByIdentifier.class, path().truncatedTo(path().firstParameterIndex()));
+			assert result.path().numParameters() == 0: "Expected a definite path after truncation, but got " + result.path();
+			return result;
+		} catch (InvalidTypeException e) {
+			throw new AssertionError("Every parameter must belong to an EnumerableByIdentifier", e);
+		}
+	}
+
+	/**
 	 * Returns a {@link Reference} with the {@link Path#lastSegment() last segment} removed.
 	 *
 	 * <p>
