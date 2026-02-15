@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.BoskConfig.simpleDriver;
 
@@ -199,6 +200,17 @@ class ReferenceTest extends AbstractBoskTest {
 	}
 
 	@Test
+	void truncatedBeforeFirstParameter() {
+		Identifier id = Identifier.from("id");
+
+		assertEquals(refs.catalog(), refs.anyEntity().truncatedBeforeFirstParameter());
+		assertEquals(refs.catalog(), refs.anySideTableEntry().truncatedBeforeFirstParameter());
+		assertEquals(refs.stringSideTable(id), refs.anySideTableEntry(id).truncatedBeforeFirstParameter());
+		assertThrows(IllegalArgumentException.class, () -> refs.anySideTableEntry(id, id).truncatedBeforeFirstParameter(),
+			"Should throw when called on a reference with no parameters");
+	}
+
+	@Test
 	void idAt() {
 		Identifier parentID = Identifier.from("parent");
 		Identifier childID = Identifier.from("child1");
@@ -320,6 +332,7 @@ class ReferenceTest extends AbstractBoskTest {
 		@ReferencePath("/someStrings") Reference<StringListValueSubclass> someStrings();
 		@ReferencePath("/someMappedStrings") Reference<MapValue<String>> someMappedStrings();
 
+		@ReferencePath("/entities/-entity-") Reference<TestEntity> anyEntity();
 		@ReferencePath("/entities/-entity-") Reference<TestEntity> entity(Identifier entity);
 		@ReferencePath("/entities/-entity-/string") Reference<String> string(Identifier entity);
 		@ReferencePath("/entities/-entity-/testEnum") Reference<TestEnum> testEnum(Identifier entity);
@@ -344,8 +357,7 @@ class ReferenceTest extends AbstractBoskTest {
 		@ReferencePath("/entities/-entity-/optionals/optionalListing") ListingReference<TestChild> optionalListing(Identifier entity);
 		@ReferencePath("/entities/-entity-/optionals/optionalSideTable") SideTableReference<TestChild, String> optionalSideTable(Identifier entity);
 
-		@ReferencePath("/entities/-entity-/stringSideTable/-child-") Reference<String> sideTableEntry(Identifier entity, Identifier child);
-		@ReferencePath("/entities/-entity-/stringSideTable/-child-") Reference<String> anySideTableEntry(Identifier entity);
+		@ReferencePath("/entities/-entity-/stringSideTable/-child-") Reference<String> anySideTableEntry(Identifier... parameters);
 		@ReferencePath("/entities/-entity-/children/-child-") Reference<TestChild> child(Identifier entity, Identifier child);
 		@ReferencePath("/entities/-entity-/children/-child-") Reference<TestChild> anyChild(Identifier entity);
 	}

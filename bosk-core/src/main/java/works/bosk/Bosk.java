@@ -5,7 +5,6 @@ import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
@@ -365,7 +364,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (@SuppressWarnings("unused") ReadContext executionContext = supersedingReadContext()) {
+				try (ReadContext _ = supersedingReadContext()) {
 					preconditionsSatisfied = !target.exists();
 				}
 				if (preconditionsSatisfied) {
@@ -401,7 +400,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (@SuppressWarnings("unused") ReadContext executionContext = supersedingReadContext()) {
+				try (ReadContext _ = supersedingReadContext()) {
 					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
@@ -419,7 +418,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (@SuppressWarnings("unused") ReadContext executionContext = supersedingReadContext()) {
+				try (ReadContext _ = supersedingReadContext()) {
 					preconditionsSatisfied = Objects.equals(precondition.value(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
@@ -519,10 +518,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
-					try (
-						@SuppressWarnings("unused") DiagnosticScope foo = diagnosticContext.withOnly(attributes)
-					) {
-						try (@SuppressWarnings("unused") ReadContext executionContext = new ReadContext(rootForHook)) {
+					try (DiagnosticScope _ = diagnosticContext.withOnly(attributes)) {
+						try (ReadContext _ = new ReadContext(rootForHook)) {
 							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);
 						} catch (Exception e) {
@@ -757,62 +754,54 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				action.accept(effectiveScope);
 			}
 		} else {
-			try {
-				// There's at least one parameter that hasn't been bound yet. This means
-				// we need to locate all the matching objects that may have changed.
-				// We do so by filling in the first parameter with all possible values that
-				// could correspond to changed objects and then recursing.
-				//
-				Path containerPath = effectiveScope.path().truncatedTo(effectiveScope.path().firstParameterIndex());
-				Reference<EnumerableByIdentifier<?>> containerRef = rootReference().then(enumerableByIdentifierClass(), containerPath);
-				EnumerableByIdentifier<?> priorContainer = refValueIfExists(containerRef, priorRoot);
-				EnumerableByIdentifier<?> newContainer = refValueIfExists(containerRef, newRoot);
+			// There's at least one parameter that hasn't been bound yet. This means
+			// we need to locate all the matching objects that may have changed.
+			// We do so by filling in the first parameter with all possible values that
+			// could correspond to changed objects and then recursing.
+			//
+			Reference<EnumerableByIdentifier<?>> containerRef = effectiveScope.truncatedBeforeFirstParameter();
+			EnumerableByIdentifier<?> priorContainer = refValueIfExists(containerRef, priorRoot);
+			EnumerableByIdentifier<?> newContainer = refValueIfExists(containerRef, newRoot);
 
-				// TODO: If priorContainer == newContainer, can we stop immediately?
+			// TODO: If priorContainer == newContainer, can we stop immediately?
 
-				// Process any deleted items first. This can allow the hook to free some memory
-				// that can be used by subsequent hooks.
-				// We do them in reverse order just because that's likely to be the preferred
-				// order for cleanup activities.
-				//
-				// TODO: Should we actually process the hooks themselves in reverse order for the same reason?
-				//
-				if (priorContainer != null) {
-					List<Identifier> priorIDs = priorContainer.ids();
-					for (ListIterator<Identifier> iter = priorIDs.listIterator(priorIDs.size()); iter.hasPrevious(); ) {
-						Identifier id = iter.previous();
-						if (newContainer == null || newContainer.get(id) == null) {
-							triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
-						}
+			// Process any deleted items first. This can allow the hook to free some memory
+			// that can be used by subsequent hooks.
+			// We do them in reverse order just because that's likely to be the preferred
+			// order for cleanup activities.
+			//
+			// TODO: Should we actually process the hooks themselves in reverse order for the same reason?
+			//
+			if (priorContainer != null) {
+				List<Identifier> priorIDs = priorContainer.ids();
+				for (Identifier id : priorIDs.reversed()) {
+					if (newContainer == null || newContainer.get(id) == null) {
+						triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
 					}
 				}
+			}
 
-				// Then process updated items
-				//
-				if (newContainer != null) {
-					for (Identifier id : newContainer.ids()) {
-						if (priorContainer == null || priorContainer.get(id) != newContainer.get(id)) {
-							triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
-						}
+			// Then process updated items
+			//
+			if (newContainer != null) {
+				for (Identifier id : newContainer.ids()) {
+					if (priorContainer == null || priorContainer.get(id) != newContainer.get(id)) {
+						triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
 					}
 				}
-			} catch (InvalidTypeException e) {
-				// TODO: Add truncation methods to Reference so we can refactor this to create
-				// the container reference without risking an InvalidTypeException
-				throw new AssertionError("Parameterized reference must be truncatable at the location of the parameter", e);
 			}
 		}
 	}
 
 	@Nullable
-	private <V> V refValueIfExists(Reference<V> containerRef, @Nullable R priorRoot) {
-		if (priorRoot == null) {
+	private <V> V refValueIfExists(Reference<V> containerRef, @Nullable R root) {
+		if (root == null) {
 			return null;
 		} else {
 			// TODO: This would be less cumbersome if we could apply a Reference to an arbitrary root object.
 			// For now, References only apply to the current ReadContext, so we need a new ReadContext every time
 			// we want to change roots.
-			try (var _ = new ReadContext(priorRoot)) {
+			try (var _ = new ReadContext(root)) {
 				return containerRef.valueIfExists();
 			}
 		}
