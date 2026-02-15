@@ -25,6 +25,7 @@ import works.bosk.BoskDiagnosticContext.DiagnosticScope;
 import works.bosk.ReferenceUtils.CatalogRef;
 import works.bosk.ReferenceUtils.ListingRef;
 import works.bosk.ReferenceUtils.SideTableRef;
+import works.bosk.annotations.Hook;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.dereferencers.Dereferencer;
 import works.bosk.dereferencers.PathCompiler;
@@ -641,6 +642,61 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		localDriver.triggerEverywhere(reg);
 	}
 
+	/**
+	 * Finds methods annotated with {@link Hook} in the given {@code receiver} object
+	 * and registers them as hooks in this bosk.
+	 * <p>
+	 * The {@link Hook @Hook} annotation specifies the <em>scope</em> of the hook:
+	 * a path string indicating which state tree node whose updates will trigger the hook.
+	 * The scope path may contain parameters (e.g., {@code "/widgets/-widget-"}),
+	 * in which case the hook will be called when any matching node is updated.
+	 * <p>
+	 * As always, when hooks are registered, they are immediately triggered
+	 * for all existing nodes that match their scope,
+	 * allowing the hooks to "get caught up" with all changes that occurred before they were registered.
+	 * <p>
+	 * Hook methods can accept arguments which will be injected by the framework when the hook is called.
+	 * <p>
+	 * An argument of type {@link Reference} will receive a reference to the specific object that changed and triggered the hook.
+	 * This is useful if the scope is parameterized, since the reference passed to the method will have all its parameters bound.
+	 * The target type of a {@link Reference} argument must match that of the hook's scope.
+	 * <p>
+	 * An argument of type {@link BindingEnvironment} will receive bindings for all parameters in the hook's scope path.
+	 * This is useful if the hook implementation wants to access related references.
+	 *
+	 * <p>
+	 * Example:
+	 * <pre>{@code
+	 * class ExampleHooks {
+	 *     @Hook("/widgets/-widget-")
+	 *     void onWidgetChanged(Reference<Widget> widgetRef) {
+	 *         // Simple hook that just accesses the object that changed
+	 *         Widget widget = widgetRef.value();
+	 *         ...
+	 *     }
+	 *
+	 *     interface Refs {
+	 *         // An example of a related reference, using the same parameter name as the hook scope
+	 *         @ReferencePath("/widgetConfigs/-widget-")
+	 *         Reference<WidgetConfig> widgetConfig();
+	 *     }
+	 *
+	 *     @Hook("/widgets/-widget-")
+	 *     void onWidgetChanged(BindingEnvironment bindings) {
+	 *         // Access a related object using the same parameter bindings
+	 *         WidgetConfig config = refs.widgetConfig().boundBy(bindings).value();
+	 *         ...
+	 *     }
+	 * }
+	 * }</pre>
+	 *
+	 * Hook methods must not be static or private.
+	 * Inherited methods are included in the scan.
+	 *
+	 * @param receiver the object whose {@link Hook @Hook}-annotated methods should be registered
+	 * @throws InvalidTypeException if any hook method is invalid (static, private, has unsupported parameters, etc.)
+	 * @see Hook
+	 */
 	public void registerHooks(Object receiver) throws InvalidTypeException {
 		HookScanner.registerHooks(receiver, this.rootReference(), this.hookRegistrar());
 	}
