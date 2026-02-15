@@ -5,7 +5,6 @@ import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
@@ -365,7 +364,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (@SuppressWarnings("unused") ReadContext executionContext = supersedingReadContext()) {
+				try (ReadContext _ = supersedingReadContext()) {
 					preconditionsSatisfied = !target.exists();
 				}
 				if (preconditionsSatisfied) {
@@ -401,7 +400,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (@SuppressWarnings("unused") ReadContext executionContext = supersedingReadContext()) {
+				try (ReadContext _ = supersedingReadContext()) {
 					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
@@ -419,7 +418,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (@SuppressWarnings("unused") ReadContext executionContext = supersedingReadContext()) {
+				try (ReadContext _ = supersedingReadContext()) {
 					preconditionsSatisfied = Objects.equals(precondition.value(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
@@ -519,10 +518,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
-					try (
-						@SuppressWarnings("unused") DiagnosticScope foo = diagnosticContext.withOnly(attributes)
-					) {
-						try (@SuppressWarnings("unused") ReadContext executionContext = new ReadContext(rootForHook)) {
+					try (DiagnosticScope _ = diagnosticContext.withOnly(attributes)) {
+						try (ReadContext _ = new ReadContext(rootForHook)) {
 							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);
 						} catch (Exception e) {
@@ -779,8 +776,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				//
 				if (priorContainer != null) {
 					List<Identifier> priorIDs = priorContainer.ids();
-					for (ListIterator<Identifier> iter = priorIDs.listIterator(priorIDs.size()); iter.hasPrevious(); ) {
-						Identifier id = iter.previous();
+					for (Identifier id : priorIDs.reversed()) {
 						if (newContainer == null || newContainer.get(id) == null) {
 							triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
 						}
