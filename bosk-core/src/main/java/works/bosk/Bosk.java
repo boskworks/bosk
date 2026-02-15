@@ -801,14 +801,14 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	}
 
 	@Nullable
-	private <V> V refValueIfExists(Reference<V> containerRef, @Nullable R priorRoot) {
-		if (priorRoot == null) {
+	private <V> V refValueIfExists(Reference<V> containerRef, @Nullable R root) {
+		if (root == null) {
 			return null;
 		} else {
 			// TODO: This would be less cumbersome if we could apply a Reference to an arbitrary root object.
 			// For now, References only apply to the current ReadContext, so we need a new ReadContext every time
 			// we want to change roots.
-			try (var _ = new ReadContext(priorRoot)) {
+			try (var _ = new ReadContext(root)) {
 				return containerRef.valueIfExists();
 			}
 		}
