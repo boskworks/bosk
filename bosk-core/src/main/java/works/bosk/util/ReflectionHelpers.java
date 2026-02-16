@@ -2,6 +2,9 @@ package works.bosk.util;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,11 +13,13 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import works.bosk.exceptions.NotYetImplementedException;
 
 import static java.util.Objects.requireNonNull;
 import static org.objectweb.asm.ClassReader.SKIP_CODE;
 import static org.objectweb.asm.ClassReader.SKIP_DEBUG;
 import static org.objectweb.asm.ClassReader.SKIP_FRAMES;
+import static org.objectweb.asm.Opcodes.ACC_STATIC;
 import static org.objectweb.asm.Opcodes.ASM9;
 import static org.objectweb.asm.Type.ARRAY;
 import static org.objectweb.asm.Type.OBJECT;
@@ -25,10 +30,12 @@ public final class ReflectionHelpers {
 	 * @param type must be defined in a classfile accessible by passing {@link Class#getResourceAsStream(String)}
 	 *             the class's own name followed by <code>.class</code>.
 	 *             In particular, this can't be a dynamically generated class.
+	 * @param lookup must have access to all the methods of {@code type}.
 	 * @return like {@link Class#getDeclaredMethods()} except in bytecode order.
 	 */
-	public static List<Method> getDeclaredMethodsInOrder(Class<?> type) {
-		// Won't someone please tell me why getDeclaredMethods doesn't already work this way?
+	public static List<Method> getDeclaredMethodsInOrder(Class<?> type, MethodHandles.Lookup lookup) {
+		classAccessProbe(type, lookup);
+
 		List<Method> result = new ArrayList<>();
 		ClassLoader loader = type.getClassLoader();
 		ClassReader cr;
@@ -47,7 +54,6 @@ public final class ReflectionHelpers {
 			@Override
 			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
 				if (name.equals("<init>") || name.equals("<clinit>")) {
-					// getDeclaredMethods explicitly excludes these
 					return null;
 				} else if ((access & Opcodes.ACC_SYNTHETIC) != 0) {
 					return null;
@@ -57,15 +63,35 @@ public final class ReflectionHelpers {
 				for (int i = 0; i < argumentTypes.length; i++) {
 					argumentClasses[i] = findClass(argumentTypes[i], loader);
 				}
+				Type returnType = Type.getReturnType(descriptor);
+				Class<?> returnClass = findClass(returnType, loader);
 				try {
-					result.add(type.getDeclaredMethod(name, argumentClasses));
+					MethodHandle mh;
+					if ((access & ACC_STATIC) == 0) {
+						mh = lookup.findVirtual(type, name, MethodType.methodType(returnClass, argumentClasses));
+					} else {
+						mh = lookup.findStatic(type, name, MethodType.methodType(returnClass, argumentClasses));
+					}
+					Method method = lookup.revealDirect(mh).reflectAs(Method.class, lookup);
+					result.add(method);
 				} catch (NoSuchMethodException e) {
-					throw new IllegalStateException(e);
+					throw new NotYetImplementedException("Class does not have a method found in the bytecode!", e);
+				} catch (IllegalAccessException e) {
+					throw new IllegalArgumentException("Unable to access method", e);
 				}
 				return null;
 			}
 		}, SKIP_CODE | SKIP_DEBUG | SKIP_FRAMES);
 		return result;
+	}
+
+	private static void classAccessProbe(Class<?> type, MethodHandles.Lookup lookup) {
+		// Look up a method that every class should have
+		try {
+			lookup.findVirtual(type, "toString", MethodType.methodType(String.class));
+		} catch (NoSuchMethodException | IllegalAccessException e) {
+			throw new IllegalArgumentException("Lookup object does not have access to the given type: " + type, e);
+		}
 	}
 
 	private static Class<?> findClass(Type argumentType, ClassLoader loader) {

@@ -1,6 +1,7 @@
 package works.bosk.hello;
 
 import io.opentelemetry.instrumentation.annotations.WithSpan;
+import java.lang.invoke.MethodHandles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -12,7 +13,7 @@ import works.bosk.hello.state.Target;
 @Component
 public class HelloHooks {
 	public HelloHooks(HelloBosk bosk) throws InvalidTypeException {
-		bosk.registerHooks(this);
+		bosk.registerHooks(this, MethodHandles.lookup());
 	}
 
 	@WithSpan

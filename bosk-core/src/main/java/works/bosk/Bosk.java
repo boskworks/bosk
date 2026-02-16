@@ -1,6 +1,7 @@
 package works.bosk;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.Deque;
@@ -690,15 +691,19 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * }
 	 * }</pre>
 	 *
-	 * Hook methods must not be static or private.
+	 * Hook methods must not be static or private, but they can be package-private.
 	 * Inherited methods are included in the scan.
+	 * <p>
+	 * The Hook class must have no methods inaccessible to the given {@code lookup}.
+	 * Such methods interfere with our ability to validate that the hook methods are well-formed.
 	 *
 	 * @param receiver the object whose {@link Hook @Hook}-annotated methods should be registered
+	 * @param lookup a {@link MethodHandles.Lookup} object with access to {@code receiver}'s methods
 	 * @throws InvalidTypeException if any hook method is invalid (static, private, has unsupported parameters, etc.)
 	 * @see Hook
 	 */
-	public void registerHooks(Object receiver) throws InvalidTypeException {
-		HookScanner.registerHooks(receiver, this.rootReference(), this.hookRegistrar());
+	public void registerHooks(Object receiver, MethodHandles.Lookup lookup) throws InvalidTypeException {
+		HookScanner.registerHooks(receiver, this.rootReference(), this.hookRegistrar(), lookup);
 	}
 
 	@Override

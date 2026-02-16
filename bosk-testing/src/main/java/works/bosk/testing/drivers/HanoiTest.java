@@ -1,5 +1,6 @@
 package works.bosk.testing.drivers;
 
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.stream.IntStream;
@@ -45,8 +46,7 @@ public abstract class HanoiTest {
 	protected DriverFactory<HanoiState> driverFactory;
 
 	public interface Refs {
-		@ReferencePath("/puzzles")
-		CatalogReference<Puzzle> puzzles();
+		@ReferencePath("/puzzles") CatalogReference<Puzzle> puzzles();
 		@ReferencePath("/puzzles/-puzzle-") Reference<Puzzle> puzzle(Identifier puzzle);
 		@ReferencePath("/solved/-puzzle-") Reference<ListingEntry> solved(Identifier puzzle);
 		@ReferencePath("/puzzles/-puzzle-/startingTower") Reference<Reference<Tower>> startingTower(Identifier puzzle);
@@ -64,7 +64,7 @@ public abstract class HanoiTest {
 			BoskConfig.<HanoiState>builder().driverFactory(driverFactory).build());
 		refs = bosk.rootReference().buildReferences(Refs.class);
 		numSolved = new LinkedBlockingDeque<>();
-		bosk.registerHooks(this);
+		bosk.registerHooks(this, MethodHandles.lookup());
 	}
 
 	@InjectedTest
@@ -111,14 +111,14 @@ public abstract class HanoiTest {
 	}
 
 	@Hook("/solved")
-	public void solveReportingHook(Reference<Listing<Puzzle>> ref) {
+	void solveReportingHook(Reference<Listing<Puzzle>> ref) {
 		int n = ref.value().size();
 		LOGGER.debug("Reporting {} solved", n);
 		numSolved.add(n);
 	}
 
 	@Hook("/puzzles/-puzzle-/towers/-tower-/discs/-disc-")
-	public void discMoved(Reference<Disc> ref) {
+	void discMoved(Reference<Disc> ref) {
 		Disc moved = ref.valueIfExists();
 		if (moved == null) {
 			LOGGER.debug("Ignoring disc deletion: {}", ref);

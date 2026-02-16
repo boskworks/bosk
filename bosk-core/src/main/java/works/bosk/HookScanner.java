@@ -12,23 +12,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.annotations.Hook;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.util.ReflectionHelpers;
 
 import static java.lang.reflect.Modifier.isPrivate;
 import static java.lang.reflect.Modifier.isStatic;
-import static works.bosk.util.ReflectionHelpers.getDeclaredMethodsInOrder;
 
 /**
  * Finds methods annotated with {@link Hook} in the given {@code object} and registers them in the given {@link Bosk}.
  */
 final class HookScanner {
-	static <T> void registerHooks(T receiverObject, RootReference<?> rootReference, HookRegistrar hookRegistrar) throws InvalidTypeException {
+	static <T> void registerHooks(T receiverObject, RootReference<?> rootReference, HookRegistrar hookRegistrar, MethodHandles.Lookup lookup) throws InvalidTypeException {
+		List<Class<?>> bottomUpHierarchy = new ArrayList<>();
+		for (Class<?> receiverClass = receiverObject.getClass(); receiverClass != Object.class; receiverClass = receiverClass.getSuperclass()) {
+			bottomUpHierarchy.add(receiverClass);
+		}
 		int hookCounter = 0;
-		for (
-			Class<?> receiverClass = receiverObject.getClass();
-			receiverClass != null;
-			receiverClass = receiverClass.getSuperclass()
-		) {
-			for (Method method : getDeclaredMethodsInOrder(receiverClass)) {
+		for (Class<?> receiverClass: bottomUpHierarchy.reversed()) {
+			List<Method> methods;
+			try {
+				methods = ReflectionHelpers.getDeclaredMethodsInOrder(receiverClass, lookup);
+			} catch (IllegalArgumentException e) {
+				throw new InvalidTypeException("Supplied Lookup object does not have the necessary access", e);
+			}
+			for (Method method : methods) {
 				Hook hookAnnotation = method.getAnnotation(Hook.class);
 				if (hookAnnotation == null) {
 					continue;
@@ -40,7 +46,7 @@ final class HookScanner {
 				}
 
 				try {
-					registerOneHookMethod(receiverObject, method, Path.parseParameterized(hookAnnotation.value()), rootReference, hookRegistrar);
+					registerOneHookMethod(receiverObject, method, Path.parseParameterized(hookAnnotation.value()), rootReference, hookRegistrar, lookup);
 					hookCounter++;
 				} catch (InvalidTypeException e) {
 					throw new InvalidTypeException("Unable to register hook method " + receiverClass.getSimpleName() + "." + method.getName() + ": " + e.getMessage(), e);
@@ -54,7 +60,7 @@ final class HookScanner {
 		}
 	}
 
-	private static <T> void registerOneHookMethod(T receiverObject, Method method, Path path, RootReference<?> rootReference, HookRegistrar hookRegistrar) throws InvalidTypeException {
+	private static <T> void registerOneHookMethod(T receiverObject, Method method, Path path, RootReference<?> rootReference, HookRegistrar hookRegistrar, MethodHandles.Lookup lookup) throws InvalidTypeException {
 		Reference<?> plainRef = rootReference.then(Object.class, path);
 
 		// Now substitute one of the handy Reference subtypes where possible
@@ -88,7 +94,7 @@ final class HookScanner {
 
 		MethodHandle hook;
 		try {
-			hook = MethodHandles.lookup().unreflect(method);
+			hook = lookup.unreflect(method);
 		} catch (IllegalAccessException e) {
 			throw new IllegalArgumentException(e);
 		}
