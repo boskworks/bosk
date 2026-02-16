@@ -13,7 +13,6 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import works.bosk.exceptions.NotYetImplementedException;
 
 import static java.util.Objects.requireNonNull;
 import static org.objectweb.asm.ClassReader.SKIP_CODE;
@@ -75,7 +74,7 @@ public final class ReflectionHelpers {
 					Method method = lookup.revealDirect(mh).reflectAs(Method.class, lookup);
 					result.add(method);
 				} catch (NoSuchMethodException e) {
-					throw new NotYetImplementedException("Class does not have a method found in the bytecode!", e);
+					throw new IllegalStateException("Method found in bytecode cannot be retrieved via reflection", e);
 				} catch (IllegalAccessException e) {
 					throw new IllegalArgumentException("Unable to access method", e);
 				}
