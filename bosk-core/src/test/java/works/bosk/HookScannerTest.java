@@ -100,4 +100,19 @@ class HookScannerTest {
 		}
 		assertThrows(InvalidTypeException.class, () -> HookScanner.registerHooks(new Hooks(), bosk.rootReference(), bosk.hookRegistrar(), MethodHandles.lookup()));
 	}
+
+	@Test
+	void privateNonHookMethod_ignored() throws InvalidTypeException {
+		List<String> strings = new ArrayList<>();
+		class Hooks {
+			@Hook("/string") void stringChanged(Reference<String> ref) {
+				strings.add(ref.value());
+			}
+
+			@SuppressWarnings("unused")
+			private void helper() { }
+		}
+		HookScanner.registerHooks(new Hooks(), bosk.rootReference(), bosk.hookRegistrar(), MethodHandles.lookup());
+		assertEquals(List.of("test"), strings);
+	}
 }
