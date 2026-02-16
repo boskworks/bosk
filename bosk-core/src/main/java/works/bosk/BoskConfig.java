@@ -14,6 +14,10 @@ public final class BoskConfig<R extends StateTreeNode> {
 		this.registrarFactory = registrarFactory;
 	}
 
+	/**
+	 * @return a {@link BoskConfig} that is
+	 * equivalent to {@code BoskConfig.builder().build()}
+	 */
 	@SuppressWarnings("unchecked")
 	public static <RR extends StateTreeNode> BoskConfig<RR> simple() {
 		return (BoskConfig<RR>) SIMPLE_CONFIG;

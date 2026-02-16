@@ -1,6 +1,7 @@
 package works.bosk;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
@@ -530,11 +531,11 @@ public class HooksTest extends AbstractBoskTest {
 		assertEquals(expected, receiver.hookCalls);
 	}
 
-	public static class HookReceiver {
+	static class HookReceiver {
 		final List<List<Object>> hookCalls = new ArrayList<>();
 		@SuppressWarnings("this-escape")
 		public HookReceiver(Bosk<?> bosk) throws InvalidTypeException {
-			bosk.registerHooks(this);
+			bosk.registerHooks(this, MethodHandles.lookup());
 		}
 
 		@Hook("/entities/parent/children/-child-/string")
@@ -565,7 +566,7 @@ public class HooksTest extends AbstractBoskTest {
 	public static final class ReferenceSubclassHooks {
 		final List<List<Object>> hookCalls = new ArrayList<>();
 		public ReferenceSubclassHooks(Bosk<?> bosk) throws InvalidTypeException {
-			bosk.registerHooks(this);
+			bosk.registerHooks(this, MethodHandles.lookup());
 		}
 
 		@Hook("/entities/parent/children")
@@ -597,7 +598,7 @@ public class HooksTest extends AbstractBoskTest {
 	})
 	void registerHooks_invalid_throws(Class<? extends Consumer<Exception>> receiverClass) throws Exception {
 		Consumer<Exception> receiver = receiverClass.getConstructor().newInstance();
-		InvalidTypeException e = assertThrows(InvalidTypeException.class, ()->bosk.registerHooks(receiver));
+		InvalidTypeException e = assertThrows(InvalidTypeException.class, ()->bosk.registerHooks(receiver, MethodHandles.lookup()));
 		receiver.accept(e);
 	}
 
