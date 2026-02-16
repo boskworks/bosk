@@ -93,4 +93,11 @@ class HookScannerTest {
 		), registrations);
 	}
 
+	@Test
+	void objectParameter_throws() {
+		class Hooks {
+			@Hook("/string") void stringChanged(Object o) { }
+		}
+		assertThrows(InvalidTypeException.class, () -> HookScanner.registerHooks(new Hooks(), bosk.rootReference(), bosk.hookRegistrar(), MethodHandles.lookup()));
+	}
 }

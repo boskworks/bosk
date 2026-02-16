@@ -85,7 +85,13 @@ final class HookScanner {
 				} else {
 					throw new InvalidTypeException("Parameter \"" + p.getName() + "\" should be a reference to " + scope.targetType() + ", not " + referenceType);
 				}
-			} else if (p.getType().isAssignableFrom(BindingEnvironment.class)) {
+			} else if (BindingEnvironment.class.isAssignableFrom(p.getType())) {
+				// The above check might look backward because you can assign a BindingEnvironment
+				// to a parameter if that parameter is assignable from BindingEnvironment.
+				// However, we expect some level of intention expressed by the user:
+				// we don't want to pass a BindingEnvironment to a parameter of type Object.
+				// BindingEnvironment has no supertypes except Object, and it's final,
+				// so we're effectively checking that the parameter is of type BindingEnvironment exactly.
 				argumentFunctions.add(ref -> scope.parametersFrom(ref.path()));
 			} else {
 				throw new InvalidTypeException("Unsupported parameter type: " + p);
