@@ -2,14 +2,14 @@
 asm = "9.9.1"
 hamcrest = "3.0"
 jackson = "3.0.4"
-jetbrains-annotations = "26.0.2-1"
+jetbrains-annotations = "26.1.0"
 jmh = "1.37"
-junit = "6.0.2"
-logback = "1.5.31"
+junit = "6.0.3"
+logback = "1.5.32"
 lombok = "1.18.42"
 pcollections = "5.0.0"
 slf4j = "2.0.17"
-spring-boot = "4.0.2"
+spring-boot = "4.0.3"
 testcontainers = "2.0.3"
 
 [libraries]
