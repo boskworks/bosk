@@ -15,8 +15,8 @@ public class ExampleTest {
 	}
 
 	@Test
-	void readContext() {
-		try (var _ = bosk.readContext()) {
+	void readSession() {
+		try (var _ = bosk.readSession()) {
 			System.out.println("Hello, " + bosk.refs.name().value());
 		}
 	}

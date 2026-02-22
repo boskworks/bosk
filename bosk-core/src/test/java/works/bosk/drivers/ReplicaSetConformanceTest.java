@@ -28,10 +28,10 @@ class ReplicaSetConformanceTest extends DriverConformanceTest {
 	@AfterEach
 	void checkFinalState() {
 		TestEntity expected, actual;
-		try (@SuppressWarnings("unused") Bosk<TestEntity>.ReadContext context = canonicalBosk.readContext()) {
+		try (@SuppressWarnings("unused") Bosk<TestEntity>.ReadSession session = canonicalBosk.readSession()) {
 			expected = canonicalBosk.rootReference().value();
 		}
-		try (@SuppressWarnings("unused") Bosk<TestEntity>.ReadContext context = replicaBosk.readContext()) {
+		try (@SuppressWarnings("unused") Bosk<TestEntity>.ReadSession session = replicaBosk.readSession()) {
 			actual = replicaBosk.rootReference().value();
 		}
 		assertEquals(expected, actual);

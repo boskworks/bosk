@@ -111,15 +111,15 @@ class OptionalRefsTest extends AbstractRoundTripTest {
 		V value = valueFactory.createFrom(bosk);
 		@SuppressWarnings("unchecked")
 		Reference<V> optionalRef = bosk.rootReference().then((Class<V>)value.getClass(), "field");
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertNull(optionalRef.valueIfExists());
 		}
 		bosk.driver().submitReplacement(optionalRef, value);
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(value, optionalRef.valueIfExists());
 		}
 		bosk.driver().submitDeletion(optionalRef);
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertNull(optionalRef.valueIfExists());
 		}
 

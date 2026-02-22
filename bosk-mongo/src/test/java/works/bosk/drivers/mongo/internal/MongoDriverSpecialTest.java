@@ -141,7 +141,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			_ -> { throw new AssertionError("Default root function should not be called"); },
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
-		try (var _ = latecomerBosk.readContext()) {
+		try (var _ = latecomerBosk.readSession()) {
 			TestEntity actual = latecomerBosk.rootReference().value();
 			assertEquals(expected, actual);
 		}
@@ -189,7 +189,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			}
 		}
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			TestEntity expected = initialRoot(bosk);
 			TestEntity actual = bosk.rootReference().value();
 			assertEquals(expected, actual, "MongoDriver should not have called downstream.flush() yet");
@@ -197,7 +197,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		bosk.driver().flush();
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			TestEntity expected = initialRoot(bosk).withListing(Listing.of(catalogRef, entity123));
 			TestEntity actual = bosk.rootReference().value();
 			assertEquals(expected, actual, "MongoDriver.flush() should reliably update the bosk");
@@ -229,7 +229,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		// Check the contents
 		driver.flush();
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			Listing<TestEntity> actual = listingRef.value();
 			Listing<TestEntity> expected = Listing.of(catalogRef, entity124, entity123);
 			assertEquals(expected, actual);
@@ -240,7 +240,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		// Check the contents
 		driver.flush();
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			Listing<TestEntity> actual = listingRef.value();
 			Listing<TestEntity> expected = Listing.of(catalogRef, entity124);
 			assertEquals(expected, actual);
@@ -292,14 +292,14 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		driver.flush();
 		TestEntity actual;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			actual = bosk.rootReference().value();
 		}
 		assertEquals(expected, actual);
 
 		latecomerBosk.driver().flush();
 		TestEntity latecomerActual;
-		try (var _ = latecomerBosk.readContext()) {
+		try (var _ = latecomerBosk.readSession()) {
 			latecomerActual = latecomerBosk.rootReference().value();
 		}
 		assertEquals(expected, latecomerActual);
@@ -361,7 +361,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			.withListing(Listing.of(refs.catalog(), entity123, entity124));
 
 		TestEntity actual;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			actual = bosk.rootReference().value();
 		}
 		assertEquals(expected, actual);
@@ -434,7 +434,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		driver.flush();
 		TestEntity actual;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			actual = bosk.rootReference().value();
 		}
 		assertEquals(expected, actual);
@@ -461,7 +461,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		OldEntity expected = OldEntity.withString(rootID.toString(), prevBosk);
 
 		OldEntity actual;
-		try (var _ = prevBosk.readContext()) {
+		try (var _ = prevBosk.readSession()) {
 			actual = prevBosk.rootReference().value();
 		}
 		assertEquals(expected, actual);
@@ -495,7 +495,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		OldEntity oldEntity = OldEntity.withString("replacementString", prevBosk);
 
 		OldEntity actual;
-		try (var _ = prevBosk.readContext()) {
+		try (var _ = prevBosk.readSession()) {
 			actual = prevBosk.rootReference().value();
 		}
 
@@ -531,7 +531,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			.withString(rootID.toString(), prevBosk);
 
 		OldEntity actual;
-		try (var _ = prevBosk.readContext()) {
+		try (var _ = prevBosk.readSession()) {
 			actual = prevBosk.rootReference().value();
 		}
 
@@ -563,7 +563,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		OldEntity oldEntity = OldEntity.withString(rootID.toString(), prevBosk); // unchanged
 
 		OldEntity actual;
-		try (var _ = prevBosk.readContext()) {
+		try (var _ = prevBosk.readSession()) {
 			actual = prevBosk.rootReference().value();
 		}
 
@@ -592,7 +592,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		TestEntity expected1 = initialRoot(testBosk); // NOT what was put there by the setup bosk!
 		TestEntity actual1;
-		try (var _ = testBosk.readContext()) {
+		try (var _ = testBosk.readSession()) {
 			actual1 = testBosk.rootReference().value();
 		}
 
@@ -608,7 +608,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		Refs refs = testBosk.buildReferences(Refs.class);
 		TestEntity expected2;
-		try (var _ = setupBosk.readContext()) {
+		try (var _ = setupBosk.readSession()) {
 			// (Note that we don't bother flushing setupBosk because we don't need the latest value;
 			// the variant field hasn't changed since it was initialized.)
 			expected2 = TestEntity.empty(Identifier.from("optionalEntity"), refs.catalog())
@@ -617,7 +617,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		TestEntity actual2;
-		try (var _ = testBosk.readContext()) {
+		try (var _ = testBosk.readSession()) {
 			actual2 = testBosk.rootReference().value();
 		}
 
@@ -667,7 +667,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		bosk.driver().flush();
 		TestEntity expected = initialRoot(bosk);
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			TestEntity actual = bosk.rootReference().value();
 			assertEquals(expected, actual);
 		}
@@ -694,7 +694,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Check state before");
 		Optional<TestValues> before;
-		try (var _ = originalBosk.readContext()) {
+		try (var _ = originalBosk.readSession()) {
 			before = originalBosk.rootReference().value().values();
 		}
 		assertEquals(Optional.empty(), before); // Not there yet
@@ -705,7 +705,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Check state after");
 		Optional<TestValues> after;
-		try (var _ = originalBosk.readContext()) {
+		try (var _ = originalBosk.readSession()) {
 			after = originalBosk.rootReference().value().values();
 		}
 		assertEquals(Optional.of(TestValues.blank()), after); // Now it's there

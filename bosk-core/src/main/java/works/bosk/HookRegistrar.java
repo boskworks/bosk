@@ -11,7 +11,7 @@ public interface HookRegistrar {
 	 * <p>
 	 * The <code>scope</code> reference can be parameterized.
 	 * Upon any change to any matching node, or any parent or child of a matching node,
-	 * the <code>hook</code> will be called with a {@link Bosk.ReadContext} that captures
+	 * the <code>hook</code> will be called with a {@link Bosk.ReadSession} that captures
 	 * the state immediately after the update was applied.
 	 * The <code>hook</code> will receive an argument that is the <code>scope</code> reference
 	 * with all its parameters (if any) bound.

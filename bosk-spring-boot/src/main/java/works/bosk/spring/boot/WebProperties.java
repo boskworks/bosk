@@ -4,6 +4,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "bosk.web")
 public record WebProperties(
-	Boolean readContext,
+	Boolean readSession,
 	String maintenancePath
 ) {}

@@ -17,13 +17,13 @@ public class BoskAutoConfiguration {
 	@Bean
 	@ConditionalOnProperty(
 		prefix = "bosk.web",
-		name = "read-context",
+		name = "read-session",
 		matchIfMissing = true)
 	@ConditionalOnBean(Bosk.class) // Because of matchIfMissing
-	ReadContextFilter readContextFilter(
+	ReadSessionFilter readSessionFilter(
 		Bosk<?> bosk
 	) {
-		return new ReadContextFilter(bosk);
+		return new ReadSessionFilter(bosk);
 	}
 
 	@Bean

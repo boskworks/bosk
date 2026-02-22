@@ -101,12 +101,12 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		bosk.driver().flush();
 
 		TestEntity actual;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			actual = bosk.rootReference().value();
 		}
 
 		TestEntity expected;
-		try (var _ = fixer.readContext()) {
+		try (var _ = fixer.readSession()) {
 			expected = fixer.rootReference().value();
 		}
 

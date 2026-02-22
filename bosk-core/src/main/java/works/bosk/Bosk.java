@@ -31,7 +31,7 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.dereferencers.Dereferencer;
 import works.bosk.dereferencers.PathCompiler;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.exceptions.NoReadContextException;
+import works.bosk.exceptions.NoReadSessionException;
 import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.exceptions.NotYetImplementedException;
 import works.bosk.exceptions.ReferenceBindingException;
@@ -47,7 +47,7 @@ import static works.bosk.TypeValidation.validateType;
 
 /**
  * A mutable container for an immutable object tree with cross-tree {@link Reference}s,
- * providing snapshot-at-start semantics via {@link ReadContext ReadContext},
+ * providing snapshot-at-start semantics via {@link ReadSession ReadSession},
  * managing updates via {@link BoskDriver},
  * and notifying listeners of changes via {@link #hookRegistrar() hookRegistrar}.
  *
@@ -61,7 +61,7 @@ import static works.bosk.TypeValidation.validateType;
  *
  * <p>
  * Reads are performed by calling {@link Reference#value()} in the context of
- * a {@code ReadContext}, which provides an immutable snapshot of the bosk
+ * a {@code ReadSession}, which provides an immutable snapshot of the bosk
  * state to the thread.
  * This object acts as a factory for {@link Reference} objects that
  * traverse the object trees by walking their fields (actually getter methods)
@@ -72,7 +72,7 @@ import static works.bosk.TypeValidation.validateType;
  * {@link BoskDriver#submitReplacement(Reference, Object) submitReplacement} and similar,
  * rather than by modifying the in-memory state directly.
  * The driver will apply the changes either immediately or at a later time.
- * Regardless, updates will not be visible in any {@code ReadContext}
+ * Regardless, updates will not be visible in any {@code ReadSession}
  * created before the update occurred.
  *
  * @param <R> The type of the state tree's root node
@@ -366,7 +366,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (ReadContext _ = supersedingReadContext()) {
+				try (ReadSession _ = supersedingReadSession()) {
 					preconditionsSatisfied = !target.exists();
 				}
 				if (preconditionsSatisfied) {
@@ -402,7 +402,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (ReadContext _ = supersedingReadContext()) {
+				try (ReadSession _ = supersedingReadSession()) {
 					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
@@ -420,7 +420,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
-				try (ReadContext _ = supersedingReadContext()) {
+				try (ReadSession _ = supersedingReadSession()) {
 					preconditionsSatisfied = Objects.equals(precondition.value(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
@@ -521,7 +521,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
 					try (DiagnosticScope _ = diagnosticContext.withOnly(attributes)) {
-						try (ReadContext _ = new ReadContext(rootForHook)) {
+						try (ReadSession _ = new ReadSession(rootForHook)) {
 							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);
 						} catch (Exception e) {
@@ -797,7 +797,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @param effectiveScope The hook scope with zero or more of its parameters filled in
 	 * @param priorRoot      The root before the change that triggered the hook; or null during initialization when running
 	 *                       hooks on the {@link BoskDriver#initialRoot initial root}.
-	 * @param newRoot        The root after the change that triggered the hook. This will be the root in the {@link ReadContext}
+	 * @param newRoot        The root after the change that triggered the hook. This will be the root in the {@link ReadSession}
 	 *                       during hook execution.
 	 * @param action         The operation to perform for each matching object that is different between the two roots
 	 * @param <S>            The type of the hook scope object
@@ -860,9 +860,9 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			return null;
 		} else {
 			// TODO: This would be less cumbersome if we could apply a Reference to an arbitrary root object.
-			// For now, References only apply to the current ReadContext, so we need a new ReadContext every time
+			// For now, References only apply to the current ReadSession, so we need a new ReadSession every time
 			// we want to change roots.
-			try (var _ = new ReadContext(root)) {
+			try (var _ = new ReadSession(root)) {
 				return containerRef.valueIfExists();
 			}
 		}
@@ -870,37 +870,37 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 	/**
 	 * A thread-local region in which {@link Reference#value()} works; outside
-	 * of a {@code ReadContext}, {@link Reference#value()} will throw {@link
+	 * of a {@code ReadSession}, {@link Reference#value()} will throw {@link
 	 * IllegalStateException}.
 	 *
 	 * @author pdoyle
 	 */
-	public final class ReadContext implements AutoCloseable {
+	public final class ReadSession implements AutoCloseable {
 		final R originalRoot;
 		final R snapshot; // Mostly for adopt()
 
 		/**
-		 * Creates a {@link ReadContext} for the current thread. If one is already
+		 * Creates a {@link ReadSession} for the current thread. If one is already
 		 * active on this thread, the new nested one will be equivalent and has
 		 * no effect.
 		 */
-		private ReadContext() {
+		private ReadSession() {
 			originalRoot = rootSnapshot.get();
 			if (originalRoot == null) {
 				snapshot = currentRoot;
 				if (snapshot == null) {
-					throw new IllegalStateException("Bosk constructor has not yet finished; cannot create a ReadContext");
+					throw new IllegalStateException("Bosk constructor has not yet finished; cannot create a ReadSession");
 				}
 				rootSnapshot.set(snapshot);
 				LOGGER.trace("New {}", this);
 			} else {
-				// Inner scopes use the same snapshot as outer scopes
+				// Inner sessions use the same snapshot as outer sessions
 				snapshot = originalRoot;
 				LOGGER.trace("Nested {}", this);
 			}
 		}
 
-		private ReadContext(ReadContext toAdopt) {
+		private ReadSession(ReadSession toAdopt) {
 			R snapshotToInherit = requireNonNull(toAdopt.snapshot);
 			originalRoot = rootSnapshot.get();
 			if (originalRoot == null) {
@@ -911,7 +911,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				this.snapshot = originalRoot;
 				LOGGER.trace("Re-sharing {}", this);
 			} else {
-				throw new IllegalStateException("Read scope for " + name + " already active in " + Thread.currentThread());
+				throw new IllegalStateException("Read session for " + name + " already active in " + Thread.currentThread());
 			}
 		}
 
@@ -922,7 +922,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		 * Unlike the other constructors, this can be used to substitute a new root temporarily,
 		 * even if there's already one active on the current thread.
 		 */
-		ReadContext(@NotNull R root) {
+		ReadSession(@NotNull R root) {
 			originalRoot = rootSnapshot.get();
 			snapshot = requireNonNull(root);
 			rootSnapshot.set(snapshot);
@@ -930,25 +930,25 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		/**
-		 * Creates a {@link ReadContext} for the current thread, inheriting state
+		 * Creates a {@link ReadSession} for the current thread, inheriting state
 		 * from another thread.
 		 * Any calls to {@link Reference#value()} on the current thread will return
 		 * the same value they would have returned on the thread where
-		 * <code>this</code> context was created.
+		 * <code>this</code> session was created.
 		 *
 		 * <p>
-		 * Because nested scopes behave like their outer scope, you can always
-		 * make another ReadContext at any time on some thread in order to
-		 * "capture" whatever scope may be in effect on that thread (or to
-		 * create a new one if there is no active scope on that thread).
+		 * Because nested sessions behave like their outer session, you can always
+		 * make another ReadSession at any time on some thread to
+		 * "capture" whatever session may be in effect on that thread (or to
+		 * create a new one if there is no active session on that thread).
 		 *
 		 * <p>
-		 * Hence, a recommended idiom for scope inheritance looks like this:
+		 * Hence, a recommended idiom for session inheritance looks like this:
 		 *
 		 * <blockquote><pre>
-		 * try (ReadContext originalThReadContext = bosk.readContext()) {
+		 * try (ReadSession originalThReadSession = bosk.readSession()) {
 		 *     workQueue.submit(() -> {
-		 *         try (ReadContext workerThReadContext = bosk.adopt(originalThReadContext)) {
+		 *         try (ReadSession workerThReadSession = bosk.adopt(originalThReadSession)) {
 		 *             // Code in here can read from the bosk just like the original thread.
 		 *         }
 		 *     });
@@ -956,62 +956,62 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		 * </pre></blockquote>
 		 *
 		 * Note, though, that this will prevent the garbage collector from
-		 * collecting the ReadContext's state snapshot until the worker thread's
-		 * scope is finished. Therefore, if the worker thread is to continue running
-		 * after the original thread would have exited its own scope,
+		 * collecting the ReadSession's state snapshot until the worker thread's
+		 * session is finished. Therefore, if the worker thread is to continue running
+		 * after the original thread would have exited its own session,
 		 * then use this idiom only if the worker thread must see
 		 * the same state snapshot as the original thread <em>and</em> you're
 		 * willing to prevent that snapshot from being garbage-collected until
 		 * the worker thread finishes.
 		 *
-		 * @return a <code>ReadContext</code> representing the new context.
+		 * @return a <code>ReadSession</code> representing the new session.
 		 */
-		public ReadContext adopt() {
-			return new ReadContext(this);
+		public ReadSession adopt() {
+			return new ReadSession(this);
 		}
 
 		@Override
 		public void close() {
-			// TODO: Enforce the closing rules described in readContext javadocs?
+			// TODO: Enforce the closing rules described in readSession javadocs?
 			LOGGER.trace("Exiting {}; restoring {}", this, System.identityHashCode(originalRoot));
 			rootSnapshot.set(originalRoot);
 		}
 
 		@Override
 		public String toString() {
-			return "ReadContext(" + System.identityHashCode(snapshot) + ")";
+			return "ReadSession(" + System.identityHashCode(snapshot) + ")";
 		}
 	}
 
 	/**
-	 * Establishes a {@link ReadContext} for the calling thread,
+	 * Establishes a {@link ReadSession} for the calling thread,
 	 * allowing {@link Reference#value()} to return values from this bosk's state tree,
 	 * from a snapshot taken at the moment this method was called.
-	 * The snapshot is held stable until the returned context is {@link ReadContext#close() closed}.
+	 * The snapshot is held stable until the returned session is {@link ReadSession#close() closed}.
 	 *
 	 * <p>
-	 * If the calling thread has an active read context already,
-	 * the returned <code>ReadContext</code> has no effect:
-	 * the state snapshot from the existing context will continue to be used on the calling thread
-	 * until both contexts (the returned one and the existing one) are closed.
+	 * If the calling thread has an active session already,
+	 * the returned <code>ReadSession</code> has no effect:
+	 * the state snapshot from the existing session will continue to be used on the calling thread
+	 * until both sessions (the returned one and the existing one) are closed.
 	 *
 	 * <p>
-	 * <code>ReadContext</code>s must be closed on the same thread on which they were opened,
+	 * <code>ReadSession</code>s must be closed on the same thread on which they were opened,
 	 * and must be closed in reverse order.
 	 * We recommend using them in <i>try-with-resources</i> statements;
-	 * otherwise, you could end up with some read contexts ending prematurely,
+	 * otherwise, you could end up with some sessions ending prematurely,
 	 * and others persisting for the remainder of the thread's lifetime.
 	 */
-	public final ReadContext readContext() {
-		return new ReadContext();
+	public final ReadSession readSession() {
+		return new ReadSession();
 	}
 
 	/**
-	 * Establishes a new {@link ReadContext} for the calling thread, similar to {@link #readContext()}, except that
-	 * if the calling thread already has a context, it will be ignored,
-	 * and the newly created context will have a fresh snapshot of the bosk's state tree;
-	 * then, when the returned context is {@link ReadContext#close closed},
-	 * the previous context will be restored.
+	 * Establishes a new {@link ReadSession} for the calling thread, similar to {@link #readSession()}, except that
+	 * if the calling thread already has a session, it will be ignored,
+	 * and the newly created session will have a fresh snapshot of the bosk's state tree;
+	 * then, when the returned session is {@link ReadSession#close closed},
+	 * the previous session will be restored.
 	 * <p>
 	 * This is intended to support coordination of distributed logic among multiple threads (or servers) using the same bosk.
 	 * Threads can submit an update, call {@link BoskDriver#flush}, and then use this method
@@ -1019,20 +1019,20 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * <p>
 	 * Use this method when it's important to observe the bosk state after a {@link BoskDriver#flush flush}
 	 * performed by the same thread.
-	 * When in doubt, you probably want {@link #readContext()} instead of this.
+	 * When in doubt, you probably want {@link #readSession()} instead of this.
 	 * This method opens the possibility that the same thread can see two different revisions of the bosk state,
 	 * which can lead to confusing bugs in application code.
-	 * In addition, when the returned context is {@link ReadContext#close closed},
+	 * In addition, when the returned session is {@link ReadSession#close closed},
 	 * the bosk state can appear to revert to a prior state, which can be confusing.
 	 *
-	 * @see #readContext()
+	 * @see #readSession()
 	 */
-	public final ReadContext supersedingReadContext() {
+	public final ReadSession supersedingReadSession() {
 		R snapshot = currentRoot;
 		if (snapshot == null) {
-			throw new IllegalStateException("Bosk constructor has not yet finished; cannot create a ReadContext");
+			throw new IllegalStateException("Bosk constructor has not yet finished; cannot create a ReadSession");
 		}
-		return new ReadContext(snapshot);
+		return new ReadSession(snapshot);
 	}
 
 	/**
@@ -1296,7 +1296,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			R snapshot = rootSnapshot.get();
 			LOGGER.trace("Snapshot is {}", System.identityHashCode(snapshot));
 			if (snapshot == null) {
-				throw new NoReadContextException("No active read context for " + name + " in " + Thread.currentThread());
+				throw new NoReadSessionException("No active read session for " + name + " in " + Thread.currentThread());
 			} else try {
 				return (T) dereferencer().get(snapshot, this);
 			} catch (NonexistentEntryException e) {

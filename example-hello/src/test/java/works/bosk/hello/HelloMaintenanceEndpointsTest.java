@@ -21,7 +21,7 @@ import works.bosk.Identifier;
 import works.bosk.hello.state.BoskState;
 import works.bosk.hello.state.Target;
 import works.bosk.logback.BoskLogFilter;
-import works.bosk.spring.boot.ReadContextFilter;
+import works.bosk.spring.boot.ReadSessionFilter;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static ch.qos.logback.classic.Level.OFF;
@@ -130,7 +130,7 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void get_nonexistentTarget_reportsError() throws Exception {
-		logController.setLogging(OFF, ReadContextFilter.class);
+		logController.setLogging(OFF, ReadSessionFilter.class);
 		mvc.perform(get("/bosk/targets/nonexistent"))
 			.andExpect(status().isNotFound());
 	}
@@ -181,9 +181,9 @@ public class HelloMaintenanceEndpointsTest {
 	}
 
 	@Test
-	void postWithoutReadContext_reportsError() throws Exception {
-		logController.setLogging(OFF, ReadContextFilter.class);
-		mvc.perform(post("/api/noReadContext"))
+	void postWithoutReadSession_reportsError() throws Exception {
+		logController.setLogging(OFF, ReadSessionFilter.class);
+		mvc.perform(post("/api/noReadSession"))
 			.andExpect(status().isInternalServerError());
 	}
 
