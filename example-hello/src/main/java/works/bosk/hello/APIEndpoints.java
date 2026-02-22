@@ -27,8 +27,8 @@ public record APIEndpoints (
 	/**
 	 * This should throw a 500. Useful for testing.
 	 */
-	@PostMapping("/noReadContext")
-	void noReadContext() {
+	@PostMapping("/noReadSession")
+	void noReadSession() {
 		bosk.rootReference().value();
 	}
 

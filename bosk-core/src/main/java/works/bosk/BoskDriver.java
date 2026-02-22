@@ -49,7 +49,7 @@ public interface BoskDriver {
 	 * Requests that the object referenced by <code>target</code> be changed to <code>newValue</code>.
 	 *
 	 * <p>
-	 * Changes will not be visible in the {@link Bosk.ReadContext} in which this method
+	 * Changes will not be visible in the {@link Bosk.ReadSession} in which this method
 	 * was called. If <code>target</code> is inside an enclosing object that does not exist at the
 	 * time the update is applied, it is silently ignored.
 	 */
@@ -78,7 +78,7 @@ public interface BoskDriver {
 	 * it will be changed to {@link java.util.Optional#empty()}.
 	 *
 	 * <p>
-	 * Changes will not be visible in the {@link Bosk.ReadContext} in which this method
+	 * Changes will not be visible in the {@link Bosk.ReadSession} in which this method
 	 * was called. If <code>target.exists()</code> is false at the time this update
 	 * is to be applied, it is silently ignored.
 	 *
@@ -123,7 +123,7 @@ public interface BoskDriver {
 	 * </li></ul>
 	 *
 	 * All of these events "happen before" this method returns.
-	 * If a {@link Bosk.ReadContext} is acquired after this method returns,
+	 * If a {@link Bosk.ReadSession} is acquired after this method returns,
 	 * all of the effects of the above operations (and possibly some additional subsequent operations)
 	 * will be reflected in the bosk state.
 	 * Hooks triggered by the above operations may or may not have run before this method returns.

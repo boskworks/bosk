@@ -277,7 +277,7 @@ public class PathCompilerTest extends AbstractBoskTest {
 		Reference<Identifier> idRef = differentBosk.rootReference().then(Identifier.class, Path.parse(
 			"/id" ));
 
-		try (Bosk<?>.ReadContext _ = differentBosk.readContext()) {
+		try (Bosk<?>.ReadSession _ = differentBosk.readSession()) {
 			assertSame(rootID, idRef.valueIfExists());
 		}
 	}
@@ -402,24 +402,24 @@ public class PathCompilerTest extends AbstractBoskTest {
 			Object expectedGet = expected.get(root, ref);
 			tests.add(dynamicTest(description + ": Dereferencer.get should return the right object", () ->
 				assertSame(expectedGet, actual.get(root, ref))));
-			try (Bosk<TestRoot>.ReadContext context = bosk.readContext()) {
+			try (Bosk<TestRoot>.ReadSession session = bosk.readSession()) {
 				tests.add(dynamicTest(description + ": Reference.value should return the right object", () ->
-					usingContext(context, () -> assertSame(expectedGet, ref.value()))));
+					usingSession(session, () -> assertSame(expectedGet, ref.value()))));
 				tests.add(dynamicTest(description + ": Reference.valueIfExists should return the right object", () ->
-					usingContext(context, () -> assertSame(expectedGet, ref.valueIfExists()))));
+					usingSession(session, () -> assertSame(expectedGet, ref.valueIfExists()))));
 				tests.add(dynamicTest(description + ": Reference.optionalValue should return the right object", () ->
-					usingContext(context, () -> assertSame(expectedGet, ref.optionalValue().orElse(null)))));
+					usingSession(session, () -> assertSame(expectedGet, ref.optionalValue().orElse(null)))));
 			}
 		} catch (NonexistentEntryException e) {
 			tests.add(dynamicTest(description + ": Dereferencer.get should throw " + e.getClass().getSimpleName(), () ->
 				assertThrows(e.getClass(), () -> actual.get(root, ref))));
-			try (Bosk<TestRoot>.ReadContext context = bosk.readContext()) {
+			try (Bosk<TestRoot>.ReadSession session = bosk.readSession()) {
 				tests.add(dynamicTest(description + ": Reference.value should throw " + e.getClass().getSimpleName(), () ->
-					usingContext(context, () -> assertThrows(NonexistentReferenceException.class, ref::value))));
+					usingSession(session, () -> assertThrows(NonexistentReferenceException.class, ref::value))));
 				tests.add(dynamicTest(description + ": Reference.valueIfExists should return null", () ->
-					usingContext(context, () -> assertNull(ref.valueIfExists()))));
+					usingSession(session, () -> assertNull(ref.valueIfExists()))));
 				tests.add(dynamicTest(description + ": Reference.optionalValue should return empty()", () ->
-					usingContext(context, () -> assertFalse(ref.optionalValue().isPresent()))));
+					usingSession(session, () -> assertFalse(ref.optionalValue().isPresent()))));
 			}
 		}
 
@@ -452,8 +452,8 @@ public class PathCompilerTest extends AbstractBoskTest {
 		return tests;
 	}
 
-	private void usingContext(Bosk<TestRoot>.ReadContext context, Runnable action) {
-		try (@SuppressWarnings("unused") Bosk<TestRoot>.ReadContext rc = context.adopt()) {
+	private void usingSession(Bosk<TestRoot>.ReadSession session, Runnable action) {
+		try (@SuppressWarnings("unused") Bosk<TestRoot>.ReadSession rc = session.adopt()) {
 			action.run();
 		}
 	}

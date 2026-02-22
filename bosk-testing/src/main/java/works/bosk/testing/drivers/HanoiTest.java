@@ -74,7 +74,7 @@ public abstract class HanoiTest {
 			newPuzzle(PUZZLE_1, numDiscs));
 		Integer one = 1;
 		while (!one.equals(numSolved.poll(1, MINUTES))) {}
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(new HanoiState(
 				Catalog.of(solvedPuzzle(PUZZLE_1, numDiscs)),
 				Listing.of(refs.puzzles(), PUZZLE_1)
@@ -96,7 +96,7 @@ public abstract class HanoiTest {
 				newPuzzle(PUZZLE_3, 8)
 			));
 		while (numSolved.poll(1, MINUTES) != 3) {}
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			HanoiState expected = new HanoiState(
 				Catalog.of(
 					solvedPuzzle(PUZZLE_1, 5),

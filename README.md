@@ -89,17 +89,17 @@ public final class ExampleBosk extends Bosk<ExampleState> {
 You create an instance of `ExampleBosk` at initialization time,
 typically using your application framework's dependency injection system.
 
-To read state, acquire a `ReadContext`, providing access to a lightweight immutable snapshot of your state tree:
+To read state, acquire a `ReadSession`, providing access to a lightweight immutable snapshot of your state tree:
 
 ```
-try (var _ = bosk.readContext()) {
+try (var _ = bosk.readSession()) {
 	System.out.println("Hello, " + bosk.refs.name.value());
 }
 ```
 
-A read context is intended to be coarse-grained, for example covering an entire HTTP request,
+A read session is intended to be coarse-grained, for example covering an entire HTTP request,
 giving you "snapshot-at-start" semantics and protecting you from race conditions.
-It is an antipattern to use many small read contexts during the course of a single operation.
+It is an antipattern to use many small sessions during the course of a single operation.
 
 This part is done automatically for you in Spring Boot if you bring in the `bosk-spring-boot` library.
 You can also set the `bosk.web.maintenance-path` property to get an immediate HTTP REST API to view and edit your state tree.

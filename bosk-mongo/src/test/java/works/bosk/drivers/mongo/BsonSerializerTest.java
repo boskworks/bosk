@@ -33,7 +33,7 @@ class BsonSerializerTest {
 		Bosk<Root> bosk = new Bosk<Root>(boskName(), Root.class, this::defaultRoot, BoskConfig.simple());
 		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
 		Codec<Root> codec = registry.get(Root.class);
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			BsonDocument document = new BsonDocument();
 			Root original = bosk.rootReference().value();
 			codec.encode(new BsonDocumentWriter(document), original, EncoderContext.builder().build());

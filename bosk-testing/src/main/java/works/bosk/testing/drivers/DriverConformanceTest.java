@@ -171,7 +171,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
 		driver.flush();
 		Catalog<TestEntity> catalog;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			catalog = catalogRef.value();
 		}
 		SideTableReference<TestEntity, TestEntity> sideTableRef = catalogRef.thenSideTable(TestEntity.class, TestEntity.class, child1ID.toString(), "sideTable");
@@ -194,7 +194,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		driver.flush();
 		Refs refs = bosk.buildReferences(Refs.class);
 		Catalog<TestEntity> catalog;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			catalog = catalogRef.value();
 		}
 		SideTable<TestEntity, TestEntity> initialSideTable = SideTable.fromFunction(catalogRef, Stream.of(child1ID, child2ID), catalog::get);

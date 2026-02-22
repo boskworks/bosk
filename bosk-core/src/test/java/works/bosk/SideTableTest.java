@@ -27,7 +27,7 @@ import static works.bosk.SideTable.toSideTable;
 class SideTableTest extends AbstractBoskTest {
 	Bosk<TestRoot> bosk;
 	Refs refs;
-	Bosk<TestRoot>.ReadContext readContext;
+	Bosk<TestRoot>.ReadSession readSession;
 	TestEntity firstEntity;
 
 	public interface Refs {
@@ -41,13 +41,13 @@ class SideTableTest extends AbstractBoskTest {
 		bosk = setUpBosk(simpleDriver());
 		refs = bosk.buildReferences(Refs.class);
 
-		readContext = bosk.readContext();
+		readSession = bosk.readSession();
 		firstEntity = refs.entities().value().iterator().next();
 	}
 
 	@AfterEach
 	void teardown() {
-		readContext.close();
+		readSession.close();
 	}
 
 	@Test
@@ -117,7 +117,7 @@ class SideTableTest extends AbstractBoskTest {
 	void forEachValue_expectedResults() {
 		Map<TestChild, String> expected = new LinkedHashMap<>();
 		Map<TestChild, String> actual = new LinkedHashMap<>();
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			SideTable<TestChild, String> sideTable = refs.sideTable().value();
 
 			// Record everything that forEachValue produces

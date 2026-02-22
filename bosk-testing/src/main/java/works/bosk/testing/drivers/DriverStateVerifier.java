@@ -215,7 +215,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	private <T> T currentStateBefore(UpdateOperation op) throws IOException, InterruptedException {
 		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 		stateTrackingBosk.driver().flush();
-		try (var _ = stateTrackingBosk.readContext()) {
+		try (var _ = stateTrackingBosk.readSession()) {
 			return stateTrackingRef.valueIfExists();
 		}
 	}
@@ -225,12 +225,12 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		R originalState;
 		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 		stateTrackingBosk.driver().flush();
-		try (var _ = stateTrackingBosk.readContext()) {
+		try (var _ = stateTrackingBosk.readSession()) {
 			originalState = stateTrackingBosk.rootReference().value();
 		}
 		op.submitTo(stateTrackingDriver);
 		stateTrackingBosk.driver().flush();
-		try (var _ = stateTrackingBosk.readContext()) {
+		try (var _ = stateTrackingBosk.readSession()) {
 			return stateTrackingRef.valueIfExists();
 		} finally {
 			stateTrackingBosk.driver().submitReplacement(stateTrackingBosk.rootReference(), originalState);

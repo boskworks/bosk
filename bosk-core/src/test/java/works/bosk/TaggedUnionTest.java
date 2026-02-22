@@ -55,7 +55,7 @@ class TaggedUnionTest extends AbstractBoskTest {
 		var refs = bosk.rootReference().buildReferences(Refs.class);
 
 		// Initial state
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(TaggedUnion.of(stringCase), refs.v().value());
 			assertEquals(stringCase, refs.stringCase().value());
 			assertEquals(stringValue, refs.stringValue().value());
@@ -66,7 +66,7 @@ class TaggedUnionTest extends AbstractBoskTest {
 		bosk.driver().submitReplacement(refs.v(), TaggedUnion.of(idCase));
 		bosk.driver().flush();
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(TaggedUnion.of(idCase), refs.v().value());
 			assertEquals(idCase, refs.idCase().valueIfExists());
 			assertEquals(idValue, refs.idValue().valueIfExists());

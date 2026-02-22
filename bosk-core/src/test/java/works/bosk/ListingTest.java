@@ -90,7 +90,7 @@ class ListingTest {
 	@ParameterizedTest
 	@MethodSource("provideListingArguments")
 	void testGet(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) throws InvalidTypeException {
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			for (TestEntity child: children) {
 				TestEntity actual = listing.getValue(child.id());
 				assertSame(child, actual, "All expected entities should be present in the Listing");
@@ -112,8 +112,8 @@ class ListingTest {
 	void testValueIterator(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Iterator<TestEntity> expected = children.iterator();
 		Iterator<TestEntity> actual;
-		try (var _ = bosk.readContext()) {
-			// ReadContext is needed only when creating the iterator
+		try (var _ = bosk.readSession()) {
+			// ReadSession is needed only when creating the iterator
 			actual = listing.valueIterator();
 		}
 		assertEquals(expected.hasNext(), actual.hasNext());
@@ -141,7 +141,7 @@ class ListingTest {
 	@ParameterizedTest
 	@MethodSource("provideListingArguments")
 	void testIdStream(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		Iterator<Identifier> expected = children.stream().map(TestEntity::id).iterator();
 		listing.idStream().forEachOrdered(actual -> assertSame(expected.next(), actual));
 		assertFalse(expected.hasNext(), "No extra elements");
@@ -152,8 +152,8 @@ class ListingTest {
 	void testStream(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Iterator<TestEntity> expected = children.iterator();
 		Stream<TestEntity> stream;
-		try (var _ = bosk.readContext()) {
-			// ReadContext is needed only when creating the stream
+		try (var _ = bosk.readSession()) {
+			// ReadSession is needed only when creating the stream
 			stream = listing.valueStream();
 		}
 		stream.forEachOrdered(actual -> assertSame(expected.next(), actual));
@@ -163,8 +163,8 @@ class ListingTest {
 	@MethodSource("provideListingArguments")
 	void testAsCollection(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
 		Collection<TestEntity> actual;
-		try (var _ = bosk.readContext()) {
-			// ReadContext is needed only when creating the collection
+		try (var _ = bosk.readSession()) {
+			// ReadSession is needed only when creating the collection
 			actual = listing.valueList();
 		}
 		assertSameElements(children, actual);
@@ -191,7 +191,7 @@ class ListingTest {
 		}
 
 		Spliterator<TestEntity> newSplit;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			newSplit = listing.values().spliterator();
 		}
 
@@ -209,21 +209,21 @@ class ListingTest {
 	@ParameterizedTest
 	@MethodSource("provideListingArguments")
 	void testSize(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		assertEquals(distinctEntities(children).size(), listing.size());
 	}
 
 	@ParameterizedTest
 	@MethodSource("provideListingArguments")
 	void testIsEmpty(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		assertEquals(children.isEmpty(), listing.isEmpty());
 	}
 
 	@ParameterizedTest
 	@MethodSource("provideListingArguments")
 	void testIds(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		assertEquals(distinctEntityIDs(children), listing.ids());
 	}
 
@@ -240,8 +240,8 @@ class ListingTest {
 		assertEquals(0, actual.size());
 
 		Iterator<TestEntity> iterator;
-		try (var _ = bosk.readContext()) {
-			// iterator() needs a ReadContext at creation time
+		try (var _ = bosk.readSession()) {
+			// iterator() needs a ReadSession at creation time
 			iterator = actual.valueIterator();
 		}
 		assertFalse(iterator.hasNext());
@@ -250,7 +250,7 @@ class ListingTest {
 	@ParameterizedTest
 	@MethodSource("provideIDListArguments")
 	void testOfReferenceOfCatalogOfTTIdentifierArray(List<Identifier> ids, CatalogReference<TestEntity> childrenRef, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		Listing<TestEntity> actual = Listing.of(childrenRef, ids.toArray(new Identifier[0]));
 		assertSameElements(distinctIDs(ids), actual.ids());
 	}
@@ -258,7 +258,7 @@ class ListingTest {
 	@ParameterizedTest
 	@MethodSource("provideIDListArguments")
 	void testOfReferenceOfCatalogOfTTCollectionOfIdentifier(List<Identifier> ids, CatalogReference<TestEntity> childrenRef, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		Listing<TestEntity> actual = Listing.of(childrenRef, ids);
 		assertSameElements(distinctIDs(ids), actual.ids());
 	}
@@ -266,7 +266,7 @@ class ListingTest {
 	@ParameterizedTest
 	@MethodSource("provideIDListArguments")
 	void testOfReferenceOfCatalogOfTTStreamOfIdentifier(List<Identifier> ids, CatalogReference<TestEntity> childrenRef, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		Listing<TestEntity> actual = Listing.of(childrenRef, ids.stream());
 		assertSameElements(distinctIDs(ids), actual.ids());
 	}
@@ -274,7 +274,7 @@ class ListingTest {
 	@ParameterizedTest
 	@MethodSource("provideListingArguments")
 	void testWithID(Listing<TestEntity> originalListing, List<TestEntity> children, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		// Should match behaviour of LinkedHashSet
 		LinkedHashSet<Identifier> exemplar = new LinkedHashSet<>(children.size());
 		children.forEach(child -> exemplar.add(child.id()));
@@ -300,7 +300,7 @@ class ListingTest {
 	@ParameterizedTest
 	@MethodSource("provideListingArguments")
 	void testWithEntity(Listing<TestEntity> listing, List<TestEntity> children, Bosk<TestEntity> bosk) {
-		// No ReadContext required
+		// No ReadSession required
 		// Should match behaviour of testWithIdentifier, and therefore (transitively) LinkedHashMap
 		Listing<TestEntity> expected = listing;
 		Listing<TestEntity> actual = listing;

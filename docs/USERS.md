@@ -9,7 +9,7 @@ The `Bosk` object is a container for your application state tree.
 If it helps, you can picture it as an `AtomicReference<MyStateTreeRoot>` that your application can access,
 though it actually does several more things:
 - it acts as a factory for `Reference` objects, via `RootReference`, which provide efficient access to specific nodes of your state tree,
-- it provides stable thread-local state snapshots, via `ReadContext`,
+- it provides stable thread-local state snapshots, via `ReadSession`,
 - it provides a `BoskDriver` interface, through which you can modify the immutable state tree,
 - it propagates telemetry information, via `BoskDiagnosticContext`, and
 - it can execute _hook_ callback functions when part of the tree changes.
@@ -131,7 +131,7 @@ The `with` operation is an "upsert" operation that replaces an entry if one alre
 The `without` operation removes the entry with a given ID, leaving the remaining objects in the same order; if there is no such entry, the operation has no effect.
 These operations take O(log n) time.
 
-Because `Catalog` objects _contain_ their entries, the entries can be retrieved or iterated without a `ReadContext`.
+Because `Catalog` objects _contain_ their entries, the entries can be retrieved or iterated without a `ReadSession`.
 
 ##### `Listing`
 
@@ -139,7 +139,7 @@ A `Listing` is an ordered set of references to nodes in a particular `Catalog` r
 A `Listing` establishes a one-to-many reference relationship between nodes.
 
 The `Listing` object does not contain its entries; rather, it references entries contained in the domain `Catalog` in the bosk.
-This means you need a `ReadContext` to access the referenced objects themselves.
+This means you need a `ReadSession` to access the referenced objects themselves.
 
 The domain of a `Listing` plays a role similar to a datatype: it indicates the set of possible values to which a `Listing` may refer.
 
@@ -165,8 +165,8 @@ it indicates the set of possible values from which the `SideTable`'s keys may be
 
 The `SideTable` object does not contain its keys, but _does_ contain its values.
 The keys are contained in the domain `Catalog` in the bosk.
-This means you need a `ReadContext` to access the referenced key objects themselves.
-Accessing the value objects, on the other hand, does not require a `ReadContext`.
+This means you need a `ReadSession` to access the referenced key objects themselves.
+Accessing the value objects, on the other hand, does not require a `ReadSession`.
 
 Just as a `Reference` points to a node that may or may not exist,
 the keys referenced by a `SideTable` may or may not exist within the `domain` catalog.
@@ -319,44 +319,44 @@ for example, a reference to `/planets/tatooine/cities/anchorhead` doesn't exist 
 There are a variety of similar methods with slight variations in behaviour.
 For example, `Reference.valueIfExists()` is like `value()`, but returns `null` if the node does not exist.
 
-#### Read Context
+#### Read Session
 
-The `ReadContext` object defines the duration of a single "operation".
-Opening a read context captures the bosk state at that moment,
-and within a read context, all calls to `Reference.value()` return data taken from that snapshot.
+The `ReadSession` object defines the duration of a single "operation".
+Opening a read session captures the bosk state at that moment,
+and within that session, all calls to `Reference.value()` return data taken from that snapshot.
 
-Without a `ReadContext`, a call to `Reference.value()` will throw `IllegalStateException`.
-`ReadContext` is an `AutoCloseable` object that uses `ThreadLocal` to establish the state snapshot to be used for the duration of the operation:
+Without a `ReadSession`, a call to `Reference.value()` will throw `IllegalStateException`.
+`ReadSession` is an `AutoCloseable` object that uses `ThreadLocal` to establish the state snapshot to be used for the duration of the operation:
 
 ``` java
-try (var _ = bosk.readContext()) {
+try (var _ = bosk.readSession()) {
 	exampleRef.value(); // Returns the value from the snapshot
 }
 exampleRef.value(); // Throws IllegalStateException
 ```
 
-By convention, in the bosk library, methods that require an active read context have `value` in their name.
+By convention, in the bosk library, methods that require an active read session have `value` in their name.
 
-The intent is to create a read context at the start of an operation and hold it open for the duration, so that the state is fixed and unchanging.
-For example, if you're using a servlet container, use one read context for the entirety of a single HTTP endpoint method.
-Creating many brief read contexts opens your application up to race conditions due to state changes from one context to the next,
+The intent is to create a read session at the start of an operation and hold it open for the duration, so that the state is fixed and unchanging.
+For example, if you're using a servlet container, use one session for the entirety of a single HTTP endpoint method.
+Creating many brief read sessions opens your application up to race conditions due to state changes from one session to the next,
 and should be done with care.
 (If you need to check whether some operation had an effect,
-consider using `Bosk.supersedingContext()` instead of many small contexts.)
+consider using `Bosk.supersedingReadSession()` instead of many small sessions.)
 
 ##### Creation
 
-At any point in the code, a call to `bosk.readContext()` will establish a read context on the calling thread.
-If there is already an active read context on the calling thread, the call to `readContext` has no effect.
+At any point in the code, a call to `bosk.readSession()` will establish a session on the calling thread.
+If there is already an active session on the calling thread, the call to `readSession` has no effect.
 
 ##### Propagation
 
 Sometimes a program will use multiple threads to perform a single operation, and it is wise to use the same state snapshot for all of them.
-A snapshot from one thread can be used on another via `ReadContext.adopt`:
+A snapshot from one thread can be used on another via `ReadSession.adopt`:
 
 ``` java
-try (var _ = inheritedContext.adopt()) {
-	exampleRef.value(); // Returns the same value as the thread that created inheritedContext
+try (var _ = inheritedSession.adopt()) {
+	exampleRef.value(); // Returns the same value as the thread that created inheritedSession
 }
 ```
 
@@ -453,7 +453,7 @@ A third kind of conditional update, called `submitConditionalCreation`, is like 
 #### `flush()`
 
 The `flush()` method ensures all prior updates to the bosk have been applied,
-meaning they will be reflected in a subsequent read context.
+meaning they will be reflected in a subsequent read session.
 
 Formally, the definition of "prior updates" is the _happens-before_ relationship from the Java specification.
 Conceptually, `flush` behaves as though it performs a "nonce" update to the bosk and then waits for that update to be applied;
@@ -469,9 +469,9 @@ and then makes a request to the second server to call `flush()` and then read fr
 In this scenario, the second request is guaranteed to reflect the update applied by the first request,
 even though they are executed by different servers.
 
-Calling `flush()` inside a read context will still apply the updates,
-but those changes will not be reflected by any reads performed in the same read context,
-since the read context continues using the state snapshot acquired when the read context began.
+Calling `flush()` inside a read session will still apply the updates,
+but those changes will not be reflected by any reads performed in the same session,
+since the session continues using the state snapshot acquired when it began.
 
 `Flush` does not guarantee that any hooks triggered by the applied updates will have been called yet.
 To wait for a particular hook to run, the hook and application code must cooperate using a synchronization mechanism such as a semaphore.
@@ -535,7 +535,7 @@ bosk.registerHook("Widget changed", bosk.anyWidget, ref -> {
 });
 ```
 
-The hook call-back occurs inside a read context containing a state snapshot taken immediately after the triggering update occurred.
+The hook call-back occurs inside a read session containing a state snapshot taken immediately after the triggering update occurred.
 This means there are no race conditions between bosk reads in a hook versus other bosk updates happening in parallel.
 
 If a single update triggers multiple hooks, the hooks will run in the order they were registered.
@@ -547,7 +547,7 @@ Triggered hooks are queued, and are run in the order they were queued.
 
 For example, if one update triggers two hooks A and B, and then A performs an update that triggers hook C,
 B will run before C. The hooks will reliably run in the order A, B, C.
-When C runs, its read context will reflect the updates performed by A and C but not B, _even though B ran first_[^ordering].
+When C runs, its read session will reflect the updates performed by A and C but not B, _even though B ran first_[^ordering].
 
 See the `HooksTest` unit test for examples to illustrate the behaviour.
 
@@ -558,7 +558,7 @@ Suppose, for example, that we've chosen to deploy our application as a cluster t
 This would cause a delay between when B _submits_ the update and when the bosk _applies_ the update.
 Rather than expose users to a race condition in some operating environments that is not present in others,
 bosk heavily favours consistency, and employs a convention that can be implemented efficiently in many environments:
-updates from B are never visible in C's read scope.
+updates from B are never visible in C's read session.
 Whatever confusion this might cause, that confusion will be encountered during initial application development,
 rather than providing surprises when moving to a different environment for production.
 
@@ -1030,18 +1030,18 @@ public record Cluster (
 ) {}
 ```
 
-#### Use large read contexts
+#### Use large read sessions
 
-Using a succession of multiple `ReadContext`s for the same operation causes that operation to be exposed to race conditions from concurrent state updates.
+Using a succession of multiple `ReadSession`s for the same operation causes that operation to be exposed to race conditions from concurrent state updates.
 
-For any one operation, use a single `ReadContext` around the whole operation.
+For any one operation, use a single session around the whole operation.
 The "operation" should be as coarse-grained as feasible.
 
 Some examples:
-- An HTTP endpoint method should be enclosed in a single `ReadContext`. Typically this is done by installing a servlet filter that acquires a `ReadContext` around any `GET`, `HEAD`, or `POST` request (assuming you use `POST` as "`GET` with a body". If you use RPC-style `POST` endpoints, you might not be able to have a single `ReadContext` around the entire endpoint.) Note that `PUT` and `DELETE` typically don't need a `ReadContext` at all.
-- A scheduled action (eg. using the `@Scheduled` annotation in Spring Boot) should immediately acquire a `ReadContext` for its entire duration
+- An HTTP endpoint method should be enclosed in a single session. Typically this is done by installing a servlet filter that acquires a session around any `GET`, `HEAD`, or `POST` request (assuming you use `POST` as "`GET` with a body". If you use RPC-style `POST` endpoints, you might not be able to have a single session around the entire endpoint.) Note that `PUT` and `DELETE` typically don't need a session at all.
+- A scheduled action (eg. using the `@Scheduled` annotation in Spring Boot) should immediately acquire a session for its entire duration
 
-In general, open one large `ReadContext` as early as possible in your application's call stack unless this is unworkable for some reason.
+In general, open one large session as early as possible in your application's call stack unless this is unworkable for some reason.
 
 #### Closed-loop control hooks
 
@@ -1079,7 +1079,7 @@ In addition, if you discover you need to handle hard links, where the same file 
 
 ### Glossary
 
-_Apply_: When an update has been _applied_ to the bosk, it will be reflected in a subsequent read context
+_Apply_: When an update has been _applied_ to the bosk, it will be reflected in a subsequent read session
 
 _Driver_: An object that accepts and processes bosk updates
 
