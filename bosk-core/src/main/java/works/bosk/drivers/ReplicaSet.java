@@ -123,7 +123,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 	final class BroadcastDriver implements BoskDriver {
 		/**
 		 * @return the <em>current state</em> of the replica set, which is the state of its primary
-		 * as obtained by {@link Bosk#supersedingReadContext()}.
+		 * as obtained by {@link Bosk#supersedingReadSession()}.
 		 */
 		@Override
 		public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
@@ -137,7 +137,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 				// This should be a safe assumption--some shenanigans would be required
 				// to violate this--but unfortunately we have no way to verify it here,
 				// because at this point in the code, we cannot tell which replica we're initializing.
-				try (var _ = primaryReadContext(primary)) {
+				try (var _ = primaryReadSession(primary)) {
 					return primary.boskInfo().rootReference().value();
 				}
 			} else {
@@ -146,16 +146,16 @@ public class ReplicaSet<R extends StateTreeNode> {
 			}
 		}
 
-		private static <R extends StateTreeNode> Bosk<R>.ReadContext primaryReadContext(Replica<R> primary) {
+		private static <R extends StateTreeNode> Bosk<R>.ReadSession primaryReadSession(Replica<R> primary) {
 			try {
-				// We use supersedingReadContext here on the assumption that if the user,
+				// We use supersedingReadSession here on the assumption that if the user,
 				// for some reason, created a secondary replica in the midst
-				// of a ReadContext on the primary, they would still want that secondary
+				// of a ReadSession on the primary, they would still want that secondary
 				// to see the "real" state.
-				return primary.boskInfo.bosk().supersedingReadContext();
+				return primary.boskInfo.bosk().supersedingReadSession();
 			} catch (IllegalStateException e) {
 				// You have engaged in the aforementioned shenanigans.
-				throw new IllegalStateException("Unable to acquire primary read context; multiple replicas are being initialized simultaneously", e);
+				throw new IllegalStateException("Unable to acquire primary read session; multiple replicas are being initialized simultaneously", e);
 			}
 		}
 

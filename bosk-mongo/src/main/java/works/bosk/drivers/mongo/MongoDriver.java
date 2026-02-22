@@ -53,7 +53,7 @@ public sealed interface MongoDriver
 	void refurbish() throws IOException;
 
 	/**
-	 * Requires a {@link Bosk.ReadContext}.
+	 * Requires a {@link Bosk.ReadSession}.
 	 */
 	MongoStatus readStatus() throws Exception;
 

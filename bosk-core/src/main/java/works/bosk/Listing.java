@@ -116,7 +116,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 	}
 
 	//
-	// "Entity" methods don't require a {@link ReadContext} and are more type-safe than
+	// "Entity" methods don't require a {@link ReadSession} and are more type-safe than
 	// the corresponding ID-based methods, because you can't accidentally pass an ID
 	// from the wrong object. The entity itself is used only for its ID.
 	//
@@ -150,9 +150,9 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 	}
 
 	//
-	// "Value" methods return entities from {@link #domain}. They require a read context
-	// to call, but not afterward; for example, {@link #valueIterator} needs a read
-	// context while constructing the Iterator object, but they don't need one while
+	// "Value" methods return entities from {@link #domain}. They require a read session
+	// to call, but not afterward; for example, {@link #valueIterator} needs a session
+	// while constructing the Iterator object, but they don't need one while
 	// consuming items from the Iterator.
 	//
 
@@ -282,7 +282,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 	 *
 	 * <p>
 	 * By capturing the {@link #domain} object at creation time, this spliterator
-	 * does not need a {@link Bosk.ReadContext} while it runs. It provides snapshot-at-start
+	 * does not need a {@link Bosk.ReadSession} while it runs. It provides snapshot-at-start
 	 * semantics.
 	 *
 	 * <p>
@@ -327,7 +327,7 @@ public final class Listing<E extends Entity> extends AbstractCollection<Referenc
 	 * entry, throws {@link NonexistentReferenceException}.
 	 *
 	 * <p>
-	 * Does not require a {@link Bosk.ReadContext}.
+	 * Does not require a {@link Bosk.ReadSession}.
 	 */
 	private <EE extends Entity> EE getOrThrow(AddressableByIdentifier<EE> domain, Identifier id) {
 		EE result = domain.get(id);

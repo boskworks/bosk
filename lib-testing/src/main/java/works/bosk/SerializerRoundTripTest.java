@@ -12,12 +12,12 @@ public class SerializerRoundTripTest extends AbstractRoundTripTest {
 	void testRoundTrip(DriverFactory<TestRoot> driverFactory) throws InvalidTypeException {
 		Bosk<TestRoot> bosk = setUpBosk(driverFactory);
 		TestRoot originalRoot;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			originalRoot = bosk.rootReference().value();
 		}
 		bosk.driver().submitReplacement(bosk.rootReference(), originalRoot);
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			// Use our entity's equals() to check that all is well
 			//
 			assertEquals(originalRoot, bosk.rootReference().value());

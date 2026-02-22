@@ -64,7 +64,7 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 	}
 
 	/**
-	 * Note that this requires a read context, and for nonexistent keys,
+	 * Note that this requires a read session, and for nonexistent keys,
 	 * this will pass null as the key value.
 	 *
 	 * @see #forEachID

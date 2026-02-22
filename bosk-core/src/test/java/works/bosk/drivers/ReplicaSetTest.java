@@ -26,24 +26,24 @@ public class ReplicaSetTest extends AbstractDriverTest {
 
 		var bosk2 = new Bosk<>(boskName("bosk2"), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(replicaSet.driverFactory()).build());
 		var refs2 = bosk2.rootReference().buildReferences(Refs.class);
-		try (var _ = bosk2.readContext()) {
+		try (var _ = bosk2.readSession()) {
 			assertEquals("New value", refs2.string().value());
 		}
 	}
 
 	@Test
-	void secondaryConstructedInPrimaryReadContext_seesLatestState() throws InvalidTypeException {
+	void secondaryConstructedInPrimaryReadSession_seesLatestState() throws InvalidTypeException {
 		var replicaSet = new ReplicaSet<TestEntity>();
 		var bosk1 = new Bosk<>(boskName("bosk1"), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(replicaSet.driverFactory()).build());
 		var refs1 = bosk1.rootReference().buildReferences(Refs.class);
 
 		Bosk<TestEntity> bosk2;
-		try (var _ = bosk1.readContext()) {
+		try (var _ = bosk1.readSession()) {
 			bosk1.driver().submitReplacement(refs1.string(), "New value");
 			bosk2 = new Bosk<>(boskName("bosk2"), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(replicaSet.driverFactory()).build());
 		}
 		var refs2 = bosk2.rootReference().buildReferences(Refs.class);
-		try (var _ = bosk2.readContext()) {
+		try (var _ = bosk2.readSession()) {
 			assertEquals("New value", refs2.string().value());
 		}
 	}

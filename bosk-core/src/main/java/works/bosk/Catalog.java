@@ -26,7 +26,7 @@ import static java.util.Objects.requireNonNull;
  * know the key for each entry: its {@link Entity#id}.
  *
  * <p>
- * Because a <code>Catalog</code> <em>contains</em> its entries, a {@link Bosk.ReadContext}
+ * Because a <code>Catalog</code> <em>contains</em> its entries, a {@link Bosk.ReadSession}
  * is not required to access them.
  *
  * @author pdoyle

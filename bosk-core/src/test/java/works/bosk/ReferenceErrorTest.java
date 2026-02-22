@@ -24,7 +24,7 @@ public class ReferenceErrorTest {
 	@Test
 	void referenceGet_brokenGetter_propagatesException() throws InvalidTypeException {
 		Reference<Identifier> idRef = bosk.rootReference().then(Identifier.class, Path.just("id"));
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertThrows(UnsupportedOperationException.class, idRef::value,
 				"Reference.value() should propagate the exception as-is");
 		}

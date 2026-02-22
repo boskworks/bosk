@@ -23,20 +23,20 @@ import static works.bosk.BoskConfig.simpleDriver;
 class ReferenceTest extends AbstractBoskTest {
 	private Bosk<TestRoot> bosk;
 	private TestRoot root;
-	private Bosk<TestRoot>.ReadContext context;
+	private Bosk<TestRoot>.ReadSession session;
 	private Refs refs;
 
 	@BeforeEach
 	void setup() throws InvalidTypeException {
 		this.bosk = setUpBosk(simpleDriver());
-		context = bosk.readContext();
+		session = bosk.readSession();
 		this.root = bosk.rootReference().value();
 		this.refs = bosk.buildReferences(Refs.class);
 	}
 
 	@AfterEach
-	void closeReadContext() {
-		context.close();
+	void closeReadSession() {
+		session.close();
 	}
 
 	@Test

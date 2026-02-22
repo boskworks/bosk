@@ -120,7 +120,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		BoskDriver driver = bosk.driver();
 		TestEntity defaultState = initialRoot(bosk);
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(defaultState, bosk.rootReference().value(),
 				"Uses default state if database is unavailable");
 		}
@@ -138,7 +138,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		// With FLUSH this succeeds almost immediately.
 		// With WAIT, it is artificially delayed.
 		waitFor(driver);
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(initialState, bosk.rootReference().value(),
 				"Updates to database state once it reconnects");
 		}
@@ -151,7 +151,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 
 		waitFor(driver);
-		try (@SuppressWarnings("unused") Bosk<?>.ReadContext readContext = bosk.readContext()) {
+		try (@SuppressWarnings("unused") Bosk<?>.ReadSession readSession = bosk.readSession()) {
 			assertEquals(expected, bosk.rootReference().value());
 		}
 	}
@@ -257,7 +257,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			// This can fail on very short timescales; see testRecovery.
 			// This isn't related to the revision deletion issues described above
 			// and shouldn't really be grounds for removing this test.
@@ -275,7 +275,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Ensure flush works");
 		waitFor(bosk.driver());
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(beforeState, bosk.rootReference().value());
 		}
 
@@ -284,7 +284,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Ensure flush works again");
 		waitFor(bosk.driver());
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(beforeState, bosk.rootReference().value());
 		}
 	}
@@ -327,7 +327,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			// Note: with very short timescales, this assertion can fail because the newly created bosk
 			// times out trying to read the database contents and instead uses AbstractMongoDriverTest::initialRoot.
 			// This is actually valid behaviour for a sufficiently impatient user.
@@ -340,7 +340,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Ensure flush throws");
 		assertThrows(FlushFailureException.class, () -> bosk.driver().flush());
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(beforeState, bosk.rootReference().value());
 		}
 
@@ -349,7 +349,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Ensure flush works");
 		waitFor(bosk.driver());
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(afterState, bosk.rootReference().value());
 		}
 	}

@@ -60,7 +60,7 @@ public class HooksTest extends AbstractBoskTest {
 	void setupBosk() throws InvalidTypeException {
 		bosk = setUpBosk(simpleDriver());
 		refs = bosk.rootReference().buildReferences(Refs.class);
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			originalParent = refs.parent().value();
 			originalChild1 = refs.child(child1).value();
 			originalChild2 = refs.child(child2).value();
@@ -486,31 +486,31 @@ public class HooksTest extends AbstractBoskTest {
 			recorder.events(),
 			"All hooks for an update should be called before any hooks for subsequent updates");
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(expectedParent, refs.parent().value());
 		}
 	}
 
 	@Test
-	void nested_correctReadContext() {
+	void nested_correctReadSession() {
 		bosk.hookRegistrar().registerHook("stringCopier", refs.child(child2), recorder.hookNamed("stringCopier", ref ->
 			bosk.driver().submitReplacement(refs.childString(child1), ref.value().string())));
 		recorder.restart();
 		String expectedString = "expected string";
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			bosk.driver().submitReplacement(refs.childString(child2), expectedString);
-			// If the hook were to run accidentally in this ReadContext, it would
+			// If the hook were to run accidentally in this ReadSession, it would
 			// see originalChild2.string() instead of expectedString.
 		}
 
 		assertEquals(
 			singletonList(new HookRecorder.Event("stringCopier", HookRecorder.Event.Kind.CHANGED, refs.child(child2), originalChild2.withString(expectedString))),
 			recorder.events(),
-			"Hooks run in the right ReadContext regardless of active read scope at submission or execution time");
+			"Hooks run in the right read session regardless of active session at submission or execution time");
 
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertEquals(expectedString, refs.childString(child2).value(), "Correct value got copied");
 		}
 	}

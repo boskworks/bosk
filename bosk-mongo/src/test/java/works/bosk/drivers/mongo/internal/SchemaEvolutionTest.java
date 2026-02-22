@@ -92,7 +92,7 @@ public class SchemaEvolutionTest {
 		Refs toRefs = toBosk.buildReferences(Refs.class);
 
 		LOGGER.debug("Perform toBosk read");
-		try (var _ = toBosk.readContext()) {
+		try (var _ = toBosk.readSession()) {
 			assertEquals("Distinctive String", toRefs.string().value());
 		}
 
@@ -101,12 +101,12 @@ public class SchemaEvolutionTest {
 		driver.refurbish();
 
 		LOGGER.debug("Perform fromBosk read");
-		try (var _ = fromBosk.readContext()) {
+		try (var _ = fromBosk.readSession()) {
 			assertEquals("Distinctive String", fromRefs.string().value());
 		}
 
 		LOGGER.debug("Perform toBosk read");
-		try (var _ = toBosk.readContext()) {
+		try (var _ = toBosk.readSession()) {
 			assertEquals("Distinctive String", toRefs.string().value());
 		}
 
@@ -135,7 +135,7 @@ public class SchemaEvolutionTest {
 		fromBosk.driver().flush();
 
 		LOGGER.debug("Perform fromBosk ({}) read", fromBosk.name());
-		try (var _ = fromBosk.readContext()) {
+		try (var _ = fromBosk.readSession()) {
 			assertEquals("Distinctive String", fromRefs.string().value());
 		}
 
@@ -143,7 +143,7 @@ public class SchemaEvolutionTest {
 		toBosk.driver().flush();
 
 		LOGGER.debug("Perform toBosk ({}) read", toBosk.name());
-		try (var _ = toBosk.readContext()) {
+		try (var _ = toBosk.readSession()) {
 			assertEquals("Distinctive String", toRefs.string().value());
 		}
 

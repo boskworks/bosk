@@ -16,15 +16,15 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.StateTreeNode;
-import works.bosk.exceptions.NoReadContextException;
+import works.bosk.exceptions.NoReadSessionException;
 import works.bosk.testing.drivers.ReportingDriver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class ReadContextFilterTest {
+class ReadSessionFilterTest {
 	Bosk<State> bosk;
-	ReadContextFilter filter;
+	ReadSessionFilter filter;
 	List<String> events;
 	MockHttpServletRequest req;
 	MockHttpServletResponse res;
@@ -35,14 +35,14 @@ class ReadContextFilterTest {
 	void setup() {
 		events = new ArrayList<>();
 		bosk = new Bosk<>(
-			ReadContextFilterTest.class.getSimpleName(),
+			ReadSessionFilterTest.class.getSimpleName(),
 			State.class,
 			_->new State(),
 			BoskConfig.<State>builder()
 				.driverFactory(ReportingDriver.factory(op -> events.add(op.getClass().getSimpleName())))
 				.build()
 		);
-		filter = new ReadContextFilter(bosk);
+		filter = new ReadSessionFilter(bosk);
 		req = new MockHttpServletRequest();
 		res = new MockHttpServletResponse();
 	}
@@ -77,7 +77,7 @@ class ReadContextFilterTest {
 
 	@ParameterizedTest
 	@ValueSource(strings = { "GET", "HEAD", "OPTIONS" })
-	void readOnlyMethods_createReadContext(String method) throws ServletException, IOException {
+	void readOnlyMethods_createReadSession(String method) throws ServletException, IOException {
 		req.setMethod(method);
 		filter.doFilter(req, res, (_, _) -> {
 			assertEquals(new State(), bosk.rootReference().value());
@@ -86,10 +86,10 @@ class ReadContextFilterTest {
 
 	@ParameterizedTest
 	@ValueSource(strings = { "POST", "PUT", "PATCH", "DELETE", "TRACE" })
-	void otherMethods_noReadContext(String method) throws ServletException, IOException {
+	void otherMethods_noReadSession(String method) throws ServletException, IOException {
 		req.setMethod(method);
 		filter.doFilter(req, res, (_, _) -> {
-			assertThrows(NoReadContextException.class, bosk.rootReference()::value);
+			assertThrows(NoReadSessionException.class, bosk.rootReference()::value);
 		});
 	}
 

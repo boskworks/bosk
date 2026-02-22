@@ -55,7 +55,7 @@ public class JacksonRoundTripBenchmark extends AbstractRoundTripTest {
 				.addModule(jacksonSerializer.moduleFor(bosk))
 				.build();
 			rootRef = bosk.rootReference();
-			try (var _ = bosk.readContext()) {
+			try (var _ = bosk.readSession()) {
 				root1 = rootRef.value();
 			}
 
