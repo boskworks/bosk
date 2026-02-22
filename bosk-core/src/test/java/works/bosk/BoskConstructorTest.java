@@ -47,7 +47,7 @@ public class BoskConstructorTest {
 
 		assertSame(driver.get(), bosk.getDriver(ForwardingDriver.class));
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertSame(root, bosk.rootReference().value());
 		}
 	}
@@ -102,7 +102,7 @@ public class BoskConstructorTest {
 			SimpleTypes.class,
 			_ -> { throw new AssertionError("Shouldn't be called"); },
 			BoskConfig.builder().driverFactory(initialRootDriver(() -> root)).build());
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertSame(root, bosk.rootReference().value());
 		}
 	}
@@ -111,7 +111,7 @@ public class BoskConstructorTest {
 	void defaultRoot_matches() {
 		SimpleTypes root = newEntity();
 		Bosk<StateTreeNode> valueBosk = Bosk.simple(boskName(), root);
-		try (var _ = valueBosk.readContext()) {
+		try (var _ = valueBosk.readSession()) {
 			assertSame(root, valueBosk.rootReference().value());
 		}
 	}

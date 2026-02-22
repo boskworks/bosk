@@ -26,7 +26,7 @@ public class ReferenceBenchmark extends AbstractBoskTest {
 	@State(Scope.Benchmark)
 	public static class BenchmarkState {
 		private Bosk<TestRoot> bosk;
-		private Bosk<TestRoot>.ReadContext context;
+		private Bosk<TestRoot>.ReadSession session;
 		private Reference<TestRoot> rootRef;
 		private Reference<TestEnum> ref5Segments;
 		private TestRoot root;
@@ -38,7 +38,7 @@ public class ReferenceBenchmark extends AbstractBoskTest {
 		@Setup(Level.Trial)
 		public void setup() throws InvalidTypeException {
 			this.bosk = setUpBosk(simpleDriver());
-			context = bosk.readContext();
+			session = bosk.readSession();
 			rootRef = bosk.rootReference();
 			TestRoot localRoot = root = rootRef.value();
 			threadLocalRoot = ThreadLocal.withInitial(() -> localRoot);
@@ -50,8 +50,8 @@ public class ReferenceBenchmark extends AbstractBoskTest {
 		}
 
 		@TearDown(Level.Trial)
-		public void closeReadContext() {
-			context.close();
+		public void closeReadSession() {
+			session.close();
 		}
 
 	}

@@ -1,21 +1,23 @@
+import works.bosk.spring.boot.ReadSessionFilter;
+
 /**
  * Spring Boot integration for Bosk applications.
  * <p>
  * Features include:
  * <ul>
  *   <li>
- *     <b>Automatic read context</b> —
- *     {@link works.bosk.spring.boot.ReadContextFilter ReadContextFilter}
- *     opens a read context automatically for every HTTP {@code GET}, {@code HEAD}, and {@code OPTIONS}
- *     request. In many cases this means your application never needs to open its own read contexts,
+ *     <b>Automatic read session</b> —
+ *     {@link ReadSessionFilter ReadSessionFilter}
+ *     opens a read session automatically for every HTTP {@code GET}, {@code HEAD}, and {@code OPTIONS}
+ *     request. In many cases this means your application never needs to open its own sessions,
  *     except for {@code POST} operations that behave like a {@code GET} with a body, or for background
  *     operations executed on a separate thread.
  *     <p>
  *     This feature is enabled by default and can be disabled with the Spring property
- *     {@code bosk.web.read-context} set to {@code false}.
- *     If you need finer control over read contexts, consider using
- *     {@link works.bosk.Bosk#supersedingReadContext() Bosk.supersedingReadContext()} rather than disabling
- *     automatic read contexts globally.
+ *     {@code bosk.web.read-session} set to {@code false}.
+ *     If you need finer control over sessions, consider using
+ *     {@link works.bosk.Bosk#supersedingReadSession() Bosk.supersedingReadSession()} rather than disabling
+ *     automatic read sessions globally.
  *   </li>
  *   <li>
  *     <b>Maintenance endpoints</b> — The

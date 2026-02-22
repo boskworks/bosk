@@ -155,7 +155,7 @@ class BoskLocalReferenceTest {
 				// Check references to the Listing contents
 				Listing<TestEntity> listing;
 				Map<Identifier, TestEntity> entries;
-				try (var _ = bosk.readContext()) {
+				try (var _ = bosk.readSession()) {
 					listing = listingRef.value();
 					entries = listing.valueMap();
 				}
@@ -198,7 +198,7 @@ class BoskLocalReferenceTest {
 				} catch (AssertionError e) {
 					throw new AssertionError("Failed checkRefence on id " + id + ", sideTableRef " + sideTableRef);
 				}
-				try (var _ = bosk.readContext()) {
+				try (var _ = bosk.readSession()) {
 					for (Entry<Identifier, String> entry: sideTable.idEntrySet()) {
 						Identifier key = entry.getKey();
 						Reference<String> entryRef = sideTableRef.then(key);
@@ -260,8 +260,8 @@ class BoskLocalReferenceTest {
 		assertEquals(expectedPath, ref.path());
 		assertEquals(expectedPath.urlEncoded(), ref.pathString());
 
-		assertThrows(IllegalStateException.class, ref::value, "Can't read before ReadContext");
-		try (var _ = bosk.readContext()) {
+		assertThrows(IllegalStateException.class, ref::value, "Can't read before ReadSession");
+		try (var _ = bosk.readSession()) {
 			T actualValue = ref.valueIfExists();
 			assertSame(expectedValue, actualValue);
 
@@ -275,7 +275,7 @@ class BoskLocalReferenceTest {
 				assertSame(expectedValue, ref.optionalValue().get());
 			}
 		}
-		assertThrows(IllegalStateException.class, ref::value, "Can't read after ReadContext");
+		assertThrows(IllegalStateException.class, ref::value, "Can't read after ReadSession");
 	}
 
 	private void checkEntityReference(Reference<TestEntity> ref, Path expectedPath, TestEntity expectedValue) throws InvalidTypeException {
@@ -293,7 +293,7 @@ class BoskLocalReferenceTest {
 		assertEquals(expectedPath.then(TestEntity.Fields.listing), ref.then(Listing.class, TestEntity.Fields.listing).path());
 		assertEquals(expectedPath.then(TestEntity.Fields.sideTable), ref.then(SideTable.class, TestEntity.Fields.sideTable).path());
 
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			if (expectedValue == null) {
 				assertNull(ref.then(Catalog.class, TestEntity.Fields.catalog).valueIfExists());
 				assertNull(ref.then(Listing.class, TestEntity.Fields.listing).valueIfExists());
@@ -309,38 +309,38 @@ class BoskLocalReferenceTest {
 	private <T> void checkUpdates(Reference<T> ref, UnaryOperator<T> updater) throws InterruptedException, ExecutionException {
 		Root originalRoot;
 		T firstValue;
-		assertThrows(IllegalStateException.class, ref::value, "Can't read from Bosk before ReadContext");
-		try (var _ = bosk.readContext()) {
+		assertThrows(IllegalStateException.class, ref::value, "Can't read from Bosk before ReadSession");
+		try (var _ = bosk.readSession()) {
 			originalRoot = bosk.rootReference().value();
 			firstValue = ref.value();
 		}
-		assertThrows(IllegalStateException.class, ref::value, "Can't read from Bosk between ReadContexts");
+		assertThrows(IllegalStateException.class, ref::value, "Can't read from Bosk between read sessions");
 
 		T secondValue = updater.apply(firstValue);
 		T thirdValue = updater.apply(secondValue);
-		try (var _ = bosk.readContext()) {
-			assertSame(firstValue, ref.value(), "New ReadContext sees same value as before");
+		try (var _ = bosk.readSession()) {
+			assertSame(firstValue, ref.value(), "New ReadSession sees same value as before");
 			bosk.driver().submitReplacement(ref, secondValue);
-			assertSame(firstValue, ref.value(), "Bosk updates not visible during the same ReadContext");
+			assertSame(firstValue, ref.value(), "Bosk updates not visible during the same ReadSession");
 
-			try (var _ = bosk.supersedingReadContext()) {
-				assertSame(secondValue, ref.value(), "Superseding context sees the latest state");
-				try (var _ = bosk.readContext()) {
-					assertSame(secondValue, ref.value(), "Nested context matches outer context");
+			try (var _ = bosk.supersedingReadSession()) {
+				assertSame(secondValue, ref.value(), "Superseding session sees the latest state");
+				try (var _ = bosk.readSession()) {
+					assertSame(secondValue, ref.value(), "Nested session matches outer session");
 				}
 			}
 
-			try (var _ = bosk.readContext()) {
-				assertSame(firstValue, ref.value(), "Nested context matches original outer context");
+			try (var _ = bosk.readSession()) {
+				assertSame(firstValue, ref.value(), "Nested session matches original outer session");
 			}
 		}
 
 		try (
-			var context = bosk.readContext()
+			var session = bosk.readSession()
 		) {
-			assertSame(secondValue, ref.value(), "New value is visible in next ReadContext");
+			assertSame(secondValue, ref.value(), "New value is visible in next ReadSession");
 			bosk.driver().submitReplacement(ref, thirdValue);
-			assertSame(secondValue, ref.value(), "Bosk updates still not visible during the same ReadContext");
+			assertSame(secondValue, ref.value(), "Bosk updates still not visible during the same ReadSession");
 			ExecutorService executor = Executors.newFixedThreadPool(1);
 			try {
 				Future<?> future = executor.submit(() -> {
@@ -352,16 +352,16 @@ class BoskLocalReferenceTest {
 					} catch (Throwable e) {
 						fail("Unexpected exception: ", e);
 					}
-					assertNotNull(caught, "New thread should not have any scope by default, so an exception should be thrown");
-					try (var _ = bosk.readContext()) {
+					assertNotNull(caught, "New thread should not have any session by default, so an exception should be thrown");
+					try (var _ = bosk.readSession()) {
 						assertSame(thirdValue, ref.value(), "Separate thread should see the latest state");
 					}
-					try (var inheritedContext = context.adopt()) {
-						assertSame(secondValue, ref.value(), "Inherited scope should see the same state");
+					try (var inheritedSession = session.adopt()) {
+						assertSame(secondValue, ref.value(), "Inherited session should see the same state");
 
-						try (var _ = inheritedContext.adopt()) {
-							// Harmless to re-assert a scope you're already in
-							assertSame(secondValue, ref.value(), "Inner scope should see the same state");
+						try (var _ = inheritedSession.adopt()) {
+							// Harmless to re-assert a session you're already in
+							assertSame(secondValue, ref.value(), "Inner session should see the same state");
 						}
 					}
 				});
@@ -379,13 +379,13 @@ class BoskLocalReferenceTest {
 
 	private <T> void checkDeletion(Reference<T> ref, T expectedValue) {
 		Root originalRoot;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			originalRoot = bosk.rootReference().value();
 			assertSame(expectedValue, ref.valueIfExists(), "Value is present before deletion");
 			bosk.driver().submitDeletion(ref);
-			assertSame(expectedValue, ref.valueIfExists(), "Bosk deletions not visible during the same ReadContext");
+			assertSame(expectedValue, ref.valueIfExists(), "Bosk deletions not visible during the same ReadSession");
 		}
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			assertThrows(NonexistentReferenceException.class, ref::value);
 			if (expectedValue != null) {
 				bosk.driver().submitReplacement(ref, expectedValue);

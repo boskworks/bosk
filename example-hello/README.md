@@ -9,16 +9,16 @@ The `bosk-spring-boot` module automatically configures Jackson
 to do JSON serialization and deserialization of the bosk state tree objects,
 via the `bosk-jackson` module.
 
-#### Automatic `ReadContext`
+#### Automatic `ReadSession`
 
-A bosk `ReadContext` provides a lightweight thread-local snapshot of the bosk state
+A bosk `ReadSession` provides a lightweight thread-local snapshot of the bosk state
 for the duration of an operation.
-The `bosk-spring-boot` module automatically establishes a `ReadContext` around every HTTP servlet method,
-using the `ReadContextFilter` class.
-(This can be disabled by adding the line `bosk.web.read-context: false` to `application.properties`.)
+The `bosk-spring-boot` module automatically establishes a `ReadSession` around every HTTP servlet method,
+using the `ReadSessionFilter` class.
+(This can be disabled by adding the line `bosk.web.read-session=false` to `application.properties`.)
 
 #### Maintenance endpoints
 
-By setting `bosk.web.maintenance-path: /bosk` in `application.properties`,
+By setting `bosk.web.maintenance-path=/bosk` in `application.properties`,
 the `bosk-spring-boot` module creates `GET`, `PUT`, and `DELETE` endpoints
 that allow users to view and modify the bosk contents over HTTP.

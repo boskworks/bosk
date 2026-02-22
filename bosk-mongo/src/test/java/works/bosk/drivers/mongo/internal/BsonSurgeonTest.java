@@ -121,7 +121,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	void root_partForEachEntry() {
 		Reference<TestEntity> rootRef = bosk.rootReference();
 		BsonDocument entireDoc;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			entireDoc = (BsonDocument) formatter.object2bsonValue(rootRef.value(), rootRef.targetType());
 		}
 
@@ -215,7 +215,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 
 	private void assertRoundTripWorks(Reference<?> mainRef) {
 		BsonDocument entireDoc;
-		try (var _ = bosk.readContext()) {
+		try (var _ = bosk.readSession()) {
 			entireDoc = (BsonDocument) formatter.object2bsonValue(mainRef.value(), mainRef.targetType());
 		}
 

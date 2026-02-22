@@ -38,14 +38,14 @@ public sealed interface Reference<T> permits
 
 	/**
 	 * @return The value of the referenced object, or <code>null</code> if {@link #path()} refers to a nonexistent object
-	 * @throws IllegalStateException if there is no open {@link Bosk.ReadContext} on this thread
+	 * @throws IllegalStateException if there is no open {@link Bosk.ReadSession} on this thread
 	 */
 	T valueIfExists();
 
 	/**
 	 * @return The value of the referenced object
 	 * @throws NonexistentReferenceException if {@link #path()} refers to a nonexistent object
-	 * @throws IllegalStateException if there is no open {@link Bosk.ReadContext} on this thread
+	 * @throws IllegalStateException if there is no open {@link Bosk.ReadSession} on this thread
 	 */
 	default T value() {
 		T result = valueIfExists();
@@ -58,7 +58,7 @@ public sealed interface Reference<T> permits
 
 	/**
 	 * @return false iff {@link #path()} refers to a nonexistent object
-	 * @throws IllegalStateException if there is no open {@link Bosk.ReadContext} on this thread
+	 * @throws IllegalStateException if there is no open {@link Bosk.ReadSession} on this thread
 	 * @see #valueIfExists()
 	 */
 	default boolean exists() {
