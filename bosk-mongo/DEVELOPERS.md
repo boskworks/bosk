@@ -1,7 +1,7 @@
 ## Bosk-mongo developer's guide
 
 This guide is intended for those interested in contributing to the development of the `bosk-mongo` module.
-(The guide for developers _using_ the the module is [USERS.md](../docs/USERS.md).)
+(The guide for developers _using_ the module is [USERS.md](../docs/USERS.md).)
 
 ### Introduction and Overview
 
@@ -65,7 +65,7 @@ The top-level coordination is implemented by `MainDriver`, which serves as a kin
 The actual core implementation of driver semantics is mostly contained in `FormatDriver` implementations,
 which handle the translation from bosk updates to MongoDB updates
 and from MongoDB changes back to bosk updates passed to the downstream driver.
-`MainDriver` manages the lifecycle of ts `FormatDriver` object,
+`MainDriver` manages the lifecycle of its `FormatDriver` object,
 and has exactly one at any given moment.
 Whenever an unexpected condition is encountered, `MainDriver` can respond by discarding the `FormatDriver`
 and creating a new one.
@@ -233,11 +233,24 @@ The lifetime of a `MongoDriver` is subdivided into a sequence of (ideally just o
 The whole cycle is initiated by a single background thread,
 and so these operations have almost no possibility for race conditions.
 
-When something goes wrong, and we must reconnect by closing the current cursor and opening a new one,
-this operation naturally shares the same logic with initialization and shutdown,
-because a reconnection is simply a shutdown followed by an initialization.
-Thus, this design reduces risk by transforming an unusual and risky occurrence (error handling and recovery)
-into commonplace operations that happen every time an application runs (initialization and shutdown).
+This design naturally responds to an error by disconnecting and reconnecting,
+yet it does so in a way that shares logic with the normal initialization and shutdown operations.
+This design reduces risk by transforming an unusual and risky occurrence (error handling and recovery)
+into commonplace operations that happen every time an application runs (initialization and shutdown)
+and are therefore well tested and well understood.
+
+Between connection cycles, `MainDriver` enters a _disconnected_ state that sends no writes to the database.
+This happens any time the driver detects that its understanding of the database contents may be faulty,
+since the driver can no longer be trusted to modify the database.
+Once the driver reestablishes a connection and reinitializes the appropriate `FormatDriver`,
+it can resume normal operation.
+A pleasant consequence of this design is that
+the driver gracefully reinitializes if some other server performs a `refurbish` operation:
+if the refurbish changes the format, then the driver will receive some change event it can't process,
+causing it to reinitialize, which naturally re-reads the manifest and re-detects the format.
+On the other hand, if the refurbish doesn't change the format,
+then the driver will see no change events it can't handle,
+and it will simply continue running without interruption.
 
 `MainDriver` and `ChangeReceiver` have a lifetime that coincides with that of the `Bosk`.
 `FormatDriver` and `FlushLock` have a lifetime that coincides with that of the cursor.
@@ -256,7 +269,7 @@ while Toxiproxy allows us to induce various network errors and verify our respon
 since the precise exceptions thrown by the client library are not well documented,
 and since they are runtime exceptions, we get no help from the Java compiler.)
 We have developed a few of our own JUnit 5 extensions to make this testing more convenient,
-such as `@ParametersByName` and `@DisruptsMongoService`.
+such as `@InjectedTest` and `@DisruptsMongoProxy`.
 
 #### Logging guidelines
 
@@ -278,30 +291,3 @@ Examples include stack traces for routine situations, or dumps of entire data st
 neither of which should be done at the `debug` level. It can also include high-frequency messages
 emitted many times for a single user action (again, not recommended at the `debug` level),
 though this must be done cautiously, since even disabled log statements still have nonzero overhead.
-
-### TODO: Points to cover
-(This document is a work in progress.)
-
-/ Basic operation
-/ Reads always come from memory. That's always true in Bosk, and a driver can't change that even if it wanted to.
-/ Driver operations lead to database operations; they are not forwarded downstream
-X Translated from bosk to MongoDB by a `FormatDriver`
-- `initialRoot` is a special case that will need to be documented separately
-/ Change events bring the database operations back to `MongoDriver` via `ChangeReceiver`, which forwards them to `FormatDriver`
-	- From there, they are translated from MongoDB back to Bosk and forwarded to the downstream driver
-X With a single bosk interacting with the database, all of this makes little difference, but
-	- You get persistence/durability
-	- You get replication for free!
-/ The cursor lifecycle
-- Responsibilities of the background thread
-- Two different lifetimes: permanent and cursor
-  / `FormatDriver`
-/ Division of responsibilities from the draft Principles of Operation doc
-/ Emphasis on error handling
-  / General orientation toward checked exceptions for exceptions that are not visible to the user
-/ Logging philosophy from block comment
-- MongoDB semantics
-	- Opening the cursor, then reading the current `revision` using read concern `LOCAL` ensures events aren't missed
-	- FormatDriver should discard events that occurred after the cursor was opened but before the revision from the initial read
-- Mongo client (aka "driver") throws runtime exceptions, which makes robust error handling tricky
-- Disconnected state is required to ensure we don't write to the database if we've lost our understanding of the database state
