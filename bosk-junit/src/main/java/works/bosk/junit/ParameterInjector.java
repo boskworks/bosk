@@ -14,6 +14,9 @@ import java.util.List;
  * but if you override them, strange behaviour may result;
  * for example, parts of the injection logic may be unable to distinguish
  * two different injectors.
+ *
+ * @see InjectedTest
+ * @see InjectFrom
  */
 public interface ParameterInjector {
 	/**
