@@ -1,0 +1,17 @@
+<configuration>
+	<turboFilter class="works.bosk.logback.BoskLogFilter"/>
+	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%d %-5level [%thread] [%X{bosk.name}]%X{bosk.MongoDriver.transaction}%X{bosk.MongoDriver.event} %logger{25}: %msg%n</pattern>
+		</encoder>
+		<immediateFlush>true</immediateFlush>
+	</appender>
+	<root level="WARN">
+		<appender-ref ref="CONSOLE" />
+	</root>
+
+	<!-- How to add more tracing during unit tests
+	<logger name="works.bosk" level="INFO"/>
+	 -->
+
+</configuration>
