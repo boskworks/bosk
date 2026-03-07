@@ -8,6 +8,9 @@ updates:
       gradle-deps:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "com.diffplug.spotless:spotless-plugin-gradle"
+        versions: ["8.3.0"]
   - package-ecosystem: "docker"
     directory: "/bosk-mongo/src/test/resources"
     schedule:
