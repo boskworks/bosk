@@ -36,6 +36,16 @@ class SqlDriverConformanceTest extends SharedDriverConformanceTest {
 
 	private static final Set<Database> SMOKE_TEST_DBS = EnumSet.of(POSTGRES);
 
+	static {
+		// Fail this test promptly if we can't connect to the smoke test databases,
+		// instead of painstakingly hitting this error on every single test.
+		for (Database database : SMOKE_TEST_DBS) {
+			try (var ds = database.dataSourceFor("smoke-test")) {
+				ds.validate();
+			}
+		}
+	}
+
 	SqlDriverConformanceTest(Database database, TestInfo testInfo) {
 		this.database = database;
 		assumeTrue(SMOKE_TEST_DBS.contains(database)
