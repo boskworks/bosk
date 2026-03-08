@@ -6,7 +6,7 @@ class ReportingDriverConformanceTest extends DriverConformanceTest {
 
 	@BeforeEach
 	void setupDriverFactory() {
-		driverFactory = ReportingDriver.factory(_->{}, _->{});
+		driverFactory = ReportingDriver.factory(_->{}, _->{}, _->{});
 	}
 
 }

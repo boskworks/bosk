@@ -48,7 +48,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 	void setUp() throws InvalidTypeException {
 		ops = new ArrayList<>();
 		numFlushes = new AtomicInteger(0);
-		setupBosksAndReferences(ReportingDriver.factory(ops::add, _->numFlushes.incrementAndGet()));
+		setupBosksAndReferences(ReportingDriver.factory(ops::add, _->numFlushes.incrementAndGet(), _->{}));
 		refs = bosk.buildReferences(Refs.class);
 		bosk.driver().submitReplacement(refs.entity(id1), emptyEntityAt(refs.entity(id1)));
 		ops.clear();

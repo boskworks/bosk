@@ -23,6 +23,12 @@ import works.bosk.testing.drivers.operations.UpdateOperation;
 
 /**
  * Sends an {@link UpdateOperation} to a given listener whenever one of the update methods is called.
+ * The listener is called before the update is sent to the downstream driver
+ * so that if any hooks are triggered, and those hooks also submit updates,
+ * the updates are reported in the right order.
+ * Flushes are reported both before and after they are sent to the downstream driver
+ * because flushes are fundamentally synchronous, so it makes sense to take some action
+ * after a flush.
  * <p>
  * <em>Implementation note</em>: this class calls the downstream driver using {@link UpdateOperation#submitTo}
  * so that the ordinary {@link DriverConformanceTest} suite also tests all the {@link UpdateOperation} objects.
@@ -32,14 +38,18 @@ public class ReportingDriver implements BoskDriver {
 	final BoskDriver downstream;
 	final BoskDiagnosticContext diagnosticContext;
 	final Consumer<? super UpdateOperation> updateListener;
-	final Consumer<? super FlushOperation> flushListener;
+	final Consumer<? super FlushOperation> preFlushListener;
+	final Consumer<? super FlushOperation> postFlushListener;
 
+	/**
+	 * Builds a driver that reports all updates and flushes to the given listener before sending them to the downstream driver.
+	 */
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Consumer<? super DriverOperation> listener) {
-		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), listener, listener);
+		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), listener, listener, _->{});
 	}
 
-	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Consumer<? super UpdateOperation> updateListener, Consumer<? super FlushOperation> flushListener) {
-		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), updateListener, flushListener);
+	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Consumer<? super UpdateOperation> updateListener, Consumer<? super FlushOperation> preFlushListener, Consumer<? super FlushOperation> postFlushListener) {
+		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), updateListener, preFlushListener, postFlushListener);
 	}
 
 	@Override
@@ -85,8 +95,9 @@ public class ReportingDriver implements BoskDriver {
 	@Override
 	public void flush() throws IOException, InterruptedException {
 		FlushOperation op = new FlushOperation(diagnosticContext.getAttributes());
-		flushListener.accept(op);
+		preFlushListener.accept(op);
 		op.submitTo(downstream);
+		postFlushListener.accept(op);
 	}
 
 }
