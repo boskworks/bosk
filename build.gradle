@@ -1,6 +1,8 @@
+import com.diffplug.gradle.spotless.SpotlessTask
+
 plugins {
 	id 'java'
-	id 'com.diffplug.spotless' version '8.2.1'
+	id 'com.diffplug.spotless' version '8.3.0'
 	id 'de.thetaphi.forbiddenapis' version '3.10' apply false
 	alias(libs.plugins.nexus)
 	alias(libs.plugins.spotbugs) apply false
@@ -183,6 +185,10 @@ subprojects {
 			replaceRegex 'method-level javadoc indentation fix', /\t\*/, '\t *'
 			endWithNewline()
 		}
+	}
+
+	tasks.withType(SpotlessTask).configureEach {
+		notCompatibleWithConfigurationCache("https://github.com/diffplug/spotless/issues/2878")
 	}
 }
 
