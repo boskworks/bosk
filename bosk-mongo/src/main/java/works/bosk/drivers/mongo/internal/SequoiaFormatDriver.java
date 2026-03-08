@@ -342,7 +342,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		String key = dottedFieldNameOf(target, rootRef);
 		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
 		LOGGER.debug("| Set field {}: {}", key, value);
-		BsonDocument result = updateDoc();
+		BsonDocument result = blankUpdateDoc();
 		result.compute("$set", (_,existing) -> {
 			if (existing == null) {
 				return new BsonDocument(key, value);
@@ -356,12 +356,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	private <T> BsonDocument deletionDoc(Reference<T> target) {
 		String key = dottedFieldNameOf(target, rootRef);
 		LOGGER.debug("| Unset field {}", key);
-		return updateDoc().append("$unset", new BsonDocument(key, new BsonNull())); // Value is ignored
-	}
-
-	private BsonDocument updateDoc() {
-		return new BsonDocument("$inc", new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
-			.append("$set", new BsonDocument(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes())));
+		return blankUpdateDoc().append("$unset", new BsonDocument(key, new BsonNull())); // Value is ignored
 	}
 
 	private BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision) {

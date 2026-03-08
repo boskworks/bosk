@@ -718,11 +718,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE)); // Value is ignored
 	}
 
-	private BsonDocument blankUpdateDoc() {
-		return new BsonDocument("$inc", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonInt64(1)))
-			.append("$set", new BsonDocument(Formatter.DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes())));
-	}
-
 	private BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision) {
 		BsonDocument fieldValues = new BsonDocument("_id", ROOT_DOCUMENT_ID);
 

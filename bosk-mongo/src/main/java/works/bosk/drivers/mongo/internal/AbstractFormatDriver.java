@@ -9,6 +9,7 @@ import works.bosk.BoskContext;
 import works.bosk.MapValue;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
+import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.drivers.mongo.status.BsonComparator;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.drivers.mongo.status.StateStatus;
@@ -70,6 +71,17 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * record can be null if they don't exist in the database.
 	 */
 	abstract BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException;
+
+	protected BsonDocument blankUpdateDoc() {
+		return new BsonDocument()
+			.append("$inc", new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
+			.append("$set", new BsonDocument()
+				.append(
+					DocumentFields.diagnostics.name(),
+					formatter.encodeDiagnostics(context.getAttributes())
+				)
+			);
+	}
 
 	/**
 	 * Low-level version of {@link StateAndMetadata}.
