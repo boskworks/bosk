@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.params.ParameterizedClass;
@@ -36,7 +37,8 @@ class SqlDriverConformanceTest extends SharedDriverConformanceTest {
 
 	private static final Set<Database> SMOKE_TEST_DBS = EnumSet.of(POSTGRES);
 
-	static {
+	@BeforeAll
+	static void validateSmokeTestDatabases() {
 		// Fail this test promptly if we can't connect to the smoke test databases,
 		// instead of painstakingly hitting this error on every single test.
 		for (Database database : SMOKE_TEST_DBS) {
