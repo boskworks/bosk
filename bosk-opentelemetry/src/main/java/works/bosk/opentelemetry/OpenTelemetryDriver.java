@@ -5,7 +5,7 @@ import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
 import works.bosk.StateTreeNode;
-import works.bosk.drivers.DiagnosticScopeDriver;
+import works.bosk.drivers.ContextScopeDriver;
 
 /**
  * A {@link DriverFactory} that transmits OpenTelemetry context
@@ -22,7 +22,7 @@ public sealed interface OpenTelemetryDriver extends BoskDriver permits ReceiverD
 	 */
 	static <RR extends StateTreeNode> DriverFactory<RR> wrapping(DriverFactory<RR> subject) {
 		return DriverStack.of(
-			DiagnosticScopeDriver.factory(Utils::diagnosticScopeWithContextFromCurrentSpan),
+			ContextScopeDriver.factory(Utils::boskContextScopeWithDiagnosticsFromCurrentSpan),
 			subject,
 			ReceiverDriver.factory()
 		);

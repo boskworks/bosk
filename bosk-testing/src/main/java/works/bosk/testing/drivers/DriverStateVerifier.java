@@ -19,7 +19,7 @@ import works.bosk.DriverStack;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.BufferingDriver;
-import works.bosk.drivers.DiagnosticScopeDriver;
+import works.bosk.drivers.ContextScopeDriver;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
@@ -77,7 +77,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		);
 		return DriverStack.of(
 			// Tag the updates with a thread ID so we can demultiplex them properly after they go through the subject driver
-			DiagnosticScopeDriver.factory(dc -> dc.withAttribute(THREAD_ID, Long.toString(currentThread().threadId()))),
+			ContextScopeDriver.factory(dc -> dc.withAttribute(THREAD_ID, Long.toString(currentThread().threadId()))),
 			// Record the updates as they appear on their way into the subject driver
 			ReportingDriver.factory(verifier::incomingUpdate, _->{}, verifier::postIncomingFlush),
 			// Send to the subject driver

@@ -12,7 +12,7 @@ package works.bosk;
  * with little or no coordination or even awareness of each other.
  * Concerns like database persistence ({@code MongoDriver}, {@code SqlDriver}),
  * observability ({@code OpenTelemetryDriver}, {@code ReportingDriver}),
- * and diagnostic attribute propagation ({@code DiagnosticScopeDriver})
+ * and context propagation ({@code ContextScopeDriver})
  * can each be implemented as orthogonal drivers.
  *
  * @see BoskDriver

@@ -32,7 +32,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 	List<UpdateOperation> ops;
 	AtomicInteger numFlushes;
 	Refs refs;
-	BoskContext.DiagnosticScope diagnosticScope;
+	BoskContext.ContextScope contextScope;
 	MapValue<String> expectedAttributes;
 	final Identifier id1 = Identifier.from("id1");
 	final Identifier id2 = Identifier.from("id2");
@@ -52,14 +52,14 @@ class ReportingDriverTest extends AbstractDriverTest {
 		refs = bosk.buildReferences(Refs.class);
 		bosk.driver().submitReplacement(refs.entity(id1), emptyEntityAt(refs.entity(id1)));
 		ops.clear();
-		diagnosticScope = bosk.context().withAttribute(ReportingDriverTest.class.getSimpleName(), "expectedValue");
+		contextScope = bosk.context().withAttribute(ReportingDriverTest.class.getSimpleName(), "expectedValue");
 		expectedAttributes = bosk.context().getAttributes();
 	}
 
 	@AfterEach
-	void closeDiagnosticScope() {
-		diagnosticScope.close();
-		diagnosticScope = null;
+	void closeContextScope() {
+		contextScope.close();
+		contextScope = null;
 	}
 
 	@Test

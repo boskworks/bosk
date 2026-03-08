@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.function.Function;
 import works.bosk.BoskContext;
-import works.bosk.BoskContext.DiagnosticScope;
+import works.bosk.BoskContext.ContextScope;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.Identifier;
@@ -13,23 +13,23 @@ import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
 
 /**
- * Automatically sets a {@link DiagnosticScope} around each driver operation
+ * Automatically sets a {@link ContextScope} around each driver operation
  * based on a user-supplied function.
  * Allows diagnostic attributes to be supplied automatically to every operation.
  */
-public final class DiagnosticScopeDriver implements BoskDriver {
+public final class ContextScopeDriver implements BoskDriver {
 	final BoskDriver downstream;
 	final BoskContext context;
-	final Function<BoskContext, DiagnosticScope> scopeSupplier;
+	final Function<BoskContext, ContextScope> scopeSupplier;
 
-	private DiagnosticScopeDriver(BoskDriver downstream, BoskContext context, Function<BoskContext, DiagnosticScope> scopeSupplier) {
+	private ContextScopeDriver(BoskDriver downstream, BoskContext context, Function<BoskContext, ContextScope> scopeSupplier) {
 		this.downstream = downstream;
 		this.context = context;
 		this.scopeSupplier = scopeSupplier;
 	}
 
-	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Function<BoskContext, DiagnosticScope> scopeSupplier) {
-		return (b, d) -> new DiagnosticScopeDriver(d, b.context(), scopeSupplier);
+	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Function<BoskContext, ContextScope> scopeSupplier) {
+		return (b, d) -> new ContextScopeDriver(d, b.context(), scopeSupplier);
 	}
 
 	@Override

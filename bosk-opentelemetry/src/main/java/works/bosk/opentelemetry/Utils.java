@@ -74,7 +74,7 @@ class Utils {
 	 * {@link ReceiverDriver} to propagate the context downstream,
 	 * and by {@link OpenTelemetryRegistrar} to propagate the context into hooks.
 	 */
-	static BoskContext.DiagnosticScope diagnosticScopeWithContextFromCurrentSpan(BoskContext boskContext) {
+	static BoskContext.ContextScope boskContextScopeWithDiagnosticsFromCurrentSpan(BoskContext boskContext) {
 		return boskContext.withReplacedPrefix(OTEL_PREFIX, w3cContextFromCurrentSpan());
 	}
 

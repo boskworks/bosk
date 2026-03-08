@@ -22,7 +22,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.BoskContext.DiagnosticScope;
+import works.bosk.BoskContext.ContextScope;
 import works.bosk.ReferenceUtils.CatalogRef;
 import works.bosk.ReferenceUtils.ListingRef;
 import works.bosk.ReferenceUtils.SideTableRef;
@@ -520,7 +520,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
-					try (DiagnosticScope _ = context.withOnly(attributes)) {
+					try (ContextScope _ = context.withOnly(attributes)) {
 						try (ReadSession _ = new ReadSession(rootForHook)) {
 							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);

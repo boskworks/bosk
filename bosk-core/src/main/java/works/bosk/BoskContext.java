@@ -35,10 +35,10 @@ public final class BoskContext {
 		}
 	}
 
-	public final class DiagnosticScope implements AutoCloseable {
+	public final class ContextScope implements AutoCloseable {
 		final Context oldContext = currentContext.get();
 
-		DiagnosticScope(Context newContext) {
+		ContextScope(Context newContext) {
 			currentContext.set(newContext);
 		}
 
@@ -64,16 +64,16 @@ public final class BoskContext {
 	 * Adds a single diagnostic attribute to the current thread's context.
 	 * If the attribute already exists, it will be replaced.
 	 */
-	public DiagnosticScope withAttribute(String name, String value) {
-		return new DiagnosticScope(currentContext.get().withAttribute(name, value));
+	public ContextScope withAttribute(String name, String value) {
+		return new ContextScope(currentContext.get().withAttribute(name, value));
 	}
 
 	/**
 	 * Adds diagnostic attributes to the current thread's context.
 	 * If an attribute already exists, it will be replaced.
 	 */
-	public DiagnosticScope withAttributes(@NotNull MapValue<String> additionalAttributes) {
-		return new DiagnosticScope(currentContext.get().withAttributes(additionalAttributes));
+	public ContextScope withAttributes(@NotNull MapValue<String> additionalAttributes) {
+		return new ContextScope(currentContext.get().withAttributes(additionalAttributes));
 	}
 
 	/**
@@ -85,11 +85,11 @@ public final class BoskContext {
 	 * If <code>attributes</code> is null, this is a no-op, and any existing attributes on this thread are retained.
 	 * If ensuring a clean set of attributes is important, pass an empty map instead of null.
 	 */
-	public DiagnosticScope withOnly(@Nullable MapValue<String> attributes) {
+	public ContextScope withOnly(@Nullable MapValue<String> attributes) {
 		if (attributes == null) {
-			return new DiagnosticScope(currentContext.get());
+			return new ContextScope(currentContext.get());
 		} else {
-			return new DiagnosticScope(currentContext.get().withOnly(attributes));
+			return new ContextScope(currentContext.get().withOnly(attributes));
 		}
 	}
 
@@ -100,11 +100,11 @@ public final class BoskContext {
 	 * @param prefix the leftmost part of the keys to be replaced; must end with a dot and be at least two characters long
 	 * @param replacementAttributes the attributes to be added, without the prefix
 	 */
-	public DiagnosticScope withReplacedPrefix(String prefix, MapValue<String> replacementAttributes) {
+	public ContextScope withReplacedPrefix(String prefix, MapValue<String> replacementAttributes) {
 		assert prefix.endsWith("."): "Prefix must end with a dot: " + prefix;
 		assert prefix.length() >= 2: "Prefix must be at least two characters long: " + prefix;
 		MapValue<String> prefixedAttributes = MapValue.fromFunctions(replacementAttributes.keySet(), k -> prefix+k, replacementAttributes::get);
-		return new DiagnosticScope(new Context(currentContext.get().diagnosticAttributes().withOnly(
+		return new ContextScope(new Context(currentContext.get().diagnosticAttributes().withOnly(
 			not(k -> k.startsWith(prefix))
 		).withAll(prefixedAttributes)));
 	}
