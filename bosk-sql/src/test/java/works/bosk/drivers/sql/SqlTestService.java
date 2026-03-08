@@ -63,7 +63,7 @@ public class SqlTestService {
 	public static SqlDriverImpl.SqlDriverFactory<TestEntity> sqlDriverFactory(SqlDriverSettings settings, HikariDataSource dataSource) {
 		return SqlDriver.factory(
 			settings, dataSource::getConnection,
-			(b, m) -> m
+			(_, m) -> m
 				.enable(INDENT_OUTPUT)
 				.enable(INCLUDE_SOURCE_IN_LOCATION)
 		);
