@@ -32,7 +32,7 @@ The usual Gradle commands, plus:
 
 - **State Tree**: Immutable user-supplied in-memory tree structure composed mostly of records
 - **ReadSession**: Coarse-grained snapshot-at-start semantics (e.g. one per HTTP request)
-- **Drivers**: Pluggable layers for processing state updates
+- **Drivers**: Pluggable layers for processing state updates; drivers form a _stack_, or chain, with updates passed along from one to the next until they reach the in-memory state tree
 - **Hooks**: Callbacks for state change notifications
 - **References**: Type-safe "pointers" into the state tree
 
@@ -79,6 +79,17 @@ and try to answer that question in the javadocs.
 
 We use Lombok sparingly. Most of its features are disabled in lombok.config.
 
+### What to avoid
+
+- Do not use Mockito or other mocking libraries for tests.
+  Mockito is a phenomenal solution to the wrong problem.
+  Our components are designed to be stateless and to use immutable structures
+  so that mocks are almost never necessary. If you think you need a mock, reconsider the design first.
+- Don't merge wildcard imports. You can use them temporarily but they must be expanded before merging.
+  Spotless will enforce this.
+- Tests should not emit logs unless something unexpected occurs.
+  - Use `bosk-logback/src/main/java/works/bosk/logback/BoskLogFilter.java` to suppress expected production logs in tests.
+
 ## Testing Patterns
 
 - Tests use JUnit 5
@@ -104,8 +115,9 @@ We use Lombok sparingly. Most of its features are disabled in lombok.config.
 - We use spotbugs for shipped code
 - Published to Maven Central via GitHub actions, by creating a new release in GitHub
 - We use GitHub Dependabot to keep dependencies very up-to-date
-- We use bytecode generation for high performance in several places.
-  - Abstractions are designed to support this by specifying things once and then using them many times (e.g. "compiling" a `Path` into a `Reference`) even where we don't yet take advantage
+- We separate setup from execution. Prefer designs where work is described once (at construction/configuration time) and executed many times efficiently.
+  - `Reference` is an example: path parsing and validation happen once when the `Reference` is built, and then reads are fast.
+    Apply this pattern when designing new abstractions — avoid doing expensive setup work inside hot paths.
 - Each published subproject may have its own developer documentation (e.g. [bosk-mongo/DEVELOPERS.md](bosk-mongo/DEVELOPERS.md))
   - Changes to those subprojects should first consult that documentation for further guidance, and even update it if necessary
 - Bosk treats reads and writes very differently
