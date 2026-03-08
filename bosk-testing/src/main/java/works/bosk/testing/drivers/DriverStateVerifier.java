@@ -23,6 +23,7 @@ import works.bosk.drivers.ForwardingDriver;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
+import works.bosk.testing.drivers.operations.DriverOperation;
 import works.bosk.testing.drivers.operations.FlushOperation;
 import works.bosk.testing.drivers.operations.UpdateOperation;
 
@@ -122,7 +123,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		LOGGER.debug("---> IN: {}", updateOperation);
 		// Note: because we have a separate queue for each thread, this isn't actually blocking
 		pendingOperationsByThreadID
-			.computeIfAbsent(updateOperation.diagnosticAttributes().get(THREAD_ID), _ -> new LinkedBlockingDeque<>())
+			.computeIfAbsent(threadId(updateOperation), _ -> new LinkedBlockingDeque<>())
 			.addLast(updateOperation);
 	}
 
@@ -139,7 +140,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 			LOGGER.trace("\t\tbefore: {}", before);
 			LOGGER.trace("\t\t after: {}", after);
 
-			String threadID = op.diagnosticAttributes().get(THREAD_ID);
+			String threadID = threadId(op);
 			if (threadID == null) {
 				LOGGER.debug("\tMissing " + THREAD_ID + " diagnostic attribute");
 			} else {
@@ -244,6 +245,10 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		} catch (InvalidTypeException e) {
 			throw new AssertionError("References are expected to be compatible: " + original, e);
 		}
+	}
+
+	private static String threadId(DriverOperation op) {
+		return op.diagnosticAttributes().get(THREAD_ID);
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(DriverStateVerifier.class);
