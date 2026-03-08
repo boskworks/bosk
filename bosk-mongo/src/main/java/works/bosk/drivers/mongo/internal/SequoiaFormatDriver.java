@@ -147,7 +147,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
 		// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
-		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision));
+		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, DOCUMENT_ID));
 		BsonDocument filter = documentFilter();
 		UpdateOptions options = new UpdateOptions().upsert(true);
 		LOGGER.debug("** Initial upsert for {}", DOCUMENT_ID);
@@ -357,17 +357,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		String key = dottedFieldNameOf(target, rootRef);
 		LOGGER.debug("| Unset field {}", key);
 		return blankUpdateDoc().append("$unset", new BsonDocument(key, new BsonNull())); // Value is ignored
-	}
-
-	private BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision) {
-		BsonDocument fieldValues = new BsonDocument("_id", DOCUMENT_ID);
-
-		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
-		fieldValues.put(DocumentFields.state.name(), initialState);
-		fieldValues.put(DocumentFields.revision.name(), revision);
-		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
-
-		return fieldValues;
 	}
 
 	/**

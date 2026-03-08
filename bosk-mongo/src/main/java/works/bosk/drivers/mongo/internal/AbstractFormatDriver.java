@@ -4,6 +4,7 @@ import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
+import org.bson.BsonString;
 import org.bson.BsonValue;
 import works.bosk.BoskContext;
 import works.bosk.MapValue;
@@ -81,6 +82,17 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 					formatter.encodeDiagnostics(context.getAttributes())
 				)
 			);
+	}
+
+	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
+		BsonDocument fieldValues = new BsonDocument("_id", documentId);
+
+		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
+		fieldValues.put(DocumentFields.state.name(), initialState);
+		fieldValues.put(DocumentFields.revision.name(), revision);
+		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
+
+		return fieldValues;
 	}
 
 	/**

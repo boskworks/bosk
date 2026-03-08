@@ -208,7 +208,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (initialState instanceof BsonDocument) {
 			upsertAndRemoveSubParts(rootRef, initialState.asDocument()); // Mutates initialState!
 		}
-		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision));
+		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, ROOT_DOCUMENT_ID));
 		BsonDocument filter = rootDocumentFilter();
 		UpdateOptions options = new UpdateOptions().upsert(true);
 		LOGGER.trace("| Filter: {}", filter);
@@ -717,17 +717,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		String key = BsonFormatter.dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Unset field {}", key);
 		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE)); // Value is ignored
-	}
-
-	private BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision) {
-		BsonDocument fieldValues = new BsonDocument("_id", ROOT_DOCUMENT_ID);
-
-		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
-		fieldValues.put(DocumentFields.state.name(), initialState);
-		fieldValues.put(DocumentFields.revision.name(), revision);
-		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
-
-		return fieldValues;
 	}
 
 	/**
