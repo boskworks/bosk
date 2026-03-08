@@ -83,7 +83,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final Identifier instanceID = Identifier.from(randomUUID().toString());
 	private final BoskContext context = new BoskContext();
 
-	private final ValidatingDriver driver;
+	private final InitialDriver initialDriver;
 	private final LocalDriver localDriver;
 	private final RootRef rootRef;
 	private final ThreadLocal<R> rootSnapshot = new ThreadLocal<>();
@@ -128,11 +128,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		// to do such things as create References, so it needs the rest of the
 		// initialization to have completed already.
 		//
-		this.driver = new ValidatingDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
+		this.initialDriver = new InitialDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
 		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
 
 		try {
-			this.currentRoot = rootRef.targetClass().cast(requireNonNull(driver.initialRoot(rootType)));
+			this.currentRoot = rootRef.targetClass().cast(requireNonNull(initialDriver.initialRoot(rootType)));
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
 			throw new IllegalArgumentException("Error computing initial root: " + e.getMessage(), e);
 		}
@@ -203,7 +203,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @return the {@link BoskDriver} to use for submitting updates to this bosk's state tree.
 	 */
 	public BoskDriver driver() {
-		return driver;
+		return initialDriver;
 	}
 
 	/**
@@ -229,7 +229,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 */
 	@SuppressWarnings("unchecked")
 	public <D extends BoskDriver> D getDriver(Class<? super D> driverType) {
-		var userSuppliedDriver = driver.downstream;
+		var userSuppliedDriver = initialDriver.downstream;
 		if (driverType.isInstance(userSuppliedDriver)) {
 			return (D) driverType.cast(userSuppliedDriver);
 		} else {
@@ -238,13 +238,13 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	}
 
 	/**
-	 * We wrap the user-supplied driver with one of these to ensure the error-checking
-	 * requirements of the {@link BoskDriver} are enforced.
+	 * We wrap the user-supplied driver with one of these so we're in control
+	 * of the incoming driver operations.
 	 */
-	final class ValidatingDriver implements BoskDriver {
+	final class InitialDriver implements BoskDriver {
 		final BoskDriver downstream;
 
-		public ValidatingDriver(BoskDriver downstream) {
+		public InitialDriver(BoskDriver downstream) {
 			this.downstream = downstream;
 		}
 
@@ -308,6 +308,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 	/**
 	 * {@link BoskDriver} that writes directly to this {@link Bosk}.
+	 * Always implicitly the last driver on the stack.
 	 *
 	 * <p>
 	 * Acts as the gatekeeper for state changes. This object is what provides thread safety.
