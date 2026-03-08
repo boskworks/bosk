@@ -1,5 +1,6 @@
 package works.bosk.testing.drivers;
 
+import jakarta.annotation.Nullable;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.Deque;
@@ -239,12 +240,8 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		}
 	}
 
-	private static String threadId(DriverOperation op) {
-		String result = op.diagnosticAttributes().get(THREAD_ID);
-		if (result == null) {
-			throw new AssertionError("Missing " + THREAD_ID + " diagnostic attribute on operation: " + op);
-		}
-		return result;
+	private static @Nullable String threadId(DriverOperation op) {
+		return op.diagnosticAttributes().get(THREAD_ID);
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(DriverStateVerifier.class);
