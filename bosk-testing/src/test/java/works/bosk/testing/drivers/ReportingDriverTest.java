@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.Identifier;
 import works.bosk.ListingEntry;
 import works.bosk.MapValue;
@@ -32,7 +32,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 	List<UpdateOperation> ops;
 	AtomicInteger numFlushes;
 	Refs refs;
-	BoskDiagnosticContext.DiagnosticScope diagnosticScope;
+	BoskContext.DiagnosticScope diagnosticScope;
 	MapValue<String> expectedAttributes;
 	final Identifier id1 = Identifier.from("id1");
 	final Identifier id2 = Identifier.from("id2");
@@ -52,8 +52,8 @@ class ReportingDriverTest extends AbstractDriverTest {
 		refs = bosk.buildReferences(Refs.class);
 		bosk.driver().submitReplacement(refs.entity(id1), emptyEntityAt(refs.entity(id1)));
 		ops.clear();
-		diagnosticScope = bosk.diagnosticContext().withAttribute(ReportingDriverTest.class.getSimpleName(), "expectedValue");
-		expectedAttributes = bosk.diagnosticContext().getAttributes();
+		diagnosticScope = bosk.context().withAttribute(ReportingDriverTest.class.getSimpleName(), "expectedValue");
+		expectedAttributes = bosk.context().getAttributes();
 	}
 
 	@AfterEach

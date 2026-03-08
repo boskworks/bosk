@@ -8,7 +8,7 @@ public interface BoskInfo<R extends StateTreeNode> {
 	String name();
 	Identifier instanceID();
 	RootReference<R> rootReference();
-	BoskDiagnosticContext diagnosticContext();
+	BoskContext context();
 
 	/**
 	 * @throws IllegalStateException if called before the {@link Bosk} constructor returns

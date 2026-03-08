@@ -19,7 +19,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -579,14 +579,14 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		bosk.hookRegistrar().registerHook("contextPropagatesToHook", bosk.rootReference(), _1 -> {
 			// Note that this will run as soon as it's registered
 			if (diagnosticsAreReady.get()) {
-				BoskDiagnosticContext boskDiagnosticContext = bosk.diagnosticContext();
-				LOGGER.debug("Received diagnostic attributes: {}", boskDiagnosticContext.getAttributes());
-				assertEquals("attributeValue", boskDiagnosticContext.getAttribute("attributeName"));
+				BoskContext boskContext = bosk.context();
+				LOGGER.debug("Received diagnostic attributes: {}", boskContext.getAttributes());
+				assertEquals("attributeValue", boskContext.getAttribute("attributeName"));
 				diagnosticsVerified.release();
 			}
 		});
 		bosk.driver().flush();
-		try (var _ = bosk.diagnosticContext().withAttribute("attributeName", "attributeValue")) {
+		try (var _ = bosk.context().withAttribute("attributeName", "attributeValue")) {
 			diagnosticsAreReady.set(true);
 			LOGGER.debug("Running operation with diagnostic context");
 			operation.run();

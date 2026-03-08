@@ -287,7 +287,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			root = callDownstreamInitialRoot(rootType);
 			try (var session = queryCollection.newSession()) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
-				preferredDriver.initializeCollection(new StateAndMetadata<>(root, REVISION_ZERO, boskInfo.diagnosticContext().getAttributes()));
+				preferredDriver.initializeCollection(new StateAndMetadata<>(root, REVISION_ZERO, boskInfo.context().getAttributes()));
 				session.commitTransactionIfAny();
 				// We can now publish the driver knowing that the transaction, if there is one, has committed
 				publishFormatDriver(preferredDriver);
@@ -503,7 +503,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// This causes downstream.submitReplacement to be associated with the last update to the state,
 				// which is of dubious relevance. We might just want to use the context from the current thread,
 				// which is probably empty because this runs on the ChangeReceiver thread.
-				try (var _ = boskInfo.diagnosticContext().withOnly(loadedState.diagnosticAttributes())) {
+				try (var _ = boskInfo.context().withOnly(loadedState.diagnosticAttributes())) {
 					downstream.submitReplacement(boskInfo.rootReference(), loadedState.state());
 					LOGGER.debug("Done submitting downstream");
 				}

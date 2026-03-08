@@ -5,7 +5,7 @@ import java.lang.reflect.Type;
 import java.util.function.Consumer;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.Identifier;
@@ -36,7 +36,7 @@ import works.bosk.testing.drivers.operations.UpdateOperation;
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public class ReportingDriver implements BoskDriver {
 	final BoskDriver downstream;
-	final BoskDiagnosticContext diagnosticContext;
+	final BoskContext context;
 	final Consumer<? super UpdateOperation> updateListener;
 	final Consumer<? super FlushOperation> preFlushListener;
 	final Consumer<? super FlushOperation> postFlushListener;
@@ -45,11 +45,11 @@ public class ReportingDriver implements BoskDriver {
 	 * Builds a driver that reports all updates and flushes to the given listener before sending them to the downstream driver.
 	 */
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Consumer<? super DriverOperation> listener) {
-		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), listener, listener, _->{});
+		return (b,d) -> new ReportingDriver(d, b.context(), listener, listener, _->{});
 	}
 
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory(Consumer<? super UpdateOperation> updateListener, Consumer<? super FlushOperation> preFlushListener, Consumer<? super FlushOperation> postFlushListener) {
-		return (b,d) -> new ReportingDriver(d, b.diagnosticContext(), updateListener, preFlushListener, postFlushListener);
+		return (b,d) -> new ReportingDriver(d, b.context(), updateListener, preFlushListener, postFlushListener);
 	}
 
 	@Override
@@ -59,42 +59,42 @@ public class ReportingDriver implements BoskDriver {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		SubmitReplacement<T> op = new SubmitReplacement<>(target, newValue, diagnosticContext.getAttributes());
+		SubmitReplacement<T> op = new SubmitReplacement<>(target, newValue, context.getAttributes());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		SubmitConditionalReplacement<T> op = new SubmitConditionalReplacement<>(target, newValue, precondition, requiredValue, diagnosticContext.getAttributes());
+		SubmitConditionalReplacement<T> op = new SubmitConditionalReplacement<>(target, newValue, precondition, requiredValue, context.getAttributes());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		ConditionalCreation<T> op = new ConditionalCreation<>(target, newValue, diagnosticContext.getAttributes());
+		ConditionalCreation<T> op = new ConditionalCreation<>(target, newValue, context.getAttributes());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		SubmitDeletion<T> op = new SubmitDeletion<>(target, diagnosticContext.getAttributes());
+		SubmitDeletion<T> op = new SubmitDeletion<>(target, context.getAttributes());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		SubmitConditionalDeletion<T> op = new SubmitConditionalDeletion<>(target, precondition, requiredValue, diagnosticContext.getAttributes());
+		SubmitConditionalDeletion<T> op = new SubmitConditionalDeletion<>(target, precondition, requiredValue, context.getAttributes());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		FlushOperation op = new FlushOperation(diagnosticContext.getAttributes());
+		FlushOperation op = new FlushOperation(context.getAttributes());
 		preFlushListener.accept(op);
 		op.submitTo(downstream);
 		postFlushListener.accept(op);

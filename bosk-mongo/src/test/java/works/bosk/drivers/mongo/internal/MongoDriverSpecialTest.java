@@ -156,7 +156,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			boskName(),
 			TestEntity.class,
 			AbstractMongoDriverTest::initialRoot,
-			BoskConfig.<TestEntity>builder().driverFactory((b, d) -> driverFactory.build(b, new BufferingDriver(d, b.diagnosticContext()) {
+			BoskConfig.<TestEntity>builder().driverFactory((b, d) -> driverFactory.build(b, new BufferingDriver(d, b.context()) {
 				@Override
 				public <T> void submitReplacement(Reference<T> target, T newValue) {
 					super.submitReplacement(target, newValue);

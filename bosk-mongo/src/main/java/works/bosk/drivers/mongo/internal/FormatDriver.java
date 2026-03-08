@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriver;
 
@@ -22,7 +22,7 @@ import works.bosk.drivers.mongo.MongoDriver;
  * </li><li>
  *     Implementing {@link #flush()} (consider using {@link FlushLock})
  * </li><li>
- *     Propagating {@link BoskDiagnosticContext diagnostic context} downstream.
+ *     Propagating {@link BoskContext context} downstream.
  * </li></ol>
  *
  * Implementations are not responsible for:

@@ -22,7 +22,7 @@ import org.bson.codecs.EncoderContext;
 import org.bson.codecs.ValueCodecProvider;
 import org.bson.codecs.configuration.CodecRegistries;
 import org.bson.codecs.configuration.CodecRegistry;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.BoskInfo;
 import works.bosk.Listing;
 import works.bosk.Path;
@@ -312,7 +312,7 @@ public class BsonFormatter {
 		revision,
 
 		/**
-		 * The contents of {@link BoskDiagnosticContext} corresponding to this
+		 * The contents of {@link BoskContext#getAttributes()} corresponding to this
 		 * document's last update.
 		 */
 		diagnostics,

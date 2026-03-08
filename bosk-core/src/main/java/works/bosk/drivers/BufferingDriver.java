@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.Identifier;
@@ -33,17 +33,17 @@ import works.bosk.exceptions.InvalidTypeException;
  */
 public class BufferingDriver implements BoskDriver {
 	private final BoskDriver downstream;
-	private final BoskDiagnosticContext diagnosticContext;
+	private final BoskContext context;
 	private final Deque<Consumer<BoskDriver>> updateQueue = new ConcurrentLinkedDeque<>();
 	private final AtomicLong changeID = new AtomicLong();
 
-	protected BufferingDriver(BoskDriver downstream, BoskDiagnosticContext diagnosticContext) {
+	protected BufferingDriver(BoskDriver downstream, BoskContext context) {
 		this.downstream = downstream;
-		this.diagnosticContext = diagnosticContext;
+		this.context = context;
 	}
 
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory() {
-		return (b, d) -> new BufferingDriver(d, b.diagnosticContext());
+		return (b, d) -> new BufferingDriver(d, b.context());
 	}
 
 	@Override
@@ -86,11 +86,11 @@ public class BufferingDriver implements BoskDriver {
 
 	private void enqueue(Consumer<BoskDriver> action) {
 		long changeID = this.changeID.incrementAndGet();
-		LOGGER.debug("Buffering action {} {}", changeID, diagnosticContext.getAttributes());
-		MapValue<String> capturedAttributes = diagnosticContext.getAttributes();
+		LOGGER.debug("Buffering action {} {}", changeID, context.getAttributes());
+		MapValue<String> capturedAttributes = context.getAttributes();
 		updateQueue.add(d -> {
-			try (var _ = diagnosticContext.withOnly(capturedAttributes)) {
-				LOGGER.debug("Running action {} {}", changeID, diagnosticContext.getAttributes());
+			try (var _ = context.withOnly(capturedAttributes)) {
+				LOGGER.debug("Running action {} {}", changeID, context.getAttributes());
 				action.accept(d);
 			}
 		});

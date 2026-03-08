@@ -6,27 +6,27 @@ import org.jetbrains.annotations.Nullable;
 import static java.util.function.Predicate.not;
 
 /**
- * A thread-local set of name-value pairs that propagate all the way from
+ * Thread-local data that propagates all the way from
  * submission of a driver update, through all the driver layers,
  * to the execution of hooks.
  *
  * <p>
- * One single {@code BoskDiagnosticContext} instance is associated with each {@link Bosk}.
+ * One single {@code BoskContext} instance is associated with each {@link Bosk}.
  * You can hold on to this object; there's no need to re-fetch it from the {@link Bosk} every time.
  */
-public final class BoskDiagnosticContext {
-	private final ThreadLocal<MapValue<String>> currentAttributes = ThreadLocal.withInitial(MapValue::empty);
+public final class BoskContext {
+	private final ThreadLocal<MapValue<String>> diagnosticAttributes = ThreadLocal.withInitial(MapValue::empty);
 
 	public final class DiagnosticScope implements AutoCloseable {
-		final MapValue<String> oldAttributes = currentAttributes.get();
+		final MapValue<String> oldAttributes = diagnosticAttributes.get();
 
 		DiagnosticScope(MapValue<String> attributes) {
-			currentAttributes.set(attributes);
+			diagnosticAttributes.set(attributes);
 		}
 
 		@Override
 		public void close() {
-			currentAttributes.set(oldAttributes);
+			diagnosticAttributes.set(oldAttributes);
 		}
 	}
 
@@ -35,31 +35,31 @@ public final class BoskDiagnosticContext {
 	 * or <code>null</code> if no such attribute has been defined.
 	 */
 	public @Nullable String getAttribute(String name) {
-		return currentAttributes.get().get(name);
+		return diagnosticAttributes.get().get(name);
 	}
 
 	public @NotNull MapValue<String> getAttributes() {
-		return currentAttributes.get();
+		return diagnosticAttributes.get();
 	}
 
 	/**
-	 * Adds a single attribute to the current thread's diagnostic context.
+	 * Adds a single diagnostic attribute to the current thread's context.
 	 * If the attribute already exists, it will be replaced.
 	 */
 	public DiagnosticScope withAttribute(String name, String value) {
-		return new DiagnosticScope(currentAttributes.get().with(name, value));
+		return new DiagnosticScope(diagnosticAttributes.get().with(name, value));
 	}
 
 	/**
-	 * Adds attributes to the current thread's diagnostic context.
+	 * Adds diagnostic attributes to the current thread's context.
 	 * If an attribute already exists, it will be replaced.
 	 */
 	public DiagnosticScope withAttributes(@NotNull MapValue<String> additionalAttributes) {
-		return new DiagnosticScope(currentAttributes.get().withAll(additionalAttributes));
+		return new DiagnosticScope(diagnosticAttributes.get().withAll(additionalAttributes));
 	}
 
 	/**
-	 * Replaces all attributes in the current thread's diagnostic context.
+	 * Replaces all diagnostic attributes in the current thread's context.
 	 * Existing attributes are removed/replaced.
 	 * <p>
 	 * This is intended for propagating context from one thread to another.
@@ -69,14 +69,14 @@ public final class BoskDiagnosticContext {
 	 */
 	public DiagnosticScope withOnly(@Nullable MapValue<String> attributes) {
 		if (attributes == null) {
-			return new DiagnosticScope(currentAttributes.get());
+			return new DiagnosticScope(diagnosticAttributes.get());
 		} else {
 			return new DiagnosticScope(attributes);
 		}
 	}
 
 	/**
-	 * Removes all attributes from the current thread's diagnostic context that start with the given prefix,
+	 * Removes all diagnostic attributes from the current thread's context that start with the given prefix,
 	 * and adds the given attributes after prepending the prefix to each of its keys.
 	 *
 	 * @param prefix the leftmost part of the keys to be replaced; must end with a dot and be at least two characters long
@@ -86,7 +86,7 @@ public final class BoskDiagnosticContext {
 		assert prefix.endsWith("."): "Prefix must end with a dot: " + prefix;
 		assert prefix.length() >= 2: "Prefix must be at least two characters long: " + prefix;
 		MapValue<String> prefixedAttributes = MapValue.fromFunctions(replacementAttributes.keySet(), k -> prefix+k, replacementAttributes::get);
-		return new DiagnosticScope(currentAttributes.get().withOnly(
+		return new DiagnosticScope(diagnosticAttributes.get().withOnly(
 			not(k -> k.startsWith(prefix))
 		).withAll(prefixedAttributes));
 	}

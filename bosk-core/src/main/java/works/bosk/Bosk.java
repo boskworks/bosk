@@ -22,7 +22,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.BoskDiagnosticContext.DiagnosticScope;
+import works.bosk.BoskContext.DiagnosticScope;
 import works.bosk.ReferenceUtils.CatalogRef;
 import works.bosk.ReferenceUtils.ListingRef;
 import works.bosk.ReferenceUtils.SideTableRef;
@@ -81,7 +81,7 @@ import static works.bosk.TypeValidation.validateType;
 public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final String name;
 	private final Identifier instanceID = Identifier.from(randomUUID().toString());
-	private final BoskDiagnosticContext diagnosticContext = new BoskDiagnosticContext();
+	private final BoskContext context = new BoskContext();
 
 	private final ValidatingDriver driver;
 	private final LocalDriver localDriver;
@@ -122,7 +122,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		Info<R> boskInfo = new Info<>(
-			name, instanceID, rootRef, diagnosticContext, new AtomicReference<>());
+			name, instanceID, rootRef, context, new AtomicReference<>());
 
 		// We do this as late as possible because the driver factory is allowed
 		// to do such things as create References, so it needs the rest of the
@@ -155,8 +155,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	}
 
 	@Override
-	public BoskDiagnosticContext diagnosticContext() {
-		return this.diagnosticContext;
+	public BoskContext context() {
+		return this.context;
 	}
 
 	/**
@@ -180,7 +180,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		String name,
 		Identifier instanceID,
 		RootReference<RR> rootReference,
-		BoskDiagnosticContext diagnosticContext,
+		BoskContext context,
 		AtomicReference<Bosk<RR>> boskRef
 	) implements BoskInfo<RR> {
 		@Override
@@ -515,12 +515,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		 * on every matching object that exists in <code>rootForHook</code>.
 		 */
 		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
-			MapValue<String> attributes = diagnosticContext.getAttributes();
+			MapValue<String> attributes = context.getAttributes();
 			reg.triggerAction(priorRoot, rootForHook, target, changedRef -> {
 				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
-					try (DiagnosticScope _ = diagnosticContext.withOnly(attributes)) {
+					try (DiagnosticScope _ = context.withOnly(attributes)) {
 						try (ReadSession _ = new ReadSession(rootForHook)) {
 							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);

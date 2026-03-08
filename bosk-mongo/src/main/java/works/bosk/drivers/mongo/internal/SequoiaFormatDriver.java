@@ -67,7 +67,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.diagnosticContext(), new Formatter(boskInfo, bsonSerializer));
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer));
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.collection = collection;
 		this.downstream = downstream;
@@ -203,7 +203,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					throw new UnprocessableEventException("Missing fullDocument", event.getOperationType());
 				}
 				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
-				try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
+				try (var _ = context.withOnly(diagnosticAttributes)) {
 					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
 					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name(), null);
 					if (state == null) {
@@ -224,7 +224,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(event);
 					if (shouldNotSkip(revision)) {
 						MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromUpdate(event);
-						try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
+						try (var _ = context.withOnly(diagnosticAttributes)) {
 							replaceUpdatedFields(updateDescription.getUpdatedFields());
 							deleteRemovedFields(updateDescription.getRemovedFields(), event.getOperationType());
 						}
@@ -361,7 +361,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	private BsonDocument updateDoc() {
 		return new BsonDocument("$inc", new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
-			.append("$set", new BsonDocument(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(diagnosticContext.getAttributes())));
+			.append("$set", new BsonDocument(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes())));
 	}
 
 	private BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision) {
@@ -370,7 +370,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
 		fieldValues.put(DocumentFields.state.name(), initialState);
 		fieldValues.put(DocumentFields.revision.name(), revision);
-		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(diagnosticContext.getAttributes()));
+		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 
 		return fieldValues;
 	}

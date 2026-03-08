@@ -90,7 +90,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.diagnosticContext(), new Formatter(boskInfo, bsonSerializer));
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer));
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
 		this.format = format;
@@ -285,7 +285,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				}
 
 				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
-				try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
+				try (var _ = context.withOnly(diagnosticAttributes)) {
 					BsonDocument state = fullDocument.getDocument(Formatter.DocumentFields.state.name());
 					if (state == null) {
 						ChangeStreamDocument<BsonDocument> mainEvent = events.get(events.size() - 2);
@@ -307,7 +307,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					return;
 				}
 				MapValue<String> attributes = formatter.eventDiagnosticAttributesFromUpdate(finalEvent);
-				try (var _ = diagnosticContext.withOnly(attributes)) {
+				try (var _ = context.withOnly(attributes)) {
 					boolean mainEventIsFinalEvent = updateEventHasField(finalEvent, Formatter.DocumentFields.state); // If the final update changes only the revision field, then it's not the main event
 					if (mainEventIsFinalEvent) {
 						LOGGER.debug("Main event is final event");
@@ -720,7 +720,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	private BsonDocument blankUpdateDoc() {
 		return new BsonDocument("$inc", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonInt64(1)))
-			.append("$set", new BsonDocument(Formatter.DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(diagnosticContext.getAttributes())));
+			.append("$set", new BsonDocument(Formatter.DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes())));
 	}
 
 	private BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision) {
@@ -729,7 +729,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		fieldValues.put(Formatter.DocumentFields.path.name(), new BsonString("/"));
 		fieldValues.put(Formatter.DocumentFields.state.name(), initialState);
 		fieldValues.put(Formatter.DocumentFields.revision.name(), revision);
-		fieldValues.put(Formatter.DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(diagnosticContext.getAttributes()));
+		fieldValues.put(Formatter.DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 
 		return fieldValues;
 	}
