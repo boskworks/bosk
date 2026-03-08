@@ -6,6 +6,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import works.bosk.Bosk;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
@@ -161,14 +162,14 @@ public class ReplicaSet<R extends StateTreeNode> {
 
 		@Override
 		public <T> void submitReplacement(Reference<T> target, T newValue) {
-			replicas.forEach(r -> r.driver
+			broadcast(r -> r.driver
 				.submitReplacement(
 					r.correspondingReference(target), newValue));
 		}
 
 		@Override
 		public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-			replicas.forEach(r -> r.driver
+			broadcast(r -> r.driver
 				.submitConditionalReplacement(
 					r.correspondingReference(target), newValue,
 					r.correspondingReference(precondition), requiredValue));
@@ -176,21 +177,21 @@ public class ReplicaSet<R extends StateTreeNode> {
 
 		@Override
 		public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-			replicas.forEach(r -> r.driver
+			broadcast(r -> r.driver
 				.submitConditionalCreation(
 					r.correspondingReference(target), newValue));
 		}
 
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
-			replicas.forEach(r -> r.driver
+			broadcast(r -> r.driver
 				.submitDeletion(
 					r.correspondingReference(target)));
 		}
 
 		@Override
 		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-			replicas.forEach(r -> r.driver
+			broadcast(r -> r.driver
 				.submitConditionalDeletion(
 					r.correspondingReference(target),
 					r.correspondingReference(precondition), requiredValue));
@@ -201,6 +202,10 @@ public class ReplicaSet<R extends StateTreeNode> {
 			for (var r : replicas) {
 				r.driver().flush();
 			}
+		}
+
+		private void broadcast(Consumer<Replica<R>> action) {
+			replicas.forEach(action);
 		}
 
 	}

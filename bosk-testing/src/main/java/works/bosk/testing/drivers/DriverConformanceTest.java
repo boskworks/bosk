@@ -14,11 +14,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -188,7 +189,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@InjectedTest
+	@Test
 	void replaceNestedSideTableDomain() throws InvalidTypeException, IOException, InterruptedException {
 		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(Path.just("catalog"));
 		driver.flush();
@@ -379,7 +380,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		}
 	}
 
-	@InjectedTest
+	@Test
 	void optional() throws InvalidTypeException {
 		Reference<TestValues> ref = initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		assertCorrectBoskContents();
@@ -396,7 +397,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@InjectedTest
+	@Test
 	void string() throws InvalidTypeException {
 		Reference<TestValues> ref = initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Reference<String> stringRef = ref.then(String.class, TestValues.Fields.string);
@@ -410,7 +411,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@InjectedTest
+	@Test
 	void enumeration() throws InvalidTypeException {
 		Reference<TestValues> ref = initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		assertCorrectBoskContents();
@@ -424,7 +425,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@InjectedTest
+	@Test
 	void variant() throws InvalidTypeException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		assertCorrectBoskContents();
@@ -450,7 +451,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@InjectedTest
+	@Test
 	void listValue_works() throws InvalidTypeException {
 		Reference<TestValues> ref = initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Reference<ListValue<String>> listRef = ref.then(listValue(String.class), TestValues.Fields.list);
@@ -465,7 +466,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@InjectedTest
+	@Test
 	void mapValue_works() throws InvalidTypeException {
 		Reference<TestValues> ref = initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Reference<MapValue<String>> mapRef = ref.then(mapValue(String.class), TestValues.Fields.map);
@@ -519,7 +520,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		return Arrays.stream(Primitives.class.getRecordComponents());
 	}
 
-	@InjectedTest
+	@Test
 	void flushNothing() throws IOException, InterruptedException {
 		setupBosksAndReferences(driverFactory);
 		// Flush before any writes should work
@@ -527,7 +528,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@InjectedTest
+	@Test
 	void submitReplacement_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Reference<String> ref = bosk.rootReference().then(String.class, "string");
@@ -537,7 +538,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		testDiagnosticContextPropagation(() -> bosk.driver().submitReplacement(ref, "value2"));
 	}
 
-	@InjectedTest
+	@Test
 	void submitConditionalReplacement_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Refs refs = bosk.buildReferences(Refs.class);
@@ -545,7 +546,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		testDiagnosticContextPropagation(() -> bosk.driver().submitConditionalReplacement(ref, "newValue", refs.rootID(), Identifier.from("root")));
 	}
 
-	@InjectedTest
+	@Test
 	void submitConditionalCreation_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Refs refs = bosk.buildReferences(Refs.class);
@@ -554,7 +555,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		testDiagnosticContextPropagation(() -> bosk.driver().submitConditionalCreation(ref, emptyEntityAt(ref)));
 	}
 
-	@InjectedTest
+	@Test
 	void submitDeletion_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Refs refs = bosk.buildReferences(Refs.class);
@@ -563,7 +564,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		testDiagnosticContextPropagation(() -> bosk.driver().submitDeletion(ref));
 	}
 
-	@InjectedTest
+	@Test
 	void submitConditionalDeletion_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Refs refs = bosk.buildReferences(Refs.class);
@@ -578,14 +579,14 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		bosk.hookRegistrar().registerHook("contextPropagatesToHook", bosk.rootReference(), _1 -> {
 			// Note that this will run as soon as it's registered
 			if (diagnosticsAreReady.get()) {
-				BoskDiagnosticContext boskDiagnosticContext = bosk.diagnosticContext();
-				LOGGER.debug("Received diagnostic attributes: {}", boskDiagnosticContext.getAttributes());
-				assertEquals("attributeValue", boskDiagnosticContext.getAttribute("attributeName"));
+				BoskContext boskContext = bosk.context();
+				LOGGER.debug("Received diagnostic attributes: {}", boskContext.getAttributes());
+				assertEquals("attributeValue", boskContext.getAttribute("attributeName"));
 				diagnosticsVerified.release();
 			}
 		});
 		bosk.driver().flush();
-		try (var _ = bosk.diagnosticContext().withAttribute("attributeName", "attributeValue")) {
+		try (var _ = bosk.context().withAttribute("attributeName", "attributeValue")) {
 			diagnosticsAreReady.set(true);
 			LOGGER.debug("Running operation with diagnostic context");
 			operation.run();

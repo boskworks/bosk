@@ -22,7 +22,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.BoskDiagnosticContext.DiagnosticScope;
+import works.bosk.BoskContext.ContextScope;
 import works.bosk.ReferenceUtils.CatalogRef;
 import works.bosk.ReferenceUtils.ListingRef;
 import works.bosk.ReferenceUtils.SideTableRef;
@@ -81,9 +81,9 @@ import static works.bosk.TypeValidation.validateType;
 public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final String name;
 	private final Identifier instanceID = Identifier.from(randomUUID().toString());
-	private final BoskDiagnosticContext diagnosticContext = new BoskDiagnosticContext();
+	private final BoskContext context = new BoskContext();
 
-	private final ValidatingDriver driver;
+	private final InitialDriver initialDriver;
 	private final LocalDriver localDriver;
 	private final RootRef rootRef;
 	private final ThreadLocal<R> rootSnapshot = new ThreadLocal<>();
@@ -122,17 +122,17 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		Info<R> boskInfo = new Info<>(
-			name, instanceID, rootRef, diagnosticContext, new AtomicReference<>());
+			name, instanceID, rootRef, context, new AtomicReference<>());
 
 		// We do this as late as possible because the driver factory is allowed
 		// to do such things as create References, so it needs the rest of the
 		// initialization to have completed already.
 		//
-		this.driver = new ValidatingDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
+		this.initialDriver = new InitialDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
 		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
 
 		try {
-			this.currentRoot = rootRef.targetClass().cast(requireNonNull(driver.initialRoot(rootType)));
+			this.currentRoot = rootRef.targetClass().cast(requireNonNull(initialDriver.initialRoot(rootType)));
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
 			throw new IllegalArgumentException("Error computing initial root: " + e.getMessage(), e);
 		}
@@ -155,8 +155,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	}
 
 	@Override
-	public BoskDiagnosticContext diagnosticContext() {
-		return this.diagnosticContext;
+	public BoskContext context() {
+		return this.context;
 	}
 
 	/**
@@ -180,7 +180,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		String name,
 		Identifier instanceID,
 		RootReference<RR> rootReference,
-		BoskDiagnosticContext diagnosticContext,
+		BoskContext context,
 		AtomicReference<Bosk<RR>> boskRef
 	) implements BoskInfo<RR> {
 		@Override
@@ -203,7 +203,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @return the {@link BoskDriver} to use for submitting updates to this bosk's state tree.
 	 */
 	public BoskDriver driver() {
-		return driver;
+		return initialDriver;
 	}
 
 	/**
@@ -229,7 +229,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 */
 	@SuppressWarnings("unchecked")
 	public <D extends BoskDriver> D getDriver(Class<? super D> driverType) {
-		var userSuppliedDriver = driver.downstream;
+		var userSuppliedDriver = initialDriver.downstream;
 		if (driverType.isInstance(userSuppliedDriver)) {
 			return (D) driverType.cast(userSuppliedDriver);
 		} else {
@@ -238,13 +238,13 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	}
 
 	/**
-	 * We wrap the user-supplied driver with one of these to ensure the error-checking
-	 * requirements of the {@link BoskDriver} are enforced.
+	 * We wrap the user-supplied driver with one of these so we're in control
+	 * of the incoming driver operations.
 	 */
-	final class ValidatingDriver implements BoskDriver {
+	final class InitialDriver implements BoskDriver {
 		final BoskDriver downstream;
 
-		public ValidatingDriver(BoskDriver downstream) {
+		public InitialDriver(BoskDriver downstream) {
 			this.downstream = downstream;
 		}
 
@@ -308,6 +308,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 	/**
 	 * {@link BoskDriver} that writes directly to this {@link Bosk}.
+	 * Always implicitly the last driver on the stack.
 	 *
 	 * <p>
 	 * Acts as the gatekeeper for state changes. This object is what provides thread safety.
@@ -421,7 +422,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
 				try (ReadSession _ = supersedingReadSession()) {
-					preconditionsSatisfied = Objects.equals(precondition.value(), requiredValue);
+					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
 					R priorRoot = currentRoot;
@@ -515,12 +516,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		 * on every matching object that exists in <code>rootForHook</code>.
 		 */
 		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
-			MapValue<String> attributes = diagnosticContext.getAttributes();
+			MapValue<String> attributes = context.getAttributes();
 			reg.triggerAction(priorRoot, rootForHook, target, changedRef -> {
 				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
-					try (DiagnosticScope _ = diagnosticContext.withOnly(attributes)) {
+					try (ContextScope _ = context.withOnly(attributes)) {
 						try (ReadSession _ = new ReadSession(rootForHook)) {
 							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);

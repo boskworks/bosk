@@ -44,6 +44,7 @@ import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
+import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
@@ -90,7 +91,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.diagnosticContext(), new Formatter(boskInfo, bsonSerializer));
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer));
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
 		this.format = format;
@@ -170,25 +171,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	public StateAndMetadata<R> loadAllState() throws UninitializedCollectionException, IOException {
-		BsonState bsonState = loadBsonState();
-
-		R root;
-		if (bsonState.state() == null) {
-			throw new IOException("No existing state in document");
-		} else {
-			root = formatter.document2object(bsonState.state(), rootRef);
-		}
-		MapValue<String> diagnosticAttributes = bsonState.diagnosticAttributes() == null ? null
-			:formatter.decodeDiagnosticAttributes(bsonState.diagnosticAttributes());
-		return new StateAndMetadata<>(
-			root,
-			bsonState.revision() == null? Formatter.REVISION_ZERO : bsonState.revision(),
-			diagnosticAttributes);
-	}
-
-	@Override
-	BsonState loadBsonState() throws UninitializedCollectionException {
+	BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException {
 		List<BsonDocument> allParts = new ArrayList<>();
 		try (MongoCursor<BsonDocument> cursor = collection
 			.withReadConcern(LOCAL) // The revision field needs to be the latest
@@ -207,9 +190,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			throw new IllegalStateException("Cannot locate root document");
 		}
 
-		return new BsonState(
+		return new BsonStateAndMetadata(
 			bsonSurgeon.gather(allParts),
-			mainPart.getInt64(Formatter.DocumentFields.revision.name(), null), Formatter.getDiagnosticAttributesIfAny(mainPart)
+			mainPart.getInt64(DocumentFields.revision.name(), null),
+			Formatter.getDiagnosticAttributesIfAny(mainPart)
 		);
 	}
 
@@ -224,7 +208,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (initialState instanceof BsonDocument) {
 			upsertAndRemoveSubParts(rootRef, initialState.asDocument()); // Mutates initialState!
 		}
-		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision));
+		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, ROOT_DOCUMENT_ID));
 		BsonDocument filter = rootDocumentFilter();
 		UpdateOptions options = new UpdateOptions().upsert(true);
 		LOGGER.trace("| Filter: {}", filter);
@@ -283,7 +267,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private boolean isFinalEventOfTransaction(ChangeStreamDocument<BsonDocument> event) {
 		return
 			ROOT_DOCUMENT_ID.equals(event.getDocumentKey().get("_id"))
-				&& updateEventHasField(event, Formatter.DocumentFields.revision);
+				&& updateEventHasField(event, DocumentFields.revision);
 	}
 
 	private void processTransaction(List<ChangeStreamDocument<BsonDocument>> events) throws UnprocessableEventException {
@@ -302,8 +286,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				}
 
 				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
-				try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
-					BsonDocument state = fullDocument.getDocument(Formatter.DocumentFields.state.name());
+				try (var _ = context.withOnly(diagnosticAttributes)) {
+					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name());
 					if (state == null) {
 						ChangeStreamDocument<BsonDocument> mainEvent = events.get(events.size() - 2);
 						LOGGER.debug("Main event is {} on {}", mainEvent.getOperationType(), mainEvent.getDocumentKey());
@@ -324,8 +308,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					return;
 				}
 				MapValue<String> attributes = formatter.eventDiagnosticAttributesFromUpdate(finalEvent);
-				try (var _ = diagnosticContext.withOnly(attributes)) {
-					boolean mainEventIsFinalEvent = updateEventHasField(finalEvent, Formatter.DocumentFields.state); // If the final update changes only the revision field, then it's not the main event
+				try (var _ = context.withOnly(attributes)) {
+					boolean mainEventIsFinalEvent = updateEventHasField(finalEvent, DocumentFields.state); // If the final update changes only the revision field, then it's not the main event
 					if (mainEventIsFinalEvent) {
 						LOGGER.debug("Main event is final event");
 						propagateDownstream(finalEvent, events.subList(0, events.size() - 1));
@@ -359,7 +343,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					throw new UnprocessableEventException("Missing fullDocument on main event", mainEvent.getOperationType());
 				}
 
-				BsonDocument state = fullDocument.getDocument(Formatter.DocumentFields.state.name(), null);
+				BsonDocument state = fullDocument.getDocument(DocumentFields.state.name(), null);
 				if (state == null) {
 					throw new UnprocessableEventException("Missing state field", mainEvent.getOperationType());
 				}
@@ -467,7 +451,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		flushLock.finishedRevision(revision);
 	}
 
-	private static boolean updateEventHasField(ChangeStreamDocument<BsonDocument> event, Formatter.DocumentFields field) {
+	private static boolean updateEventHasField(ChangeStreamDocument<BsonDocument> event, DocumentFields field) {
 		if (event == null) {
 			return false;
 		}
@@ -555,7 +539,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				LOGGER.debug("| Update main document");
 				BsonDocument update = new BsonDocument("$set",
 					filter.clone()
-						.append(Formatter.DocumentFields.state.name(), value));
+						.append(DocumentFields.state.name(), value));
 				LOGGER.debug("| Update: {}", update);
 				LOGGER.debug("| Filter: {}", filter);
 				collection.updateOne(filter, update, new UpdateOptions().upsert(true));
@@ -667,11 +651,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				.withReadConcern(LOCAL) // The revision field needs to be the latest
 				.find(ROOT_DOCUMENT_FILTER)
 				.limit(1)
-				.projection(fields(Projections.include(Formatter.DocumentFields.revision.name())))
+				.projection(fields(Projections.include(DocumentFields.revision.name())))
 				.cursor()
 			) {
 				BsonDocument doc = cursor.next();
-				BsonInt64 result = doc.getInt64(Formatter.DocumentFields.revision.name(), null);
+				BsonInt64 result = doc.getInt64(DocumentFields.revision.name(), null);
 				if (result == null) {
 					// Document exists but has no revision field.
 					// In that case, newer servers (including this one) will create the
@@ -735,22 +719,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE)); // Value is ignored
 	}
 
-	private BsonDocument blankUpdateDoc() {
-		return new BsonDocument("$inc", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonInt64(1)))
-			.append("$set", new BsonDocument(Formatter.DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(diagnosticContext.getAttributes())));
-	}
-
-	private BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision) {
-		BsonDocument fieldValues = new BsonDocument("_id", ROOT_DOCUMENT_ID);
-
-		fieldValues.put(Formatter.DocumentFields.path.name(), new BsonString("/"));
-		fieldValues.put(Formatter.DocumentFields.state.name(), initialState);
-		fieldValues.put(Formatter.DocumentFields.revision.name(), revision);
-		fieldValues.put(Formatter.DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(diagnosticContext.getAttributes()));
-
-		return fieldValues;
-	}
-
 	/**
 	 * @return true if something changed
 	 */
@@ -786,7 +754,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			boolean alreadyUsedSubparts = false;
 			for (Map.Entry<String, BsonValue> entry : updatedFields.entrySet()) {
 				String dottedName = entry.getKey();
-				if (dottedName.startsWith(Formatter.DocumentFields.state.name())) {
+				if (dottedName.startsWith(DocumentFields.state.name())) {
 					Reference<Object> ref;
 					try {
 						ref = BsonFormatter.referenceTo(dottedName, mainRef);
@@ -843,7 +811,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private void deleteRemovedFields(Reference<?> mainRef, @Nullable List<String> removedFields, OperationType operationType) throws UnprocessableEventException {
 		if (removedFields != null) {
 			for (String dottedName : removedFields) {
-				if (dottedName.startsWith(Formatter.DocumentFields.state.name())) {
+				if (dottedName.startsWith(DocumentFields.state.name())) {
 					Reference<Object> ref;
 					try {
 						ref = BsonFormatter.referenceTo(dottedName, mainRef);

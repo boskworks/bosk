@@ -11,7 +11,14 @@ import static java.util.Arrays.asList;
 /**
  * A scalable format that stores the bosk state in multiple documents,
  * thereby overcoming MongoDB's 16MB document size limit.
- *
+ * <p>
+ * Reconstructing the state tree from the documents is not dependent
+ * on the graft point configuration because the documents are self-describing:
+ * whatever way the state happens to be divided into documents,
+ * there is an unambiguous way to reconstruct the full state tree.
+ * However, modifying the state requires correct graft point configuration,
+ * or else different updates to the same node could end up in different documents,
+ * leading to inconsistencies and contradictions.
  * <p>
  * Named after Pando: looks like a forest, but it's actually one tree with one root system.
  *
@@ -20,6 +27,7 @@ import static java.util.Arrays.asList;
  *                   are to be stored in their own documents.
  */
 public record PandoFormat(
+	// TODO: Since this is used for updates and not reads, it should probably be called prunePoints or something
 	ListValue<String> graftPoints
 ) implements StateTreeNode, MongoDriverSettings.DatabaseFormat {
 	/**

@@ -1,10 +1,12 @@
 package works.bosk.testing.drivers;
 
+import jakarta.annotation.Nullable;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.Deque;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import lombok.RequiredArgsConstructor;
@@ -18,11 +20,11 @@ import works.bosk.DriverStack;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.BufferingDriver;
-import works.bosk.drivers.DiagnosticScopeDriver;
-import works.bosk.drivers.ForwardingDriver;
+import works.bosk.drivers.ContextScopeDriver;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
+import works.bosk.testing.drivers.operations.DriverOperation;
 import works.bosk.testing.drivers.operations.FlushOperation;
 import works.bosk.testing.drivers.operations.UpdateOperation;
 
@@ -54,6 +56,8 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	final BoskDriver stateTrackingDriver;
 
 	final Map<String, Deque<UpdateOperation>> pendingOperationsByThreadID = new ConcurrentHashMap<>();
+	final Set<String> flushObservedByThreadID = ConcurrentHashMap.newKeySet();
+
 	static final String THREAD_ID = "testing.thread.id";
 
 	/**
@@ -74,44 +78,16 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		);
 		return DriverStack.of(
 			// Tag the updates with a thread ID so we can demultiplex them properly after they go through the subject driver
-			DiagnosticScopeDriver.factory(dc -> dc.withAttribute(THREAD_ID, Long.toString(currentThread().threadId()))),
+			ContextScopeDriver.factory(dc -> dc.withAttribute(THREAD_ID, Long.toString(currentThread().threadId()))),
 			// Record the updates as they appear on their way into the subject driver
-			ReportingDriver.factory(verifier::incomingUpdate, _->{}),
-			// Verify that flushes are propagated synchronously
-			verifier.flushCheckingFactory(),
+			ReportingDriver.factory(verifier::incomingUpdate, _->{}, verifier::postIncomingFlush),
 			// Send to the subject driver
 			subject,
-			// Delay to ensure that the subject doesn't depend on immediate propagation of updates
+			// Delay to ensure the subject doesn't depend on immediate downstream propagation of updates
 			BufferingDriver.factory(),
 			// Report the updates as they appear on their way out of the subject driver
-			ReportingDriver.factory(verifier::outgoingUpdate, verifier::outgoingFlush)
+			ReportingDriver.factory(verifier::outgoingUpdate, verifier::preOutgoingFlush, _->{})
 		);
-	}
-
-	/**
-	 * This takes some explanation.
-	 * <p>
-	 * In a driver stack, each driver "wraps" the next one, so it can add functionality
-	 * before and after calling the downstream method.
-	 * However, {@link ReportingDriver} calls a callback before calling the downstream method,
-	 * and so we cannot use it to check conditions after the downstream method has completed.
-	 * This is fine for most driver methods, but for an incoming {@link BoskDriver#flush()},
-	 * we need to do a check after the downstream flush has completed,
-	 * so it needs special handling.
-	 */
-	DriverFactory<R> flushCheckingFactory() {
-		return (b,d) -> new ForwardingDriver(d) {
-			@Override
-			public void flush() throws InterruptedException, IOException {
-				super.flush();
-				var threadID = b.diagnosticContext().getAttribute(THREAD_ID);
-				var queue = pendingOperationsByThreadID.get(threadID);
-				if (queue != null && !queue.isEmpty()) {
-					throw new AssertionError(queue.size() + " pending operations remain on thread " + threadID
-						+ "; first is: " + queue.getFirst());
-				}
-			}
-		};
 	}
 
 	/**
@@ -122,7 +98,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		LOGGER.debug("---> IN: {}", updateOperation);
 		// Note: because we have a separate queue for each thread, this isn't actually blocking
 		pendingOperationsByThreadID
-			.computeIfAbsent(updateOperation.diagnosticAttributes().get(THREAD_ID), _ -> new LinkedBlockingDeque<>())
+			.computeIfAbsent(threadId(updateOperation), _ -> new LinkedBlockingDeque<>())
 			.addLast(updateOperation);
 	}
 
@@ -139,7 +115,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 			LOGGER.trace("\t\tbefore: {}", before);
 			LOGGER.trace("\t\t after: {}", after);
 
-			String threadID = op.diagnosticAttributes().get(THREAD_ID);
+			String threadID = threadId(op);
 			if (threadID == null) {
 				LOGGER.debug("\tMissing " + THREAD_ID + " diagnostic attribute");
 			} else {
@@ -180,8 +156,12 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		}
 	}
 
-	private void outgoingFlush(FlushOperation __) {
-		LOGGER.debug("outgoingFlush()");
+	/**
+	 * Before calling the downstream flush, the subject driver must first have sent
+	 * all the previous updates, so there should be no pending operations on any thread.
+	 */
+	private void preOutgoingFlush(FlushOperation op) {
+		LOGGER.debug("preOutgoingFlush()");
 		pendingOperationsByThreadID.forEach((thread, q) -> {
 			discardLeadingNops(q);
 			if (!q.isEmpty()) {
@@ -189,6 +169,20 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 					+ "\n\tFirst is: " + q.getFirst());
 			}
 		});
+
+		// Leave evidence that the flush indeed happened.
+		flushObservedByThreadID.add(threadId(op));
+	}
+
+	/**
+	 * This is called after the outgoing flush has completed, since they are nested calls.
+	 */
+	private void postIncomingFlush(FlushOperation op) {
+		LOGGER.debug("postIncomingFlush()");
+		String thread = threadId(op);
+		if (!flushObservedByThreadID.remove(thread)) {
+			throw new AssertionError("Flush was not propagated to downstream driver on thread " + thread);
+		}
 	}
 
 	private void discardLeadingNops(Deque<UpdateOperation> q) {
@@ -244,6 +238,10 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		} catch (InvalidTypeException e) {
 			throw new AssertionError("References are expected to be compatible: " + original, e);
 		}
+	}
+
+	private static @Nullable String threadId(DriverOperation op) {
+		return op.diagnosticAttributes().get(THREAD_ID);
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(DriverStateVerifier.class);

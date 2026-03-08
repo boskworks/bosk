@@ -12,7 +12,7 @@ package works.bosk;
  * with little or no coordination or even awareness of each other.
  * Concerns like database persistence ({@code MongoDriver}, {@code SqlDriver}),
  * observability ({@code OpenTelemetryDriver}, {@code ReportingDriver}),
- * and diagnostic context propagation ({@code DiagnosticScopeDriver})
+ * and context propagation ({@code ContextScopeDriver})
  * can each be implemented as orthogonal drivers.
  *
  * @see BoskDriver
@@ -39,7 +39,7 @@ public interface DriverFactory<R extends StateTreeNode> {
 	 * </li></ul>
 	 *
 	 * @param boskInfo Information about the bosk being constructed, including its root reference,
-	 *                 name, and diagnostic context; a kind of stand-in for the {@link Bosk} which is still under construction.
+	 *                 name, and context; a kind of stand-in for the {@link Bosk} which is still under construction.
 	 * @param downstream The next driver in the stack. Usually most updates are delegated to this driver
 	 *                   so updates ultimately reach the bosk's in-memory state.
 	 * @return a new {@link BoskDriver} instance that will handle updates for the bosk

@@ -68,10 +68,10 @@ public class AsyncDriver implements BoskDriver {
 
 	private void submitAsyncTask(String description, Runnable task) {
 		LOGGER.debug("Submit {}", description);
-		var diagnosticAttributes = bosk.diagnosticContext().getAttributes();
+		var diagnosticAttributes = bosk.context().getAttributes();
 		executor.submit(()->{
 			LOGGER.debug("Run {}", description);
-			try (var _ = bosk.diagnosticContext().withOnly(diagnosticAttributes)) {
+			try (var _ = bosk.context().withOnly(diagnosticAttributes)) {
 				task.run();
 			}
 			LOGGER.trace("Done {}", description);

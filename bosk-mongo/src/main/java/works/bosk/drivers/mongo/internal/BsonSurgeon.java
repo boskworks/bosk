@@ -218,6 +218,8 @@ class BsonSurgeon {
 	 * @see #scatter
 	 */
 	public BsonDocument gather(List<BsonDocument> partsList) {
+		// TODO: This could be static. By design, it depends on nothing but the parts list.
+
 		// Sorting by path length ensures we gather parents before children.
 		// (Sorting lexicographically might be better for cache locality.)
 		partsList.sort(comparing(doc -> doc.getString(BSON_PATH_FIELD).getValue().length()));

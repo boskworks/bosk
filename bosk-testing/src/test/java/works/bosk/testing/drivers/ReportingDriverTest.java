@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.Identifier;
 import works.bosk.ListingEntry;
 import works.bosk.MapValue;
@@ -32,7 +32,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 	List<UpdateOperation> ops;
 	AtomicInteger numFlushes;
 	Refs refs;
-	BoskDiagnosticContext.DiagnosticScope diagnosticScope;
+	BoskContext.ContextScope contextScope;
 	MapValue<String> expectedAttributes;
 	final Identifier id1 = Identifier.from("id1");
 	final Identifier id2 = Identifier.from("id2");
@@ -48,18 +48,18 @@ class ReportingDriverTest extends AbstractDriverTest {
 	void setUp() throws InvalidTypeException {
 		ops = new ArrayList<>();
 		numFlushes = new AtomicInteger(0);
-		setupBosksAndReferences(ReportingDriver.factory(ops::add, _->numFlushes.incrementAndGet()));
+		setupBosksAndReferences(ReportingDriver.factory(ops::add, _->numFlushes.incrementAndGet(), _->{}));
 		refs = bosk.buildReferences(Refs.class);
 		bosk.driver().submitReplacement(refs.entity(id1), emptyEntityAt(refs.entity(id1)));
 		ops.clear();
-		diagnosticScope = bosk.diagnosticContext().withAttribute(ReportingDriverTest.class.getSimpleName(), "expectedValue");
-		expectedAttributes = bosk.diagnosticContext().getAttributes();
+		contextScope = bosk.context().withAttribute(ReportingDriverTest.class.getSimpleName(), "expectedValue");
+		expectedAttributes = bosk.context().getAttributes();
 	}
 
 	@AfterEach
-	void closeDiagnosticScope() {
-		diagnosticScope.close();
-		diagnosticScope = null;
+	void closeContextScope() {
+		contextScope.close();
+		contextScope = null;
 	}
 
 	@Test

@@ -4,11 +4,13 @@ import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
+import org.bson.BsonString;
 import org.bson.BsonValue;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.MapValue;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
+import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.drivers.mongo.status.BsonComparator;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.drivers.mongo.status.StateStatus;
@@ -18,13 +20,13 @@ import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
 @RequiredArgsConstructor
 abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implements FormatDriver<R> {
 	final RootReference<R> rootRef;
-	final BoskDiagnosticContext diagnosticContext;
+	final BoskContext context;
 	final Formatter formatter;
 
 	@Override
 	public MongoStatus readStatus() {
 		try {
-			BsonState dbContents = loadBsonState();
+			BsonStateAndMetadata dbContents = loadBsonStateAndMetadata();
 			BsonDocument loadedBsonState = dbContents.state;
 			BsonValue inMemoryState = formatter.object2bsonValue(rootRef.value(), rootRef.targetType());
 			BsonComparator comp = new BsonComparator();
@@ -48,16 +50,16 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	@Override
 	public StateAndMetadata<R> loadAllState() throws IOException, UninitializedCollectionException {
-		BsonState bsonState = loadBsonState();
-		if (bsonState.state() == null) {
+		BsonStateAndMetadata bsonStateAndMetadata = loadBsonStateAndMetadata();
+		if (bsonStateAndMetadata.state() == null) {
 			throw new IOException("No existing state in document");
 		}
 
-		R root = formatter.document2object(bsonState.state(), rootRef);
-		BsonInt64 revision = bsonState.revision() == null ? REVISION_ZERO : bsonState.revision();
-		MapValue<String> diagnosticAttributes = bsonState.diagnosticAttributes() == null
-			? MapValue.empty()
-			: formatter.decodeDiagnosticAttributes(bsonState.diagnosticAttributes());
+		R root = formatter.document2object(bsonStateAndMetadata.state(), rootRef);
+		BsonInt64 revision = bsonStateAndMetadata.revision() == null ? REVISION_ZERO : bsonStateAndMetadata.revision();
+		MapValue<String> diagnosticAttributes = bsonStateAndMetadata.diagnosticAttributes() == null
+			? MapValue.empty() // It's not clear what missing attributes mean, but using null here would have the effect of leaving the old attributes in place, which seems flaky
+			: formatter.decodeDiagnosticAttributes(bsonStateAndMetadata.diagnosticAttributes());
 
 		return new StateAndMetadata<>(root, revision, diagnosticAttributes);
 	}
@@ -69,9 +71,34 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * @return the contents of the database; fields of the returned
 	 * record can be null if they don't exist in the database.
 	 */
-	abstract BsonState loadBsonState() throws UninitializedCollectionException;
+	abstract BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException;
 
-	record BsonState(
+	protected BsonDocument blankUpdateDoc() {
+		return new BsonDocument()
+			.append("$inc", new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
+			.append("$set", new BsonDocument()
+				.append(
+					DocumentFields.diagnostics.name(),
+					formatter.encodeDiagnostics(context.getAttributes())
+				)
+			);
+	}
+
+	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
+		BsonDocument fieldValues = new BsonDocument("_id", documentId);
+
+		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
+		fieldValues.put(DocumentFields.state.name(), initialState);
+		fieldValues.put(DocumentFields.revision.name(), revision);
+		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
+
+		return fieldValues;
+	}
+
+	/**
+	 * Low-level version of {@link StateAndMetadata}.
+	 */
+	record BsonStateAndMetadata(
 		BsonDocument state,
 		BsonInt64 revision,
 		BsonDocument diagnosticAttributes

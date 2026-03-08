@@ -6,7 +6,7 @@ import io.opentelemetry.context.propagation.TextMapGetter;
 import io.opentelemetry.context.propagation.TextMapSetter;
 import java.util.HashMap;
 import java.util.Map;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.MapValue;
 
 class Utils {
@@ -24,7 +24,7 @@ class Utils {
 	/**
 	 * On the setter side, we'll be given plain old OTel keys and need to add the prefixes.
 	 * We add {@link #W3C_SUB_PREFIX} to them here, and then the {@link #OTEL_PREFIX} prefix
-	 * is added by {@link BoskDiagnosticContext#withReplacedPrefix}.
+	 * is added by {@link BoskContext#withReplacedPrefix}.
 	 */
 	static final TextMapSetter<Map<String, String>> W3C_MAP_SETTER = (carrier, key, value) -> {
 		if (carrier != null) {
@@ -52,9 +52,9 @@ class Utils {
 		}
 	};
 
-	static Context contextFromDiagnosticAttributes(BoskDiagnosticContext diagnosticContext) {
+	static Context otelContextFromDiagnosticAttributes(BoskContext boskContext) {
 		Map<String, String> otelAttributes = new HashMap<>();
-		diagnosticContext.getAttributes().forEach((k, v) -> {
+		boskContext.getAttributes().forEach((k, v) -> {
 			if (k.startsWith(OTEL_PREFIX)) {
 				if (k.startsWith(OTEL_PREFIX + W3C_SUB_PREFIX)) {
 					otelAttributes.put(k.substring(OTEL_PREFIX.length() + W3C_SUB_PREFIX.length()), v);
@@ -68,13 +68,14 @@ class Utils {
 	}
 
 	/**
-	 * Stashes OpenTelemetry context into the {@link BoskDiagnosticContext diagnostic context},
+	 * Stashes OpenTelemetry context into the
+	 * diagnostic attributes in the {@link BoskContext bosk context},
 	 * where it can be retrieved by
 	 * {@link ReceiverDriver} to propagate the context downstream,
 	 * and by {@link OpenTelemetryRegistrar} to propagate the context into hooks.
 	 */
-	static BoskDiagnosticContext.DiagnosticScope diagnosticScopeWithContextFromCurrentSpan(BoskDiagnosticContext dc) {
-		return dc.withReplacedPrefix(OTEL_PREFIX, w3cContextFromCurrentSpan());
+	static BoskContext.ContextScope boskContextScopeWithDiagnosticsFromCurrentSpan(BoskContext boskContext) {
+		return boskContext.withReplacedPrefix(OTEL_PREFIX, w3cContextFromCurrentSpan());
 	}
 
 	static MapValue<String> w3cContextFromCurrentSpan() {

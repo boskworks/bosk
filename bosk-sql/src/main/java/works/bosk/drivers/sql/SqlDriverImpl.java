@@ -20,7 +20,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.StringNode;
 import tools.jackson.databind.type.TypeFactory;
-import works.bosk.BoskDiagnosticContext;
+import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.Identifier;
@@ -58,7 +58,7 @@ class SqlDriverImpl implements SqlDriver {
 	private final RootReference<?> rootRef;
 	private final String boskName;
 	private final Identifier boskID;
-	private final BoskDiagnosticContext diagnosticContext;
+	private final BoskContext context;
 	private final ConnectionSource connectionSource;
 	private final ObjectMapper mapper;
 	private final JsonNodeSurgeon surgeon = new JsonNodeSurgeon();
@@ -93,7 +93,7 @@ class SqlDriverImpl implements SqlDriver {
 		this.rootRef = requireNonNull(bosk.rootReference());
 		this.boskName = bosk.name();
 		this.boskID	= bosk.instanceID();
-		this.diagnosticContext = requireNonNull(bosk.diagnosticContext());
+		this.context = requireNonNull(bosk.context());
 		this.mapper = requireNonNull(mapper);
 		this.connectionSource = () -> {
 			Connection result = cs.get();
@@ -165,7 +165,7 @@ class SqlDriverImpl implements SqlDriver {
 								diagnosticAttributes = MapValue.empty();
 							}
 						}
-						try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
+						try (var _ = context.withOnly(diagnosticAttributes)) {
 							Reference<Object> target = rootRef.then(Object.class, Path.parse(ref));
 							Object newValue;
 							if (newState == null) {
@@ -495,7 +495,7 @@ class SqlDriverImpl implements SqlDriver {
 		try {
 			return using(c)
 				.insertInto(CHANGES).columns(CHANGES.EPOCH, REF, NEW_STATE, DIAGNOSTICS)
-				.values(epoch, ref.pathString(), newValue, mapper.writeValueAsString(diagnosticContext.getAttributes()))
+				.values(epoch, ref.pathString(), newValue, mapper.writeValueAsString(context.getAttributes()))
 				.returning(REVISION)
 				.fetchOptional(REVISION)
 				.orElseThrow(()->new NotYetImplementedException("No change inserted"));

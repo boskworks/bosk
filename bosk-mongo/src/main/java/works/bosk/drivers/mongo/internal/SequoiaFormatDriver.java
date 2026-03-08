@@ -67,7 +67,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.diagnosticContext(), new Formatter(boskInfo, bsonSerializer));
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer));
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.collection = collection;
 		this.downstream = downstream;
@@ -123,7 +123,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	BsonState loadBsonState() throws UninitializedCollectionException {
+	BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException {
 		try (MongoCursor<BsonDocument> cursor = collection
 			.withReadConcern(LOCAL) // The revision field needs to be the latest
 			.find(documentFilter())
@@ -131,7 +131,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			.cursor()
 		) {
 			BsonDocument document = cursor.next();
-			return new BsonState(
+			return new BsonStateAndMetadata(
 				document.getDocument(DocumentFields.state.name(), null),
 				document.getInt64(DocumentFields.revision.name(), null),
 				Formatter.getDiagnosticAttributesIfAny(document)
@@ -147,7 +147,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
 		// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
-		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision));
+		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, DOCUMENT_ID));
 		BsonDocument filter = documentFilter();
 		UpdateOptions options = new UpdateOptions().upsert(true);
 		LOGGER.debug("** Initial upsert for {}", DOCUMENT_ID);
@@ -203,7 +203,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					throw new UnprocessableEventException("Missing fullDocument", event.getOperationType());
 				}
 				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
-				try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
+				try (var _ = context.withOnly(diagnosticAttributes)) {
 					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
 					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name(), null);
 					if (state == null) {
@@ -224,7 +224,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(event);
 					if (shouldNotSkip(revision)) {
 						MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromUpdate(event);
-						try (var _ = diagnosticContext.withOnly(diagnosticAttributes)) {
+						try (var _ = context.withOnly(diagnosticAttributes)) {
 							replaceUpdatedFields(updateDescription.getUpdatedFields());
 							deleteRemovedFields(updateDescription.getRemovedFields(), event.getOperationType());
 						}
@@ -297,7 +297,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				BsonInt64 result = doc.getInt64(DocumentFields.revision.name(), null);
 				if (result == null) {
 					// Document exists but has no revision field.
-					// In that case, newer servers (including this one) will create the
+					// In that case, newer servers (including this one) will create
 					// the field upon initialization, and we're ok to wait for any old
 					// revision number at all.
 					LOGGER.debug("No revision field; assuming {}", REVISION_ZERO.longValue());
@@ -342,7 +342,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		String key = dottedFieldNameOf(target, rootRef);
 		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
 		LOGGER.debug("| Set field {}: {}", key, value);
-		BsonDocument result = updateDoc();
+		BsonDocument result = blankUpdateDoc();
 		result.compute("$set", (_,existing) -> {
 			if (existing == null) {
 				return new BsonDocument(key, value);
@@ -356,23 +356,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	private <T> BsonDocument deletionDoc(Reference<T> target) {
 		String key = dottedFieldNameOf(target, rootRef);
 		LOGGER.debug("| Unset field {}", key);
-		return updateDoc().append("$unset", new BsonDocument(key, new BsonNull())); // Value is ignored
-	}
-
-	private BsonDocument updateDoc() {
-		return new BsonDocument("$inc", new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
-			.append("$set", new BsonDocument(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(diagnosticContext.getAttributes())));
-	}
-
-	private BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision) {
-		BsonDocument fieldValues = new BsonDocument("_id", DOCUMENT_ID);
-
-		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
-		fieldValues.put(DocumentFields.state.name(), initialState);
-		fieldValues.put(DocumentFields.revision.name(), revision);
-		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(diagnosticContext.getAttributes()));
-
-		return fieldValues;
+		return blankUpdateDoc().append("$unset", new BsonDocument(key, new BsonNull())); // Value is ignored
 	}
 
 	/**
