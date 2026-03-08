@@ -170,7 +170,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	BsonState loadBsonState() throws UninitializedCollectionException {
+	BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException {
 		List<BsonDocument> allParts = new ArrayList<>();
 		try (MongoCursor<BsonDocument> cursor = collection
 			.withReadConcern(LOCAL) // The revision field needs to be the latest
@@ -189,7 +189,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			throw new IllegalStateException("Cannot locate root document");
 		}
 
-		return new BsonState(
+		return new BsonStateAndMetadata(
 			bsonSurgeon.gather(allParts),
 			mainPart.getInt64(Formatter.DocumentFields.revision.name(), null), Formatter.getDiagnosticAttributesIfAny(mainPart)
 		);

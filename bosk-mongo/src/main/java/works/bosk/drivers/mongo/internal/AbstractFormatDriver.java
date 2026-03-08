@@ -24,7 +24,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	@Override
 	public MongoStatus readStatus() {
 		try {
-			BsonState dbContents = loadBsonState();
+			BsonStateAndMetadata dbContents = loadBsonStateAndMetadata();
 			BsonDocument loadedBsonState = dbContents.state;
 			BsonValue inMemoryState = formatter.object2bsonValue(rootRef.value(), rootRef.targetType());
 			BsonComparator comp = new BsonComparator();
@@ -48,16 +48,16 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	@Override
 	public StateAndMetadata<R> loadAllState() throws IOException, UninitializedCollectionException {
-		BsonState bsonState = loadBsonState();
-		if (bsonState.state() == null) {
+		BsonStateAndMetadata bsonStateAndMetadata = loadBsonStateAndMetadata();
+		if (bsonStateAndMetadata.state() == null) {
 			throw new IOException("No existing state in document");
 		}
 
-		R root = formatter.document2object(bsonState.state(), rootRef);
-		BsonInt64 revision = bsonState.revision() == null ? REVISION_ZERO : bsonState.revision();
-		MapValue<String> diagnosticAttributes = bsonState.diagnosticAttributes() == null
+		R root = formatter.document2object(bsonStateAndMetadata.state(), rootRef);
+		BsonInt64 revision = bsonStateAndMetadata.revision() == null ? REVISION_ZERO : bsonStateAndMetadata.revision();
+		MapValue<String> diagnosticAttributes = bsonStateAndMetadata.diagnosticAttributes() == null
 			? MapValue.empty() // It's not clear what missing attributes mean, but using null here would have the effect of leaving the old attributes in place, which seems flaky
-			: formatter.decodeDiagnosticAttributes(bsonState.diagnosticAttributes());
+			: formatter.decodeDiagnosticAttributes(bsonStateAndMetadata.diagnosticAttributes());
 
 		return new StateAndMetadata<>(root, revision, diagnosticAttributes);
 	}
@@ -69,9 +69,12 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * @return the contents of the database; fields of the returned
 	 * record can be null if they don't exist in the database.
 	 */
-	abstract BsonState loadBsonState() throws UninitializedCollectionException;
+	abstract BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException;
 
-	record BsonState(
+	/**
+	 * Low-level version of {@link StateAndMetadata}.
+	 */
+	record BsonStateAndMetadata(
 		BsonDocument state,
 		BsonInt64 revision,
 		BsonDocument diagnosticAttributes

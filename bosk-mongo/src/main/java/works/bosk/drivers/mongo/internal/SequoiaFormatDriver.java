@@ -123,7 +123,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	BsonState loadBsonState() throws UninitializedCollectionException {
+	BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException {
 		try (MongoCursor<BsonDocument> cursor = collection
 			.withReadConcern(LOCAL) // The revision field needs to be the latest
 			.find(documentFilter())
@@ -131,7 +131,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			.cursor()
 		) {
 			BsonDocument document = cursor.next();
-			return new BsonState(
+			return new BsonStateAndMetadata(
 				document.getDocument(DocumentFields.state.name(), null),
 				document.getInt64(DocumentFields.revision.name(), null),
 				Formatter.getDiagnosticAttributesIfAny(document)
