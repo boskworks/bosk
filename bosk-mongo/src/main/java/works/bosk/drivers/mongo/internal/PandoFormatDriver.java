@@ -170,24 +170,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	public StateAndMetadata<R> loadAllState() throws UninitializedCollectionException, IOException {
-		BsonState bsonState = loadBsonState();
-
-		R root;
-		if (bsonState.state() == null) {
-			throw new IOException("No existing state in document");
-		} else {
-			root = formatter.document2object(bsonState.state(), rootRef);
-		}
-		MapValue<String> diagnosticAttributes = bsonState.diagnosticAttributes() == null ? null
-			:formatter.decodeDiagnosticAttributes(bsonState.diagnosticAttributes());
-		return new StateAndMetadata<>(
-			root,
-			bsonState.revision() == null? Formatter.REVISION_ZERO : bsonState.revision(),
-			diagnosticAttributes);
-	}
-
-	@Override
 	BsonState loadBsonState() throws UninitializedCollectionException {
 		List<BsonDocument> allParts = new ArrayList<>();
 		try (MongoCursor<BsonDocument> cursor = collection

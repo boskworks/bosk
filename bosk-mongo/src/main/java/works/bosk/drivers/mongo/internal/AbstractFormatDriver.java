@@ -56,7 +56,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		R root = formatter.document2object(bsonState.state(), rootRef);
 		BsonInt64 revision = bsonState.revision() == null ? REVISION_ZERO : bsonState.revision();
 		MapValue<String> diagnosticAttributes = bsonState.diagnosticAttributes() == null
-			? MapValue.empty()
+			? MapValue.empty() // It's not clear what missing attributes mean, but using null here would have the effect of leaving the old attributes in place, which seems flaky
 			: formatter.decodeDiagnosticAttributes(bsonState.diagnosticAttributes());
 
 		return new StateAndMetadata<>(root, revision, diagnosticAttributes);
