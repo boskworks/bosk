@@ -421,7 +421,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			synchronized (this) {
 				boolean preconditionsSatisfied;
 				try (ReadSession _ = supersedingReadSession()) {
-					preconditionsSatisfied = Objects.equals(precondition.value(), requiredValue);
+					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
 					R priorRoot = currentRoot;
