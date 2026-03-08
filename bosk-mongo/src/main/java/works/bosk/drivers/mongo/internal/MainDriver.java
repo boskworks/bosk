@@ -514,12 +514,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			} else {
 				LOGGER.debug("Running initialRoot action");
 				runInitialRootAction(initialRootAction);
-				//TODO: Both branches of this "if" end with calls to onRevisionToSKip and publishFormatDriver.
+				//TODO: Both branches of this "if" end with calls to onRevisionToSkip and publishFormatDriver.
 				// Is there a way to rearrange the code so those calls can be in one place?
 			}
 		}
 
-		private void runInitialRootAction(FutureTask<R> initialRootAction) throws InterruptedException, TimeoutException, InitialRootActionException {
+		private void runInitialRootAction(FutureTask<R> initialRootAction) throws InterruptedException, InitialRootActionException {
 			initialRootAction.run();
 			try {
 				// You might think this ought to have a timeout,
