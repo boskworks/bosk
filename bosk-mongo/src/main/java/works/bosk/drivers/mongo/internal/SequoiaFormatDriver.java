@@ -297,7 +297,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				BsonInt64 result = doc.getInt64(DocumentFields.revision.name(), null);
 				if (result == null) {
 					// Document exists but has no revision field.
-					// In that case, newer servers (including this one) will create the
+					// In that case, newer servers (including this one) will create
 					// the field upon initialization, and we're ok to wait for any old
 					// revision number at all.
 					LOGGER.debug("No revision field; assuming {}", REVISION_ZERO.longValue());

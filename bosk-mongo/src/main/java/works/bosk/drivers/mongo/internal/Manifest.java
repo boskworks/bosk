@@ -9,6 +9,10 @@ import works.bosk.drivers.mongo.PandoFormat;
 /**
  * Defines the format of the manifest document, which is stored in the database
  * to describe the database contents.
+ *
+ * @param version the version of the format of the manifest itself; currently always 1
+ * @param sequoia if present, indicates that the database is in the Sequoia format
+ * @param pando if present, indicates that the database is in the Pando format and describes how it's configured
  */
 public record Manifest(
 	Integer version,
