@@ -191,7 +191,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 		return new BsonStateAndMetadata(
 			bsonSurgeon.gather(allParts),
-			mainPart.getInt64(Formatter.DocumentFields.revision.name(), null), Formatter.getDiagnosticAttributesIfAny(mainPart)
+			mainPart.getInt64(Formatter.DocumentFields.revision.name(), null),
+			Formatter.getDiagnosticAttributesIfAny(mainPart)
 		);
 	}
 
