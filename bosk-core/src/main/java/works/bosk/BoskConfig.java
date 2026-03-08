@@ -15,12 +15,12 @@ public final class BoskConfig<R extends StateTreeNode> {
 	}
 
 	/**
-	 * @return a {@link BoskConfig} that is
-	 * equivalent to {@code BoskConfig.builder().build()}
+	 * Calls {@code BoskConfig.builder().build()} and returns the result.
+	 * To customize the config, it's convenient to inline this method
+	 * and then call some additional methods on the builder.
 	 */
-	@SuppressWarnings("unchecked")
 	public static <RR extends StateTreeNode> BoskConfig<RR> simple() {
-		return (BoskConfig<RR>) SIMPLE_CONFIG;
+		return BoskConfig.<RR>builder().build();
 	}
 
 	public static <R extends StateTreeNode> Builder<R> builder() {
@@ -81,5 +81,4 @@ public final class BoskConfig<R extends StateTreeNode> {
 
 	private static final DriverFactory<?> SIMPLE_DRIVER_FACTORY = (_, d) -> d;
 	private static final RegistrarFactory SIMPLE_REGISTRAR_FACTORY = (_, d) -> d;
-	private static final BoskConfig<?> SIMPLE_CONFIG = new BoskConfig<>(SIMPLE_DRIVER_FACTORY, SIMPLE_REGISTRAR_FACTORY);
 }
