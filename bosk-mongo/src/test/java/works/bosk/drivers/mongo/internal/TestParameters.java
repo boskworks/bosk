@@ -22,7 +22,7 @@ public class TestParameters {
 	 * <p>
 	 * This should be much larger than the expected latency of MongoDB and the network.
 	 */
-	public static final int SHORT_TIMESCALE = 50;
+	public static final int SHORT_TIMESCALE = 100;
 
 	/**
 	 * For tests that are not expecting timeouts. A nice long value makes spurious test failures unlikely.
