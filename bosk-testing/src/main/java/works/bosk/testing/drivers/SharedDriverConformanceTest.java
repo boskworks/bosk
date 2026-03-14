@@ -25,7 +25,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 	@Override
 	protected void assertCorrectBoskContents() {
 		super.assertCorrectBoskContents();
-		var latecomer = new Bosk<>(BoskTestUtils.boskName("latecomer"), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		var latecomer = new Bosk<>(BoskTestUtils.boskName("latecomer"), TestEntity.class, AbstractDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		try {
 			latecomer.driver().flush();
 		} catch (Exception e) {
@@ -48,7 +48,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 		Bosk<TestEntity> originalBosk = new Bosk<>(
 			boskName("Original"),
 			TestEntity.class,
-			AbstractDriverTest::initialRoot,
+			AbstractDriverTest::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		LOGGER.debug("Create Upgradeable bosk");

@@ -33,9 +33,9 @@ public final class ContextScopeDriver implements BoskDriver {
 	}
 
 	@Override
-	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		try (var _ = scopeSupplier.apply(context)) {
-			return downstream.initialRoot(rootType);
+			return downstream.initialState(rootType);
 		}
 	}
 

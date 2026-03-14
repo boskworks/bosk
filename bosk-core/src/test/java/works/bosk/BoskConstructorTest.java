@@ -5,7 +5,7 @@ import java.lang.reflect.Type;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
-import works.bosk.Bosk.DefaultRootFunction;
+import works.bosk.Bosk.DefaultStateFunction;
 import works.bosk.TypeValidationTest.BoxedPrimitives;
 import works.bosk.TypeValidationTest.SimpleTypes;
 import works.bosk.drivers.ForwardingDriver;
@@ -101,7 +101,7 @@ public class BoskConstructorTest {
 			boskName(),
 			SimpleTypes.class,
 			_ -> { throw new AssertionError("Shouldn't be called"); },
-			BoskConfig.builder().driverFactory(initialRootDriver(() -> root)).build());
+			BoskConfig.builder().driverFactory(initialStateDriver(() -> root)).build());
 		try (var _ = bosk.readSession()) {
 			assertSame(root, bosk.rootReference().value());
 		}
@@ -123,13 +123,13 @@ public class BoskConstructorTest {
 	/**
 	 * The "initial root" is the one returned from the driver.
 	 */
-	private static void assertInitialRootThrows(Class<? extends Throwable> expectedType, InitialRootFunction initialRootFunction) {
+	private static void assertInitialRootThrows(Class<? extends Throwable> expectedType, InitialStateFunction initialStateFunction) {
 		assertThrows(expectedType, () -> new Bosk<>(
 			boskName(),
 			SimpleTypes.class,
 			_ -> newEntity(),
 			BoskConfig.builder()
-				.driverFactory(initialRootDriver(initialRootFunction))
+				.driverFactory(initialStateDriver(initialStateFunction))
 				.build()
 		));
 	}
@@ -137,25 +137,25 @@ public class BoskConstructorTest {
 	/**
 	 * The "default root" is the one passed to the bosk constructor.
 	 */
-	private static void assertDefaultRootThrows(Class<? extends Throwable> expectedType, DefaultRootFunction<StateTreeNode> defaultRootFunction) {
+	private static void assertDefaultRootThrows(Class<? extends Throwable> expectedType, DefaultStateFunction<StateTreeNode> defaultStateFunction) {
 		assertThrows(expectedType, () -> new Bosk<>(
 			boskName(),
 			SimpleTypes.class,
-			defaultRootFunction,
+			defaultStateFunction,
 			BoskConfig.simple()));
 	}
 
 	@NotNull
-	private static DriverFactory<StateTreeNode> initialRootDriver(InitialRootFunction initialRootFunction) {
+	private static DriverFactory<StateTreeNode> initialStateDriver(InitialStateFunction initialStateFunction) {
 		return (_, _) -> new NoOpDriver() {
 			@Override
-			public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-				return initialRootFunction.get();
+			public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+				return initialStateFunction.get();
 			}
 		};
 	}
 
-	interface InitialRootFunction {
+	interface InitialStateFunction {
 		StateTreeNode get() throws InvalidTypeException, IOException, InterruptedException;
 	}
 

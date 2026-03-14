@@ -14,7 +14,7 @@ class BoskTest extends AbstractBoskTest {
 		Bosk<TestRoot> bosk = new Bosk<>(
 			name,
 			TestRoot.class,
-			AbstractBoskTest::initialRoot,
+			AbstractBoskTest::initialState,
 			BoskConfig.simple()
 		);
 

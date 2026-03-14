@@ -74,7 +74,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		// to spontaneous state changes, even though they are valid in a setup with
 		// multiple bosks sharing a database.
 		//
-		bosk = new Bosk<>(boskName("tablesDropped", 1), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(factory).build());
+		bosk = new Bosk<>(boskName("tablesDropped", 1), TestEntity.class, AbstractDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(factory).build());
 		driver = bosk.driver();
 
 		var schema = new Schema();
@@ -114,7 +114,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 	}
 
 	private static @NotNull TestEntity differentInitialRoot(Bosk<TestEntity> b) throws InvalidTypeException {
-		return AbstractDriverTest.initialRoot(b).withString("Different");
+		return AbstractDriverTest.initialState(b).withString("Different");
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SqlDriverDurabilityTest.class);

@@ -4,20 +4,20 @@ import works.bosk.BoskDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 
 /**
- * Thrown from {@link BoskDriver#initialRoot} if the initial root
+ * Thrown from {@link BoskDriver#initialState} if the initial state
  * can't be loaded from the database and {@link MongoDriverSettings.InitialDatabaseUnavailableMode#FAIL_FAST FAIL_FAST}
  * is in effect.
  */
-public class InitialRootFailureException extends RuntimeException {
-	public InitialRootFailureException(String message) {
+public class InitialStateFailureException extends RuntimeException {
+	public InitialStateFailureException(String message) {
 		super(message);
 	}
 
-	public InitialRootFailureException(String message, Throwable cause) {
+	public InitialStateFailureException(String message, Throwable cause) {
 		super(message, cause);
 	}
 
-	public InitialRootFailureException(Throwable cause) {
+	public InitialStateFailureException(Throwable cause) {
 		super(cause);
 	}
 }

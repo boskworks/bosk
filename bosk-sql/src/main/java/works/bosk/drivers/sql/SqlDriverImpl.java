@@ -236,10 +236,10 @@ class SqlDriverImpl implements SqlDriver {
 	}
 
 	@Override
-	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		// TODO: Consider a disconnected mode where we delegate downstream if something goes wrong
 		try (MDCScope _ = setupMDC(boskName, boskID)) {
-			LOGGER.debug("initialRoot({})", rootType);
+			LOGGER.debug("initialState({})", rootType);
 			try (
 				var connection = connectionSource.get()
 			){
@@ -250,7 +250,7 @@ class SqlDriverImpl implements SqlDriver {
 				if (stateAndEpoch == null) {
 					LOGGER.debug("No current state; initializing {} table from downstream", BOSK);
 					this.epoch = UUID.randomUUID().toString();
-					result = downstream.initialRoot(rootType);
+					result = downstream.initialState(rootType);
 					String stateJson = mapper.writeValueAsString(result);
 
 					using(connection)

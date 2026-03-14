@@ -8,15 +8,15 @@ import static java.util.Objects.requireNonNull;
 /**
  * Unlike other exceptions we use internally, this one is a {@link RuntimeException}
  * because it's thrown from a {@link FutureTask}, and those can't throw checked exceptions.
- * Callers of {@link FutureTask#get()} implementing {@link MongoDriver#initialRoot}
+ * Callers of {@link FutureTask#get()} implementing {@link MongoDriver#initialState}
  * need to handle this appropriately without any help from the compiler.
  */
-class DownstreamInitialRootException extends IllegalStateException {
-	public DownstreamInitialRootException(String message, Throwable cause) {
+class DownstreamInitialStateException extends IllegalStateException {
+	public DownstreamInitialStateException(String message, Throwable cause) {
 		super(message, requireNonNull(cause));
 	}
 
-	public DownstreamInitialRootException(Throwable cause) {
+	public DownstreamInitialStateException(Throwable cause) {
 		super(requireNonNull(cause));
 	}
 }

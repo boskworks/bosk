@@ -57,7 +57,7 @@ public class PathCompilerTest extends AbstractBoskTest {
 		pathCompiler = PathCompiler.withSourceType(TestRoot.class);
 		bosk = setUpBosk(simpleDriver());
 		teb = new TestEntityBuilder(bosk);
-		root = initialRoot(bosk);
+		root = initialState(bosk);
 		bosk.driver().submitReplacement(bosk.rootReference(), root);
 		bosk.driver().flush();
 	}

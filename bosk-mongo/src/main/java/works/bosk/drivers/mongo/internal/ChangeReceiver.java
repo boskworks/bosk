@@ -24,7 +24,7 @@ import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.exceptions.InitialCursorCommandException;
 import works.bosk.drivers.mongo.exceptions.InitialCursorTimeoutException;
-import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
+import works.bosk.drivers.mongo.exceptions.InitialStateFailureException;
 import works.bosk.logging.MdcKeys;
 
 import static java.lang.Thread.currentThread;
@@ -107,7 +107,7 @@ class ChangeReceiver implements Closeable {
 		} catch (MongoCommandException e) {
 			throw new InitialCursorCommandException("Failed to open change stream cursor; ensure MongoDB server configured as a replica set", e);
 		} catch (MongoException e) {
-			throw new InitialRootFailureException("Unexpected failure opening MongoDB cursor", e);
+			throw new InitialStateFailureException("Unexpected failure opening MongoDB cursor", e);
 		}
 	}
 
@@ -187,7 +187,7 @@ class ChangeReceiver implements Closeable {
 						} catch (UninitializedCollectionException e) {
 							disconnect("MongoDB collection is not initialized", REMEDY_RETURN, e);
 							return;
-						} catch (InitialRootActionException e) {
+						} catch (InitialStateActionException e) {
 							disconnect("Unable to initialize bosk state", REMEDY_RETURN, e);
 							return;
 						} catch (TimeoutException e) {

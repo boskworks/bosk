@@ -31,7 +31,7 @@ import works.bosk.drivers.mongo.MongoDriver;
  * </li><li>
  *     Determining the database format
  * </li><li>
- *     Implementing {@link #initialRoot} or {@link #refurbish()}
+ *     Implementing {@link #initialState} or {@link #refurbish()}
  * </li></ol>
  */
 sealed public interface FormatDriver<R extends StateTreeNode>
@@ -68,9 +68,9 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	void initializeCollection(StateAndMetadata<R> priorContents);
 
 	@Override
-	default StateTreeNode initialRoot(Type rootType) {
+	default StateTreeNode initialState(Type rootType) {
 		throw new UnsupportedOperationException(
-			"FormatDriver doesn't need to implement initialRoot: MainDriver derives it from loadAllState");
+			"FormatDriver doesn't need to implement initialState: MainDriver derives it from loadAllState");
 	}
 
 	@Override

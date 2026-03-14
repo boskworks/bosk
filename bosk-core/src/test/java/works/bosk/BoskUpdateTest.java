@@ -42,7 +42,7 @@ public class BoskUpdateTest extends AbstractBoskTest {
 		bosk = new Bosk<>(
 			boskName(),
 			TestRoot.class,
-			AbstractBoskTest::initialRoot,
+			AbstractBoskTest::initialState,
 			BoskConfig.simple());
 		refs = bosk.buildReferences(Refs.class);
 		try (var _ = bosk.readSession()) {
@@ -53,8 +53,8 @@ public class BoskUpdateTest extends AbstractBoskTest {
 	}
 
 	@Test
-	void initialRoot_matches() throws IOException, InterruptedException {
-		assertValueEquals(initialRoot(bosk), bosk.rootReference());
+	void initialState_matches() throws IOException, InterruptedException {
+		assertValueEquals(initialState(bosk), bosk.rootReference());
 	}
 
 	@Test

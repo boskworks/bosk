@@ -47,8 +47,8 @@ public class BufferingDriver implements BoskDriver {
 	}
 
 	@Override
-	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-		return downstream.initialRoot(rootType);
+	public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+		return downstream.initialState(rootType);
 	}
 
 	@Override

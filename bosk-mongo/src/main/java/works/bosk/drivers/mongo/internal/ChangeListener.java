@@ -20,7 +20,7 @@ interface ChangeListener {
 		UninitializedCollectionException,
 		InterruptedException,
 		IOException,
-		InitialRootActionException,
+		InitialStateActionException,
 		TimeoutException, FailedSessionException;
 
 	/**

@@ -20,7 +20,7 @@ import works.bosk.drivers.mongo.status.MongoStatus;
  *
  * For convenience, if the database does not exist at the time of initialization,
  * this driver will create it and populate it with the state returned by calling
- * {@link BoskDriver#initialRoot} on the downstream driver.
+ * {@link BoskDriver#initialState} on the downstream driver.
  */
 public sealed interface MongoDriver
 	extends BoskDriver

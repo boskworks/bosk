@@ -63,14 +63,14 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	/**
 	 * @param subject factory whose behaviour is to be verified
 	 * @param rootType the type of {@link Bosk#rootReference()}
-	 * @param defaultRootFunction returns the initial root used to set up an internal bosk
+	 * @param defaultStateFunction returns the initial state used to set up an internal bosk
 	 *                            that will track the cumulative effect of the updates coming from {@code subject} driver
 	 */
-	public static <RR extends StateTreeNode> DriverFactory<RR> wrap(DriverFactory<RR> subject, Type rootType, Bosk.DefaultRootFunction<RR> defaultRootFunction) {
+	public static <RR extends StateTreeNode> DriverFactory<RR> wrap(DriverFactory<RR> subject, Type rootType, Bosk.DefaultStateFunction<RR> defaultStateFunction) {
 		Bosk<RR> stateTrackingBosk = new Bosk<>(
 			boskName(),
 			rootType,
-			defaultRootFunction,
+			defaultStateFunction,
 			BoskConfig.simple());
 		DriverStateVerifier<RR> verifier = new DriverStateVerifier<>(
 			stateTrackingBosk,

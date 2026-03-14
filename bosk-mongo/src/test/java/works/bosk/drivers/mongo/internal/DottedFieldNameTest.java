@@ -22,7 +22,7 @@ class DottedFieldNameTest {
 
 	@BeforeEach
 	void setUpStuff() {
-		bosk = new Bosk<>(boskName(), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.simple());
+		bosk = new Bosk<>(boskName(), TestEntity.class, AbstractDriverTest::initialState, BoskConfig.simple());
 	}
 
 	static Stream<Arguments> pathArgumentSource() {

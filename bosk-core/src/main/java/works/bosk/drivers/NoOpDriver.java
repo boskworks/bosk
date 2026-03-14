@@ -21,7 +21,7 @@ public class NoOpDriver implements BoskDriver {
 	}
 
 	@Override
-	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		throw new UnsupportedOperationException();
 	}
 

@@ -63,7 +63,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 	}
 
 	@Test
-	void initialRoot() {
+	void initialState() {
 		assertExpectedEvents();
 		assertCorrectBoskContents();
 	}

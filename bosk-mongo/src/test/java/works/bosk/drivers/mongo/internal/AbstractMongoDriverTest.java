@@ -101,7 +101,7 @@ abstract class AbstractMongoDriverTest {
 	}
 
 
-	public static TestEntity initialRoot(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
+	public static TestEntity initialState(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
 		Refs refs = testEntityBosk.buildReferences(Refs.class);
 		return initialRootWithEmptyCatalog(testEntityBosk)
 			.withCatalog(Catalog.of(

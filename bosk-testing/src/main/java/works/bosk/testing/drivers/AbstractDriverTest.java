@@ -59,21 +59,21 @@ public abstract class AbstractDriverTest {
 
 	protected void setupBosksAndReferences(DriverFactory<TestEntity> driverFactory) {
 		// This is the bosk whose behaviour we'll consider to be correct by definition
-		canonicalBosk = new Bosk<>(boskName("Canonical", 1), TestEntity.class, AbstractDriverTest::initialRoot, BoskConfig.simple());
+		canonicalBosk = new Bosk<>(boskName("Canonical", 1), TestEntity.class, AbstractDriverTest::initialState, BoskConfig.simple());
 
 		// This is the bosk we're testing
 		bosk = new Bosk<>(
 			boskName("Test", 1),
 			TestEntity.class,
-			AbstractDriverTest::initialRoot,
+			AbstractDriverTest::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(DriverStack.of(
 				ReplicaSet.mirroringTo(canonicalBosk),
-				DriverStateVerifier.wrap(driverFactory, TestEntity.class, AbstractDriverTest::initialRoot)
+				DriverStateVerifier.wrap(driverFactory, TestEntity.class, AbstractDriverTest::initialState)
 			)).build());
 		driver = bosk.driver();
 	}
 
-	public static TestEntity initialRoot(Bosk<TestEntity> b) throws InvalidTypeException {
+	public static TestEntity initialState(Bosk<TestEntity> b) throws InvalidTypeException {
 		return TestEntity.empty(Identifier.from("root"), b.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.catalog)));
 	}
 

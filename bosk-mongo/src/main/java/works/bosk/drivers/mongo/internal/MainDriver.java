@@ -42,7 +42,7 @@ import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
-import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
+import works.bosk.drivers.mongo.exceptions.InitialStateFailureException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.exceptions.FlushFailureException;
@@ -199,7 +199,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
 
 			Type rootType = boskInfo.rootReference().targetType();
-			ChangeListener listener = this.listener = new Listener(new FutureTask<>(() -> doInitialRoot(rootType)));
+			ChangeListener listener = this.listener = new Listener(new FutureTask<>(() -> doInitialState(rootType)));
 			var factory = LISTENER_FACTORY.get();
 			if (factory != null) {
 				listener = factory.apply(listener);
@@ -214,20 +214,20 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	@Override
-	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, InterruptedException, IOException {
-		try (MDCScope _ = beginDriverOperation("initialRoot({})", rootType)) {
+	public StateTreeNode initialState(Type rootType) throws InvalidTypeException, InterruptedException, IOException {
+		try (MDCScope _ = beginDriverOperation("initialState({})", rootType)) {
 			// The actual loading of the initial state happens on the ChangeReceiver thread.
 			// Here, we just wait for that to finish and deal with the consequences.
 			FutureTask<R> task = listener.taskRef.get();
 			if (task == null) {
-				throw new IllegalStateException("initialRoot has already run");
+				throw new IllegalStateException("initialState has already run");
 			}
 			try {
 				return task.get();
 			} catch (ExecutionException e) {
 				switch (e.getCause()) {
-					case InitialRootFailureException i -> throw i;
-					case DownstreamInitialRootException d -> {
+					case InitialStateFailureException i -> throw i;
+					case DownstreamInitialStateException d -> {
 						// Try to throw the downstream exception directly,
 						// as though we had called it without using a FutureTask
 						switch (d.getCause()) {
@@ -235,16 +235,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 							case InvalidTypeException i -> throw i;
 							case InterruptedException i -> throw i;
 							case RuntimeException r -> throw r;
-							case null, default -> throw new AssertionError("Unexpected exception during initialRoot: " + e.getClass().getSimpleName(), e);
+							case null, default -> throw new AssertionError("Unexpected exception during initialState: " + e.getClass().getSimpleName(), e);
 						}
 					}
-					case null, default -> throw new AssertionError("Exception from initialRoot was not wrapped in DownstreamInitialRootException: " + e.getClass().getSimpleName(), e);
+					case null, default -> throw new AssertionError("Exception from initialState was not wrapped in DownstreamInitialStateException: " + e.getClass().getSimpleName(), e);
 				}
 			} finally {
-				// For better or worse, we're done initialRoot. Clear taskRef so that Listener
+				// For better or worse, we're done initialState. Clear taskRef so that Listener
 				// enters its normal steady-state mode where onConnectionSucceeded events cause the state
 				// to be loaded from the database and submitted downstream.
-				LOGGER.debug("Done initialRoot");
+				LOGGER.debug("Done initialState");
 				listener.taskRef.set(null);
 			}
 		}
@@ -255,19 +255,19 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * because it's important that this logic finishes before processing any change events,
 	 * and no other change events can arrive concurrently.
 	 * <p>
-	 * Should throw no exceptions except {@link DownstreamInitialRootException}.
+	 * Should throw no exceptions except {@link DownstreamInitialStateException}.
 	 *
-	 * @throws DownstreamInitialRootException if we attempt to delegate {@link #initialRoot} to
+	 * @throws DownstreamInitialStateException if we attempt to delegate {@link #initialState} to
 	 * the {@link #downstream} driver and it throws an exception; this is a fatal initialization error.
-	 * @throws InitialRootFailureException if unable to load the initial root from the database,
+	 * @throws InitialStateFailureException if unable to load the initial root from the database,
 	 * and {@link InitialDatabaseUnavailableMode#FAIL_FAST} is active.
 	 */
-	private R doInitialRoot(Type rootType) {
+	private R doInitialState(Type rootType) {
 		// This establishes a safe fallback in case things go wrong. It also causes any
 		// calls to driver update methods to wait until we're finished here. (There shouldn't
-		// be any such calls while initialRoot is still running, but this ensures that if any
+		// be any such calls while initialState is still running, but this ensures that if any
 		// do happen, they won't corrupt our internal state in confusing ways.)
-		setDisconnectedDriver(FAILURE_TO_COMPUTE_INITIAL_ROOT);
+		setDisconnectedDriver(FAILURE_TO_COMPUTE_INITIAL_STATE);
 
 		// In effect, at this point, the entire driver is now single-threaded for the remainder
 		// of this method. Our only concurrency concerns now involve database operations performed
@@ -284,14 +284,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// We log this at warn because, in production, this is a big deal.
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
 			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. ({})", e.getMessage());
-			root = callDownstreamInitialRoot(rootType);
+			root = callDownstreamInitialState(rootType);
 			try (var session = queryCollection.newSession()) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
 				preferredDriver.initializeCollection(new StateAndMetadata<>(root, REVISION_ZERO, boskInfo.context().getAttributes()));
 				session.commitTransactionIfAny();
 				// We can now publish the driver knowing that the transaction, if there is one, has committed
 				publishFormatDriver(preferredDriver);
-				preferredDriver.onRevisionToSkip(REVISION_ONE); // initialRoot handles REVISION_ONE; downstream only needs to know about changes after that
+				preferredDriver.onRevisionToSkip(REVISION_ONE); // initialState handles REVISION_ONE; downstream only needs to know about changes after that
 			} catch (RuntimeException | FailedSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2);
@@ -299,12 +299,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		} catch (RuntimeException | UnrecognizedFormatException | IOException | FailedSessionException e) {
 			switch (driverSettings.initialDatabaseUnavailableMode()) {
 				case FAIL_FAST:
-					LOGGER.debug("Unable to load initial root from database; aborting initialization", e);
-					throw new InitialRootFailureException("Unable to load initial state from MongoDB", e);
+					LOGGER.debug("Unable to load initial state from database; aborting initialization", e);
+					throw new InitialStateFailureException("Unable to load initial state from MongoDB", e);
 				case DISCONNECT:
-					LOGGER.info("Unable to load initial root from database; will proceed with downstream.initialRoot", e);
+					LOGGER.info("Unable to load initial state from database; will proceed with downstream.initialState", e);
 					setDisconnectedDriver(e);
-					root = callDownstreamInitialRoot(rootType);
+					root = callDownstreamInitialState(rootType);
 					break;
 				default:
 					throw new AssertionError("Unknown " + InitialDatabaseUnavailableMode.class.getSimpleName() + ": " + driverSettings.initialDatabaseUnavailableMode());
@@ -314,16 +314,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * @throws DownstreamInitialRootException only
+	 * @throws DownstreamInitialStateException only
 	 */
 	@SuppressWarnings("unchecked")
-	private R callDownstreamInitialRoot(Type rootType) {
+	private R callDownstreamInitialState(Type rootType) {
 		R root;
 		try {
-			root = (R)rawClass(rootType).cast(downstream.initialRoot(rootType));
+			root = (R)rawClass(rootType).cast(downstream.initialState(rootType));
 		} catch (RuntimeException | Error | InvalidTypeException | IOException | InterruptedException e) {
-			LOGGER.error("Downstream driver failed to compute initial root", e);
-			throw new DownstreamInitialRootException("Fatal error: downstream driver failed to compute initial root", e);
+			LOGGER.error("Downstream driver failed to compute initial state", e);
+			throw new DownstreamInitialStateException("Fatal error: downstream driver failed to compute initial state", e);
 		}
 		return root;
 	}
@@ -462,8 +462,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private class Listener implements ChangeListener {
 		final AtomicReference<FutureTask<R>> taskRef;
 
-		private Listener(FutureTask<R> initialRootAction) {
-			this.taskRef = new AtomicReference<>(initialRootAction);
+		private Listener(FutureTask<R> initialStateAction) {
+			this.taskRef = new AtomicReference<>(initialStateAction);
 		}
 
 		@Override
@@ -473,12 +473,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			FailedSessionException,
 			InterruptedException,
 			IOException,
-			InitialRootActionException,
+			InitialStateActionException,
 			TimeoutException
 		{
 			LOGGER.debug("onConnectionSucceeded");
-			FutureTask<R> initialRootAction = this.taskRef.get();
-			if (initialRootAction == null) {
+			FutureTask<R> initialStateAction = this.taskRef.get();
+			if (initialStateAction == null) {
 				FormatDriver<R> newDriver;
 				StateAndMetadata<R> loadedState;
 				try (var _ = queryCollection.newReadOnlySession()) {
@@ -512,24 +512,24 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// for a change event with that revision number; a downstream flush is now sufficient.
 				newDriver.onRevisionToSkip(loadedState.revision());
 			} else {
-				LOGGER.debug("Running initialRoot action");
-				runInitialRootAction(initialRootAction);
+				LOGGER.debug("Running initialState action");
+				runInitialStateAction(initialStateAction);
 				//TODO: Both branches of this "if" end with calls to onRevisionToSkip and publishFormatDriver.
 				// Is there a way to rearrange the code so those calls can be in one place?
 			}
 		}
 
-		private void runInitialRootAction(FutureTask<R> initialRootAction) throws InterruptedException, InitialRootActionException {
-			initialRootAction.run();
+		private void runInitialStateAction(FutureTask<R> initialStateAction) throws InterruptedException, InitialStateActionException {
+			initialStateAction.run();
 			try {
 				// You might think this ought to have a timeout,
-				// but the underlying initialRootAction logic already has one,
+				// but the underlying initialStateAction logic already has one,
 				// so this already can't run forever.
-				initialRootAction.get();
-				LOGGER.debug("initialRoot action completed successfully");
+				initialStateAction.get();
+				LOGGER.debug("initialState action completed successfully");
 			} catch (ExecutionException e) {
-				LOGGER.debug("initialRoot action failed", e);
-				throw new InitialRootActionException(e.getCause());
+				LOGGER.debug("initialState action failed", e);
+				throw new InitialStateActionException(e.getCause());
 			}
 		}
 
@@ -557,18 +557,18 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		@Override
 		public void onConnectionFailed() throws InterruptedException, TimeoutException {
 			LOGGER.debug("onConnectionFailed");
-			// If there's an initialRootAction, the main thread is waiting for us.
-			// Execute the initialRootAction just to communicate the failure.
-			FutureTask<R> initialRootAction = this.taskRef.get();
-			if (initialRootAction == null) {
+			// If there's an initialStateAction, the main thread is waiting for us.
+			// Execute the initialStateAction just to communicate the failure.
+			FutureTask<R> initialStateAction = this.taskRef.get();
+			if (initialStateAction == null) {
 				LOGGER.debug("Nothing to do");
 			} else {
-				LOGGER.debug("Running doomed initialRootAction because the main thread is waiting");
+				LOGGER.debug("Running doomed initialStateAction because the main thread is waiting");
 				try {
-					runInitialRootAction(initialRootAction);
-				} catch (InitialRootActionException e2) {
-					LOGGER.debug("Predictably, initialRootAction failed", e2);
-					// Simply by running the initialRootAction, we've already
+					runInitialStateAction(initialStateAction);
+				} catch (InitialStateActionException e2) {
+					LOGGER.debug("Predictably, initialStateAction failed", e2);
+					// Simply by running the initialStateAction, we've already
 					// handled this error condition. Discard the exception.
 				}
 			}
@@ -806,7 +806,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	public static final String COLLECTION_NAME = "boskCollection";
 	public static final BsonString MANIFEST_ID = new BsonString("manifest");
-	private static final Exception FAILURE_TO_COMPUTE_INITIAL_ROOT = new InitialRootFailureException("Failure to compute initial root");
+	private static final Exception FAILURE_TO_COMPUTE_INITIAL_STATE = new InitialStateFailureException("Failure to compute initial root");
 	private static final Logger LOGGER = LoggerFactory.getLogger(MainDriver.class);
 	private static final Logger UNINITIALIZED_COLLECTION_LOGGER = LoggerFactory.getLogger(UNINITIALIZED_COLLECTION_LOGGER_NAME);
 }

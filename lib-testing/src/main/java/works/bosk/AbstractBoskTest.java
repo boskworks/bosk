@@ -140,13 +140,13 @@ public abstract class AbstractBoskTest {
 		return new Bosk<>(
 			boskName(1),
 			TestRoot.class,
-			AbstractRoundTripTest::initialRoot,
+			AbstractRoundTripTest::initialState,
 			BoskConfig.<TestRoot>builder()
 				.driverFactory(driverFactory).build()
 		);
 	}
 
-	protected static TestRoot initialRoot(Bosk<TestRoot> bosk) {
+	protected static TestRoot initialState(Bosk<TestRoot> bosk) {
 		TestEntityBuilder teb;
 		try {
 			teb = new TestEntityBuilder(bosk);

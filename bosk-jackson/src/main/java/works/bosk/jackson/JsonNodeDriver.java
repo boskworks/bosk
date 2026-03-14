@@ -41,10 +41,10 @@ public class JsonNodeDriver implements BoskDriver {
 	}
 
 	@Override
-	public synchronized StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-		StateTreeNode result = downstream.initialRoot(rootType);
+	public synchronized StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+		StateTreeNode result = downstream.initialState(rootType);
 		currentRoot = mapper.convertValue(result, JsonNode.class);
-		traceCurrentState("After initialRoot");
+		traceCurrentState("After initialState");
 		return result;
 	}
 
