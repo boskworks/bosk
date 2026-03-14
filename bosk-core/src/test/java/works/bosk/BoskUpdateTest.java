@@ -53,8 +53,8 @@ public class BoskUpdateTest extends AbstractBoskTest {
 	}
 
 	@Test
-	void initialState_matches() throws IOException, InterruptedException {
-		assertValueEquals(initialState(bosk), bosk.rootReference());
+	void initialRoot_matches() throws IOException, InterruptedException {
+		assertValueEquals(initialRoot(bosk), bosk.rootReference());
 	}
 
 	@Test

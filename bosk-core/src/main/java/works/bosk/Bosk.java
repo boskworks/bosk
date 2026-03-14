@@ -23,6 +23,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext.ContextScope;
+import works.bosk.BoskDriver.InitialState;
+import works.bosk.BoskDriver.InitialState.SingleTree;
 import works.bosk.ReferenceUtils.CatalogRef;
 import works.bosk.ReferenceUtils.ListingRef;
 import works.bosk.ReferenceUtils.SideTableRef;
@@ -101,7 +103,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 	/**
 	 * @param name                A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
-	 * @param rootType            The @{link Type} of the root node of the state tree, whose {@link Reference#path path} is <code>"/"</code>.
+	 * @param rootType            The {@link Type} of the root node of the state tree, whose {@link Reference#path path} is <code>"/"</code>.
 	 * @param defaultStateFunction The root object to use if the driver chooses not to supply one,
 	 *                            and instead delegates {@link BoskDriver#initialState} all the way to the local driver.
 	 *                            Note that this function may or may not be called, so don't use it as a means to initialize
@@ -132,7 +134,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
 
 		try {
-			this.currentRoot = rootRef.targetClass().cast(requireNonNull(initialDriver.initialState(rootType)));
+			InitialState<R> initialState = requireNonNull(initialDriver.initialState(rootRef.targetClass()));
+			R initialRoot = switch (initialState) {
+				case SingleTree(var r) -> r;
+			};
+			this.currentRoot = rootRef.targetClass().cast(initialRoot);
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
 			throw new IllegalArgumentException("Error computing initial state: " + e.getMessage(), e);
 		}
@@ -169,11 +175,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @param initialRoot The starting value of the bosk state tree, before any updates.
 	 */
 	public static <RR extends StateTreeNode> Bosk<RR> simple(String name, RR initialRoot) {
-		return new Bosk<>(requireNonNull(name), initialRoot.getClass(), _ -> initialRoot, BoskConfig.simple());
+		return new Bosk<>(requireNonNull(name), initialRoot.getClass(), _ -> InitialState.of(initialRoot), BoskConfig.simple());
 	}
 
 	public interface DefaultStateFunction<RR extends StateTreeNode> {
-		RR apply(Bosk<RR> bosk) throws InvalidTypeException;
+		InitialState<RR> apply(Bosk<RR> bosk) throws InvalidTypeException, IOException, InterruptedException;
 	}
 
 	record Info<RR extends StateTreeNode>(
@@ -285,8 +291,10 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		@Override
-		public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-			return rootRef.targetClass().cast(downstream.initialState(rootType));
+		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
+			return downstream.initialState(rootType)
+				.map(rootRef.targetClass()::cast)
+				.map(rootType::cast);
 		}
 
 		@Override
@@ -345,10 +353,9 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		@Override
-		public StateTreeNode initialState(Type rootType) throws InvalidTypeException {
-			R initialState = requireNonNull(initialStateFunction.apply(Bosk.this));
-			rawClass(rootType).cast(initialState);
-			return initialState;
+		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
+			return requireNonNull(initialStateFunction.apply(Bosk.this))
+				.map(rootType::cast);
 		}
 
 		@Override

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.DriverStack;
 import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
@@ -94,7 +95,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		assertThrows(FlushFailureException.class, () -> bosk.driver().flush());
 
 		LOGGER.debug("Use another bosk to recreate the database");
-		var fixer = new Bosk<>("fixer", TestEntity.class, SqlDriverDurabilityTest::differentInitialRoot, BoskConfig.<TestEntity>builder().driverFactory(factory).build());
+		var fixer = new Bosk<>("fixer", TestEntity.class, SqlDriverDurabilityTest::differentInitialState, BoskConfig.<TestEntity>builder().driverFactory(factory).build());
 
 		LOGGER.debug("State should be restored");
 
@@ -113,8 +114,9 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	private static @NotNull TestEntity differentInitialRoot(Bosk<TestEntity> b) throws InvalidTypeException {
-		return AbstractDriverTest.initialState(b).withString("Different");
+	private static @NotNull InitialState<TestEntity> differentInitialState(Bosk<TestEntity> b) throws InvalidTypeException, IOException, InterruptedException {
+		return AbstractDriverTest.initialState(b)
+			.map(r -> r.withString("Different"));
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SqlDriverDurabilityTest.class);

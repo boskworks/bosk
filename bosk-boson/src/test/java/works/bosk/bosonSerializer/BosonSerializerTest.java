@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -55,7 +56,10 @@ public class BosonSerializerTest {
 			Root.class,
 			b -> {
 				Refs refs = b.buildReferences(Refs.class);
-				return new Root(Catalog.empty(), SideTable.empty(refs.keys()));
+				return InitialState.of(new Root(
+					Catalog.empty(),
+					SideTable.empty(refs.keys())
+				));
 			},
 			BoskConfig.simple());
 		refs = bosk.buildReferences(Refs.class);

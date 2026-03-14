@@ -4,6 +4,7 @@ import java.lang.reflect.Type;
 import java.util.Optional;
 import lombok.With;
 import lombok.experimental.FieldNameConstants;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.annotations.Enclosing;
 import works.bosk.annotations.Self;
 import works.bosk.annotations.VariantCaseMap;
@@ -146,7 +147,11 @@ public abstract class AbstractBoskTest {
 		);
 	}
 
-	protected static TestRoot initialState(Bosk<TestRoot> bosk) {
+	protected static InitialState<TestRoot> initialState(Bosk<TestRoot> bosk) {
+		return InitialState.of(initialRoot(bosk));
+	}
+
+	protected static TestRoot initialRoot(Bosk<TestRoot> bosk) {
 		TestEntityBuilder teb;
 		try {
 			teb = new TestEntityBuilder(bosk);

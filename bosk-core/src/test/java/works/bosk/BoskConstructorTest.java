@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk.DefaultStateFunction;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.TypeValidationTest.BoxedPrimitives;
 import works.bosk.TypeValidationTest.SimpleTypes;
 import works.bosk.drivers.ForwardingDriver;
@@ -34,7 +35,7 @@ public class BoskConstructorTest {
 		Bosk<StateTreeNode> bosk = new Bosk<>(
 			name,
 			rootType,
-			_ -> root,
+			_ -> InitialState.of(root),
 			BoskConfig.builder().driverFactory((_, d) -> {
 				driver.set(new ForwardingDriver(d));
 				return driver.get();
@@ -63,14 +64,14 @@ public class BoskConstructorTest {
 			new Bosk<TypeValidationTest.ArrayField>(
 				boskName("Invalid root type"),
 				TypeValidationTest.ArrayField.class,
-				_ -> new TypeValidationTest.ArrayField(Identifier.from("test"), new String[0]),
+				_ -> InitialState.of(new TypeValidationTest.ArrayField(Identifier.from("test"), new String[0])),
 				BoskConfig.simple()));
 	}
 
 	@Test
 	void badDriverInitialRoot_throws() {
 		assertInitialRootThrows(NullPointerException.class, () -> null);
-		assertInitialRootThrows(ClassCastException.class, () -> new TypeValidationTest.CatalogOfInvalidType(Identifier.from("whoops"), Catalog.empty()));
+		assertInitialRootThrows(NullPointerException.class, () -> InitialState.of(null));
 		assertInitialRootThrows(IllegalArgumentException.class, () -> { throw new InvalidTypeException("Whoopsie"); });
 		assertInitialRootThrows(IllegalArgumentException.class, () -> { throw new IOException("Whoopsie"); });
 		assertInitialRootThrows(IllegalArgumentException.class, () -> { throw new InterruptedException("Whoopsie"); });
@@ -79,7 +80,8 @@ public class BoskConstructorTest {
 	@Test
 	void badDefaultRootFunction_throws() {
 		assertDefaultRootThrows(NullPointerException.class, _ -> null);
-		assertDefaultRootThrows(ClassCastException.class, _ -> new TypeValidationTest.CatalogOfInvalidType(Identifier.from("whoops"), Catalog.empty()));
+		assertDefaultRootThrows(NullPointerException.class, _ -> InitialState.of(null));
+		assertDefaultRootThrows(ClassCastException.class, _ -> InitialState.of(new TypeValidationTest.CatalogOfInvalidType(Identifier.from("whoops"), Catalog.empty())));
 		assertDefaultRootThrows(IllegalArgumentException.class, _ -> { throw new InvalidTypeException("Whoopsie"); });
 	}
 
@@ -89,7 +91,7 @@ public class BoskConstructorTest {
 			new Bosk<Entity>(
 				boskName("Mismatched root"),
 				BoxedPrimitives.class,
-				bosk -> newEntity(),
+				_ -> InitialState.of(newEntity()),
 				BoskConfig.simple())
 		);
 	}
@@ -97,11 +99,11 @@ public class BoskConstructorTest {
 	@Test
 	void driverInitialRoot_matches() {
 		SimpleTypes root = newEntity();
-		Bosk<StateTreeNode> bosk = new Bosk<>(
+		Bosk<SimpleTypes> bosk = new Bosk<>(
 			boskName(),
 			SimpleTypes.class,
 			_ -> { throw new AssertionError("Shouldn't be called"); },
-			BoskConfig.builder().driverFactory(initialStateDriver(() -> root)).build());
+			BoskConfig.<SimpleTypes>builder().driverFactory(initialStateDriver(() -> InitialState.of(root))).build());
 		try (var _ = bosk.readSession()) {
 			assertSame(root, bosk.rootReference().value());
 		}
@@ -123,12 +125,12 @@ public class BoskConstructorTest {
 	/**
 	 * The "initial root" is the one returned from the driver.
 	 */
-	private static void assertInitialRootThrows(Class<? extends Throwable> expectedType, InitialStateFunction initialStateFunction) {
+	private static void assertInitialRootThrows(Class<? extends Throwable> expectedType, InitialStateFunction<SimpleTypes> initialStateFunction) {
 		assertThrows(expectedType, () -> new Bosk<>(
 			boskName(),
 			SimpleTypes.class,
-			_ -> newEntity(),
-			BoskConfig.builder()
+			_ -> InitialState.of(newEntity()),
+			BoskConfig.<SimpleTypes>builder()
 				.driverFactory(initialStateDriver(initialStateFunction))
 				.build()
 		));
@@ -146,17 +148,17 @@ public class BoskConstructorTest {
 	}
 
 	@NotNull
-	private static DriverFactory<StateTreeNode> initialStateDriver(InitialStateFunction initialStateFunction) {
+	private static <R extends StateTreeNode> DriverFactory<R> initialStateDriver(InitialStateFunction<R> initialStateFunction) {
 		return (_, _) -> new NoOpDriver() {
 			@Override
-			public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-				return initialStateFunction.get();
+			public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
+				return initialStateFunction.get().map(rootType::cast);
 			}
 		};
 	}
 
-	interface InitialStateFunction {
-		StateTreeNode get() throws InvalidTypeException, IOException, InterruptedException;
+	interface InitialStateFunction<R extends StateTreeNode> {
+		InitialState<R> get() throws InvalidTypeException, IOException, InterruptedException;
 	}
 
 	private static SimpleTypes newEntity() {

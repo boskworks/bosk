@@ -18,6 +18,7 @@ import works.bosk.AbstractBoskTest;
 import works.bosk.Bosk;
 import works.bosk.Bosk.NonexistentEntryException;
 import works.bosk.BoskConfig;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.Catalog;
 import works.bosk.Entity;
 import works.bosk.Identifier;
@@ -57,7 +58,7 @@ public class PathCompilerTest extends AbstractBoskTest {
 		pathCompiler = PathCompiler.withSourceType(TestRoot.class);
 		bosk = setUpBosk(simpleDriver());
 		teb = new TestEntityBuilder(bosk);
-		root = initialState(bosk);
+		root = initialRoot(bosk);
 		bosk.driver().submitReplacement(bosk.rootReference(), root);
 		bosk.driver().flush();
 	}
@@ -272,7 +273,7 @@ public class PathCompilerTest extends AbstractBoskTest {
 		Bosk<StateTreeNode> differentBosk = new Bosk<>(
 			boskName("Different"),
 			differentRootClass,
-			_ -> initialRoot,
+			_ -> InitialState.of(initialRoot),
 			BoskConfig.simple());
 		Reference<Identifier> idRef = differentBosk.rootReference().then(Identifier.class, Path.parse(
 			"/id" ));

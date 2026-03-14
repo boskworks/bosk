@@ -118,17 +118,17 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		MongoDriverSpecialTest.Refs refs = bosk.buildReferences(MongoDriverSpecialTest.Refs.class);
 		BoskDriver driver = bosk.driver();
-		TestEntity defaultState = initialState(bosk);
+		TestEntity defaultRoot = initialRoot(bosk);
 
 		try (var _ = bosk.readSession()) {
-			assertEquals(defaultState, bosk.rootReference().value(),
+			assertEquals(defaultRoot, bosk.rootReference().value(),
 				"Uses default state if database is unavailable");
 		}
 
 		LOGGER.debug("Verify that driver operations throw");
 		assertThrows(FlushFailureException.class, driver::flush,
 			"Flush disallowed during outage");
-		assertThrows(Exception.class, () -> driver.submitReplacement(bosk.rootReference(), initialState(bosk)),
+		assertThrows(Exception.class, () -> driver.submitReplacement(bosk.rootReference(), defaultRoot),
 			"Updates disallowed during outage");
 
 		LOGGER.debug("Restore mongo connection");
@@ -145,10 +145,9 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Make a change to the bosk and verify that it gets through");
 		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
-		TestEntity expected = initialState(bosk)
+		TestEntity expected = defaultRoot
 			.withString("distinctive string")
 			.withListing(Listing.of(refs.catalog(), entity123));
-
 
 		waitFor(driver);
 		try (@SuppressWarnings("unused") Bosk<?>.ReadSession readSession = bosk.readSession()) {
@@ -305,7 +304,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			Bosk<TestEntity> prepBosk = new Bosk<>(
 				boskName("Prep " + getClass().getSimpleName()),
 				TestEntity.class,
-				bosk -> initialState(bosk).withString(distinctiveString),
+				bosk -> initialState(bosk).map(r -> r.withString(distinctiveString)),
 				BoskConfig.<TestEntity>builder().driverFactory((b, d) -> {
 					var mongoDriver = (MongoDriver) driverFactory.build(b, d);
 					driverRef.set(mongoDriver);
@@ -315,7 +314,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			waitFor(driver);
 			driver.close();
 
-			return initialState(prepBosk).withString(distinctiveString);
+			return initialRoot(prepBosk).withString(distinctiveString);
 		} catch (Exception e) {
 			throw new AssertionError(e);
 		}

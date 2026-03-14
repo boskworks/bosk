@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.example;
 import com.mongodb.MongoClientSettings;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.DriverFactory;
 import works.bosk.Reference;
 import works.bosk.annotations.ReferencePath;
@@ -16,7 +17,7 @@ public final class ExampleBosk extends Bosk<ExampleState> {
 		super(
 			"ExampleBosk",
 			ExampleState.class,
-			_ -> defaultRoot(),
+			_ -> initialState(),
 			BoskConfig.<ExampleState>builder()
 				.driverFactory(driverFactory())
 				.build()
@@ -30,8 +31,8 @@ public final class ExampleBosk extends Bosk<ExampleState> {
 
 	public final Refs refs = rootReference().buildReferences(Refs.class);
 
-	private static ExampleState defaultRoot() {
-		return new ExampleState("world");
+	private static InitialState<ExampleState> initialState() {
+		return InitialState.of(new ExampleState("world"));
 	}
 
 	private static DriverFactory<ExampleState> driverFactory() {

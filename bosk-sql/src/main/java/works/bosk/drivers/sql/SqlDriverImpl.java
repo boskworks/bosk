@@ -236,7 +236,7 @@ class SqlDriverImpl implements SqlDriver {
 	}
 
 	@Override
-	public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> InitialState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		// TODO: Consider a disconnected mode where we delegate downstream if something goes wrong
 		try (MDCScope _ = setupMDC(boskName, boskID)) {
 			LOGGER.debug("initialState({})", rootType);
@@ -245,13 +245,16 @@ class SqlDriverImpl implements SqlDriver {
 			){
 				// TODO: It seems wrong to schedule the listener loop here. It should be in the constructor.
 				ensureTablesExist(connection);
-				StateTreeNode result;
+				InitialState<R> result;
 				var stateAndEpoch = loadStateAndEpoch(connection);
 				if (stateAndEpoch == null) {
 					LOGGER.debug("No current state; initializing {} table from downstream", BOSK);
 					this.epoch = UUID.randomUUID().toString();
 					result = downstream.initialState(rootType);
-					String stateJson = mapper.writeValueAsString(result);
+					var root = switch (result) {
+						case InitialState.SingleTree(var r) -> r;
+					};
+					String stateJson = mapper.writeValueAsString(root);
 
 					using(connection)
 						.insertInto(BOSK).columns(ID, STATE, BOSK.EPOCH)
@@ -283,8 +286,8 @@ class SqlDriverImpl implements SqlDriver {
 			.fetchOneInto(StateAndEpoch.class);
 	}
 
-	private synchronized StateTreeNode resetBoskState(Type rootType, StateAndEpoch stateAndEpoch, Connection connection) throws SQLException {
-		StateTreeNode result;
+	private synchronized <R extends StateTreeNode> InitialState<R> resetBoskState(Type rootType, StateAndEpoch stateAndEpoch, Connection connection) throws SQLException {
+		R root;
 		this.epoch = stateAndEpoch.epoch;
 		long currentChangeID;
 		try {
@@ -293,11 +296,11 @@ class SqlDriverImpl implements SqlDriver {
 			throw new AssertionError("Epoch was just set, so it shouldn't mismatch in the same transaction", e);
 		}
 		JavaType valueType = typeFactory.constructType(rootType);
-		result = mapper.readValue(stateAndEpoch.state, valueType);
+		root = mapper.readValue(stateAndEpoch.state, valueType);
 		this.lastChangeSubmittedDownstream.set(-1);
 		connection.commit();
-		submitDownstream(rootRef, result, currentChangeID);
-		return result;
+		submitDownstream(rootRef, root, currentChangeID);
+		return InitialState.of(root);
 	}
 
 	private void ensureTablesExist(Connection connection) throws SQLException {

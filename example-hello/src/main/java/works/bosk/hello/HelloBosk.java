@@ -3,6 +3,7 @@ package works.bosk.hello;
 import org.springframework.stereotype.Component;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
@@ -24,7 +25,7 @@ public class HelloBosk extends Bosk<BoskState> {
 		super(
 			"Hello",
 			BoskState.class,
-			HelloBosk::defaultRoot,
+			HelloBosk::defaultState,
 			BoskConfig.<BoskState>builder()
 				.driverFactory(driverFactory(logController))
 				.build()
@@ -47,9 +48,9 @@ public class HelloBosk extends Bosk<BoskState> {
 		@ReferencePath("/targets") CatalogReference<Target> targets();
 	}
 
-	private static BoskState defaultRoot(Bosk<BoskState> __) {
-		return new BoskState(
+	private static InitialState<BoskState> defaultState(Bosk<BoskState> __) {
+		return InitialState.of(new BoskState(
 			Catalog.of(new Target(Identifier.from("world")))
-		);
+		));
 	}
 }

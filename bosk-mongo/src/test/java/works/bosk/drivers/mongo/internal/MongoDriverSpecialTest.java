@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -132,7 +133,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		// Make a change to the bosk so it's not just the initial root
 		setupBosk.driver().submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
 		setupBosk.driver().flush();
-		TestEntity expected = initialState(setupBosk)
+		TestEntity expected = initialRoot(setupBosk)
 			.withListing(Listing.of(refs.catalog(), entity123));
 
 		Bosk<TestEntity> latecomerBosk = new Bosk<>(
@@ -190,7 +191,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 
 		try (var _ = bosk.readSession()) {
-			TestEntity expected = initialState(bosk);
+			TestEntity expected = initialRoot(bosk);
 			TestEntity actual = bosk.rootReference().value();
 			assertEquals(expected, actual, "MongoDriver should not have called downstream.flush() yet");
 		}
@@ -198,7 +199,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		bosk.driver().flush();
 
 		try (var _ = bosk.readSession()) {
-			TestEntity expected = initialState(bosk).withListing(Listing.of(catalogRef, entity123));
+			TestEntity expected = initialRoot(bosk).withListing(Listing.of(catalogRef, entity123));
 			TestEntity actual = bosk.rootReference().value();
 			assertEquals(expected, actual, "MongoDriver.flush() should reliably update the bosk");
 		}
@@ -287,7 +288,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Make a change to the bosk and verify that it gets through");
 		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
-		TestEntity expected = initialState(bosk)
+		TestEntity expected = initialRoot(bosk)
 			.withListing(Listing.of(refs.catalog(), entity123));
 
 		driver.flush();
@@ -357,7 +358,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertTrue(success, "Entry 124 wait should not time out");
 
 		LOGGER.debug("Check bosk state");
-		TestEntity expected = initialState(bosk)
+		TestEntity expected = initialRoot(bosk)
 			.withListing(Listing.of(refs.catalog(), entity123, entity124));
 
 		TestEntity actual;
@@ -429,7 +430,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Make a change to the bosk and verify that it gets through");
 		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
-		TestEntity expected = initialState(bosk)
+		TestEntity expected = initialRoot(bosk)
 			.withListing(Listing.of(refs.catalog(), entity123));
 
 		driver.flush();
@@ -448,7 +449,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		new Bosk<>(
 			boskName("Newer"),
 			TestEntity.class,
-			AbstractMongoDriverTest::initialRootWithValues,
+			AbstractMongoDriverTest::initialStateWithValues,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		// Upon creating prevBosk, the state in the database will be loaded into the local.
@@ -476,7 +477,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("Newer"),
 			TestEntity.class,
-			AbstractMongoDriverTest::initialRootWithEmptyCatalog,
+			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
@@ -511,7 +512,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("Newer"),
 			TestEntity.class,
-			AbstractMongoDriverTest::initialRootWithEmptyCatalog,
+			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
@@ -547,7 +548,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> newerBosk = new Bosk<>(
 			boskName("Newer"),
 			TestEntity.class,
-			AbstractMongoDriverTest::initialRootWithEmptyCatalog,
+			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		Bosk<OldEntity> prevBosk = new Bosk<>(
 			boskName("Prev"),
@@ -581,7 +582,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Bosk<OptionalEntity> setupBosk = new Bosk<>(
 			boskName("Setup"),
 			OptionalEntity.class,
-			b -> OptionalEntity.withString(Optional.empty(), b),
+			b -> InitialState.of(OptionalEntity.withString(Optional.empty(), b)),
 			BoskConfig.<OptionalEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		LOGGER.debug("Connect another bosk where the string field is mandatory");
@@ -590,7 +591,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			TestEntity.class,
 			AbstractMongoDriverTest::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		TestEntity expected1 = initialState(testBosk); // NOT what was put there by the setup bosk!
+		TestEntity expected1 = initialRoot(testBosk); // NOT what was put there by the setup bosk!
 		TestEntity actual1;
 		try (var _ = testBosk.readSession()) {
 			actual1 = testBosk.rootReference().value();
@@ -666,7 +667,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		counterfeitCollection.insertOne(doc);
 
 		bosk.driver().flush();
-		TestEntity expected = initialState(bosk);
+		TestEntity expected = initialRoot(bosk);
 		try (var _ = bosk.readSession()) {
 			TestEntity actual = bosk.rootReference().value();
 			assertEquals(expected, actual);

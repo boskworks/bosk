@@ -1,7 +1,6 @@
 package works.bosk.drivers;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.util.function.Function;
 import works.bosk.BoskContext;
 import works.bosk.BoskContext.ContextScope;
@@ -33,7 +32,7 @@ public final class ContextScopeDriver implements BoskDriver {
 	}
 
 	@Override
-	public StateTreeNode initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> InitialState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		try (var _ = scopeSupplier.apply(context)) {
 			return downstream.initialState(rootType);
 		}

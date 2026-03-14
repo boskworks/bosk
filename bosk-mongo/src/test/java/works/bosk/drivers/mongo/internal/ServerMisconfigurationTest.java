@@ -70,7 +70,7 @@ public class ServerMisconfigurationTest {
 		return new Bosk<>(
 			ServerMisconfigurationTest.class.getSimpleName(),
 			TestEntity.class,
-			AbstractMongoDriverTest::initialRootWithEmptyCatalog,
+			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
 			BoskConfig.<TestEntity>builder()
 				.driverFactory(DriverStack.of(
 					BoskLogFilter.withController(logController),

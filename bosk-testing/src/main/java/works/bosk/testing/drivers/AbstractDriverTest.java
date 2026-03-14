@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
@@ -73,8 +74,10 @@ public abstract class AbstractDriverTest {
 		driver = bosk.driver();
 	}
 
-	public static TestEntity initialState(Bosk<TestEntity> b) throws InvalidTypeException {
-		return TestEntity.empty(Identifier.from("root"), b.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.catalog)));
+	public static InitialState<TestEntity> initialState(Bosk<TestEntity> b) throws InvalidTypeException {
+		return InitialState.of(
+			TestEntity.empty(Identifier.from("root"), b.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.catalog)))
+		);
 	}
 
 	protected TestEntity autoInitialize(Reference<TestEntity> ref) {
