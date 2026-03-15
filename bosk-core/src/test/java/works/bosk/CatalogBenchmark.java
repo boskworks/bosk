@@ -32,7 +32,7 @@ public class CatalogBenchmark {
 			Bosk<AbstractBoskTest.TestRoot> bosk = new Bosk<>(
 				boskName(),
 				AbstractBoskTest.TestRoot.class,
-				AbstractBoskTest::initialRoot,
+				AbstractBoskTest::initialState,
 				BoskConfig.simple());
 			TestEntityBuilder teb = new TestEntityBuilder(bosk);
 			int initialSize = 100_000;

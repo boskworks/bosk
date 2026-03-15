@@ -4,6 +4,7 @@ import java.util.Optional;
 import lombok.experimental.FieldNameConstants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -17,7 +18,7 @@ public class ReferenceErrorTest {
 		bosk = new Bosk<>(
 			boskName(),
 			BadGetters.class,
-			_ -> new BadGetters(Identifier.from("test"), new NestedObject(Optional.of("stringValue"))),
+			_ -> InitialState.of(new BadGetters(Identifier.from("test"), new NestedObject(Optional.of("stringValue")))),
 			BoskConfig.simple());
 	}
 

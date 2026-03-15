@@ -5,7 +5,7 @@ import org.junit.jupiter.api.TestInfo;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.mongo.exceptions.InitialRootFailureException;
+import works.bosk.drivers.mongo.exceptions.InitialStateFailureException;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;
@@ -30,11 +30,11 @@ public class MongoDriverInitializationFailureTest extends AbstractMongoDriverTes
 		logController.setLogging(ERROR, ChangeReceiver.class);
 		mongoService.cutConnection();
 		tearDownActions.add(()->mongoService.restoreConnection());
-		assertThrows(InitialRootFailureException.class, ()->{
+		assertThrows(InitialStateFailureException.class, ()->{
 			new Bosk<>(
 				boskName("Fail"),
 				TestEntity.class,
-				AbstractMongoDriverTest::initialRoot,
+				AbstractMongoDriverTest::initialState,
 				BoskConfig.<TestEntity>builder()
 					.driverFactory(super.createDriverFactory(logController, testInfo))
 					.build()

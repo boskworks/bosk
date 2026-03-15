@@ -3,6 +3,7 @@ package works.bosk;
 import java.io.IOException;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.annotations.VariantCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
@@ -51,7 +52,7 @@ class TaggedUnionTest extends AbstractBoskTest {
 		Identifier idValue = Identifier.from("test2");
 		StringCase stringCase = new StringCase(stringValue);
 		IDCase idCase = new IDCase(idValue);
-		var bosk = new Bosk<>(boskName(), BoskState.class, _ -> new BoskState(TaggedUnion.of(stringCase)), BoskConfig.simple());
+		var bosk = new Bosk<>(boskName(), BoskState.class, _ -> InitialState.of(new BoskState(TaggedUnion.of(stringCase))), BoskConfig.simple());
 		var refs = bosk.rootReference().buildReferences(Refs.class);
 
 		// Initial state

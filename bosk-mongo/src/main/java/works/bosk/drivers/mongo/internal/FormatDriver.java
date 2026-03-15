@@ -4,7 +4,6 @@ import com.mongodb.client.MongoChangeStreamCursor;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.IOException;
-import java.lang.reflect.Type;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import works.bosk.BoskContext;
@@ -31,7 +30,7 @@ import works.bosk.drivers.mongo.MongoDriver;
  * </li><li>
  *     Determining the database format
  * </li><li>
- *     Implementing {@link #initialRoot} or {@link #refurbish()}
+ *     Implementing {@link #initialState} or {@link #refurbish()}
  * </li></ol>
  */
 sealed public interface FormatDriver<R extends StateTreeNode>
@@ -68,9 +67,9 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	void initializeCollection(StateAndMetadata<R> priorContents);
 
 	@Override
-	default StateTreeNode initialRoot(Type rootType) {
+	default <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) {
 		throw new UnsupportedOperationException(
-			"FormatDriver doesn't need to implement initialRoot: MainDriver derives it from loadAllState");
+			"FormatDriver doesn't need to implement initialState: MainDriver derives it from loadAllState");
 	}
 
 	@Override

@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import works.bosk.BindingEnvironment;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
+import works.bosk.BoskDriver;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
@@ -60,7 +61,7 @@ public abstract class HanoiTest {
 		bosk = new Bosk<>(
 			boskName(),
 			HanoiState.class,
-			this::defaultRoot,
+			this::defaultState,
 			BoskConfig.<HanoiState>builder().driverFactory(driverFactory).build());
 		refs = bosk.rootReference().buildReferences(Refs.class);
 		numSolved = new LinkedBlockingDeque<>();
@@ -237,12 +238,12 @@ public abstract class HanoiTest {
 		));
 	}
 
-	private HanoiState defaultRoot(Bosk<HanoiState> bosk) throws InvalidTypeException {
+	private BoskDriver.InitialState<HanoiState> defaultState(Bosk<HanoiState> bosk) throws InvalidTypeException {
 		CatalogReference<Puzzle> puzzlesRef = bosk.rootReference().thenCatalog(Puzzle.class, "puzzles");
-		return new HanoiState(
+		return BoskDriver.InitialState.of(new HanoiState(
 			Catalog.empty(),
 			Listing.empty(puzzlesRef)
-		);
+		));
 	}
 
 	public record HanoiState(

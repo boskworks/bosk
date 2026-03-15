@@ -13,7 +13,7 @@ class ForwardingChangeListener implements ChangeListener {
 	}
 
 	@Override
-	public void onConnectionSucceeded() throws UnrecognizedFormatException, UninitializedCollectionException, InterruptedException, IOException, InitialRootActionException, TimeoutException, FailedSessionException {
+	public void onConnectionSucceeded() throws UnrecognizedFormatException, UninitializedCollectionException, InterruptedException, IOException, InitialStateActionException, TimeoutException, FailedSessionException {
 		downstream.onConnectionSucceeded();
 	}
 

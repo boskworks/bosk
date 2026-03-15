@@ -108,7 +108,7 @@ public class MongoDriverSettings {
 
 	public enum InitialDatabaseUnavailableMode {
 		/**
-		 * If the database state can't be loaded during {@link BoskDriver#initialRoot},
+		 * If the database state can't be loaded during {@link BoskDriver#initialState},
 		 * use the downstream driver's initial state and proceed in disconnected mode.
 		 * This allows the database and application to be booted in either order,
 		 * which can simplify repairs and recovery in production,
@@ -120,7 +120,7 @@ public class MongoDriverSettings {
 		DISCONNECT,
 
 		/**
-		 * If the database state can't be loaded during {@link BoskDriver#initialRoot},
+		 * If the database state can't be loaded during {@link BoskDriver#initialState},
 		 * throw an exception from the {@link Bosk#Bosk Bosk constructor} call.
 		 * This is probably the desired behaviour during development,
 		 * but in production, it creates a boot sequencing dependency between the application and the database.

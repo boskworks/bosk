@@ -105,7 +105,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 	@Test
 	@DisruptsMongoProxy
 	void initialOutage_recovers() throws InvalidTypeException, InterruptedException, IOException {
-		LOGGER.debug("Set up the database contents to be different from initialRoot");
+		LOGGER.debug("Set up the database contents to be different from initialState");
 		TestEntity initialState = initializeDatabase("distinctive string");
 
 		LOGGER.debug("Cut mongo connection");
@@ -113,22 +113,22 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		tearDownActions.add(()->mongoService.restoreConnection());
 
 		LOGGER.debug("Create a new bosk that can't connect");
-		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, AbstractMongoDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		LOGGER.debug("Done creating bosk");
 
 		MongoDriverSpecialTest.Refs refs = bosk.buildReferences(MongoDriverSpecialTest.Refs.class);
 		BoskDriver driver = bosk.driver();
-		TestEntity defaultState = initialRoot(bosk);
+		TestEntity defaultRoot = initialRoot(bosk);
 
 		try (var _ = bosk.readSession()) {
-			assertEquals(defaultState, bosk.rootReference().value(),
+			assertEquals(defaultRoot, bosk.rootReference().value(),
 				"Uses default state if database is unavailable");
 		}
 
 		LOGGER.debug("Verify that driver operations throw");
 		assertThrows(FlushFailureException.class, driver::flush,
 			"Flush disallowed during outage");
-		assertThrows(Exception.class, () -> driver.submitReplacement(bosk.rootReference(), initialRoot(bosk)),
+		assertThrows(Exception.class, () -> driver.submitReplacement(bosk.rootReference(), defaultRoot),
 			"Updates disallowed during outage");
 
 		LOGGER.debug("Restore mongo connection");
@@ -145,10 +145,9 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Make a change to the bosk and verify that it gets through");
 		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
-		TestEntity expected = initialRoot(bosk)
+		TestEntity expected = defaultRoot
 			.withString("distinctive string")
 			.withListing(Listing.of(refs.catalog(), entity123));
-
 
 		waitFor(driver);
 		try (@SuppressWarnings("unused") Bosk<?>.ReadSession readSession = bosk.readSession()) {
@@ -255,7 +254,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before deletion");
 
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = bosk.readSession()) {
 			// This can fail on very short timescales; see testRecovery.
@@ -305,7 +304,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			Bosk<TestEntity> prepBosk = new Bosk<>(
 				boskName("Prep " + getClass().getSimpleName()),
 				TestEntity.class,
-				bosk -> initialRoot(bosk).withString(distinctiveString),
+				bosk -> initialState(bosk).map(r -> r.withString(distinctiveString)),
 				BoskConfig.<TestEntity>builder().driverFactory((b, d) -> {
 					var mongoDriver = (MongoDriver) driverFactory.build(b, d);
 					driverRef.set(mongoDriver);
@@ -325,11 +324,11 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Setup database to beforeState");
 		TestEntity beforeState = initializeDatabase("before disruption");
 
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialRoot, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		try (var _ = bosk.readSession()) {
 			// Note: with very short timescales, this assertion can fail because the newly created bosk
-			// times out trying to read the database contents and instead uses AbstractMongoDriverTest::initialRoot.
+			// times out trying to read the database contents and instead uses AbstractMongoDriverTest::initialState.
 			// This is actually valid behaviour for a sufficiently impatient user.
 			assertEquals(beforeState, bosk.rootReference().value());
 		}

@@ -238,8 +238,8 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 		protected abstract <T> T preprocess(Reference<T> reference, T newValue);
 
 		@Override
-		public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-			return downstream.initialRoot(rootType);
+		public <R extends StateTreeNode> InitialState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+			return downstream.initialState(rootType);
 		}
 
 		@Override

@@ -13,6 +13,7 @@ import org.bson.codecs.configuration.CodecRegistry;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
+import works.bosk.BoskDriver.InitialState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -30,7 +31,7 @@ class BsonSerializerTest {
 	@Test
 	void sideTableOfSideTables() {
 		BsonSerializer bp = new BsonSerializer();
-		Bosk<Root> bosk = new Bosk<Root>(boskName(), Root.class, this::defaultRoot, BoskConfig.simple());
+		Bosk<Root> bosk = new Bosk<Root>(boskName(), Root.class, this::initialState, BoskConfig.simple());
 		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
 		Codec<Root> codec = registry.get(Root.class);
 		try (var _ = bosk.readSession()) {
@@ -42,9 +43,12 @@ class BsonSerializerTest {
 		}
 	}
 
-	private Root defaultRoot(Bosk<Root> bosk) throws InvalidTypeException {
+	private InitialState<Root> initialState(Bosk<Root> bosk) throws InvalidTypeException {
 		CatalogReference<Item> catalogRef = bosk.rootReference().thenCatalog(Item.class, Path.just(Root.Fields.items));
-		return new Root(Catalog.empty(), SideTable.empty(catalogRef));
+		return InitialState.of(new Root(
+			Catalog.empty(),
+			SideTable.empty(catalogRef)
+		));
 	}
 
 	@FieldNameConstants

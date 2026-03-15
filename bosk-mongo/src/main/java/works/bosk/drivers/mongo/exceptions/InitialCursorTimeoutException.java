@@ -1,6 +1,6 @@
 package works.bosk.drivers.mongo.exceptions;
 
-public class InitialCursorTimeoutException extends InitialRootFailureException {
+public class InitialCursorTimeoutException extends InitialStateFailureException {
 	public InitialCursorTimeoutException(String message) {
 		super(message);
 	}

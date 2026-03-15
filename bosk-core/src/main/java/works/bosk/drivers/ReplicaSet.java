@@ -1,7 +1,6 @@
 package works.bosk.drivers;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -47,12 +46,12 @@ public class ReplicaSet<R extends StateTreeNode> {
 	final Queue<Replica<R>> replicas = new ConcurrentLinkedQueue<>();
 
 	/**
-	 * The bosk whose state is returned by {@link BroadcastDriver#initialRoot}.
+	 * The bosk whose state is returned by {@link BroadcastDriver#initialState}.
 	 */
 	final AtomicReference<Replica<R>> primary = new AtomicReference<>(null);
 
 	/**
-	 * Whether {@link BoskDriver#initialRoot} has been called for the primary replica.
+	 * Whether {@link BoskDriver#initialState} has been called for the primary replica.
 	 */
 	final AtomicBoolean isInitialized = new AtomicBoolean(false);
 
@@ -127,7 +126,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 		 * as obtained by {@link Bosk#supersedingReadSession()}.
 		 */
 		@Override
-		public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
 			assert !replicas.isEmpty(): "Replicas must be added during by the driver factory before the drivers are used";
 			var primary = requireNonNull(ReplicaSet.this.primary.get());
 			if (isInitialized.getAndSet(true)) {
@@ -139,11 +138,12 @@ public class ReplicaSet<R extends StateTreeNode> {
 				// to violate this--but unfortunately we have no way to verify it here,
 				// because at this point in the code, we cannot tell which replica we're initializing.
 				try (var _ = primaryReadSession(primary)) {
-					return primary.boskInfo().rootReference().value();
+					return InitialState.of(primary.boskInfo().rootReference().value())
+						.map(rootType::cast);
 				}
 			} else {
 				// The first time this is called, we assume it's for the primary replica.
-				return primary.driver().initialRoot(rootType);
+				return primary.driver().initialState(rootType);
 			}
 		}
 

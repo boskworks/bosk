@@ -1,7 +1,6 @@
 package works.bosk.drivers;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.Identifier;
@@ -30,8 +29,8 @@ public class ForwardingDriver implements BoskDriver {
 	}
 
 	@Override
-	public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-		return downstream.initialRoot(rootType);
+	public <R extends StateTreeNode> InitialState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+		return downstream.initialState(rootType);
 	}
 
 	@Override

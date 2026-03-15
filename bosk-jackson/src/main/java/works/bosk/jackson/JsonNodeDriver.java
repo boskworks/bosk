@@ -1,7 +1,6 @@
 package works.bosk.jackson;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
@@ -41,10 +40,13 @@ public class JsonNodeDriver implements BoskDriver {
 	}
 
 	@Override
-	public synchronized StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-		StateTreeNode result = downstream.initialRoot(rootType);
-		currentRoot = mapper.convertValue(result, JsonNode.class);
-		traceCurrentState("After initialRoot");
+	public synchronized <R extends StateTreeNode> InitialState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+		var result = downstream.initialState(rootType);
+		var root = switch (result) {
+			case InitialState.SingleTree(var r) -> r;
+		};
+		currentRoot = mapper.convertValue(root, JsonNode.class);
+		traceCurrentState("After initialState");
 		return result;
 	}
 

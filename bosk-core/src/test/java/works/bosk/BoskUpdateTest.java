@@ -42,7 +42,7 @@ public class BoskUpdateTest extends AbstractBoskTest {
 		bosk = new Bosk<>(
 			boskName(),
 			TestRoot.class,
-			AbstractBoskTest::initialRoot,
+			AbstractBoskTest::initialState,
 			BoskConfig.simple());
 		refs = bosk.buildReferences(Refs.class);
 		try (var _ = bosk.readSession()) {

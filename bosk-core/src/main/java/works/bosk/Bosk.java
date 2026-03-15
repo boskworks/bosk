@@ -23,6 +23,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext.ContextScope;
+import works.bosk.BoskDriver.InitialState;
+import works.bosk.BoskDriver.InitialState.SingleTree;
 import works.bosk.ReferenceUtils.CatalogRef;
 import works.bosk.ReferenceUtils.ListingRef;
 import works.bosk.ReferenceUtils.SideTableRef;
@@ -101,19 +103,19 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 	/**
 	 * @param name                A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
-	 * @param rootType            The @{link Type} of the root node of the state tree, whose {@link Reference#path path} is <code>"/"</code>.
-	 * @param defaultRootFunction The root object to use if the driver chooses not to supply one,
-	 *                            and instead delegates {@link BoskDriver#initialRoot} all the way to the local driver.
+	 * @param rootType            The {@link Type} of the root node of the state tree, whose {@link Reference#path path} is <code>"/"</code>.
+	 * @param defaultStateFunction The root object to use if the driver chooses not to supply one,
+	 *                            and instead delegates {@link BoskDriver#initialState} all the way to the local driver.
 	 *                            Note that this function may or may not be called, so don't use it as a means to initialize
 	 *                            other state.
 	 * @param boskConfig          Customizations for this bosk.
 	 * @see DriverStack
 	 */
 	@SuppressWarnings("this-escape")
-	public Bosk(String name, Type rootType, DefaultRootFunction<R> defaultRootFunction, BoskConfig<R> boskConfig) {
+	public Bosk(String name, Type rootType, DefaultStateFunction<R> defaultStateFunction, BoskConfig<R> boskConfig) {
 		this.name = requireNonNull(name);
 		this.pathCompiler = PathCompiler.withSourceType(requireNonNull(rootType)); // Required before rootRef
-		this.localDriver = new LocalDriver(requireNonNull(defaultRootFunction));
+		this.localDriver = new LocalDriver(requireNonNull(defaultStateFunction));
 		this.rootRef = new RootRef(rootType);
 		try {
 			validateType(rootType);
@@ -132,9 +134,13 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
 
 		try {
-			this.currentRoot = rootRef.targetClass().cast(requireNonNull(initialDriver.initialRoot(rootType)));
+			InitialState<R> initialState = requireNonNull(initialDriver.initialState(rootRef.targetClass()));
+			R initialRoot = switch (initialState) {
+				case SingleTree(var r) -> r;
+			};
+			this.currentRoot = rootRef.targetClass().cast(initialRoot);
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
-			throw new IllegalArgumentException("Error computing initial root: " + e.getMessage(), e);
+			throw new IllegalArgumentException("Error computing initial state: " + e.getMessage(), e);
 		}
 
 		// Type check
@@ -169,11 +175,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @param initialRoot The starting value of the bosk state tree, before any updates.
 	 */
 	public static <RR extends StateTreeNode> Bosk<RR> simple(String name, RR initialRoot) {
-		return new Bosk<>(requireNonNull(name), initialRoot.getClass(), _ -> initialRoot, BoskConfig.simple());
+		return new Bosk<>(requireNonNull(name), initialRoot.getClass(), _ -> InitialState.of(initialRoot), BoskConfig.simple());
 	}
 
-	public interface DefaultRootFunction<RR extends StateTreeNode> {
-		RR apply(Bosk<RR> bosk) throws InvalidTypeException;
+	public interface DefaultStateFunction<RR extends StateTreeNode> {
+		InitialState<RR> apply(Bosk<RR> bosk) throws InvalidTypeException, IOException, InterruptedException;
 	}
 
 	record Info<RR extends StateTreeNode>(
@@ -285,8 +291,10 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		@Override
-		public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
-			return rootRef.targetClass().cast(downstream.initialRoot(rootType));
+		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
+			return downstream.initialState(rootType)
+				.map(rootRef.targetClass()::cast)
+				.map(rootType::cast);
 		}
 
 		@Override
@@ -336,19 +344,18 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @see #drainQueueIfAllowed() for algorithm details
 	 */
 	private final class LocalDriver implements BoskDriver {
-		final DefaultRootFunction<R> initialRootFunction;
+		final DefaultStateFunction<R> initialStateFunction;
 		final Deque<Runnable> hookExecutionQueue = new ConcurrentLinkedDeque<>();
 		final Semaphore hookExecutionPermit = new Semaphore(1);
 
-		public LocalDriver(DefaultRootFunction<R> initialRootFunction) {
-			this.initialRootFunction = initialRootFunction;
+		public LocalDriver(DefaultStateFunction<R> initialStateFunction) {
+			this.initialStateFunction = initialStateFunction;
 		}
 
 		@Override
-		public StateTreeNode initialRoot(Type rootType) throws InvalidTypeException {
-			R initialRoot = requireNonNull(initialRootFunction.apply(Bosk.this));
-			rawClass(rootType).cast(initialRoot);
-			return initialRoot;
+		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
+			return requireNonNull(initialStateFunction.apply(Bosk.this))
+				.map(rootType::cast);
 		}
 
 		@Override
@@ -797,7 +804,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 *
 	 * @param effectiveScope The hook scope with zero or more of its parameters filled in
 	 * @param priorRoot      The root before the change that triggered the hook; or null during initialization when running
-	 *                       hooks on the {@link BoskDriver#initialRoot initial root}.
+	 *                       hooks on the {@link BoskDriver#initialState initial state}.
 	 * @param newRoot        The root after the change that triggered the hook. This will be the root in the {@link ReadSession}
 	 *                       during hook execution.
 	 * @param action         The operation to perform for each matching object that is different between the two roots
