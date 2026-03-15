@@ -21,11 +21,11 @@ public class ForgottenFlushTest extends AbstractDriverTest {
 
 	@Test
 	void testForgottenFlush() throws InvalidTypeException {
-		DriverFactory<TestEntity> driverFactory = DriverStateVerifier.wrap(ForgetfulDriver.factory(), TestEntity.class, AbstractDriverTest::initialState);
+		DriverFactory<TestEntity> driverFactory = DriverStateVerifier.wrap(ForgetfulDriver.factory(), TestEntity.class, this::initialState);
 		var bosk = new Bosk<>(
 			"ForgottenFlushTest",
 			TestEntity.class,
-			AbstractDriverTest::initialState,
+			this::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		var refs = bosk.buildReferences(Refs.class);
 		var driver = bosk.driver();

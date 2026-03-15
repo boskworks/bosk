@@ -30,6 +30,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 public abstract class AbstractDriverTest {
 	protected final Identifier child1ID = Identifier.from("child1");
 	protected final Identifier child2ID = Identifier.from("child2");
+	private TestInfo testInfo;
 	protected Bosk<TestEntity> canonicalBosk;
 	protected Bosk<TestEntity> bosk;
 	protected BoskDriver driver;
@@ -37,20 +38,21 @@ public abstract class AbstractDriverTest {
 
 	@BeforeEach
 	void logStart(TestInfo testInfo) {
+		this.testInfo = testInfo;
 		oldThreadName = Thread.currentThread().getName();
 		String newThreadName = "test: " + testInfo.getDisplayName();
 		Thread.currentThread().setName(newThreadName);
-		logTest("/=== Start", testInfo);
+		logTest("/=== Start");
 		LOGGER.debug("Old thread name was {}", oldThreadName);
 	}
 
 	@AfterEach
-	void logDone(TestInfo testInfo) {
-		logTest("\\=== Done", testInfo);
+	void logDone() {
+		logTest("\\=== Done");
 		Thread.currentThread().setName(oldThreadName);
 	}
 
-	private static void logTest(String verb, TestInfo testInfo) {
+	private void logTest(String verb) {
 		String method =
 			testInfo.getTestClass().map(Class::getSimpleName).orElse(null)
 				+ "."
@@ -60,21 +62,21 @@ public abstract class AbstractDriverTest {
 
 	protected void setupBosksAndReferences(DriverFactory<TestEntity> driverFactory) {
 		// This is the bosk whose behaviour we'll consider to be correct by definition
-		canonicalBosk = new Bosk<>(boskName("Canonical", 1), TestEntity.class, AbstractDriverTest::initialState, BoskConfig.simple());
+		canonicalBosk = new Bosk<>(boskName("Canonical", 1), TestEntity.class, this::initialState, BoskConfig.simple());
 
 		// This is the bosk we're testing
 		bosk = new Bosk<>(
 			boskName("Test", 1),
 			TestEntity.class,
-			AbstractDriverTest::initialState,
+			this::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(DriverStack.of(
 				ReplicaSet.mirroringTo(canonicalBosk),
-				DriverStateVerifier.wrap(driverFactory, TestEntity.class, AbstractDriverTest::initialState)
+				DriverStateVerifier.wrap(driverFactory, TestEntity.class, this::initialState)
 			)).build());
 		driver = bosk.driver();
 	}
 
-	public static InitialState<TestEntity> initialState(Bosk<TestEntity> b) throws InvalidTypeException {
+	public InitialState<TestEntity> initialState(Bosk<TestEntity> b) throws InvalidTypeException {
 		return InitialState.of(
 			TestEntity.empty(Identifier.from("root"), b.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.catalog)))
 		);

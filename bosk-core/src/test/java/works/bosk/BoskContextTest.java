@@ -29,7 +29,7 @@ class BoskContextTest extends AbstractDriverTest {
 		bosk = new Bosk<>(
 			boskName(),
 			TestEntity.class,
-			AbstractDriverTest::initialState,
+			this::initialState,
 			BoskConfig.simple()
 		);
 	}
