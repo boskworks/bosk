@@ -41,7 +41,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-	openTelemetryJavaAgent 'io.opentelemetry.javaagent:opentelemetry-javaagent:2.26.0'
+	openTelemetryJavaAgent 'io.opentelemetry.javaagent:opentelemetry-javaagent:2.26.1'
 	implementation 'io.opentelemetry:opentelemetry-exporter-jaeger:1.34.1'
 	implementation('io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:2.26.0')
 
