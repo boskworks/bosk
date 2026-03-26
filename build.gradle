@@ -9,7 +9,7 @@ plugins {
 }
 
 ext {
-	jdkVersion = 25 // If you bump this, change the CI workflows too
+	jdkVersion = 26 // If you bump this, change the CI workflows too
 	minSupportedJavaVersion = 25
 }
 
