@@ -1,6 +1,7 @@
 package works.bosk.drivers.sql;
 
 import com.zaxxer.hikari.HikariDataSource;
+import java.lang.reflect.AnnotatedElement;
 import java.sql.SQLException;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -12,11 +13,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
+import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.SharedDriverConformanceTest;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -25,12 +28,12 @@ import static works.bosk.drivers.sql.SqlTestService.Database.POSTGRES;
 import static works.bosk.drivers.sql.SqlTestService.Database.SQLITE;
 import static works.bosk.drivers.sql.SqlTestService.sqlDriverFactory;
 
+@InjectFields
+@InjectFrom(SqlDriverConformanceTest.DatabaseInjector.class)
 @Testcontainers
-@ParameterizedClass
-@MethodSource("databases")
 class SqlDriverConformanceTest extends SharedDriverConformanceTest {
 	private final Deque<Runnable> tearDownActions = new ArrayDeque<>();
-	private final Database database;
+	@Injected Database database;
 	private final AtomicInteger dbCounter = new AtomicInteger(0);
 	private SqlDriverSettings settings;
 	private HikariDataSource dataSource;
@@ -48,14 +51,23 @@ class SqlDriverConformanceTest extends SharedDriverConformanceTest {
 		}
 	}
 
-	SqlDriverConformanceTest(Database database, TestInfo testInfo) {
-		this.database = database;
+	@BeforeEach
+	void skipSlowForSmokeTest(TestInfo testInfo) {
 		assumeTrue(SMOKE_TEST_DBS.contains(database)
 			|| testInfo.getTags().contains("slow"));
 	}
 
-	static List<Database> databases() {
-		return List.of(POSTGRES, MYSQL, SQLITE);
+	record DatabaseInjector() implements Injector {
+
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == Database.class;
+		}
+
+		@Override
+		public List<?> values() {
+			return List.of(POSTGRES, MYSQL, SQLITE);
+		}
 	}
 
 	@BeforeEach
