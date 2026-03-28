@@ -9,7 +9,7 @@ import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
- * Marks a test method that will have its parameters injected by {@link ParameterInjector}s.
+ * Marks a test method that will have its parameters injected by {@link Injector}s.
  * <p>
  * There is no support for injecting parameters into the test class constructor.
  * Use {@code ParameterizedClass} for that.

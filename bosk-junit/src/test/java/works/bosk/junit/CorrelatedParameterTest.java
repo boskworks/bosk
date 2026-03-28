@@ -24,7 +24,7 @@ public class CorrelatedParameterTest {
 		System.out.println("test2(" + from1 + ")");
 	}
 
-	record Injector1() implements ParameterInjector {
+	record Injector1() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(long.class);
@@ -36,7 +36,7 @@ public class CorrelatedParameterTest {
 		}
 	}
 
-	record Injector2(long from1) implements ParameterInjector {
+	record Injector2(long from1) implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(String.class);
@@ -48,7 +48,7 @@ public class CorrelatedParameterTest {
 		}
 	}
 
-	record Injector3(long from1, String from2) implements ParameterInjector {
+	record Injector3(long from1, String from2) implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(String.class);
@@ -61,7 +61,7 @@ public class CorrelatedParameterTest {
 		}
 	}
 
-	record Injector4(long from1, String from3) implements ParameterInjector {
+	record Injector4(long from1, String from3) implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(String.class);

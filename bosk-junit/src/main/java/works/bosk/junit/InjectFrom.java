@@ -8,7 +8,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
  * Configures parameter injection for a test class by
- * specifying one or more {@link ParameterInjector}s
+ * specifying one or more {@link Injector}s
  * to be made available for injecting parameters into test methods.
  * <p>
  * The order of the injectors is significant, for two reasons:
@@ -33,5 +33,5 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Retention(RUNTIME)
 @Target(TYPE)
 public @interface InjectFrom {
-	Class<? extends ParameterInjector>[] value();
+	Class<? extends Injector>[] value();
 }

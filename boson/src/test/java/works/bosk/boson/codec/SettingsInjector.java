@@ -3,9 +3,9 @@ package works.bosk.boson.codec;
 import java.lang.reflect.Parameter;
 import java.util.List;
 import works.bosk.boson.mapping.TypeMap;
-import works.bosk.junit.ParameterInjector;
+import works.bosk.junit.Injector;
 
-record SettingsInjector() implements ParameterInjector {
+record SettingsInjector() implements Injector {
 	@Override
 	public boolean supportsParameter(Parameter parameter) {
 		return parameter.getType().equals(TypeMap.Settings.class);

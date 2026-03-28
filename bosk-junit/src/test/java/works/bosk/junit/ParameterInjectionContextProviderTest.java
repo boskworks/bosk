@@ -67,7 +67,7 @@ class ParameterInjectionContextProviderTest {
 		));
 	}
 
-	record StringInjector() implements ParameterInjector {
+	record StringInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType() == String.class;
@@ -79,7 +79,7 @@ class ParameterInjectionContextProviderTest {
 		}
 	}
 
-	record IntInjector1() implements ParameterInjector {
+	record IntInjector1() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType() == int.class;
@@ -91,7 +91,7 @@ class ParameterInjectionContextProviderTest {
 		}
 	}
 
-	record IntInjector2(int incomingValue) implements ParameterInjector {
+	record IntInjector2(int incomingValue) implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType() == int.class;
@@ -103,7 +103,7 @@ class ParameterInjectionContextProviderTest {
 		}
 	}
 
-	record BooleanInjector() implements ParameterInjector {
+	record BooleanInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType() == boolean.class;

@@ -5,7 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 
 /**
- * Provides a series of possible values for a given parameter.
+ * Provides a series of possible values for a field or method parameter.
  * <p>
  * Note that these will be added to a {@link HashSet}.
  * Since only one injector of each class is in use at a time,
@@ -18,7 +18,7 @@ import java.util.List;
  * @see InjectedTest
  * @see InjectFrom
  */
-public interface ParameterInjector {
+public interface Injector {
 	/**
 	 * Note: if this method returns different results for the same parameter
 	 * at different times, strange behaviour may result.
@@ -31,8 +31,8 @@ public interface ParameterInjector {
 	 */
 	List<?> values();
 
-	static <T> ParameterInjector ofType(Class<T> type, List<? extends T> values) {
-		return new ParameterInjector() {
+	static <T> Injector ofType(Class<T> type, List<? extends T> values) {
+		return new Injector() {
 			@Override
 			public boolean supportsParameter(Parameter p) {
 				return p.getType() == type;

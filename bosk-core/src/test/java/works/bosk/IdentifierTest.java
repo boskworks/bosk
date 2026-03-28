@@ -6,7 +6,7 @@ import java.lang.reflect.Parameter;
 import java.util.List;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
-import works.bosk.junit.ParameterInjector;
+import works.bosk.junit.Injector;
 
 import static java.lang.annotation.ElementType.PARAMETER;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
@@ -30,7 +30,7 @@ class IdentifierTest {
 	@Target(PARAMETER)
 	@interface Invalid {}
 
-	record ValidInjector() implements ParameterInjector {
+	record ValidInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(String.class)
@@ -43,7 +43,7 @@ class IdentifierTest {
 		}
 	}
 
-	record InvalidInjector() implements ParameterInjector {
+	record InvalidInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(String.class)

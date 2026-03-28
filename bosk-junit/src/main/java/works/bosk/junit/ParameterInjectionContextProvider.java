@@ -42,15 +42,15 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 		List<Branch> neededBranches = computeBranches(context, requiredParameters);
 
 		return neededBranches.stream().flatMap(branch -> {
-			var valuesByInjector = new LinkedHashMap<ParameterInjector, List<?>>();
+			var valuesByInjector = new LinkedHashMap<Injector, List<?>>();
 			requiredParameters.forEach(p -> {
-				ParameterInjector injector = branch.injectorFor(p);
+				Injector injector = branch.injectorFor(p);
 				if (injector != null) {
 					valuesByInjector.computeIfAbsent(injector, key -> branch.toInject.get(key).values());
 				}
 			});
 
-			List<ParameterInjector> injectors = List.copyOf(valuesByInjector.keySet());
+			List<Injector> injectors = List.copyOf(valuesByInjector.keySet());
 			List<List<Object>> combinations = cartesianProduct(valuesByInjector.values());
 
 			return combinations.stream().map(combo -> {
@@ -58,7 +58,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 				var paramValueMap = new LinkedHashMap<Parameter, Object>();
 				requiredParameters.forEach(parameter -> {
 					// TODO: There's essentially a copy of this in Branch.withInjectors
-					ParameterInjector pi = branch.injectorFor(parameter);
+					Injector pi = branch.injectorFor(parameter);
 					if (pi != null) {
 						int index = injectors.indexOf(pi);
 						paramValueMap.put(parameter, combo.get(index));
@@ -98,7 +98,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	 * <p>
 	 * This is done in two phases.
 	 * First, we compute all possible branches by instantiating all injector classes.
-	 * Once we have the injectors, we can use {@link ParameterInjector#supportsParameter}
+	 * Once we have the injectors, we can use {@link Injector#supportsParameter}
 	 * to determine which ones are needed,
 	 * and do a second pass to compute the branches for just those injectors.
 	 *
@@ -130,7 +130,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 		// and seeing which injectors are needed
 		// to provide values for the requiredParameters.
 
-		var neededInjectorClasses = new HashSet<Class<? extends ParameterInjector>>();
+		var neededInjectorClasses = new HashSet<Class<? extends Injector>>();
 		Branch someBranch = allPossibleBranches.getFirst();
 		requiredParameters.forEach(p -> getNeededInjectorClasses(p, someBranch, neededInjectorClasses));
 
@@ -147,12 +147,12 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	/**
 	 * @return the injector classes in the order they should be instantiated
 	 */
-	private static List<Class<? extends ParameterInjector>> getAllInjectorClasses(ExtensionContext context) {
+	private static List<Class<? extends Injector>> getAllInjectorClasses(ExtensionContext context) {
 		List<Class<?>> bottomUp = new ArrayList<>();
 		for (var c = context.getRequiredTestClass(); c != Object.class; c = c.getSuperclass()) {
 			bottomUp.add(c);
 		}
-		List<Class<? extends ParameterInjector>> allInjectors = new ArrayList<>();
+		List<Class<? extends Injector>> allInjectors = new ArrayList<>();
 		for (var c : bottomUp.reversed()) {
 			for (var a: c.getAnnotationsByType(InjectFrom.class)) {
 				allInjectors.addAll(asList(a.value()));
@@ -164,13 +164,13 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	private void getNeededInjectorClasses(
 		Parameter param,
 		Branch branch,
-		Set<Class<? extends ParameterInjector>> needed
+		Set<Class<? extends Injector>> needed
 	) {
-		ParameterInjector pi = branch.injectorFor(param);
+		Injector pi = branch.injectorFor(param);
 		if (pi != null && needed.add(pi.getClass())) {
 			var provenance = branch.toInject.get(pi).provenance();
 			var list = provenance.stream()
-				.map(ParameterInjector::getClass)
+				.map(Injector::getClass)
 				.toList();
 			needed.addAll(list);
 		}
@@ -180,7 +180,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	 * Expand each branch by instantiating all injectors of the given type.
 	 */
 	private List<Branch> expandedBranches(List<Branch> currentBranches,
-										Class<? extends ParameterInjector> injectorType) {
+										Class<? extends Injector> injectorType) {
 		List<Branch> expanded = new ArrayList<>();
 		for (Branch branch : currentBranches) {
 			expanded.addAll(branch.withInjectors(injectorType));
@@ -206,13 +206,13 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	}
 
 	/**
-	 * @param values the subset of {@link ParameterInjector#values()} to be injected in this scenario
+	 * @param values the subset of {@link Injector#values()} to be injected in this scenario
 	 * @param provenance the set of injectors required, directly or indirectly,
 	 *                   to produce these values, with no guarantees on the order
 	 */
 	record Superposition(
 		List<?> values,
-		Set<ParameterInjector> provenance
+		Set<Injector> provenance
 	){
 		Superposition collapsed(Object singleValue) {
 			return new Superposition(List.of(singleValue), provenance);
@@ -236,20 +236,20 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	 *                 this map will contain just the one value used to construct that injector on this branch.
 	 */
 	record Branch(
-		Map<ParameterInjector, Superposition> toInject
+		Map<Injector, Superposition> toInject
 	) {
 		static Branch empty() {
 			return new Branch(Map.of());
 		}
 
-		List<Branch> withInjectors(Class<? extends ParameterInjector> injectorType) {
+		List<Branch> withInjectors(Class<? extends Injector> injectorType) {
 			Constructor<?>[] ctors = injectorType.getDeclaredConstructors();
 			if (ctors.length != 1) {
 				throw new ParameterResolutionException("Injector class must have exactly one constructor: " + injectorType);
 			}
 			var ctor = ctors[0];
 			ctor.setAccessible(true);
-			List<ParameterInjector> injectorsToUse = Arrays.stream(ctor.getParameters())
+			List<Injector> injectorsToUse = Arrays.stream(ctor.getParameters())
 				.map(this::injectorFor)
 				.filter(Objects::nonNull)
 				.distinct()
@@ -268,7 +268,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 			for (List<Object> combos : cartesianProduct(valueLists)) {
 				try {
 					List<Object> args = new ArrayList<>();
-					var injectorsUsed = new LinkedHashSet<ParameterInjector>();
+					var injectorsUsed = new LinkedHashSet<Injector>();
 					for (var p: ctor.getParameters()) {
 						var pi = injectorFor(p);
 						injectorsUsed.add(pi);
@@ -278,10 +278,10 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 					}
 
 					// Instantiate the injector
-					var injector = (ParameterInjector) ctor.newInstance(args.toArray());
+					var injector = (Injector) ctor.newInstance(args.toArray());
 
 					// Compute the provenance
-					var provenance = new HashSet<ParameterInjector>();
+					var provenance = new HashSet<Injector>();
 					injectorsUsed.forEach(pi -> {
 						provenance.add(pi);
 						provenance.addAll(toInject.get(pi).provenance());
@@ -314,7 +314,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 		/**
 		 * @return null if there's no injector, indicating that the parameter must be resolved some other way
 		 */
-		ParameterInjector injectorFor(Parameter p) {
+		Injector injectorFor(Parameter p) {
 			return List.copyOf(toInject.entrySet())
 				.reversed()
 				.stream()

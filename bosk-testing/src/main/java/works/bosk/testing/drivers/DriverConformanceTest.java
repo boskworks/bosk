@@ -39,7 +39,7 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
-import works.bosk.junit.ParameterInjector;
+import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.state.Primitives;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestEntity.IdentifierCase;
@@ -639,7 +639,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	@Retention(RUNTIME)
 	@interface TestEntityField {}
 
-	record EnclosingPathInjector() implements ParameterInjector {
+	record EnclosingPathInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(Path.class)
@@ -673,7 +673,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		).map(Identifier::from).toList();
 	}
 
-	record ChildIdInjector() implements ParameterInjector {
+	record ChildIdInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.isAnnotationPresent(Child.class)
@@ -701,7 +701,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		);
 	}
 
-	record TestEntityFieldInjector() implements ParameterInjector {
+	record TestEntityFieldInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.isAnnotationPresent(TestEntityField.class)
@@ -718,7 +718,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	@Retention(RUNTIME)
 	@interface Primitive {}
 
-	record PrimitiveRecordComponentInjector() implements ParameterInjector {
+	record PrimitiveRecordComponentInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.isAnnotationPresent(Primitive.class)

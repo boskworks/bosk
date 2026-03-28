@@ -44,7 +44,7 @@ public class ParameterizedClassTest {
 		assertEquals(expected, observations);
 	}
 
-	record StringInjector() implements ParameterInjector {
+	record StringInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(java.lang.reflect.Parameter parameter) {
 			return parameter.getType().equals(String.class);

@@ -42,7 +42,7 @@ import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.TypeReference;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
-import works.bosk.junit.ParameterInjector;
+import works.bosk.junit.Injector;
 
 import static java.time.DayOfWeek.WEDNESDAY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -272,7 +272,7 @@ public final class RoundTripTest {
 
 	record Escape(String value, String escaped) {}
 
-	record EscapeInjector() implements ParameterInjector {
+	record EscapeInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(Escape.class);
@@ -293,7 +293,7 @@ public final class RoundTripTest {
 		}
 	}
 
-	record PresenceConditionInjector() implements ParameterInjector {
+	record PresenceConditionInjector() implements Injector {
 		@Override
 		public boolean supportsParameter(Parameter parameter) {
 			return parameter.getType().equals(MemberPresenceCondition.class);
