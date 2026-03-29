@@ -18,8 +18,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 class DottedFieldNameTest extends AbstractDriverTest {
-	private Bosk<TestEntity> bosk;
-
 	@BeforeEach
 	void setUpStuff() {
 		bosk = new Bosk<>(boskName(), TestEntity.class, this::initialState, BoskConfig.simple());
