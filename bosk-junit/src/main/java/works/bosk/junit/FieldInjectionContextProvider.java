@@ -109,13 +109,11 @@ public class FieldInjectionContextProvider implements ClassTemplateInvocationCon
 	private void setInjectedFields(Object testInstance, Map<Field, Object> fieldValueMap, List<Field> injectedFields) {
 		for (Field field : injectedFields) {
 			Object value = fieldValueMap.get(field);
-			if (value != null) {
-				try {
-					field.setAccessible(true);
-					field.set(testInstance, value);
-				} catch (IllegalAccessException e) {
-					throw new ParameterResolutionException("Cannot set field " + field, e);
-				}
+			try {
+				field.setAccessible(true);
+				field.set(testInstance, value);
+			} catch (IllegalAccessException e) {
+				throw new ParameterResolutionException("Cannot set field " + field, e);
 			}
 		}
 	}
