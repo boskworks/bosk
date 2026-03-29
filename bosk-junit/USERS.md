@@ -30,7 +30,7 @@ Applied to fields or method parameters to mark them for injection:
 
 // For parameters (method-level injection)
 @InjectedTest
-void test(@Injected String s) { }
+void test(String s) { }
 ```
 
 ---
@@ -40,7 +40,7 @@ Marks a method as a test that receives injected parameters:
 
 ```java
 @InjectedTest
-void test(@Injected String name, @Injected int count) { }
+void test(String name, int count) { }
 ```
 
 ---
