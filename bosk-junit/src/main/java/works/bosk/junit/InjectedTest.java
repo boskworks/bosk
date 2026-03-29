@@ -9,10 +9,11 @@ import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
- * Marks a test method that will have its parameters injected by {@link ParameterInjector}s.
+ * Marks a test method that will have its parameters injected by {@link Injector}s
+ * declared in {@link InjectFrom @InjectFrom}.
  * <p>
- * There is no support for injecting parameters into the test class constructor.
- * Use {@code ParameterizedClass} for that.
+ * Use this annotation on test methods that need method-level parameter injection.
+ * For class-level field injection, use {@link Injected @Injected} on fields instead.
  * <p>
  * There is also no support for using this alongside {@code @ParameterizedTest}
  * to mix and match parameter sources.
@@ -21,6 +22,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  * If that's the functionality you're looking for, you want to use this annotation only.
  *
  * @see InjectFrom
+ * @see Injected
  */
 @Retention(RUNTIME)
 @Target(METHOD)

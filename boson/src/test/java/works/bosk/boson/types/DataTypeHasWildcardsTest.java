@@ -1,11 +1,11 @@
 package works.bosk.boson.types;
 
-import java.lang.reflect.Parameter;
+import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import works.bosk.boson.codec.PrimitiveTypeInjector;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
-import works.bosk.junit.ParameterInjector;
+import works.bosk.junit.Injector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -19,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 	DataTypeHasWildcardsTest.UnknownTypeInjector.class
 })
 public class DataTypeHasWildcardsTest {
-
 	@InjectedTest
 	void primitiveType(PrimitiveType dataType) {
 		assertFalse(dataType.hasWildcards());
@@ -50,15 +49,15 @@ public class DataTypeHasWildcardsTest {
 		assertEquals(_case.hasWildcards(), new UnknownArrayType(_case.type).hasWildcards());
 	}
 
-	static class InstanceTypeInjector implements ParameterInjector {
+	static class InstanceTypeInjector implements Injector {
 		record Case(
 			InstanceType type,
 			boolean hasWildcards
 		) {}
 
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == Case.class;
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == Case.class;
 		}
 
 		@Override
@@ -97,15 +96,15 @@ public class DataTypeHasWildcardsTest {
 		}
 	}
 
-	static class UnknownTypeInjector implements ParameterInjector {
+	static class UnknownTypeInjector implements Injector {
 		record Case(
 			UnknownType type,
 			boolean hasWildcards
 		) {}
 
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == Case.class;
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == Case.class;
 		}
 
 		@Override

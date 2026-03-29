@@ -79,6 +79,19 @@ and try to answer that question in the javadocs.
 
 We use Lombok sparingly. Most of its features are disabled in lombok.config.
 
+### Commits
+
+- Commits in a PR should ideally be rebased and massaged to follow these guidelines prior to committing, to give a clean history:
+
+- Commits should be in this order:
+  1. Fixes for existing bugs (including new tests for those bugs)
+  2. Refactoring to make subsequent work easier
+  3. The newly added functionality 
+- Mechanical refactorings (eg. using an IDE) should be in their own commit describing what they do in ehough detail that they could be repeated if necessary
+- Avoid merging a bug and its fix in the same PR. Prefer squashing the fix into the commit with the bug so it looks like the bug was never there.
+- Each commit should have correct spotless formatting
+- Each commit should pass all tests unless it's marked as WIP or is explicitly doing test-driven development
+
 ### What to avoid
 
 - Do not use Mockito or other mocking libraries for tests.

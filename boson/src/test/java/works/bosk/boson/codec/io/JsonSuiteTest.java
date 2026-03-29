@@ -6,12 +6,12 @@ import java.nio.charset.MalformedInputException;
 import java.nio.file.Files;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.exceptions.JsonSyntaxException;
+import works.bosk.junit.InjectFrom;
 
 import static java.util.Objects.requireNonNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -19,8 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static works.bosk.boson.codec.Token.END_TEXT;
 
-@ParameterizedClass
-@MethodSource("readerSuppliers")
+@InjectFrom(JsonReaderInjector.class)
 public class JsonSuiteTest extends AbstractJsonReaderTest {
 	static final File INPUT_DIR = new File("../../JSONTestSuite/test_parsing");
 

@@ -2,16 +2,14 @@ package works.bosk.drivers.mongo.internal;
 
 import ch.qos.logback.classic.Level;
 import java.io.IOException;
+import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
@@ -21,7 +19,11 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
 import works.bosk.junit.InjectedTest;
+import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.junit.Slow;
 
@@ -29,28 +31,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Slow
-@ParameterizedClass
-@MethodSource("classParameters")
+@InjectFields
+@InjectFrom({SchemaEvolutionTest.FromConfigInjector.class, SchemaEvolutionTest.ToConfigInjector.class})
 public class SchemaEvolutionTest {
 
-	private final Helper fromHelper;
-	private final Helper toHelper;
+	@Injected
+	@From
+	Configuration fromConfig;
 
-	SchemaEvolutionTest(Configuration fromConfig, Configuration toConfig) {
+	@Injected
+	@To
+	Configuration toConfig;
+
+	private Helper fromHelper;
+	private Helper toHelper;
+
+	@BeforeEach
+	void setup(TestInfo testInfo) {
 		int dbCounter = DB_COUNTER.incrementAndGet();
 		this.fromHelper = new Helper(fromConfig, dbCounter);
 		this.toHelper = new Helper(toConfig, dbCounter);
-	}
-
-	static Stream<Object[]> classParameters() {
-		List<Configuration> configs = List.of(
-			new Configuration(MongoDriverSettings.DatabaseFormat.SEQUOIA),
-			new Configuration(PandoFormat.oneBigDocument()),
-			new Configuration(PandoFormat.withGraftPoints("/catalog", "/sideTable"))
-		);
-		return configs.stream()
-			.flatMap(fromConfig -> configs.stream()
-				.map(toConfig -> new Object[] { fromConfig, toConfig }));
 	}
 
 	@BeforeAll
@@ -196,6 +196,43 @@ public class SchemaEvolutionTest {
 			return preferredFormat.toString();
 		}
 	}
+
+	static abstract class ConfigInjector implements Injector {
+		private final Class<? extends java.lang.annotation.Annotation> annotationType;
+
+		ConfigInjector(Class<? extends java.lang.annotation.Annotation> annotationType) {
+			this.annotationType = annotationType;
+		}
+
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return element.isAnnotationPresent(annotationType)
+				&& elementType == Configuration.class;
+		}
+
+		@Override
+		public List<Configuration> values() {
+			return CONFIGURATIONS;
+		}
+	}
+
+	static class FromConfigInjector extends ConfigInjector {
+		FromConfigInjector() {
+			super(From.class);
+		}
+	}
+
+	static class ToConfigInjector extends ConfigInjector {
+		ToConfigInjector() {
+			super(To.class);
+		}
+	}
+
+	private static final List<Configuration> CONFIGURATIONS = List.of(
+		new Configuration(MongoDriverSettings.DatabaseFormat.SEQUOIA),
+		new Configuration(PandoFormat.oneBigDocument()),
+		new Configuration(PandoFormat.withGraftPoints("/catalog", "/sideTable"))
+	);
 
 	static final class Helper extends AbstractMongoDriverTest {
 		final String name;

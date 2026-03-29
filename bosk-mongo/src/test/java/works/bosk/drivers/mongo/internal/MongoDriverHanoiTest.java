@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -9,13 +10,16 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.DriverStack;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
+import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.HanoiTest;
 import works.bosk.testing.junit.Slow;
 
@@ -23,13 +27,16 @@ import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 
 @Disabled // This is slow and has dubious value
 @Slow
-@ParameterizedClass
-@MethodSource("parameterSets")
+@InjectFields
+@InjectFrom(MongoDriverHanoiTest.ParameterSetInjector.class)
 public class MongoDriverHanoiTest extends HanoiTest {
 	private static MongoService mongoService;
 	private final Queue<Runnable> shutdownOperations = new ConcurrentLinkedDeque<>();
 
-	public MongoDriverHanoiTest(TestParameters.ParameterSet parameters, TestInfo testInfo) {
+	@Injected ParameterSet parameters;
+
+	@BeforeEach
+	void setup(TestInfo testInfo) {
 		MongoDriverSettings settings = parameters.driverSettingsBuilder().build();
 		this.driverFactory = DriverStack.of(
 			(_,d) -> { shutdownOperations.add(((MongoDriver)d)::close); return d;},
@@ -45,17 +52,25 @@ public class MongoDriverHanoiTest extends HanoiTest {
 			.drop();
 	}
 
-	static List<TestParameters.ParameterSet> parameterSets() {
-		return TestParameters.driverSettings(
-				Stream.of(
-					PandoFormat.oneBigDocument(),
-					PandoFormat.withGraftPoints("/puzzles"),
-					PandoFormat.withGraftPoints("/puzzles/-puzzle-/towers"),
-					PandoFormat.withGraftPoints("/puzzles", "/puzzles/-puzzle-/towers/-tower-/discs"),
-					MongoDriverSettings.DatabaseFormat.SEQUOIA
-				),
-				Stream.of(TestParameters.EventTiming.NORMAL))
-			.toList();
+	record ParameterSetInjector() implements Injector {
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == ParameterSet.class;
+		}
+
+		@Override
+		public List<ParameterSet> values() {
+			return TestParameters.driverSettings(
+					Stream.of(
+						PandoFormat.oneBigDocument(),
+						PandoFormat.withGraftPoints("/puzzles"),
+						PandoFormat.withGraftPoints("/puzzles/-puzzle-/towers"),
+						PandoFormat.withGraftPoints("/puzzles", "/puzzles/-puzzle-/towers/-tower-/discs"),
+						MongoDriverSettings.DatabaseFormat.SEQUOIA
+					),
+					Stream.of(TestParameters.EventTiming.NORMAL))
+				.toList();
+		}
 	}
 
 

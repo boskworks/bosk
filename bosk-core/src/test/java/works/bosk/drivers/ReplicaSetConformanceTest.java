@@ -4,7 +4,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.testing.drivers.AbstractDriverTest;
 import works.bosk.testing.drivers.DriverConformanceTest;
 import works.bosk.testing.drivers.state.TestEntity;
 
@@ -20,7 +19,7 @@ class ReplicaSetConformanceTest extends DriverConformanceTest {
 		replicaBosk = new Bosk<>(
 			boskName("Replica"),
 			TestEntity.class,
-			AbstractDriverTest::initialState,
+			this::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(replicaSet.driverFactory()).build());
 		driverFactory = replicaSet.driverFactory();
 	}

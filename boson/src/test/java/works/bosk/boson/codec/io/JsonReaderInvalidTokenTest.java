@@ -2,13 +2,12 @@ package works.bosk.boson.codec.io;
 
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.exceptions.JsonSyntaxException;
+import works.bosk.junit.InjectFrom;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -23,8 +22,7 @@ import static works.bosk.boson.codec.Token.WHITESPACE;
  * {@link JsonReader} is unable to describe the next token,
  * as opposed to structural problems like mismatched brackets.
  */
-@ParameterizedClass
-@MethodSource("readerSuppliers")
+@InjectFrom(JsonReaderInjector.class)
 class JsonReaderInvalidTokenTest extends AbstractJsonReaderTest {
 
 	@Override

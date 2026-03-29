@@ -2,10 +2,7 @@ package works.bosk.boson.codec;
 
 import java.io.IOException;
 import java.io.StringWriter;
-import java.util.List;
-import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.boson.TestUtils.OneOfEach;
@@ -13,29 +10,29 @@ import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.types.DataType;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
 import works.bosk.junit.InjectedTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD;
 import static works.bosk.boson.TestUtils.ONE_OF_EACH;
 import static works.bosk.boson.TestUtils.expectedOneOfEach;
 import static works.bosk.boson.codec.compiler.SpecCompilerTest.testTypeMap;
 
-@ParameterizedClass
-@MethodSource("settings")
-@TestInstance(PER_METHOD)
+@InjectFields
+@InjectFrom(SettingsInjector.class)
 class BasicCodecTest {
-	final TypeMap typeMap;
-	private final JsonValueSpec spec;
+	@Injected TypeMap.Settings settings;
 
-	BasicCodecTest(TypeMap.Settings settings) throws NoSuchMethodException, IllegalAccessException {
+	TypeMap typeMap;
+	JsonValueSpec spec;
+
+	@BeforeEach
+	void setup() throws NoSuchMethodException, IllegalAccessException {
 		DataType type = DataType.of(OneOfEach.class);
 		typeMap = testTypeMap(type, settings);
 		spec = typeMap.get(type);
-	}
-
-	static List<TypeMap.Settings> settings() {
-		return new SettingsInjector().values();
 	}
 
 	@InjectedTest

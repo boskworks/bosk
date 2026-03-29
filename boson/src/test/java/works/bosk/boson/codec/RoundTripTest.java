@@ -4,15 +4,13 @@ import java.io.CharArrayWriter;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.Parameter;
+import java.lang.reflect.AnnotatedElement;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.api.Test;
 import works.bosk.boson.codec.PrimitiveInjector.PrimitiveNumber;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
 import works.bosk.boson.mapping.TypeMap;
@@ -40,13 +38,14 @@ import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.TypeReference;
+import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
 import works.bosk.junit.InjectedTest;
-import works.bosk.junit.ParameterInjector;
+import works.bosk.junit.Injector;
 
 import static java.time.DayOfWeek.WEDNESDAY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD;
 import static works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.enclosingObject;
 import static works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.memberValue;
 import static works.bosk.boson.mapping.spec.handles.TypedHandles.canonicalConstructor;
@@ -56,38 +55,30 @@ import static works.bosk.boson.types.DataType.BOOLEAN;
 import static works.bosk.boson.types.DataType.INT;
 import static works.bosk.boson.types.DataType.STRING;
 
+@InjectFields
 @InjectFrom({
 	RoundTripTest.EscapeInjector.class,
 	PrimitiveInjector.class,
-	RoundTripTest.PresenceConditionInjector.class
+	RoundTripTest.PresenceConditionInjector.class,
+	SettingsInjector.class
 })
-@ParameterizedClass
-@MethodSource("settings")
-@TestInstance(PER_METHOD)
 public final class RoundTripTest {
-	final Settings settings;
+	@Injected Settings settings;
+
 	final MethodHandles.Lookup lookup = MethodHandles.lookup();
 
-	public RoundTripTest(Settings settings) {
-		this.settings = settings;
-	}
-
-	static List<Settings> settings() {
-		return new SettingsInjector().values();
-	}
-
-	@InjectedTest
+	@Test
 	void bigNumber() throws IOException {
 		testRoundTrip(new BigNumberNode(BigDecimal.class), "123", new BigDecimal("123"));
 	}
 
-	@InjectedTest
+	@Test
 	void booleans() throws IOException {
 		testRoundTrip(new BooleanNode(), "false", Boolean.FALSE);
 		testRoundTrip(new BooleanNode(), "true", Boolean.TRUE);
 	}
 
-	@InjectedTest
+	@Test
 	void enumByName() throws IOException {
 		var day = WEDNESDAY;
 		testRoundTrip(new EnumByNameNode(DayOfWeek.class), "\"" + day.name() + "\"", day);
@@ -114,7 +105,7 @@ public final class RoundTripTest {
 		testRoundTrip(node, "{\"field\":\"hello\"}", new RecordWithOptionalField("hello"));
 	}
 
-	@InjectedTest
+	@Test
 	void string() throws IOException {
 		var node = new StringNode();
 		testRoundTrip(node, "\"Hello, world!\"", "Hello, world!");
@@ -125,7 +116,7 @@ public final class RoundTripTest {
 		testRoundTrip(new StringNode(), "\"" + escape.escaped + "\"", escape.value);
 	}
 
-	@InjectedTest
+	@Test
 	void maybeNull() throws IOException {
 		var node = new StringNode();
 		testRoundTrip(new MaybeNullSpec(node), "\"hello\"", "hello");
@@ -148,7 +139,7 @@ public final class RoundTripTest {
 	 */
 	public record Primitives(int i, long l, float f, double d) {}
 
-	@InjectedTest
+	@Test
 	void primitiveRecordComponents() throws IOException {
 		testRoundTrip(Primitives.class, "{\"i\":123,\"l\":123,\"f\":123.0,\"d\":123.0}", new Primitives(123, 123L, 123.0F, 123.0D));
 	}
@@ -158,7 +149,7 @@ public final class RoundTripTest {
 		testRoundTrip(new BoxedPrimitiveSpec(new PrimitiveNumberNode(p.type())), p.json(), p.value());
 	}
 
-	@InjectedTest
+	@Test
 	void representAs() throws IOException {
 		var node = RepresentAsSpec.as(new StringNode(),
 			DataType.known(DayOfWeek.class),
@@ -168,7 +159,7 @@ public final class RoundTripTest {
 		testRoundTrip(node, "\"WEDNESDAY\"", WEDNESDAY);
 	}
 
-	@InjectedTest
+	@Test
 	void uniformMapUsingIterator() throws IOException {
 		BoundType linkedHashMapType = (BoundType) DataType.of(new TypeReference<LinkedHashMap<String, Integer>>() {});
 		var node = new UniformMapNode(
@@ -187,7 +178,7 @@ public final class RoundTripTest {
 		);
 	}
 
-	@InjectedTest
+	@Test
 	void uniformMapUsingForLoop() throws IOException, NoSuchMethodException, IllegalAccessException {
 		// This one is contrived: we represent an integer (say 3) as a map of the form:
 		// {"1":1,"2":2,"3":3}
@@ -272,10 +263,10 @@ public final class RoundTripTest {
 
 	record Escape(String value, String escaped) {}
 
-	record EscapeInjector() implements ParameterInjector {
+	record EscapeInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(Escape.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == Escape.class;
 		}
 
 		@Override
@@ -293,10 +284,10 @@ public final class RoundTripTest {
 		}
 	}
 
-	record PresenceConditionInjector() implements ParameterInjector {
+	record PresenceConditionInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(MemberPresenceCondition.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(MemberPresenceCondition.class);
 		}
 
 		@Override

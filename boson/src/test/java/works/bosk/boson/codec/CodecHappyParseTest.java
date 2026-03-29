@@ -11,9 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
-import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.api.BeforeEach;
 import works.bosk.boson.codec.PrimitiveInjector.PrimitiveNumber;
 import works.bosk.boson.mapping.TypeMap.Settings;
 import works.bosk.boson.mapping.TypeScanner;
@@ -43,12 +41,13 @@ import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
 import works.bosk.boson.types.TypeReference;
+import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
 import works.bosk.junit.InjectedTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD;
 import static works.bosk.boson.types.DataType.BOOLEAN;
 import static works.bosk.boson.types.DataType.INT;
 import static works.bosk.boson.types.DataType.STRING;
@@ -56,16 +55,16 @@ import static works.bosk.boson.types.DataType.STRING;
 /**
  * Tests that {@link Codec} parses valid JSON correctly.
  */
-@InjectFrom(PrimitiveInjector.class)
-@ParameterizedClass
-@MethodSource("settings")
-@TestInstance(PER_METHOD)
+@InjectFields
+@InjectFrom({PrimitiveInjector.class, SettingsInjector.class})
 public class CodecHappyParseTest {
-	final Settings settings;
-	final TypeScanner scanner;
+	@Injected
+	Settings settings;
 
-	public CodecHappyParseTest(Settings settings) {
-		this.settings = settings;
+	TypeScanner scanner;
+
+	@BeforeEach
+	void setup() {
 		scanner = new TypeScanner(settings).useLookup(MethodHandles.lookup());
 	}
 

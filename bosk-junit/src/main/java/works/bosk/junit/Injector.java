@@ -1,11 +1,13 @@
 package works.bosk.junit;
 
+import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
 import java.util.HashSet;
 import java.util.List;
 
 /**
- * Provides a series of possible values for a given parameter.
+ * Provides a series of possible values for a field or method parameter.
  * <p>
  * Note that these will be added to a {@link HashSet}.
  * Since only one injector of each class is in use at a time,
@@ -18,26 +20,29 @@ import java.util.List;
  * @see InjectedTest
  * @see InjectFrom
  */
-public interface ParameterInjector {
+public interface Injector {
+	default boolean supportsParameter(Parameter parameter) { return supports(parameter, parameter.getType()); }
+	default boolean supportsField(Field field) { return supports(field, field.getType()); }
+
 	/**
-	 * Note: if this method returns different results for the same parameter
+	 * Note: if this method returns different results for the same element
 	 * at different times, strange behaviour may result.
-	 * @return true if this injector provides values for the given parameter.
+	 * @return true if this injector provides values for the given element.
 	 */
-	boolean supportsParameter(Parameter parameter);
+	boolean supports(AnnotatedElement element, Class<?> elementType);
 
 	/**
 	 * @return non-null {@link List} of values for the given parameter.
 	 */
 	List<?> values();
 
-	static <T> ParameterInjector ofType(Class<T> type, List<? extends T> values) {
-		return new ParameterInjector() {
+	static <T> Injector ofType(Class<T> type, List<? extends T> values) {
+		return new Injector() {
 			@Override
-			public boolean supportsParameter(Parameter p) {
-				return p.getType() == type;
+			public boolean supports(AnnotatedElement element, Class<?> elementType) {
+				return elementType == type;
 			}
-			@Override
+
 			public List<? extends T> values() {
 				return values;
 			}
