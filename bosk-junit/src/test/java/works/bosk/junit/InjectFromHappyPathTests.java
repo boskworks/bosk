@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * to make it clear which test method the failure came from.
  * It also means we need to collect output in static fields,
  * since there can be multiple instances of the test class,
- * so we need to take come care to make those thread-safe;
+ * so we need to take some care to make those thread-safe;
  */
 class InjectFromHappyPathTests {
 
