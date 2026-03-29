@@ -1,6 +1,7 @@
 package works.bosk.junit;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
@@ -13,11 +14,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 
 import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.joining;
 
+/**
+ * Shared support for parameter injection at method and class level.
+ */
 public class ParameterInjectionSupport {
 	/**
 	 * Determine what branches are needed to provide all the injectors required
@@ -31,8 +37,15 @@ public class ParameterInjectionSupport {
 	 *
 	 * @see Branch
 	 */
-	static List<Branch> computeBranches(ExtensionContext context, List<Parameter> requiredParameters) {
-		List<Branch> allPossibleBranches = List.of(Branch.empty());
+	public static List<Branch> computeBranches(ExtensionContext context, List<Parameter> requiredParameters) {
+		return computeBranches(context, requiredParameters, Branch.empty());
+	}
+
+	/**
+	 * Compute branches starting from an existing branch (e.g., from class-level injection).
+	 */
+	public static List<Branch> computeBranches(ExtensionContext context, List<Parameter> requiredParameters, Branch startingBranch) {
+		List<Branch> allPossibleBranches = List.of(startingBranch);
 		var allInjectorClasses = getAllInjectorClasses(context);
 		for (var injectorClass : allInjectorClasses) {
 			allPossibleBranches = expandedBranches(allPossibleBranches, injectorClass);
@@ -61,11 +74,19 @@ public class ParameterInjectionSupport {
 		Branch someBranch = allPossibleBranches.getFirst();
 		requiredParameters.forEach(p -> getNeededInjectorClasses(p, someBranch, neededInjectorClasses));
 
-		// And now we can recalculate the branch list, expanding only the required injector classes
-		List<Branch> neededBranches = List.of(Branch.empty());
+		// And now we can recalculate the branch list, expanding only the required injector classes.
+		// Start from startingBranch and only add NEW injectors that aren't already in it.
+		List<Branch> neededBranches = List.of(startingBranch);
+
 		for (var injectorClass : allInjectorClasses) { // The order matters here
 			if (neededInjectorClasses.contains(injectorClass)) {
-				neededBranches = expandedBranches(neededBranches, injectorClass);
+				// Only expand if this injector class is NOT already in startingBranch
+				boolean alreadyInStarting = startingBranch.toInject().keySet()
+					.stream().anyMatch(i -> i.getClass() == injectorClass);
+
+				if (!alreadyInStarting) {
+					neededBranches = expandedBranches(neededBranches, injectorClass);
+				}
 			}
 		}
 		return neededBranches;
@@ -74,7 +95,7 @@ public class ParameterInjectionSupport {
 	/**
 	 * @return the injector classes in the order they should be instantiated
 	 */
-	private static List<Class<? extends Injector>> getAllInjectorClasses(ExtensionContext context) {
+	public static List<Class<? extends Injector>> getAllInjectorClasses(ExtensionContext context) {
 		List<Class<?>> bottomUp = new ArrayList<>();
 		for (var c = context.getRequiredTestClass(); c != Object.class; c = c.getSuperclass()) {
 			bottomUp.add(c);
@@ -106,8 +127,7 @@ public class ParameterInjectionSupport {
 	/**
 	 * Expand each branch by instantiating all injectors of the given type.
 	 */
-	private static List<Branch> expandedBranches(List<Branch> currentBranches,
-										Class<? extends Injector> injectorType) {
+	private static List<Branch> expandedBranches(List<Branch> currentBranches, Class<? extends Injector> injectorType) {
 		List<Branch> expanded = new ArrayList<>();
 		for (Branch branch : currentBranches) {
 			expanded.addAll(branch.withInjectors(injectorType));
@@ -116,28 +136,11 @@ public class ParameterInjectionSupport {
 	}
 
 	/**
-	 * Compute the cartesian product of a list of lists.
-	 */
-	static List<List<Object>> cartesianProduct(Collection<? extends List<?>> input) {
-		List<List<Object>> result = List.of(List.of());
-		for (List<?> list : input) {
-			result = result.stream()
-				.flatMap(prev -> list.stream().map(v -> {
-					List<Object> next = new ArrayList<>(prev);
-					next.add(v);
-					return next;
-				}))
-				.toList();
-		}
-		return result;
-	}
-
-	/**
 	 * @param values the subset of {@link Injector#values()} to be injected in this scenario
 	 * @param provenance the set of injectors required, directly or indirectly,
 	 *                   to produce these values, with no guarantees on the order
 	 */
-	record Superposition(
+	public record Superposition(
 		List<?> values,
 		Set<Injector> provenance
 	){
@@ -162,14 +165,14 @@ public class ParameterInjectionSupport {
 	 *                 For injectors that have already provided values for constructor parameters of other injectors,
 	 *                 this map will contain just the one value used to construct that injector on this branch.
 	 */
-	record Branch(
+	public record Branch(
 		Map<Injector, Superposition> toInject
 	) {
-		static Branch empty() {
+		public static Branch empty() {
 			return new Branch(Map.of());
 		}
 
-		List<Branch> withInjectors(Class<? extends Injector> injectorType) {
+		public List<Branch> withInjectors(Class<? extends Injector> injectorType) {
 			Constructor<?>[] ctors = injectorType.getDeclaredConstructors();
 			if (ctors.length != 1) {
 				throw new ParameterResolutionException("Injector class must have exactly one constructor: " + injectorType);
@@ -182,10 +185,6 @@ public class ParameterInjectionSupport {
 				.distinct()
 				.toList();
 
-			// (Recall that, for an injector that has already provided a value
-			// for a constructor parameter of another injector on this branch,
-			// its corresponding list will contain just that one value
-			// and will not further expand the cartesian product.)
 			List<? extends List<?>> valueLists = injectorsToUse.stream()
 				.map(toInject::get)
 				.map(Superposition::values)
@@ -204,10 +203,8 @@ public class ParameterInjectionSupport {
 						args.add(combos.get(index));
 					}
 
-					// Instantiate the injector
 					var injector = (Injector) ctor.newInstance(args.toArray());
 
-					// Compute the provenance
 					var provenance = new HashSet<Injector>();
 					injectorsUsed.forEach(pi -> {
 						provenance.add(pi);
@@ -215,17 +212,13 @@ public class ParameterInjectionSupport {
 					});
 					provenance.add(injector);
 
-					// Compute the new toInject map
 					var map = new LinkedHashMap<>(this.toInject);
 					map.put(injector, new Superposition(injector.values(), provenance));
 
-					// Collapse the wavefunction for injectors that provided a value
 					int i = 0;
 					for (var pi: injectorsToUse) {
 						var possibleValues = toInject.get(pi).values();
 						if (possibleValues.size() >= 2) {
-							// pi has provided a value on this branch.
-							// Record that fact for future uses of the same injector.
 							map.put(pi, map.get(pi).collapsed(args.get(i)));
 						}
 						++i;
@@ -238,10 +231,8 @@ public class ParameterInjectionSupport {
 			return result;
 		}
 
-		/**
-		 * @return null if there's no injector, indicating that the parameter must be resolved some other way
-		 */
-		Injector injectorFor(Parameter p) {
+		@Nullable
+		public Injector injectorFor(Parameter p) {
 			return List.copyOf(toInject.entrySet())
 				.reversed()
 				.stream()
@@ -250,5 +241,112 @@ public class ParameterInjectionSupport {
 				.map(Map.Entry::getKey)
 				.orElse(null);
 		}
+
+		@Nullable
+		public Injector injectorForField(Field f) {
+			return List.copyOf(toInject.entrySet())
+				.reversed()
+				.stream()
+				.filter(e -> e.getKey().supportsField(f))
+				.findFirst()
+				.map(Map.Entry::getKey)
+				.orElse(null);
+		}
+
+		public Branch withFieldValues(Map<Field, Object> fieldValues) {
+			var newMap = new LinkedHashMap<>(toInject);
+			for (var entry : fieldValues.entrySet()) {
+				Injector injector = injectorForField(entry.getKey());
+				Superposition existing = toInject.get(injector);
+				newMap.put(injector, existing.collapsed(entry.getValue()));
+			}
+			return new Branch(newMap);
+		}
+
+		@Override
+		public String toString() {
+			return toInject.entrySet().stream()
+				.map(e -> e.getKey().getClass().getSimpleName() + "=" + e.getValue().values())
+				.collect(joining(", ", "Branch{", "}"));
+		}
 	}
+
+	/**
+	 * Compute the cartesian product of a list of lists.
+	 */
+	public static List<List<Object>> cartesianProduct(Collection<? extends List<?>> input) {
+		List<List<Object>> result = List.of(List.of());
+		for (List<?> list : input) {
+			result = result.stream()
+				.flatMap(prev -> list.stream().map(v -> {
+					List<Object> next = new ArrayList<>(prev);
+					next.add(v);
+					return next;
+				}))
+				.toList();
+		}
+		return result;
+	}
+
+	/**
+	 * Expand each branch for class-level injection.
+	 * <p>
+	 * This uses the same logic as method-level injection ({@link #computeBranches}).
+	 * The cartesian product expansion happens at invocation time rather than here,
+	 * allowing uniform handling of both fields and parameters.
+	 */
+	public static List<Branch> expandBranchesForClassLevel(List<Branch> currentBranches, Class<? extends Injector> injectorType) {
+		List<Branch> expanded = new ArrayList<>();
+		for (Branch branch : currentBranches) {
+			expanded.addAll(branch.withInjectors(injectorType));
+		}
+		return expanded;
+	}
+
+	/**
+	 * @return true if the injector class supports at least one of the given fields.
+	 *
+	 * Note: This method cannot determine field support for injectors with constructor dependencies,
+	 * since we don't have the injector values available at this point.
+	 * In such cases, we conservatively return true if the fields list is non-empty,
+	 * allowing the injector to be instantiated and checked later.
+	 */
+	@SuppressWarnings("unchecked")
+	public static boolean supportsAnyField(Class<? extends Injector> injectorClass, List<Field> fields) {
+		try {
+			var injector = injectorClass.getDeclaredConstructors()[0];
+			injector.setAccessible(true);
+			var params = injector.getParameters();
+
+			if (params.length > 0) {
+				// Can't instantiate without dependencies, so assume it might support fields
+				return !fields.isEmpty();
+			}
+			var injectorInstance = (Injector) injector.newInstance();
+			for (Field f : fields) {
+				if (injectorInstance.supportsField(f)) {
+					return true;
+				}
+			}
+			return false;
+		} catch (Exception e) {
+			throw new ParameterResolutionException("Error checking field support for " + injectorClass, e);
+		}
+	}
+
+	/**
+	 * @return the fields annotated with {@link Injected} in the class hierarchy
+	 */
+	public static List<Field> getInjectedFields(ExtensionContext context) {
+		List<Field> fields = new ArrayList<>();
+		for (var c = context.getRequiredTestClass(); c != Object.class; c = c.getSuperclass()) {
+			for (var field : c.getDeclaredFields()) {
+				if (field.isAnnotationPresent(Injected.class)) {
+					fields.add(field);
+				}
+			}
+		}
+		return fields;
+	}
+
 }

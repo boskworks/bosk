@@ -3,8 +3,8 @@ package works.bosk.testing.drivers;
 import java.io.IOException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.RecordComponent;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
@@ -641,9 +641,9 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 
 	record EnclosingPathInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(Path.class)
-				&& parameter.isAnnotationPresent(EnclosingCatalog.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(Path.class)
+				&& element.isAnnotationPresent(EnclosingCatalog.class);
 		}
 
 		@Override
@@ -675,9 +675,9 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 
 	record ChildIdInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.isAnnotationPresent(Child.class)
-				&& parameter.getType().equals(Identifier.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return element.isAnnotationPresent(Child.class)
+				&& elementType.equals(Identifier.class);
 		}
 
 		@Override
@@ -703,9 +703,9 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 
 	record TestEntityFieldInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.isAnnotationPresent(TestEntityField.class)
-				&& parameter.getType().equals(String.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return element.isAnnotationPresent(TestEntityField.class)
+				&& elementType.equals(String.class);
 		}
 
 		@Override
@@ -720,9 +720,9 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 
 	record PrimitiveRecordComponentInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.isAnnotationPresent(Primitive.class)
-				&& parameter.getType().equals(RecordComponent.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return element.isAnnotationPresent(Primitive.class)
+				&& elementType.equals(RecordComponent.class);
 		}
 
 		@Override

@@ -1,13 +1,13 @@
 package works.bosk.boson.codec;
 
-import java.lang.reflect.Parameter;
+import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import works.bosk.junit.Injector;
 
 public record PrimitiveInjector() implements Injector {
 	@Override
-	public boolean supportsParameter(Parameter parameter) {
-		return parameter.getType().equals(PrimitiveNumber.class);
+	public boolean supports(AnnotatedElement element, Class<?> elementType) {
+		return elementType.equals(PrimitiveNumber.class);
 	}
 
 	@Override

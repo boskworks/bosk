@@ -3,12 +3,9 @@ package works.bosk.drivers.sql;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -20,6 +17,9 @@ import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
 import works.bosk.junit.InjectedTest;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.AbstractDriverTest;
@@ -29,28 +29,19 @@ import static ch.qos.logback.classic.Level.ERROR;
 import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static works.bosk.drivers.sql.SqlTestService.Database.POSTGRES;
-import static works.bosk.drivers.sql.SqlTestService.Database.SQLITE;
 import static works.bosk.drivers.sql.SqlTestService.sqlDriverFactory;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Testcontainers
-@ParameterizedClass
-@MethodSource("databases")
+@InjectFields
+@InjectFrom(DatabaseInjector.class)
 public class SqlDriverDurabilityTest extends AbstractDriverTest {
-	private final Database database;
+	@Injected Database database;
+
 	SqlDriverSettings settings;
 	HikariDataSource dataSource;
 	AtomicInteger dbCounter = new AtomicInteger(0);
 	private BoskLogFilter.LogController logController;
-
-	SqlDriverDurabilityTest(Database database) {
-		this.database = database;
-	}
-
-	static List<Database> databases() {
-		return List.of(POSTGRES, SQLITE);
-	}
 
 	@BeforeEach
 	void initializeSettings() {

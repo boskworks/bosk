@@ -11,9 +11,14 @@ import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.jupiter.api.extension.TestTemplateInvocationContext;
 import org.junit.jupiter.api.extension.TestTemplateInvocationContextProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import works.bosk.junit.ParameterInjectionSupport.Branch;
 
 import static java.util.Arrays.asList;
+import static works.bosk.junit.FieldInjectionContextProvider.NAMESPACE;
+import static works.bosk.junit.ParameterInjectionSupport.cartesianProduct;
+import static works.bosk.junit.ParameterInjectionSupport.computeBranches;
 
 /**
  * Implements the {@link InjectFrom} annotation.
@@ -30,19 +35,25 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	public Stream<TestTemplateInvocationContext> provideTestTemplateInvocationContexts(ExtensionContext context) {
 		List<Parameter> requiredParameters = asList(context.getRequiredTestMethod().getParameters());
 
-		List<Branch> neededBranches = ParameterInjectionSupport.computeBranches(context, requiredParameters);
+		List<Branch> neededBranches = computeBranches(context, requiredParameters, getClassLevelBranch(context));
 
 		return neededBranches.stream().flatMap(branch -> {
 			var valuesByInjector = new LinkedHashMap<Injector, List<?>>();
 			requiredParameters.forEach(p -> {
 				Injector injector = branch.injectorFor(p);
-				if (injector != null) {
+				if (injector == null) {
+					// You might think this should be an error, but we do want to coexist
+					// with other parameter resolvers, so we just back off and let them have a chance.
+					// If there is no suitable resolver, JUnit will report that as an error.
+					// TODO: If we let users annotate parameters with @Injected to indicate
+					//  their intent, then we could throw an informative exception here.
+				} else {
 					valuesByInjector.computeIfAbsent(injector, key -> branch.toInject().get(key).values());
 				}
 			});
 
 			List<Injector> injectors = List.copyOf(valuesByInjector.keySet());
-			List<List<Object>> combinations = ParameterInjectionSupport.cartesianProduct(valuesByInjector.values());
+			List<List<Object>> combinations = cartesianProduct(valuesByInjector.values());
 
 			return combinations.stream().map(combo -> {
 				// Swizzle the combo into a useful map from parameter to value
@@ -83,4 +94,18 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 		});
 	}
 
+	private Branch getClassLevelBranch(ExtensionContext context) {
+		// Store.get() automatically walks up the context hierarchy,
+		// so the branch stored in ClassTemplateInvocationContext will be found
+		var branch = context.getStore(NAMESPACE).get("branch", Branch.class);
+		if (branch == null) {
+			LOGGER.debug("No field injection detected; starting with empty branch");
+			return Branch.empty();
+		} else {
+			LOGGER.debug("Continuing with branch from field injection: {}", branch);
+			return branch;
+		}
+	}
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(ParameterInjectionContextProvider.class);
 }

@@ -1,6 +1,6 @@
 package works.bosk.boson.types;
 
-import java.lang.reflect.Parameter;
+import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import works.bosk.boson.codec.PrimitiveTypeInjector;
 import works.bosk.junit.InjectFrom;
@@ -19,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 	DataTypeHasWildcardsTest.UnknownTypeInjector.class
 })
 public class DataTypeHasWildcardsTest {
-
 	@InjectedTest
 	void primitiveType(PrimitiveType dataType) {
 		assertFalse(dataType.hasWildcards());
@@ -57,8 +56,8 @@ public class DataTypeHasWildcardsTest {
 		) {}
 
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == Case.class;
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == Case.class;
 		}
 
 		@Override
@@ -104,8 +103,8 @@ public class DataTypeHasWildcardsTest {
 		) {}
 
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == Case.class;
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == Case.class;
 		}
 
 		@Override

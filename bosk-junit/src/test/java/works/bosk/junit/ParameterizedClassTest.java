@@ -1,5 +1,6 @@
 package works.bosk.junit;
 
+import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -7,20 +8,18 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.params.Parameter;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.ValueSource;
 
 import static java.util.Collections.newSetFromMap;
 import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@ParameterizedClass
-@ValueSource(ints = {1, 2, 3})
-@InjectFrom(ParameterizedClassTest.StringInjector.class)
+@InjectFields
+@InjectFrom({
+	ParameterizedClassTest.StringInjector.class,
+	ParameterizedClassTest.IntInjector.class
+})
 public class ParameterizedClassTest {
-	@Parameter
-	int intValue;
+	@Injected int intValue;
 
 	static final Set<Observation> observations = newSetFromMap(new ConcurrentHashMap<>());
 	record Observation(int intValue, String strValue) {}
@@ -37,22 +36,34 @@ public class ParameterizedClassTest {
 
 	@AfterAll
 	static void checkObservations() {
-		Set<Observation> expected = IntStream.of(1,2,3)
+		Set<Observation> expected = IntStream.of(1, 2, 3)
 			.boxed()
-			.flatMap(i -> Stream.of("A","B","C").map(s -> new Observation(i, s)))
+			.flatMap(i -> Stream.of("A", "B", "C").map(s -> new Observation(i, s)))
 			.collect(toSet());
 		assertEquals(expected, observations);
 	}
 
 	record StringInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(java.lang.reflect.Parameter parameter) {
-			return parameter.getType().equals(String.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(String.class);
 		}
 
 		@Override
 		public List<String> values() {
 			return List.of("A", "B", "C");
+		}
+	}
+
+	record IntInjector() implements Injector {
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(int.class);
+		}
+
+		@Override
+		public List<Integer> values() {
+			return List.of(1, 2, 3);
 		}
 	}
 }

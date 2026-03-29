@@ -2,7 +2,7 @@ package works.bosk;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
-import java.lang.reflect.Parameter;
+import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
@@ -32,9 +32,9 @@ class IdentifierTest {
 
 	record ValidInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(String.class)
-				&& !parameter.isAnnotationPresent(Invalid.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(String.class)
+				&& !element.isAnnotationPresent(Invalid.class);
 		}
 
 		@Override
@@ -45,9 +45,9 @@ class IdentifierTest {
 
 	record InvalidInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(String.class)
-				&& parameter.isAnnotationPresent(Invalid.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(String.class)
+				&& element.isAnnotationPresent(Invalid.class);
 		}
 
 		@Override

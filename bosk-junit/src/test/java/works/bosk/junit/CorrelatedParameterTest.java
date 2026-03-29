@@ -1,6 +1,6 @@
 package works.bosk.junit;
 
-import java.lang.reflect.Parameter;
+import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import org.junit.jupiter.api.Disabled;
 
@@ -26,8 +26,8 @@ public class CorrelatedParameterTest {
 
 	record Injector1() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(long.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(long.class);
 		}
 
 		@Override
@@ -38,8 +38,8 @@ public class CorrelatedParameterTest {
 
 	record Injector2(long from1) implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(String.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(String.class);
 		}
 
 		@Override
@@ -50,8 +50,8 @@ public class CorrelatedParameterTest {
 
 	record Injector3(long from1, String from2) implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(String.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(String.class);
 		}
 
 		@Override
@@ -63,8 +63,8 @@ public class CorrelatedParameterTest {
 
 	record Injector4(long from1, String from3) implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType().equals(String.class);
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(String.class);
 		}
 
 		@Override

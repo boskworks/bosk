@@ -1,14 +1,13 @@
 package works.bosk.boson.codec.io;
 
-import java.io.ByteArrayInputStream;
-import java.util.List;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.exceptions.JsonFormatException;
-import works.bosk.junit.InjectedTest;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.boson.codec.Token.END_TEXT;
@@ -19,112 +18,61 @@ import static works.bosk.boson.codec.io.ByteChunkJsonReader.CARRYOVER_BYTES;
  * The input we're testing here isn't even valid JSON;
  * we're just using the reader's ability to validate specified character sequences.
  */
-@ParameterizedClass
-@MethodSource("readers")
+@InjectFields
+@InjectFrom(JsonReaderValidateSyntaxInjector.class)
 public class JsonReaderValidateSyntaxTest {
-	private final JsonReader reader;
+	@Injected JsonReaderValidateSyntaxInjector.ReaderFactoryParameter parameter;
 
-	JsonReaderValidateSyntaxTest(ReaderFactoryParameter p) {
-		// We do the happy parts that are expected to pass in here.
-		// This doubles as setup for later tests that
-		// expect failures, because those ruin the reader.
+	private JsonReader reader;
 
+	@BeforeEach
+	void setup() {
 		String text = "1234567890".repeat(4).substring(0, 22);
-		reader = p.factory().create(text, 11);
+		reader = parameter.factory().create(text, 11);
 
-		// self-check. The tests are written to assume this
 		assertEquals(5, CARRYOVER_BYTES);
 
-		// The number of characters per chunk will be 11-CARRYOVER_BYTES = 5
-
-		// Stop before chunk boundary
 		reader.validateSyntax("1234");
-		// Zero-sized string always matches
 		reader.validateSyntax("");
-		// Cross chunk boundary
 		reader.validateSyntax("56");
-		// Stop on chunk boundary
 		reader.validateSyntax("7890");
-		// Make sure we're still good
 		reader.validateSyntax("1");
-
-		// The reader is left with 2345, 67890, and 12 in three chunks
 	}
 
-	public static List<ReaderFactoryParameter> readers() {
-		return List.of(
-			new ReaderFactoryParameter("overlapped", (json, chunkSize) -> {
-				var filler = new OverlappedPrefetchingChunkFiller(
-					new ByteArrayInputStream(json.getBytes(UTF_8)),
-					chunkSize, 2
-				);
-				return new ByteChunkJsonReader(filler);
-			}),
-			new ReaderFactoryParameter("synchronous", (json, chunkSize) -> {
-				var filler = new SynchronousChunkFiller(
-					new ByteArrayInputStream(json.getBytes(UTF_8)),
-					chunkSize
-				);
-				return new ByteChunkJsonReader(filler);
-			}),
-			new ReaderFactoryParameter("char array", (json, _) -> {
-				char[] chars = json.toCharArray();
-				return new CharArrayJsonReader(chars);
-			})
-		);
-	}
-
-	@InjectedTest
+	@Test
 	void wrongImmediately() {
 		assertThrows(JsonFormatException.class,
 			() -> reader.validateSyntax("x"));
 	}
 
-	@InjectedTest
+	@Test
 	void wrongAfterRight() {
 		assertThrows(JsonFormatException.class,
 			() -> reader.validateSyntax("234x"));
 	}
 
-	@InjectedTest
+	@Test
 	void wrongAfterBoundary() {
 		assertThrows(JsonFormatException.class,
 			() -> reader.validateSyntax("2345x"));
 	}
 
-	@InjectedTest
+	@Test
 	void wrongOnLastCharacter() {
 		assertThrows(JsonFormatException.class,
 			() -> reader.validateSyntax("2345678901x"));
 	}
 
-	@InjectedTest
+	@Test
 	void rightToTheEnd() {
 		reader.validateSyntax("23456789012");
-		// Empty string matches even at the end
 		reader.validateSyntax("");
 		assertEquals(END_TEXT, reader.peekValueToken());
 	}
 
-	@InjectedTest
+	@Test
 	void rightButTooLong() {
 		assertThrows(JsonFormatException.class,
 			() -> reader.validateSyntax("23456789012x"));
 	}
-
-	interface ReaderFactory {
-		JsonReader create(String json, int chunkSize);
-	}
-
-	/**
-	 * Gives meaningful names to reader factories so it's easier
-	 * to understand the test reports.
-	 */
-	public record ReaderFactoryParameter(String name, ReaderFactory factory) {
-		@Override
-		public String toString() {
-			return name;
-		}
-	}
-
 }

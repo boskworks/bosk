@@ -1,7 +1,8 @@
 package works.bosk.junit;
 
-import java.lang.reflect.Parameter;
+import java.lang.reflect.AnnotatedElement;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,8 +70,8 @@ class ParameterInjectionContextProviderTest {
 
 	record StringInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == String.class;
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == String.class;
 		}
 
 		@Override
@@ -81,8 +82,8 @@ class ParameterInjectionContextProviderTest {
 
 	record IntInjector1() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == int.class;
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == int.class;
 		}
 
 		@Override
@@ -93,8 +94,8 @@ class ParameterInjectionContextProviderTest {
 
 	record IntInjector2(int incomingValue) implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == int.class;
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == int.class;
 		}
 
 		@Override
@@ -105,8 +106,8 @@ class ParameterInjectionContextProviderTest {
 
 	record BooleanInjector() implements Injector {
 		@Override
-		public boolean supportsParameter(Parameter parameter) {
-			return parameter.getType() == boolean.class;
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == boolean.class;
 		}
 
 		@Override
@@ -115,4 +116,48 @@ class ParameterInjectionContextProviderTest {
 		}
 	}
 
+}
+
+@InjectFrom({DependentMethodInjectorsTest.BaseInjector.class, DependentMethodInjectorsTest.DependentInjector.class})
+class DependentMethodInjectorsTest {
+	static final Set<DependentObservation> observations = new HashSet<>();
+	record DependentObservation(int baseValue, String dependentValue) {}
+
+	@InjectedTest
+	void testDependentInjectors(int baseValue, String dependentValue) {
+		observations.add(new DependentObservation(baseValue, dependentValue));
+	}
+
+	@AfterAll
+	static void checkObservations() {
+		Set<DependentObservation> expected = Set.of(
+			new DependentObservation(10, "based-on-10"),
+			new DependentObservation(20, "based-on-20")
+		);
+		assertEquals(expected, observations);
+	}
+
+	record BaseInjector() implements Injector {
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == int.class;
+		}
+
+		@Override
+		public List<Integer> values() {
+			return List.of(10, 20);
+		}
+	}
+
+	record DependentInjector(int baseValue) implements Injector {
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == String.class;
+		}
+
+		@Override
+		public List<String> values() {
+			return List.of("based-on-" + baseValue);
+		}
+	}
 }
