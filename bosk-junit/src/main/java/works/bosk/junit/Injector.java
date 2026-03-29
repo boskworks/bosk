@@ -40,7 +40,7 @@ public interface Injector {
 		return new Injector() {
 			@Override
 			public boolean supports(AnnotatedElement element, Class<?> elementType) {
-				return element == type;
+				return elementType == type;
 			}
 
 			public List<? extends T> values() {
