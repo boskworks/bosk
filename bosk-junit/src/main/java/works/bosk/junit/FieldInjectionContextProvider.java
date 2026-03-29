@@ -74,8 +74,6 @@ public class FieldInjectionContextProvider implements ClassTemplateInvocationCon
 				}
 
 				Branch collapsedBranch = branch.withFieldValues(fieldValueMap);
-				LOGGER.debug("Storing collapsed branch in context during preparation: {}", collapsedBranch);
-				context.getStore(NAMESPACE).put("branch", collapsedBranch);
 
 				return new ClassTemplateInvocationContext() {
 					@Override
@@ -91,6 +89,12 @@ public class FieldInjectionContextProvider implements ClassTemplateInvocationCon
 								setInjectedFields(testInstance, fieldValueMap, injectedFields);
 							}
 						});
+					}
+
+					@Override
+					public void prepareInvocation(ExtensionContext context) {
+						LOGGER.debug("Storing collapsed branch in invocation context: {}", collapsedBranch);
+						context.getStore(NAMESPACE).put("branch", collapsedBranch);
 					}
 				};
 			});

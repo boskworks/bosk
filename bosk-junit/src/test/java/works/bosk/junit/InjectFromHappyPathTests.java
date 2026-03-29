@@ -345,4 +345,29 @@ class InjectFromHappyPathTests {
 			return List.of(IndependentValue.X, IndependentValue.Y);
 		}
 	}
+
+	@Nested
+	@InjectFields
+	@InjectFrom({BaseInjector.class, IndependentInjector.class})
+	class FieldAndParameterCorrelationTest {
+		static final Set<String> observations = new HashSet<>();
+
+		@Injected BaseValue baseValue;
+		@Injected IndependentValue independentValue;
+
+		@InjectedTest
+		void fieldAndParameterShouldCorrelate(IndependentValue param) {
+			observations.add(baseValue + ":" + independentValue + ":" + param);
+		}
+
+		@AfterAll
+		static void checkObservations() {
+			assertEquals(Set.of(
+				"FIRST:X:X",
+				"FIRST:Y:Y",
+				"SECOND:X:X",
+				"SECOND:Y:Y"
+			), observations);
+		}
+	}
 }
