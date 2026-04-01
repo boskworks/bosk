@@ -288,3 +288,18 @@ nexusPublishing {
 		}
 	}
 }
+
+def publishedLibraryCoordinates = rootProject.subprojects.findAll { sub ->
+	sub.plugins.hasPlugin('maven-publish')
+}.collect { sub ->
+	def pub = sub.publishing.publications.mavenJava
+	"${pub.groupId}:${pub.artifactId}"
+}
+
+tasks.register('listPublishedLibraries') {
+	group = 'publishing'
+	description = 'Prints all published libraries for doc sync'
+	doLast {
+		println publishedLibraryCoordinates.join(' ')
+	}
+}
