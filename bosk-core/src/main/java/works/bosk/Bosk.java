@@ -99,7 +99,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final ExecutorService hookExecutor = Executors.newThreadPerTaskExecutor(hookThreadBuilder::unstarted);
 
 	// Mutable state
-	private volatile R currentRoot;
+	private volatile R currentState;
 
 	/**
 	 * @param name                A distinctive identifier string. The bosk framework doesn't use this, so there are no requirements on this string: it can be anything that identifies the object.
@@ -138,13 +138,13 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			R initialRoot = switch (initialState) {
 				case SingleTree(var r) -> r;
 			};
-			this.currentRoot = rootRef.targetClass().cast(initialRoot);
+			this.currentState = rootRef.targetClass().cast(initialRoot);
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
 			throw new IllegalArgumentException("Error computing initial state: " + e.getMessage(), e);
 		}
 
 		// Type check
-		rawClass(rootType).cast(this.currentRoot);
+		rawClass(rootType).cast(this.currentState);
 
 		// Ok, we're done initializing
 		boskInfo.boskRef().set(this); // @SuppressWarnings("this-escape")
@@ -361,7 +361,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@Override
 		public <T> void submitReplacement(Reference<T> target, T newValue) {
 			synchronized (this) {
-				R priorRoot = currentRoot;
+				R priorRoot = currentRoot();
 				if (!tryGraftReplacement(target, newValue)) {
 					return;
 				}
@@ -378,7 +378,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 					preconditionsSatisfied = !target.exists();
 				}
 				if (preconditionsSatisfied) {
-					R priorRoot = currentRoot;
+					R priorRoot = currentRoot();
 					if (!tryGraftReplacement(target, newValue)) {
 						return;
 					}
@@ -391,7 +391,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
 			synchronized (this) {
-				R priorRoot = currentRoot;
+				R priorRoot = currentRoot();
 				if (!tryGraftDeletion(target)) {
 					return;
 				}
@@ -414,7 +414,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
-					R priorRoot = currentRoot;
+					R priorRoot = currentRoot();
 					if (!tryGraftReplacement(target, newValue)) {
 						return;
 					}
@@ -432,7 +432,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
 				}
 				if (preconditionsSatisfied) {
-					R priorRoot = currentRoot;
+					R priorRoot = currentRoot();
 					if (!tryGraftDeletion(target)) {
 						return;
 					}
@@ -447,7 +447,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		 */
 		void triggerEverywhere(HookRegistration<?> reg) {
 			synchronized (this) {
-				triggerQueueingOfHooks(rootReference(), null, currentRoot, reg);
+				triggerQueueingOfHooks(rootReference(), null, currentRoot(), reg);
 			}
 			drainQueueIfAllowed();
 		}
@@ -460,10 +460,10 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			Dereferencer dereferencer = dereferencerFor(target);
 			try {
 				LOGGER.debug("Applying replacement at {}", target);
-				R oldRoot = currentRoot;
+				R oldRoot = currentRoot();
 				@SuppressWarnings("unchecked")
 				R newRoot = (R) requireNonNull(dereferencer.with(oldRoot, target, requireNonNull(newValue)));
-				currentRoot = newRoot;
+				currentState = newRoot;
 				if (LOGGER.isTraceEnabled()) {
 					LOGGER.trace("Replacement at {} changed root from {} to {}",
 						target,
@@ -487,10 +487,10 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			Dereferencer dereferencer = dereferencerFor(target);
 			try {
 				LOGGER.debug("Applying deletion at {}", target);
-				R oldRoot = currentRoot;
+				R oldRoot = currentRoot();
 				@SuppressWarnings("unchecked")
 				R newRoot = (R) requireNonNull(dereferencer.without(oldRoot, target));
-				currentRoot = newRoot;
+				currentState = newRoot;
 				if (LOGGER.isTraceEnabled()) {
 					LOGGER.trace("Deletion at {} changed root from {} to {}",
 						target,
@@ -510,7 +510,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		private <T> void queueHooks(Reference<T> target, @Nullable R priorRoot) {
-			R rootForHook = currentRoot;
+			R rootForHook = currentRoot();
 			for (HookRegistration<?> reg : hooks) {
 				triggerQueueingOfHooks(target, priorRoot, rootForHook, reg);
 			}
@@ -895,7 +895,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		private ReadSession() {
 			originalRoot = rootSnapshot.get();
 			if (originalRoot == null) {
-				snapshot = currentRoot;
+				snapshot = currentState;
 				if (snapshot == null) {
 					throw new IllegalStateException("Bosk constructor has not yet finished; cannot create a ReadSession");
 				}
@@ -1036,7 +1036,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @see #readSession()
 	 */
 	public final ReadSession supersedingReadSession() {
-		R snapshot = currentRoot;
+		R snapshot = currentState;
 		if (snapshot == null) {
 			throw new IllegalStateException("Bosk constructor has not yet finished; cannot create a ReadSession");
 		}
@@ -1424,11 +1424,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		return instanceID() + " \"" + name + "\"::" + rootRef.targetClass().getSimpleName();
 	}
 
-	/**
-	 * FOR UNIT TESTING
-	 */
 	final R currentRoot() {
-		return currentRoot;
+		return currentState;
 	}
 
 	@SuppressWarnings({"unchecked", "rawtypes"})

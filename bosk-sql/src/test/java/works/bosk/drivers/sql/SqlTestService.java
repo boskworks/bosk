@@ -29,8 +29,9 @@ public class SqlTestService {
 	}
 
 	public enum Database {
-		MYSQL(testcontainers("mysql:8.0.36", "/var/lib/mysql")),
-		POSTGRES(testcontainers("postgresql:17", "/var/lib/postgresql/data")),
+		// TODO: Use a dockerfile like we do for MongoDB so dependabot can keep these up to date
+		MYSQL(testcontainers("mysql:9.6.0", "/var/lib/mysql")),
+		POSTGRES(testcontainers("postgresql:18.3", "/var/lib/postgresql")),
 		SQLITE(dbName -> "jdbc:sqlite:" + TEMP_DIR.resolve(dbName + ".db")),
 		;
 

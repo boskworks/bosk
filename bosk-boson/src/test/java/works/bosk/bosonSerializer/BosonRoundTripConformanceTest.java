@@ -2,8 +2,10 @@ package works.bosk.bosonSerializer;
 
 import java.io.IOException;
 import java.io.StringWriter;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.EnumSource;
+import java.lang.reflect.AnnotatedElement;
+import java.util.Arrays;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JavaType;
@@ -27,7 +29,12 @@ import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.types.DataType;
+import works.bosk.bosonSerializer.BosonRoundTripConformanceTest.VariantInjector;
 import works.bosk.jackson.JacksonSerializer;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
+import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.DriverConformanceTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,12 +42,15 @@ import static tools.jackson.core.StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION;
 import static tools.jackson.databind.cfg.EnumFeature.READ_ENUMS_USING_TO_STRING;
 import static tools.jackson.databind.cfg.EnumFeature.WRITE_ENUMS_USING_TO_STRING;
 
-@ParameterizedClass
-@EnumSource(BosonRoundTripConformanceTest.Variant.class)
+@InjectFields
+@InjectFrom(VariantInjector.class)
 class BosonRoundTripConformanceTest extends DriverConformanceTest {
 	private static final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
 
-	BosonRoundTripConformanceTest(Variant variant) {
+	@Injected Variant variant;
+
+	@BeforeEach
+	void setupVariant() {
 		driverFactory = BosonRoundTripDriver.factory(variant);
 	}
 
@@ -125,6 +135,18 @@ class BosonRoundTripConformanceTest extends DriverConformanceTest {
 	}
 
 	public enum Variant {FAST, VALIDATING, J2B, B2J}
+
+	record VariantInjector() implements Injector {
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType.equals(Variant.class);
+		}
+
+		@Override
+		public List<?> values() {
+			return Arrays.asList(Variant.values());
+		}
+	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(BosonRoundTripConformanceTest.class);
 }

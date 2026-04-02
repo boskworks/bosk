@@ -47,7 +47,7 @@ public class SchemaEvolutionTest {
 	private Helper toHelper;
 
 	@BeforeEach
-	void setup(TestInfo testInfo) {
+	void setup() {
 		int dbCounter = DB_COUNTER.incrementAndGet();
 		this.fromHelper = new Helper(fromConfig, dbCounter);
 		this.toHelper = new Helper(toConfig, dbCounter);

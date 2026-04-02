@@ -4,58 +4,39 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.sql.SQLException;
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
 import works.bosk.testing.drivers.SharedDriverConformanceTest;
 
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
-import static works.bosk.drivers.sql.SqlTestService.Database.MYSQL;
-import static works.bosk.drivers.sql.SqlTestService.Database.POSTGRES;
-import static works.bosk.drivers.sql.SqlTestService.Database.SQLITE;
 import static works.bosk.drivers.sql.SqlTestService.sqlDriverFactory;
 
+@InjectFields
+@InjectFrom(DatabaseInjector.class)
 @Testcontainers
-@ParameterizedClass
-@MethodSource("databases")
 class SqlDriverConformanceTest extends SharedDriverConformanceTest {
 	private final Deque<Runnable> tearDownActions = new ArrayDeque<>();
-	private final Database database;
+	@Injected Database database;
 	private final AtomicInteger dbCounter = new AtomicInteger(0);
 	private SqlDriverSettings settings;
 	private HikariDataSource dataSource;
-
-	private static final Set<Database> SMOKE_TEST_DBS = EnumSet.of(POSTGRES);
 
 	@BeforeAll
 	static void validateSmokeTestDatabases() {
 		// Fail this test promptly if we can't connect to the smoke test databases,
 		// instead of painstakingly hitting this error on every single test.
-		for (Database database : SMOKE_TEST_DBS) {
+		for (Database database : Database.values()) {
 			try (var ds = database.dataSourceFor("smoke-test")) {
 				ds.validate();
 			}
 		}
-	}
-
-	SqlDriverConformanceTest(Database database, TestInfo testInfo) {
-		this.database = database;
-		assumeTrue(SMOKE_TEST_DBS.contains(database)
-			|| testInfo.getTags().contains("slow"));
-	}
-
-	static List<Database> databases() {
-		return List.of(POSTGRES, MYSQL, SQLITE);
 	}
 
 	@BeforeEach

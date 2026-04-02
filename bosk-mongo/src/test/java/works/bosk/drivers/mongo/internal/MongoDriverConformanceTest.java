@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import java.lang.reflect.AnnotatedElement;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -9,8 +10,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.DriverFactory;
@@ -19,20 +18,26 @@ import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.drivers.mongo.internal.MongoDriverConformanceTest.ParameterSetInjector;
 import works.bosk.drivers.mongo.internal.TestParameters.EventTiming;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
+import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.SharedDriverConformanceTest;
 import works.bosk.testing.junit.Slow;
 
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 
 @Slow
-@ParameterizedClass
-@MethodSource("parameterSets")
+@InjectFields
+@InjectFrom(ParameterSetInjector.class)
 class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 	private final Deque<Runnable> tearDownActions = new ArrayDeque<>();
 	private static MongoService mongoService;
-	private final MongoDriverSettings driverSettings;
+	@Injected ParameterSet parameters;
+	private MongoDriverSettings driverSettings;
 	private final AtomicInteger numOpenDrivers = new AtomicInteger(0);
 	private ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
 
@@ -46,10 +51,6 @@ class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 	void teardownErrorRecording() {
 		errorRecorder.assertAllClear("after test");
 		MainDriver.LISTENER_FACTORY.remove();
-	}
-
-	public MongoDriverConformanceTest(ParameterSet parameters) {
-		this.driverSettings = parameters.driverSettingsBuilder().build();
 	}
 
 	static List<ParameterSet> parameterSets() {
@@ -67,6 +68,18 @@ class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 			.toList();
 	}
 
+	record ParameterSetInjector() implements Injector {
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == ParameterSet.class;
+		}
+
+		@Override
+		public List<?> values() {
+			return parameterSets();
+		}
+	}
+
 	@BeforeAll
 	static void setupMongoConnection() {
 		mongoService = new MongoService();
@@ -74,6 +87,7 @@ class MongoDriverConformanceTest extends SharedDriverConformanceTest {
 
 	@BeforeEach
 	void setupDriverFactory(TestInfo testInfo) {
+		driverSettings = parameters.driverSettingsBuilder().build();
 		driverFactory = createDriverFactory(testInfo);
 	}
 
