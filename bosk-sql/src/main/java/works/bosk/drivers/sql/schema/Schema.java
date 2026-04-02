@@ -22,10 +22,10 @@ public class Schema {
 
 	public void dropTables(Connection c) throws SQLException {
 		using(c)
-			.dropTable(BOSK)
+			.dropTableIfExists(BOSK)
 			.execute();
 		using(c)
-			.dropTable(CHANGES)
+			.dropTableIfExists(CHANGES)
 			.execute();
 		c.commit();
 	}
