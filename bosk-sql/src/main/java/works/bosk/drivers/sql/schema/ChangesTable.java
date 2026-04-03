@@ -25,6 +25,8 @@ public class ChangesTable extends TableImpl<org.jooq.Record> {
 		name("new_state"), CLOB.null_());
 	public final TableField<Record, String> DIAGNOSTICS = createField(
 		name("diagnostics"), CLOB.notNull());
+	public final TableField<Record, String> TENANT = createField(
+		name("tenant"), VARCHAR.null_());
 
 	ChangesTable() {
 		super(name("bosk_changes"));

@@ -19,6 +19,7 @@ public class Schema {
 	public final TableField<Record, String> REF = CHANGES.REF;
 	public final TableField<Record, String> NEW_STATE = CHANGES.NEW_STATE;
 	public final TableField<Record, String> DIAGNOSTICS = CHANGES.DIAGNOSTICS;
+	public final TableField<Record, String> TENANT = CHANGES.TENANT;
 
 	public void dropTables(Connection c) throws SQLException {
 		using(c)

@@ -40,7 +40,7 @@ public class TestParameters {
 				+ "_" + format.getClass().getSimpleName()
 				+ timing.suffix;
 			return new ParameterSet(
-				timing + "," + format,
+				format + "," + timing,
 				MongoDriverSettings.builder()
 					.preferredDatabaseFormat(format)
 					.timescaleMS(LONG_TIMESCALE)

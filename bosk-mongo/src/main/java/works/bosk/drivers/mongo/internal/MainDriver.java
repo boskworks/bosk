@@ -205,7 +205,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			MongoCollection<BsonDocument> changeStreamCollection = changeStreamClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class);
+				.getCollection(COLLECTION_NAME, BsonDocument.class)
+				;
 			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, changeStreamCollection);
 		}
 
@@ -283,7 +284,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
 			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. ({})", e.getMessage());
 			initialState = callDownstreamInitialState(rootType);
-			try (var session = queryCollection.newSession()) {
+			try (
+				var session = queryCollection.newSession()
+			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
 				var root = switch (initialState) {
 					case InitialState.SingleTree(var r) -> r;
@@ -501,7 +504,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// This causes downstream.submitReplacement to be associated with the last update to the state,
 				// which is of dubious relevance. We might just want to use the context from the current thread,
 				// which is probably empty because this runs on the ChangeReceiver thread.
-				try (var _ = boskInfo.context().withOnly(loadedState.diagnosticAttributes())) {
+				try (
+					var _ = boskInfo.context().withOnly(loadedState.diagnosticAttributes());
+				) {
 					downstream.submitReplacement(boskInfo.rootReference(), loadedState.state());
 					LOGGER.debug("Done submitting downstream");
 				}

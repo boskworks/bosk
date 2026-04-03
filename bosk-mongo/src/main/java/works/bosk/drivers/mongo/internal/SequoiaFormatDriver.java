@@ -21,6 +21,7 @@ import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.Identifier;
@@ -131,6 +132,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			.cursor()
 		) {
 			BsonDocument document = cursor.next();
+			formatter.eventTenantFromFullDocument(document); // Saves the tenant info for subsequent events
 			return new BsonStateAndMetadata(
 				document.getDocument(DocumentFields.state.name(), null),
 				document.getInt64(DocumentFields.revision.name(), null),
@@ -202,8 +204,12 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					// also REPLACE. That would imply that this case is impossible.
 					throw new UnprocessableEventException("Missing fullDocument", event.getOperationType());
 				}
+				Tenant.Established tenant = formatter.eventTenantFromFullDocument(fullDocument);
 				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
-				try (var _ = context.withOnly(diagnosticAttributes)) {
+				try (
+					var _ = context.withTenant(tenant);
+					var _ = context.withOnly(diagnosticAttributes)
+				) {
 					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
 					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name(), null);
 					if (state == null) {
@@ -223,8 +229,12 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				if (updateDescription != null) {
 					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(event);
 					if (shouldNotSkip(revision)) {
+						Tenant.Established tenant = formatter.eventTenantFromUpdate(event);
 						MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromUpdate(event);
-						try (var _ = context.withOnly(diagnosticAttributes)) {
+						try (
+							var _ = context.withTenant(tenant);
+							var _ = context.withOnly(diagnosticAttributes)
+						) {
 							replaceUpdatedFields(updateDescription.getUpdatedFields());
 							deleteRemovedFields(updateDescription.getRemovedFields(), event.getOperationType());
 						}

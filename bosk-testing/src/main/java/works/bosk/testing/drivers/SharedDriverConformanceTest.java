@@ -31,8 +31,8 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 			this::initialState,
 			BoskConfig.<TestEntity>builder()
 				.driverFactory(driverFactory)
-				.build()
-		);
+				.tenancyModel(scenario.tenancyModel)
+				.build());
 		try {
 			latecomer.driver().flush();
 		} catch (Exception e) {
@@ -64,7 +64,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 		Bosk<UpgradeableEntity> upgradeableBosk = new Bosk<>(
 			boskName("Upgradeable"),
 			UpgradeableEntity.class,
-			(b) -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
+			_ -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
 			BoskConfig.<UpgradeableEntity>builder().driverFactory(upgradeableDriverFactory).build());
 
 		LOGGER.debug("Ensure polyfill returns the right value on read");

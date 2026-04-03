@@ -65,6 +65,7 @@ class TaggedUnionTest extends AbstractBoskTest {
 		}
 
 		bosk.driver().submitReplacement(refs.v(), TaggedUnion.of(idCase));
+
 		bosk.driver().flush();
 
 		try (var _ = bosk.readSession()) {

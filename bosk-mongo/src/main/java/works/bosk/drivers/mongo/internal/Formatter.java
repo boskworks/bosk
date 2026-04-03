@@ -3,16 +3,19 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.UpdateDescription;
 import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.bson.BsonBinaryWriter;
+import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
+import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.bson.codecs.BsonValueCodec;
@@ -22,7 +25,9 @@ import org.bson.codecs.EncoderContext;
 import org.bson.io.BasicOutputBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskInfo;
+import works.bosk.Identifier;
 import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.StateTreeSerializer;
@@ -30,6 +35,7 @@ import works.bosk.drivers.mongo.BsonSerializer;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
+import static java.util.Objects.requireNonNull;
 import static works.bosk.ReferenceUtils.rawClass;
 
 /**
@@ -38,6 +44,8 @@ import static works.bosk.ReferenceUtils.rawClass;
  * @author pdoyle
  */
 final class Formatter extends BsonFormatter {
+
+	private volatile Tenant.Established lastEventTenant = null;
 
 	/**
 	 * If the diagnostic attributes are identical from one update to the next,
@@ -135,6 +143,35 @@ final class Formatter extends BsonFormatter {
 				DecoderContext.builder().build());
 	}
 
+	BsonValue encodeMaybeTenant(Tenant tenant) {
+		return switch(tenant) {
+			case Tenant.NotEstablished _ -> new BsonNull();
+			case Tenant.Established t -> encodeTenant(t);
+		};
+	}
+
+	BsonValue encodeTenant(Tenant.Established tenant) {
+		return switch(tenant) {
+			case Tenant.None _ -> new BsonBoolean(false);
+			case Tenant.SetTo(var id) -> new BsonString(id.toString());
+		};
+	}
+
+	Tenant.Established decodeTenant(BsonValue tenant) {
+		return switch (tenant) {
+			case BsonNull _ -> Tenant.NONE;
+			case BsonBoolean b -> {
+				if (b.getValue()) {
+					throw new IllegalArgumentException("Unexpected tenant value: " + tenant);
+				} else {
+					yield Tenant.NONE;
+				}
+			}
+			case BsonString s -> new Tenant.SetTo(Identifier.from(s.getValue()));
+			default -> throw new IllegalArgumentException("Unexpected tenant value: " + tenant);
+		};
+	}
+
 	BsonDocument encodeDiagnostics(MapValue<String> attributes) {
 		BsonDocument result = new BsonDocument();
 		attributes.forEach((name, value) -> result.put(name, new BsonString(value)));
@@ -169,8 +206,17 @@ final class Formatter extends BsonFormatter {
 		return fullDocument.getInt64(DocumentFields.revision.name(), null);
 	}
 
+	@Nonnull Tenant.Established eventTenantFromFullDocument(BsonDocument fullDocument) {
+		return getOrSetEventTenant(getTenantFromFullDocument(fullDocument));
+	}
+
 	@Nonnull MapValue<String> eventDiagnosticAttributesFromFullDocument(BsonDocument fullDocument) {
 		return getOrSetEventDiagnosticAttributes(getDiagnosticAttributesFromFullDocument(fullDocument));
+	}
+
+	Tenant.Established getTenantFromFullDocument(BsonDocument fullDocument) {
+		BsonValue tenant = getTenantIfAny(fullDocument);
+		return tenant == null ? null : decodeTenant(tenant);
 	}
 
 	MapValue<String> getDiagnosticAttributesFromFullDocument(BsonDocument fullDocument) {
@@ -186,8 +232,18 @@ final class Formatter extends BsonFormatter {
 		return updatedFields.getInt64(DocumentFields.revision.name(), null);
 	}
 
+	@Nonnull Tenant.Established eventTenantFromUpdate(ChangeStreamDocument<BsonDocument> event) {
+		return getOrSetEventTenant(getTenantFromUpdateEvent(event));
+	}
+
 	@Nonnull MapValue<String> eventDiagnosticAttributesFromUpdate(ChangeStreamDocument<BsonDocument> event) {
 		return getOrSetEventDiagnosticAttributes(getDiagnosticAttributesFromUpdateEvent(event));
+	}
+
+	Tenant.Established getTenantFromUpdateEvent(ChangeStreamDocument<BsonDocument> event) {
+		BsonDocument updatedFields = getUpdatedFieldsIfAny(event);
+		BsonValue tenant = getTenantIfAny(updatedFields);
+		return tenant == null ? null : decodeTenant(tenant);
 	}
 
 	MapValue<String> getDiagnosticAttributesFromUpdateEvent(ChangeStreamDocument<BsonDocument> event) {
@@ -207,6 +263,13 @@ final class Formatter extends BsonFormatter {
 		return updateDescription.getUpdatedFields();
 	}
 
+	static BsonValue getTenantIfAny(BsonDocument fullDocument) {
+		if (fullDocument == null) {
+			return null;
+		}
+		return fullDocument.get(DocumentFields.tenant.name(), null);
+	}
+
 	static BsonDocument getDiagnosticAttributesIfAny(BsonDocument fullDocument) {
 		if (fullDocument == null) {
 			return null;
@@ -220,6 +283,17 @@ final class Formatter extends BsonFormatter {
 			return lastEventDiagnosticAttributes;
 		} else {
 			lastEventDiagnosticAttributes = fromEvent;
+			return fromEvent;
+		}
+	}
+
+	@Nonnull private Tenant.Established getOrSetEventTenant(@Nullable Tenant.Established fromEvent) {
+		if (fromEvent == null) {
+			LOGGER.debug("No tenant info in event; assuming unchanged");
+			return requireNonNull(lastEventTenant,
+				"If event has no tenant info, we must have it from a prior event");
+		} else {
+			lastEventTenant = fromEvent;
 			return fromEvent;
 		}
 	}

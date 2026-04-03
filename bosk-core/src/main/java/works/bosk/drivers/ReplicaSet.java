@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import works.bosk.Bosk;
+import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.DriverFactory;
@@ -47,6 +48,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 
 	/**
 	 * The bosk whose state is returned by {@link BroadcastDriver#initialState}.
+	 * Besides this, all replicas are treated symmetrically.
 	 */
 	final AtomicReference<Replica<R>> seed = new AtomicReference<>(null);
 
@@ -55,18 +57,12 @@ public class ReplicaSet<R extends StateTreeNode> {
 	 */
 	final AtomicBoolean isInitialized = new AtomicBoolean(false);
 
-	/**
-	 * We can actually use the same driver for every bosk in the replica set
-	 * because they all do the same thing!
-	 */
-	final BroadcastDriver broadcastDriver = new BroadcastDriver();
-
 	public DriverFactory<R> driverFactory() {
 		return (b,d) -> {
 			Replica<R> replica = new Replica<>(b, d);
 			seed.compareAndSet(null, replica);
 			replicas.add(replica);
-			return broadcastDriver;
+			return new BroadcastDriver(b.context());
 		};
 
 		/*
@@ -121,6 +117,12 @@ public class ReplicaSet<R extends StateTreeNode> {
 	}
 
 	final class BroadcastDriver implements BoskDriver {
+		final BoskContext context;
+
+		BroadcastDriver(BoskContext context) {
+			this.context = context;
+		}
+
 		/**
 		 * @return the <em>current state</em> of the replica set, which is the state of its seed replica
 		 * as obtained by {@link Bosk#supersedingReadSession()}.
@@ -205,7 +207,12 @@ public class ReplicaSet<R extends StateTreeNode> {
 		}
 
 		private void broadcast(Consumer<Replica<R>> action) {
-			replicas.forEach(action);
+			var tenant = context.getEstablishedTenant();
+			replicas.forEach(replica -> {
+				try (var _ = replica.boskInfo.context().withTenant(tenant)) {
+					action.accept(replica);
+				}
+			});
 		}
 
 	}
@@ -233,6 +240,4 @@ public class ReplicaSet<R extends StateTreeNode> {
 		}
 
 	}
-
-
 }

@@ -20,7 +20,10 @@ class ReplicaSetConformanceTest extends DriverConformanceTest {
 			boskName("Replica"),
 			TestEntity.class,
 			this::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(replicaSet.driverFactory()).build());
+			BoskConfig.<TestEntity>builder()
+				.driverFactory(replicaSet.driverFactory())
+				.tenancyModel(scenario.tenancyModel)
+				.build());
 		driverFactory = replicaSet.driverFactory();
 	}
 
