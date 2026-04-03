@@ -1,9 +1,9 @@
 package works.bosk.testing.drivers;
 
 import java.io.IOException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,9 +59,19 @@ public class AsyncDriver implements BoskDriver {
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		Semaphore semaphore = new Semaphore(0);
-		submitAsyncTask("flush", semaphore::release);
-		semaphore.acquire();
+		// The executor is single-threaded, so this will run after all previously submitted tasks
+		var nonceTask = executor.submit(()->{});
+		try {
+			nonceTask.get();
+		} catch (ExecutionException e) {
+			try {
+				throw e.getCause();
+			} catch (IOException | InterruptedException | RuntimeException ex) {
+				throw ex;
+			} catch (Throwable ex) {
+				throw new IllegalStateException("Unexpected exception from flush task", ex);
+			}
+		}
 		downstream.flush();
 	}
 
@@ -72,6 +82,8 @@ public class AsyncDriver implements BoskDriver {
 			LOGGER.debug("Run {}", description);
 			try (var _ = bosk.context().withOnly(diagnosticAttributes)) {
 				task.run();
+			} finally {
+				LOGGER.debug("Proceeding after {}", description);
 			}
 			LOGGER.trace("Done {}", description);
 		});
