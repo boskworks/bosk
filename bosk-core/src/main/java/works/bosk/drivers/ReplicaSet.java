@@ -48,10 +48,10 @@ public class ReplicaSet<R extends StateTreeNode> {
 	/**
 	 * The bosk whose state is returned by {@link BroadcastDriver#initialState}.
 	 */
-	final AtomicReference<Replica<R>> primary = new AtomicReference<>(null);
+	final AtomicReference<Replica<R>> seed = new AtomicReference<>(null);
 
 	/**
-	 * Whether {@link BoskDriver#initialState} has been called for the primary replica.
+	 * Whether {@link BoskDriver#initialState} has been called for the seed replica.
 	 */
 	final AtomicBoolean isInitialized = new AtomicBoolean(false);
 
@@ -64,7 +64,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 	public DriverFactory<R> driverFactory() {
 		return (b,d) -> {
 			Replica<R> replica = new Replica<>(b, d);
-			primary.compareAndSet(null, replica);
+			seed.compareAndSet(null, replica);
 			replicas.add(replica);
 			return broadcastDriver;
 		};
@@ -108,7 +108,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 	 * The resulting driver can accept references to a different bosk
 	 * with the same root type.
 	 * <p>
-	 * Note that there is no "primary" bosk in this case.
+	 * Note that there is no "seed" bosk in this case.
 	 * The returned driver will send updates only to the {@code other} bosk.
 	 */
 	public static <RR extends StateTreeNode> BoskDriver redirectingTo(Bosk<RR> other) {
@@ -122,41 +122,41 @@ public class ReplicaSet<R extends StateTreeNode> {
 
 	final class BroadcastDriver implements BoskDriver {
 		/**
-		 * @return the <em>current state</em> of the replica set, which is the state of its primary
+		 * @return the <em>current state</em> of the replica set, which is the state of its seed replica
 		 * as obtained by {@link Bosk#supersedingReadSession()}.
 		 */
 		@Override
 		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
 			assert !replicas.isEmpty(): "Replicas must be added during by the driver factory before the drivers are used";
-			var primary = requireNonNull(ReplicaSet.this.primary.get());
+			var seed = requireNonNull(ReplicaSet.this.seed.get());
 			if (isInitialized.getAndSet(true)) {
-				// Secondary replicas should take their initial state from the primary.
+				// Later-joining replicas should take their initial state from the seed replica.
 				//
-				// We assume the primary's constructor has finished by this point,
+				// We assume the seed replica's constructor has finished by this point,
 				// which is true if the bosks are constructed in the same order as their drivers.
 				// This should be a safe assumption--some shenanigans would be required
 				// to violate this--but unfortunately we have no way to verify it here,
 				// because at this point in the code, we cannot tell which replica we're initializing.
-				try (var _ = primaryReadSession(primary)) {
-					return InitialState.of(primary.boskInfo().rootReference().value())
+				try (var _ = seedReadSession(seed)) {
+					return InitialState.of(seed.boskInfo().rootReference().value())
 						.map(rootType::cast);
 				}
 			} else {
-				// The first time this is called, we assume it's for the primary replica.
-				return primary.driver().initialState(rootType);
+				// The first time this is called, we assume it's for the seed replica.
+				return seed.driver().initialState(rootType);
 			}
 		}
 
-		private static <R extends StateTreeNode> Bosk<R>.ReadSession primaryReadSession(Replica<R> primary) {
+		private static <R extends StateTreeNode> Bosk<R>.ReadSession seedReadSession(Replica<R> seed) {
 			try {
 				// We use supersedingReadSession here on the assumption that if the user,
 				// for some reason, created a secondary replica in the midst
-				// of a ReadSession on the primary, they would still want that secondary
+				// of a ReadSession on the seed, they would still want that secondary
 				// to see the "real" state.
-				return primary.boskInfo.bosk().supersedingReadSession();
+				return seed.boskInfo.bosk().supersedingReadSession();
 			} catch (IllegalStateException e) {
 				// You have engaged in the aforementioned shenanigans.
-				throw new IllegalStateException("Unable to acquire primary read session; multiple replicas are being initialized simultaneously", e);
+				throw new IllegalStateException("Unable to acquire seed read session; multiple replicas are being initialized simultaneously", e);
 			}
 		}
 
