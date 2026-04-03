@@ -293,8 +293,8 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@Override
 		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
 			return downstream.initialState(rootType)
-				.map(rootRef.targetClass()::cast)
-				.map(rootType::cast);
+				.cast(rootRef.targetClass())
+				.cast(rootType);
 		}
 
 		@Override
@@ -355,7 +355,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@Override
 		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
 			return requireNonNull(initialStateFunction.apply(Bosk.this))
-				.map(rootType::cast);
+				.cast(rootType);
 		}
 
 		@Override

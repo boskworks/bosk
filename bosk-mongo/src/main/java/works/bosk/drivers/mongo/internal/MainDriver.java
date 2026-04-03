@@ -221,7 +221,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				throw new IllegalStateException("initialState has already run");
 			}
 			try {
-				return task.get().map(rootType::cast);
+				return task.get().cast(rootType);
 			} catch (ExecutionException e) {
 				switch (e.getCause()) {
 					case InitialStateFailureException i -> throw i;

@@ -139,7 +139,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 				// because at this point in the code, we cannot tell which replica we're initializing.
 				try (var _ = seedReadSession(seed)) {
 					return InitialState.of(seed.boskInfo().rootReference().value())
-						.map(rootType::cast);
+						.cast(rootType);
 				}
 			} else {
 				// The first time this is called, we assume it's for the seed replica.

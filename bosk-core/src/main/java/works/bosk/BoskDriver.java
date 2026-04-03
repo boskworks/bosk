@@ -47,20 +47,31 @@ public interface BoskDriver {
 	<R extends StateTreeNode> InitialState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException;
 
 	sealed interface InitialState<R extends StateTreeNode> {
-		<T extends StateTreeNode> InitialState<T> map(Function<R,T> function) throws InvalidTypeException, IOException, InterruptedException;
+		<T extends StateTreeNode> InitialState<T> map(InitialStateFunction<R,T> function) throws InvalidTypeException, IOException, InterruptedException;
+
+		<T extends StateTreeNode> InitialState<T> cast(Class<T> newRootType);
 
 		static <R extends StateTreeNode> SingleTree<R> of(R root) {
 			return new SingleTree<>(root);
 		}
 
+		/**
+		 * This bosk has zero or more tenants,
+		 * but they all share the same state tree whose node is {@code rootNode}.
+		 */
 		record SingleTree<R extends StateTreeNode>(R rootNode) implements InitialState<R> {
 			public SingleTree {
 				requireNonNull(rootNode);
 			}
 
 			@Override
-			public <T extends StateTreeNode> InitialState<T> map(Function<R, T> function) throws InvalidTypeException, IOException, InterruptedException {
-				return new SingleTree<>(function.apply(rootNode));
+			public <T extends StateTreeNode> SingleTree<T> cast(Class<T> newRootType) {
+				return new SingleTree<>(newRootType.cast(rootNode()));
+			}
+
+			@Override
+			public <T extends StateTreeNode> SingleTree<T> map(InitialStateFunction<R, T> function) throws InvalidTypeException, IOException, InterruptedException {
+				return new SingleTree<>(function.apply(rootNode()));
 			}
 		}
 
@@ -68,7 +79,7 @@ public interface BoskDriver {
 		 * A version of {@link java.util.function.Function} that, for convenience,
 		 * is allowed to throw exceptions permitted by {@link BoskDriver#initialState(Class) initialState}.
 		 */
-		interface Function<FROM extends StateTreeNode, TO extends StateTreeNode> {
+		interface InitialStateFunction<FROM extends StateTreeNode, TO extends StateTreeNode> {
 			TO apply(FROM root) throws InvalidTypeException, IOException, InterruptedException;
 		}
 	}

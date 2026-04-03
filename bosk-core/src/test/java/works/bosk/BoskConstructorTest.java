@@ -152,7 +152,7 @@ public class BoskConstructorTest {
 		return (_, _) -> new NoOpDriver() {
 			@Override
 			public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
-				return initialStateFunction.get().map(rootType::cast);
+				return initialStateFunction.get().cast(rootType);
 			}
 		};
 	}
