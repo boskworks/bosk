@@ -47,7 +47,10 @@ The usual Gradle commands, plus:
 
 ### General
 - We take warnings seriously. If a build issues a warning, it should be fixed at the earliest convenience.
-- Code in each file is ordered use-before-definition so it can be read and understood by a human from start to end, to the extent possible
+- Code in each file is ordered use-before-definition so it can be read and understood by a human from start to end, to the extent possible.
+- To the extent possible, we separate complex logic from side effects to facilitate unit testing.
+- When something can't always work, we prefer it _never_ to work rather than _sometimes_ to work.
+  - The overarching goal of Bosk is to reduce the behaviour gap between local development and production. If your code works, you probably did things right.
 
 ### Formatting
 
