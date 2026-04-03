@@ -36,11 +36,6 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * Watches the updates entering and leaving a particular {@link BoskDriver} and ensures
  * that they have the same effect on the bosk state. If a mismatch is found, throws
  * {@link AssertionError}.
- *
- * <p>
- * Note: this verifier uses {@link Object#equals} to compare parts of the state tree,
- * expecting value-based equality. If used with state tree nodes having different equality
- * semantics, the resulting verifier could be more or less strict than expected.
  */
 @RequiredArgsConstructor(access = PRIVATE)
 public final class DriverStateVerifier<R extends StateTreeNode> {
