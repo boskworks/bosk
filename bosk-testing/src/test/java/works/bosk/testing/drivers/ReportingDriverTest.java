@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import works.bosk.BoskContext;
 import works.bosk.Identifier;
 import works.bosk.ListingEntry;
-import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
@@ -33,7 +32,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 	AtomicInteger numFlushes;
 	Refs refs;
 	BoskContext.ContextScope contextScope;
-	MapValue<String> expectedAttributes;
+	BoskContext.Context expectedContext;
 	final Identifier id1 = Identifier.from("id1");
 	final Identifier id2 = Identifier.from("id2");
 
@@ -53,7 +52,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 		bosk.driver().submitReplacement(refs.entity(id1), emptyEntityAt(refs.entity(id1)));
 		ops.clear();
 		contextScope = bosk.context().withAttribute(ReportingDriverTest.class.getSimpleName(), "expectedValue");
-		expectedAttributes = bosk.context().getAttributes();
+		expectedContext = new BoskContext.Context(bosk.context().getTenant(), bosk.context().getAttributes());
 	}
 
 	@AfterEach
@@ -73,7 +72,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 		Reference<String> ref = refs.string(id1);
 		String newValue = "submitReplacement";
 		bosk.driver().submitReplacement(ref, newValue);
-		assertExpectedEvents(new SubmitReplacement<>(ref, newValue, expectedAttributes));
+		assertExpectedEvents(new SubmitReplacement<>(ref, newValue, expectedContext));
 		assertNodeEquals(newValue, ref);
 		assertCorrectBoskContents();
 	}
@@ -85,7 +84,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 		Reference<Identifier> precondition = refs.id();
 		Identifier requiredValue = Identifier.from("root");
 		bosk.driver().submitConditionalReplacement(ref, newValue, precondition, requiredValue);
-		assertExpectedEvents(new SubmitConditionalReplacement<>(ref, newValue, precondition, requiredValue, expectedAttributes));
+		assertExpectedEvents(new SubmitConditionalReplacement<>(ref, newValue, precondition, requiredValue, expectedContext));
 		assertNodeEquals(newValue, ref);
 		assertCorrectBoskContents();
 	}
@@ -95,7 +94,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 		Reference<TestEntity> ref = refs.entity(id2);
 		TestEntity newValue = emptyEntityAt(ref);
 		bosk.driver().submitConditionalCreation(ref, newValue);
-		assertExpectedEvents(new ConditionalCreation<>(ref, newValue, expectedAttributes));
+		assertExpectedEvents(new ConditionalCreation<>(ref, newValue, expectedContext));
 		assertNodeEquals(newValue, ref);
 		assertCorrectBoskContents();
 	}
@@ -104,13 +103,13 @@ class ReportingDriverTest extends AbstractDriverTest {
 	void submitDeletion() {
 		Reference<ListingEntry> ref = refs.entry(id1);
 		bosk.driver().submitReplacement(ref, LISTING_ENTRY);
-		assertExpectedEvents(new SubmitReplacement<>(ref, LISTING_ENTRY, expectedAttributes));
+		assertExpectedEvents(new SubmitReplacement<>(ref, LISTING_ENTRY, expectedContext));
 		assertNodeEquals(LISTING_ENTRY, ref);
 		assertCorrectBoskContents();
 
 		ops.clear();
 		bosk.driver().submitDeletion(ref);
-		assertExpectedEvents(new SubmitDeletion<>(ref, expectedAttributes));
+		assertExpectedEvents(new SubmitDeletion<>(ref, expectedContext));
 		assertNodeEquals(null, ref);
 		assertCorrectBoskContents();
 	}
@@ -119,7 +118,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 	void submitConditionalDeletion() {
 		Reference<ListingEntry> ref = refs.entry(id1);
 		bosk.driver().submitReplacement(ref, LISTING_ENTRY);
-		assertExpectedEvents(new SubmitReplacement<>(ref, LISTING_ENTRY, expectedAttributes));
+		assertExpectedEvents(new SubmitReplacement<>(ref, LISTING_ENTRY, expectedContext));
 		assertNodeEquals(LISTING_ENTRY, ref);
 		assertCorrectBoskContents();
 
@@ -127,7 +126,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 		Reference<Identifier> precondition = refs.id();
 		Identifier requiredValue = Identifier.from("root");
 		bosk.driver().submitConditionalDeletion(ref, precondition, requiredValue);
-		assertExpectedEvents(new SubmitConditionalDeletion<>(ref, precondition, requiredValue, expectedAttributes));
+		assertExpectedEvents(new SubmitConditionalDeletion<>(ref, precondition, requiredValue, expectedContext));
 		assertNodeEquals(null, ref);
 		assertCorrectBoskContents();
 	}
@@ -143,7 +142,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 			throw new NotYetImplementedException(e);
 		}
 		List<UpdateOperation> actual = ops.stream()
-			.map(op -> op.withFilteredAttributes(expectedAttributes.keySet())) // Unexpected attributes are not grounds for failing the test
+			.map(op -> op.withFilteredAttributes(expectedContext.diagnosticAttributes().keySet())) // Unexpected attributes are not grounds for failing the test
 			.collect(Collectors.toList());
 		assertEquals(asList(expectedOps), actual);
 	}

@@ -19,7 +19,10 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskConfig;
+import works.bosk.BoskConfig.TenancyModel.Implicit;
+import works.bosk.BoskConfig.TenancyModel.Transient;
 import works.bosk.BoskContext;
+import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskDriver;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -529,71 +532,79 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	}
 
 	@Test
-	void submitReplacement_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
+	void submitReplacement_propagatesContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Reference<String> ref = bosk.rootReference().then(String.class, "string");
-		testDiagnosticContextPropagation(() -> bosk.driver().submitReplacement(ref, "value1"));
+		testContextPropagation(() -> bosk.driver().submitReplacement(ref, "value1"));
 		// Do a second one with the same diagnostics to verify that they
 		// still propagate even when they don't change
-		testDiagnosticContextPropagation(() -> bosk.driver().submitReplacement(ref, "value2"));
+		testContextPropagation(() -> bosk.driver().submitReplacement(ref, "value2"));
 	}
 
 	@Test
-	void submitConditionalReplacement_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
+	void submitConditionalReplacement_propagatesContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Refs refs = bosk.buildReferences(Refs.class);
 		Reference<String> ref = bosk.rootReference().then(String.class, "string");
-		testDiagnosticContextPropagation(() -> bosk.driver().submitConditionalReplacement(ref, "newValue", refs.rootID(), Identifier.from("root")));
+		testContextPropagation(() -> bosk.driver().submitConditionalReplacement(ref, "newValue", refs.rootID(), Identifier.from("root")));
 	}
 
 	@Test
-	void submitConditionalCreation_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
+	void submitConditionalCreation_propagatesContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Refs refs = bosk.buildReferences(Refs.class);
 		Identifier id = Identifier.from("testEntity");
 		Reference<TestEntity> ref = refs.catalogEntry(id);
-		testDiagnosticContextPropagation(() -> bosk.driver().submitConditionalCreation(ref, emptyEntityAt(ref)));
+		testContextPropagation(() -> bosk.driver().submitConditionalCreation(ref, emptyEntityAt(ref)));
 	}
 
 	@Test
-	void submitDeletion_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
+	void submitDeletion_propagatesContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Refs refs = bosk.buildReferences(Refs.class);
 		Reference<TestEntity> ref = refs.catalogEntry(Identifier.unique("e"));
 		autoInitialize(ref);
-		testDiagnosticContextPropagation(() -> bosk.driver().submitDeletion(ref));
+		testContextPropagation(() -> bosk.driver().submitDeletion(ref));
 	}
 
 	@Test
-	void submitConditionalDeletion_propagatesDiagnosticContext() throws InvalidTypeException, IOException, InterruptedException {
+	void submitConditionalDeletion_propagatesContext() throws InvalidTypeException, IOException, InterruptedException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		Refs refs = bosk.buildReferences(Refs.class);
 		Reference<TestEntity> ref = refs.catalogEntry(Identifier.unique("e"));
 		autoInitialize(ref);
-		testDiagnosticContextPropagation(() -> bosk.driver().submitConditionalDeletion(ref, refs.rootID(), Identifier.from("root")));
+		testContextPropagation(() -> bosk.driver().submitConditionalDeletion(ref, refs.rootID(), Identifier.from("root")));
 	}
 
-	private void testDiagnosticContextPropagation(Runnable operation) throws IOException, InterruptedException {
-		AtomicBoolean diagnosticsAreReady = new AtomicBoolean(false);
-		Semaphore diagnosticsVerified = new Semaphore(0);
-		bosk.hookRegistrar().registerHook("contextPropagatesToHook", bosk.rootReference(), _1 -> {
+	private void testContextPropagation(Runnable operation) throws IOException, InterruptedException {
+		var expectedTenant = switch (scenario.tenancyModel) {
+			case Transient _ -> Tenant.NOT_ESTABLISHED; // Transient models don't propagate tenant info into hooks
+			case Implicit _ -> scenario.startingTenant;
+		};
+		AtomicBoolean hookEnabled = new AtomicBoolean(false);
+		Semaphore contextVerified = new Semaphore(0);
+		bosk.hookRegistrar().registerHook("contextPropagatesToHook", bosk.rootReference(), _ -> {
 			// Note that this will run as soon as it's registered
-			if (diagnosticsAreReady.get()) {
+			if (hookEnabled.get()) {
 				BoskContext boskContext = bosk.context();
 				LOGGER.debug("Received diagnostic attributes: {}", boskContext.getAttributes());
 				assertEquals("attributeValue", boskContext.getAttribute("attributeName"));
-				diagnosticsVerified.release();
+				assertEquals(expectedTenant, boskContext.getTenant(),
+					"Tenant should be propagated to hooks run in response to updates"); // This is not true for hooks run initially on registration in shared tree mode!
+				contextVerified.release();
 			}
 		});
-		bosk.driver().flush();
-		try (var _ = bosk.context().withAttribute("attributeName", "attributeValue")) {
-			diagnosticsAreReady.set(true);
-			LOGGER.debug("Running operation with diagnostic context");
+		try (
+			var _ = bosk.context().withAttribute("attributeName", "attributeValue")
+		) {
+			bosk.driver().flush();
+			hookEnabled.set(true);
+			LOGGER.debug("Running operation with context");
 			operation.run();
 		}
 		assertCorrectBoskContents();
-		assertTrue(diagnosticsVerified.tryAcquire(5, SECONDS));
-		diagnosticsAreReady.set(false); // Deactivate the hook
+		assertTrue(contextVerified.tryAcquire(5, SECONDS));
+		hookEnabled.set(false); // Deactivate the hook
 	}
 
 	private Reference<TestValues> initializeBoskWithBlankValues(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {

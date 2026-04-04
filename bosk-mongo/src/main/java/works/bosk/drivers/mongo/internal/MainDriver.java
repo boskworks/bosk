@@ -205,7 +205,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			MongoCollection<BsonDocument> changeStreamCollection = changeStreamClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class);
+				.getCollection(COLLECTION_NAME, BsonDocument.class)
+				;
 			this.receiver = new ChangeReceiver(boskInfo.name(), boskInfo.instanceID(), listener, driverSettings, changeStreamCollection);
 		}
 
@@ -221,7 +222,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				throw new IllegalStateException("initialState has already run");
 			}
 			try {
-				return task.get().map(rootType::cast);
+				return task.get().cast(rootType);
 			} catch (ExecutionException e) {
 				switch (e.getCause()) {
 					case InitialStateFailureException i -> throw i;
@@ -283,7 +284,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
 			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. ({})", e.getMessage());
 			initialState = callDownstreamInitialState(rootType);
-			try (var session = queryCollection.newSession()) {
+			try (
+				var session = queryCollection.newSession()
+			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
 				var root = switch (initialState) {
 					case InitialState.SingleTree(var r) -> r;
@@ -501,7 +504,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// This causes downstream.submitReplacement to be associated with the last update to the state,
 				// which is of dubious relevance. We might just want to use the context from the current thread,
 				// which is probably empty because this runs on the ChangeReceiver thread.
-				try (var _ = boskInfo.context().withOnly(loadedState.diagnosticAttributes())) {
+				try (
+					var _ = boskInfo.context().withOnly(loadedState.diagnosticAttributes());
+				) {
 					downstream.submitReplacement(boskInfo.rootReference(), loadedState.state());
 					LOGGER.debug("Done submitting downstream");
 				}
@@ -667,7 +672,13 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			throw new IllegalStateException("Driver is closed");
 		}
 		MDCScope ex = setupMDC(boskInfo.name(), boskInfo.instanceID());
-		LOGGER.debug(description + " w/" + this.formatDriver.getClass().getSimpleName(), args);
+		if (LOGGER.isDebugEnabled()) {
+			Object[] argsWithContext = new Object[args.length + 2];
+			System.arraycopy(args, 0, argsWithContext, 0, args.length);
+			argsWithContext[args.length] = boskInfo.name();
+			argsWithContext[args.length + 1] = boskInfo.context().getTenant();
+			LOGGER.debug(description + " w/{}@{}", argsWithContext);
+		}
 		if (driverSettings.testing().eventDelayMS() < 0) {
 			LOGGER.debug("| eventDelayMS {}ms ", driverSettings.testing().eventDelayMS());
 			try {

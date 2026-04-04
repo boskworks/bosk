@@ -81,6 +81,10 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 					DocumentFields.diagnostics.name(),
 					formatter.encodeDiagnostics(context.getAttributes())
 				)
+				.append(
+					DocumentFields.tenant.name(),
+					formatter.encodeTenant(context.getEstablishedTenant())
+				)
 			);
 	}
 
@@ -90,6 +94,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
 		fieldValues.put(DocumentFields.state.name(), initialState);
 		fieldValues.put(DocumentFields.revision.name(), revision);
+		fieldValues.put(DocumentFields.tenant.name(), formatter.encodeMaybeTenant(context.getTenant()));
 		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 
 		return fieldValues;

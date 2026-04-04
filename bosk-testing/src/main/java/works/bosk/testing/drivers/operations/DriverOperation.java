@@ -3,10 +3,9 @@ package works.bosk.testing.drivers.operations;
 import java.io.IOException;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
-import works.bosk.MapValue;
 
 public sealed interface DriverOperation permits UpdateOperation, FlushOperation {
-	MapValue<String> diagnosticAttributes();
+	BoskContext.Context boskContext();
 
 	/**
 	 * Calls the appropriate <code>submit</code> method on the given driver.

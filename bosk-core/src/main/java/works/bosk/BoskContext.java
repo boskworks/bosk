@@ -1,8 +1,13 @@
 package works.bosk;
 
+import java.util.Objects;
+import java.util.function.Supplier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import static java.util.Objects.requireNonNull;
 import static java.util.function.Predicate.not;
 
 /**
@@ -15,36 +20,149 @@ import static java.util.function.Predicate.not;
  * You can hold on to this object; there's no need to re-fetch it from the {@link Bosk} every time.
  */
 public final class BoskContext {
-	private final ThreadLocal<Context> currentContext = ThreadLocal.withInitial(Context::empty);
+	private final ThreadLocal<Context> currentContext;
 
-	record Context(MapValue<String> diagnosticAttributes) {
-		Context withAttribute(String name, String value) {
-			return new Context(diagnosticAttributes.with(name, value));
+	private final String boskName; // For diagnostics
+
+	BoskContext(Supplier<Context> initialContextSupplier, String boskName) {
+		currentContext = ThreadLocal.withInitial(initialContextSupplier);
+		this.boskName = boskName;
+	}
+
+	ContextScope newContextScope(Context newContext) {
+		ContextScope result = new ContextScope(newContext);
+		validateTenantTransition(result.oldContext.tenant(), newContext.tenant());
+		// ^-- Must validate before this side effect --v
+		currentContext.set(newContext);
+		return result;
+	}
+
+	private void validateTenantTransition(Tenant oldTenant, Tenant newTenant) {
+		if (oldTenant.equals(newTenant)) {
+			LOGGER.trace("Reestablishing same tenant: {}", newTenant);
+		} else if (oldTenant instanceof Tenant.NotEstablished) {
+			LOGGER.debug("Establishing tenant: {}", newTenant);
+		} else {
+			throw new IllegalArgumentException(
+				"Tenant for bosk " + boskName + " is already " + oldTenant
+					+ "; cannot change to: " + newTenant
+					+ " on thread [" + Thread.currentThread() + "]");
+		}
+	}
+
+	public record Context(
+		Tenant tenant,
+		MapValue<String> diagnosticAttributes
+	) {
+		public Context {
+			requireNonNull(tenant);
+			requireNonNull(diagnosticAttributes);
 		}
 
-		Context withAttributes(MapValue<String> additionalAttributes) {
-			return new Context(diagnosticAttributes.withAll(additionalAttributes));
+		public Context withTenant(Tenant tenant) {
+			return new Context(tenant, diagnosticAttributes);
 		}
 
-		Context withOnly(MapValue<String> attributes) {
-			return new Context(attributes);
+		public Context withAttribute(String name, String value) {
+			return new Context(tenant, diagnosticAttributes.with(name, value));
 		}
 
-		static Context empty() {
-			return new Context(MapValue.empty());
+		public Context withAttributes(MapValue<String> additionalAttributes) {
+			return new Context(tenant, diagnosticAttributes.withAll(additionalAttributes));
+		}
+
+		public Context withOnlyAttributes(MapValue<String> attributes) {
+			return new Context(tenant, attributes);
+		}
+
+		public static Context empty() {
+			return new Context(Tenant.NOT_ESTABLISHED, MapValue.empty());
+		}
+
+		public static Context emptyWithNoTenant() {
+			return new Context(Tenant.NONE, MapValue.empty());
+		}
+	}
+
+	public sealed interface Tenant {
+		/**
+		 * Tenant information has not yet been set on this thread.
+		 * In this state, a new {@link ContextScope} can set the tenant ID
+		 * to an {@link Established} value.
+		 */
+		record NotEstablished() implements Tenant {}
+
+		/**
+		 * Tenant information has been set on this thread by a {@link ContextScope}.
+		 */
+		sealed interface Established extends Tenant { }
+
+		/**
+		 * For a bosk configured without multi-tenancy, this is the only valid value,
+		 * and it is automatically established on all threads.
+		 * <p>
+		 * For a multi-tenant bosk, this value is not allowed.
+		 */
+		record None() implements Established {}
+
+		/**
+		 * For a multi-tenant bosk, this indicates the current thread's tenant ID.
+		 * <p>
+		 * For a bosk configured without multi-tenancy, this value is not allowed.
+		 */
+		record SetTo(Identifier tenant) implements Established {}
+
+		/**
+		 * @see NotEstablished
+		 */
+		NotEstablished NOT_ESTABLISHED = new NotEstablished();
+
+		/**
+		 * @see None
+		 */
+		None NONE = new None();
+
+		static SetTo setTo(Identifier tenant) {
+			return new SetTo(tenant);
 		}
 	}
 
 	public final class ContextScope implements AutoCloseable {
-		final Context oldContext = currentContext.get();
+		final Context oldContext;
+		final Context newContext;
 
-		ContextScope(Context newContext) {
-			currentContext.set(newContext);
+		private ContextScope(Context newContext) {
+			this.oldContext = currentContext.get();
+			this.newContext = newContext;
 		}
 
 		@Override
 		public void close() {
+			if (!Objects.equals(newContext, currentContext.get())) {
+				throw new IllegalStateException("ContextScopes closed out of order");
+			}
 			currentContext.set(oldContext);
+		}
+	}
+
+	public Context get() {
+		return currentContext.get();
+	}
+
+	public Tenant getTenant() {
+		return currentContext.get().tenant();
+	}
+
+	/**
+	 * @return {@link #getTenant()}
+	 * @throws IllegalStateException if the tenant is not established on this thread
+	 */
+	public Tenant.Established getEstablishedTenant() {
+		Tenant tenant = getTenant();
+		if (tenant instanceof Tenant.Established established) {
+			return established;
+		} else {
+			throw new IllegalStateException("Tenant is not established on thread " + Thread.currentThread());
 		}
 	}
 
@@ -61,11 +179,50 @@ public final class BoskContext {
 	}
 
 	/**
+	 * Adds tenant information to the current thread's context.
+	 * This is idempotent: it's always valid to reestablish the same tenant information on a thread.
+	 *
+	 * @param tenant the tenant information to be established on this thread
+	 * @throws IllegalArgumentException if tenant information is already established on this thread and is different from the given tenant
+	 * @return an {@link AutoCloseable} that will restore the previous tenant information when closed
+	 */
+	public ContextScope withTenant(Tenant.Established tenant) {
+		return newContextScope(currentContext.get().withTenant(tenant));
+	}
+
+	/**
+	 * Like {@link #withTenant(Tenant.Established)}, but allows {@link Tenant#NOT_ESTABLISHED}
+	 * Useful in situations where you want to mimic the tenant context of
+	 * some other operation without asserting that it must be established.
+	 * <p>
+	 * The "maybe" in the name indicates the tenant can be not established,
+	 * not that the method might choose to ignore the tenant argument.
+	 *
+	 * @see #withTenant(Tenant.Established)
+	 */
+	public ContextScope withMaybeTenant(Tenant tenant) {
+		return newContextScope(currentContext.get().withTenant(tenant));
+	}
+
+	/**
+	 * Removes any tenant information from the current thread's context.
+	 * <p>
+	 * Package-private because this is only intended for use by Bosk itself.
+	 * All outside code must be bound by the constraints of the tenant already established.
+	 */
+	ContextScope withTenantTemporarilyIgnored() {
+		ContextScope contextScope = new ContextScope(currentContext.get().withTenant(Tenant.NOT_ESTABLISHED));
+		// No validation required; we're specifically forcing the tenant to be ignored here
+		currentContext.set(contextScope.newContext);
+		return contextScope;
+	}
+
+	/**
 	 * Adds a single diagnostic attribute to the current thread's context.
 	 * If the attribute already exists, it will be replaced.
 	 */
 	public ContextScope withAttribute(String name, String value) {
-		return new ContextScope(currentContext.get().withAttribute(name, value));
+		return newContextScope(currentContext.get().withAttribute(name, value));
 	}
 
 	/**
@@ -73,7 +230,7 @@ public final class BoskContext {
 	 * If an attribute already exists, it will be replaced.
 	 */
 	public ContextScope withAttributes(@NotNull MapValue<String> additionalAttributes) {
-		return new ContextScope(currentContext.get().withAttributes(additionalAttributes));
+		return newContextScope(currentContext.get().withAttributes(additionalAttributes));
 	}
 
 	/**
@@ -87,9 +244,9 @@ public final class BoskContext {
 	 */
 	public ContextScope withOnly(@Nullable MapValue<String> attributes) {
 		if (attributes == null) {
-			return new ContextScope(currentContext.get());
+			return newContextScope(currentContext.get());
 		} else {
-			return new ContextScope(currentContext.get().withOnly(attributes));
+			return newContextScope(currentContext.get().withOnlyAttributes(attributes));
 		}
 	}
 
@@ -104,8 +261,11 @@ public final class BoskContext {
 		assert prefix.endsWith("."): "Prefix must end with a dot: " + prefix;
 		assert prefix.length() >= 2: "Prefix must be at least two characters long: " + prefix;
 		MapValue<String> prefixedAttributes = MapValue.fromFunctions(replacementAttributes.keySet(), k -> prefix+k, replacementAttributes::get);
-		return new ContextScope(new Context(currentContext.get().diagnosticAttributes().withOnly(
+		Context current = currentContext.get();
+		return newContextScope(new Context(current.tenant(), current.diagnosticAttributes().withOnly(
 			not(k -> k.startsWith(prefix))
 		).withAll(prefixedAttributes)));
 	}
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(BoskContext.class);
 }

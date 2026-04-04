@@ -31,6 +31,7 @@ import org.bson.BsonValue;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.Entity;
@@ -190,6 +191,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			throw new IllegalStateException("Cannot locate root document");
 		}
 
+		formatter.eventTenantFromFullDocument(mainPart); // Saves the tenant info for subsequent events
 		return new BsonStateAndMetadata(
 			bsonSurgeon.gather(allParts),
 			mainPart.getInt64(DocumentFields.revision.name(), null),
@@ -279,14 +281,21 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					throw new UnprocessableEventException("Missing fullDocument on final event", finalEvent.getOperationType());
 				}
 
+				// Grab the tenant and diagnostics early. If we're supposed to skip this event,
+				// we still need to stash the tenant for later events.
+				Tenant.Established tenant = formatter.eventTenantFromFullDocument(fullDocument);
+				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
+
 				BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
 				if (shouldSkip(revision)) {
 					LOGGER.debug("Skipping revision {}", revision.longValue());
 					return;
 				}
 
-				MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromFullDocument(fullDocument);
-				try (var _ = context.withOnly(diagnosticAttributes)) {
+				try (
+					var _ = context.withTenant(tenant);
+					var _ = context.withOnly(diagnosticAttributes)
+				) {
 					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name());
 					if (state == null) {
 						ChangeStreamDocument<BsonDocument> mainEvent = events.get(events.size() - 2);
@@ -307,8 +316,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					LOGGER.debug("Skipping revision {}", revision.longValue());
 					return;
 				}
+				Tenant.Established tenant = formatter.eventTenantFromUpdate(finalEvent);
 				MapValue<String> attributes = formatter.eventDiagnosticAttributesFromUpdate(finalEvent);
-				try (var _ = context.withOnly(attributes)) {
+				try (
+					var _ = context.withTenant(tenant);
+					var _ = context.withOnly(attributes)
+				) {
 					boolean mainEventIsFinalEvent = updateEventHasField(finalEvent, DocumentFields.state); // If the final update changes only the revision field, then it's not the main event
 					if (mainEventIsFinalEvent) {
 						LOGGER.debug("Main event is final event");

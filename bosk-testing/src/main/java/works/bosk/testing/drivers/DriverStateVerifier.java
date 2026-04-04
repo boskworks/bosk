@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
+import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
@@ -36,11 +37,6 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * Watches the updates entering and leaving a particular {@link BoskDriver} and ensures
  * that they have the same effect on the bosk state. If a mismatch is found, throws
  * {@link AssertionError}.
- *
- * <p>
- * Note: this verifier uses {@link Object#equals} to compare parts of the state tree,
- * expecting value-based equality. If used with state tree nodes having different equality
- * semantics, the resulting verifier could be more or less strict than expected.
  */
 @RequiredArgsConstructor(access = PRIVATE)
 public final class DriverStateVerifier<R extends StateTreeNode> {
@@ -66,28 +62,33 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	 * @param defaultStateFunction returns the initial state used to set up an internal bosk
 	 *                            that will track the cumulative effect of the updates coming from {@code subject} driver
 	 */
-	public static <RR extends StateTreeNode> DriverFactory<RR> wrap(DriverFactory<RR> subject, Type rootType, Bosk.DefaultStateFunction<RR> defaultStateFunction) {
-		Bosk<RR> stateTrackingBosk = new Bosk<>(
-			boskName(),
-			rootType,
-			defaultStateFunction,
-			BoskConfig.simple());
-		DriverStateVerifier<RR> verifier = new DriverStateVerifier<>(
-			stateTrackingBosk,
-			ReplicaSet.redirectingTo(stateTrackingBosk)
-		);
-		return DriverStack.of(
-			// Tag the updates with a thread ID so we can demultiplex them properly after they go through the subject driver
-			ContextScopeDriver.factory(dc -> dc.withAttribute(THREAD_ID, Long.toString(currentThread().threadId()))),
-			// Record the updates as they appear on their way into the subject driver
-			ReportingDriver.factory(verifier::incomingUpdate, _->{}, verifier::postIncomingFlush),
-			// Send to the subject driver
-			subject,
-			// Delay to ensure the subject doesn't depend on immediate downstream propagation of updates
-			BufferingDriver.factory(),
-			// Report the updates as they appear on their way out of the subject driver
-			ReportingDriver.factory(verifier::outgoingUpdate, verifier::preOutgoingFlush, _->{})
-		);
+	static <RR extends StateTreeNode> DriverFactory<RR> wrap(DriverFactory<RR> subject, Type rootType, Bosk.DefaultStateFunction<RR> defaultStateFunction) {
+		return (b,d) -> {
+			Bosk<RR> stateTrackingBosk = new Bosk<>(
+				boskName(),
+				rootType,
+				defaultStateFunction,
+				BoskConfig.<RR>builder()
+					.tenancyModel(b.tenancyModel())
+					.build()
+			);
+			DriverStateVerifier<RR> verifier = new DriverStateVerifier<>(
+				stateTrackingBosk,
+				ReplicaSet.redirectingTo(stateTrackingBosk)
+			);
+			return DriverStack.of(
+				// Tag the updates with a thread ID so we can demultiplex them properly after they go through the subject driver
+				ContextScopeDriver.factory(dc -> dc.withAttribute(THREAD_ID, Long.toString(currentThread().threadId()))),
+				// Record the updates as they appear on their way into the subject driver
+				ReportingDriver.factory(verifier::incomingUpdate, _->{}, verifier::postIncomingFlush),
+				// Send to the subject driver
+				subject,
+				// Delay to ensure the subject doesn't depend on immediate downstream propagation of updates
+				BufferingDriver.factory(),
+				// Report the updates as they appear on their way out of the subject driver
+				ReportingDriver.factory(verifier::outgoingUpdate, verifier::preOutgoingFlush, _->{})
+			).build(b,d);
+		};
 	}
 
 	/**
@@ -109,7 +110,10 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	 */
 	private synchronized void outgoingUpdate(UpdateOperation op) {
 		LOGGER.debug("---> OUT: {}", op);
-		try {
+		if (!(op.boskContext().tenant() instanceof BoskContext.Tenant.Established tenant)) {
+			throw new AssertionError("Missing tenant on update: " + op);
+		}
+		try (var _ = stateTrackingBosk.context().withTenant(tenant)) {
 			Object before = currentStateBefore(op);
 			Object after = hypotheticalStateAfter(op);
 			LOGGER.trace("\t\tbefore: {}", before);
@@ -130,6 +134,12 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 						LOGGER.trace("\t\texpectedAfter: {}", expectedAfter);
 						if (op.matchesIfApplied(expected) && Objects.equals(after, expectedAfter)) {
 							LOGGER.debug("\tConclusion: found match: {}", expected);
+							var expectedTenant = expected.boskContext().tenant();
+							if (!(expectedTenant.equals(tenant))) {
+								throw new AssertionError(
+									"Operation has incorrect tenant " + tenant
+									+ "; expected " + expectedTenant);
+							}
 							UpdateOperation discarded;
 							while ((discarded = q.removeFirst()) != expected) {
 								LOGGER.trace("\t\tdiscard preceding no-op: {}", discarded);
@@ -207,27 +217,31 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 
 	@SuppressWarnings("unchecked")
 	private <T> T currentStateBefore(UpdateOperation op) throws IOException, InterruptedException {
-		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
-		stateTrackingBosk.driver().flush();
-		try (var _ = stateTrackingBosk.readSession()) {
-			return stateTrackingRef.valueIfExists();
+		try (var _ = stateTrackingBosk.context().withMaybeTenant(op.boskContext().tenant())) {
+			Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
+			stateTrackingBosk.driver().flush();
+			try (var _ = stateTrackingBosk.readSession()) {
+				return stateTrackingRef.valueIfExists();
+			}
 		}
 	}
 
 	@SuppressWarnings("unchecked")
 	private <T> T hypotheticalStateAfter(UpdateOperation op) throws IOException, InterruptedException {
-		R originalState;
-		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
-		stateTrackingBosk.driver().flush();
-		try (var _ = stateTrackingBosk.readSession()) {
-			originalState = stateTrackingBosk.rootReference().value();
-		}
-		op.submitTo(stateTrackingDriver);
-		stateTrackingBosk.driver().flush();
-		try (var _ = stateTrackingBosk.readSession()) {
-			return stateTrackingRef.valueIfExists();
-		} finally {
-			stateTrackingBosk.driver().submitReplacement(stateTrackingBosk.rootReference(), originalState);
+		try (var _ = stateTrackingBosk.context().withMaybeTenant(op.boskContext().tenant())) {
+			R originalState;
+			Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
+			stateTrackingBosk.driver().flush();
+			try (var _ = stateTrackingBosk.readSession()) {
+				originalState = stateTrackingBosk.rootReference().value();
+			}
+			op.submitTo(stateTrackingDriver);
+			stateTrackingBosk.driver().flush();
+			try (var _ = stateTrackingBosk.readSession()) {
+				return stateTrackingRef.valueIfExists();
+			} finally {
+				stateTrackingBosk.driver().submitReplacement(stateTrackingBosk.rootReference(), originalState);
+			}
 		}
 	}
 
@@ -241,7 +255,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	}
 
 	private static @Nullable String threadId(DriverOperation op) {
-		return op.diagnosticAttributes().get(THREAD_ID);
+		return op.boskContext().diagnosticAttributes().get(THREAD_ID);
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(DriverStateVerifier.class);

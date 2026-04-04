@@ -312,6 +312,11 @@ public class BsonFormatter {
 		revision,
 
 		/**
+		 * The contents of {@link BoskContext#getTenant()} corresponding to this document's last update.
+		 */
+		tenant,
+
+		/**
 		 * The contents of {@link BoskContext#getAttributes()} corresponding to this
 		 * document's last update.
 		 */

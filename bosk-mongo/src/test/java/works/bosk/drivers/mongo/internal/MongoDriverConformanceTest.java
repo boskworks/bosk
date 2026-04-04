@@ -25,7 +25,7 @@ import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.Injected;
 import works.bosk.junit.Injector;
-import works.bosk.testing.drivers.SharedDriverConformanceTest;
+import works.bosk.testing.drivers.PolyfillDriverConformanceTest;
 import works.bosk.testing.junit.Slow;
 
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
@@ -33,7 +33,7 @@ import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOI
 @Slow
 @InjectFields
 @InjectFrom(ParameterSetInjector.class)
-class MongoDriverConformanceTest extends SharedDriverConformanceTest {
+class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 	private final Deque<Runnable> tearDownActions = new ArrayDeque<>();
 	private static MongoService mongoService;
 	@Injected ParameterSet parameters;

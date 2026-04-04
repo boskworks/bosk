@@ -1,18 +1,17 @@
 package works.bosk.testing.drivers.operations;
 
-import java.util.Collection;
+import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
-import works.bosk.MapValue;
 import works.bosk.Reference;
 
 public record SubmitDeletion<T>(
 	Reference<T> target,
-	MapValue<String> diagnosticAttributes
+	BoskContext.Context boskContext
 ) implements DeletionOperation<T> {
 
 	@Override
-	public SubmitDeletion<T> withFilteredAttributes(Collection<String> allowedNames) {
-		return new SubmitDeletion<>(target, MapValue.fromFunction(allowedNames, diagnosticAttributes::get));
+	public SubmitDeletion<T> withBoskContext(BoskContext.Context newContext) {
+		return new SubmitDeletion<>(target, newContext);
 	}
 
 	@Override

@@ -58,42 +58,42 @@ public class ReportingDriver implements BoskDriver {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		SubmitReplacement<T> op = new SubmitReplacement<>(target, newValue, context.getAttributes());
+		SubmitReplacement<T> op = new SubmitReplacement<>(target, newValue, context.get());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		SubmitConditionalReplacement<T> op = new SubmitConditionalReplacement<>(target, newValue, precondition, requiredValue, context.getAttributes());
+		SubmitConditionalReplacement<T> op = new SubmitConditionalReplacement<>(target, newValue, precondition, requiredValue, context.get());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		ConditionalCreation<T> op = new ConditionalCreation<>(target, newValue, context.getAttributes());
+		ConditionalCreation<T> op = new ConditionalCreation<>(target, newValue, context.get());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		SubmitDeletion<T> op = new SubmitDeletion<>(target, context.getAttributes());
+		SubmitDeletion<T> op = new SubmitDeletion<>(target, context.get());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		SubmitConditionalDeletion<T> op = new SubmitConditionalDeletion<>(target, precondition, requiredValue, context.getAttributes());
+		SubmitConditionalDeletion<T> op = new SubmitConditionalDeletion<>(target, precondition, requiredValue, context.get());
 		updateListener.accept(op);
 		op.submitTo(downstream);
 	}
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		FlushOperation op = new FlushOperation(context.getAttributes());
+		FlushOperation op = new FlushOperation(context.get());
 		preFlushListener.accept(op);
 		op.submitTo(downstream);
 		postFlushListener.accept(op);
