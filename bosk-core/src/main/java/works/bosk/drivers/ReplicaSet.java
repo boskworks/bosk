@@ -60,9 +60,12 @@ public class ReplicaSet<R extends StateTreeNode> {
 	public DriverFactory<R> driverFactory() {
 		return (b,d) -> {
 			Replica<R> replica = new Replica<>(b, d);
-			seed.compareAndSet(null, replica);
+			var existing = seed.compareAndExchange(null, replica);
+			var theSeed = existing != null ? existing : replica;
+			assert theSeed.boskInfo.rootReference().targetType().equals(b.rootReference().targetType()):
+				"All bosks in a replica set must have the same root type because they share state data";
 			replicas.add(replica);
-			return new BroadcastDriver(b.context());
+			return new BroadcastDriver(b.context(), d);
 		};
 
 		/*
@@ -117,10 +120,19 @@ public class ReplicaSet<R extends StateTreeNode> {
 	}
 
 	final class BroadcastDriver implements BoskDriver {
-		final BoskContext context;
+		/**
+		 * The context from the bosk that has this driver in its stack.
+		 */
+		final BoskContext originContext;
 
-		BroadcastDriver(BoskContext context) {
-			this.context = context;
+		/**
+		 * Use this sparingly! Updates should be sent to all replicas.
+		 */
+		final BoskDriver downstream;
+
+		BroadcastDriver(BoskContext originContext, BoskDriver downstream) {
+			this.originContext = originContext;
+			this.downstream = downstream;
 		}
 
 		/**
@@ -201,15 +213,20 @@ public class ReplicaSet<R extends StateTreeNode> {
 
 		@Override
 		public void flush() throws IOException, InterruptedException {
-			for (var r : replicas) {
-				r.driver().flush();
-			}
+			// We don't broadcast flushes.
+			// A flush ensures all prior updates have been applied to the bosk;
+			// it says nothing about other bosks.
+			downstream.flush();
 		}
 
 		private void broadcast(Consumer<Replica<R>> action) {
-			var tenant = context.getEstablishedTenant();
+			var tenant = originContext.getEstablishedTenant();
+			var diagnosticContext = originContext.getAttributes();
 			replicas.forEach(replica -> {
-				try (var _ = replica.boskInfo.context().withTenant(tenant)) {
+				try (
+					var _ = replica.boskInfo.context().withTenant(tenant);
+					var _ = replica.boskInfo.context().withOnly(diagnosticContext)
+				) {
 					action.accept(replica);
 				}
 			});
