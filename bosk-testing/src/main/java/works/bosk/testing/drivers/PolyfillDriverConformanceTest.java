@@ -41,7 +41,10 @@ public abstract class PolyfillDriverConformanceTest extends SharedDriverConforma
 			boskName("Upgradeable"),
 			UpgradeableEntity.class,
 			_ -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
-			BoskConfig.<UpgradeableEntity>builder().driverFactory(upgradeableDriverFactory).build());
+			BoskConfig.<UpgradeableEntity>builder()
+				.tenancyModel(scenario.tenancyModel)
+				.driverFactory(upgradeableDriverFactory)
+				.build());
 
 		LOGGER.debug("Ensure polyfill returns the right value on read");
 		TestValues polyfill;
@@ -59,7 +62,11 @@ public abstract class PolyfillDriverConformanceTest extends SharedDriverConforma
 
 		LOGGER.debug("Perform update inside polyfill");
 		Refs refs = upgradeableBosk.buildReferences(Refs.class);
-		upgradeableBosk.driver().submitReplacement(refs.valuesString(), "new value");
+		try (
+			var _ = upgradeableBosk.context().withMaybeTenant(scenario.startingTenant)
+		) {
+			upgradeableBosk.driver().submitReplacement(refs.valuesString(), "new value");
+		}
 		originalBosk.driver().flush(); // Not the bosk that did the update!
 
 		LOGGER.debug("Check state after");
