@@ -289,10 +289,11 @@ final class Formatter extends BsonFormatter {
 
 	@Nonnull private Tenant.Established getOrSetEventTenant(@Nullable Tenant.Established fromEvent) {
 		if (fromEvent == null) {
-			LOGGER.debug("No tenant info in event; assuming unchanged");
+			LOGGER.debug("No tenant info in event; assuming unchanged: {}", lastEventTenant);
 			return requireNonNull(lastEventTenant,
 				"If event has no tenant info, we must have it from a prior event");
 		} else {
+			LOGGER.debug("Saving tenant info from event: {}", fromEvent);
 			lastEventTenant = fromEvent;
 			return fromEvent;
 		}

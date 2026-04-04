@@ -672,7 +672,13 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			throw new IllegalStateException("Driver is closed");
 		}
 		MDCScope ex = setupMDC(boskInfo.name(), boskInfo.instanceID());
-		LOGGER.debug(description + " w/" + this.formatDriver.getClass().getSimpleName(), args);
+		if (LOGGER.isDebugEnabled()) {
+			Object[] argsWithContext = new Object[args.length + 2];
+			System.arraycopy(args, 0, argsWithContext, 0, args.length);
+			argsWithContext[args.length] = boskInfo.name();
+			argsWithContext[args.length + 1] = boskInfo.context().getTenant();
+			LOGGER.debug(description + " w/{}@{}", argsWithContext);
+		}
 		if (driverSettings.testing().eventDelayMS() < 0) {
 			LOGGER.debug("| eventDelayMS {}ms ", driverSettings.testing().eventDelayMS());
 			try {
