@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
-import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.slf4j.Logger;
@@ -90,7 +89,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		doUpdate(deletionDoc(target), standardPreconditions(target));
+		doUpdate(deletionDoc(target, rootRef), standardPreconditions(target));
 	}
 
 	@Override
@@ -103,7 +102,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		doUpdate(
-			deletionDoc(target),
+			deletionDoc(target, rootRef),
 			explicitPreconditions(target, precondition, requiredValue));
 	}
 
@@ -346,24 +345,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	private <T> BsonDocument replacementDoc(Reference<T> target, T newValue) {
-		String key = dottedFieldNameOf(target, rootRef);
-		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
-		LOGGER.debug("| Set field {}: {}", key, value);
-		BsonDocument result = blankUpdateDoc();
-		result.compute("$set", (_,existing) -> {
-			if (existing == null) {
-				return new BsonDocument(key, value);
-			} else {
-				return existing.asDocument().append(key, value);
-			}
-		});
-		return result;
-	}
-
-	private <T> BsonDocument deletionDoc(Reference<T> target) {
-		String key = dottedFieldNameOf(target, rootRef);
-		LOGGER.debug("| Unset field {}", key);
-		return blankUpdateDoc().append("$unset", new BsonDocument(key, new BsonNull())); // Value is ignored
+		return super.replacementDoc(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef);
 	}
 
 	/**

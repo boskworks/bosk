@@ -6,12 +6,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
+import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
 import works.bosk.MapValue;
+import works.bosk.Reference;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
@@ -21,6 +23,7 @@ import works.bosk.drivers.mongo.status.StateStatus;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.Collections.newSetFromMap;
+import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
 
 @RequiredArgsConstructor
@@ -99,6 +102,26 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		if (LOGGER.isWarnEnabled() && ALREADY_WARNED.add(dottedName)) {
 			LOGGER.warn("Ignoring updates of nonexistent field {}", dottedName);
 		}
+	}
+
+	protected <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {
+		String key = dottedFieldNameOf(target, startingRef);
+		LOGGER.debug("| Set field {}: {}", key, value);
+		BsonDocument result = blankUpdateDoc();
+		result.compute("$set", (_, existing) -> {
+			if (existing == null) {
+				return new BsonDocument(key, value);
+			} else {
+				return existing.asDocument().append(key, value);
+			}
+		});
+		return result;
+	}
+
+	protected <T> BsonDocument deletionDoc(Reference<T> target, Reference<?> startingRef) {
+		String key = dottedFieldNameOf(target, startingRef);
+		LOGGER.debug("| Unset field {}", key);
+		return blankUpdateDoc().append("$unset", new BsonDocument(key, new BsonNull()));
 	}
 
 	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {

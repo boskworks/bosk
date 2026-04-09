@@ -709,26 +709,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return filter;
 	}
 
-	private <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {
-		String key = BsonFormatter.dottedFieldNameOf(target, startingRef);
-		LOGGER.debug("| Set field {}: {}", key, value);
-		BsonDocument result = blankUpdateDoc();
-		result.compute("$set", (_,existing) -> {
-			if (existing == null) {
-				return new BsonDocument(key, value);
-			} else {
-				return existing.asDocument().append(key, value);
-			}
-		});
-		return result;
-	}
-
-	private <T> BsonDocument deletionDoc(Reference<T> target, Reference<?> startingRef) {
-		String key = BsonFormatter.dottedFieldNameOf(target, startingRef);
-		LOGGER.debug("| Unset field {}", key);
-		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE)); // Value is ignored
-	}
-
 	/**
 	 * @return true if something changed
 	 */
