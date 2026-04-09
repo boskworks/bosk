@@ -135,6 +135,13 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 			&& revision.longValue() <= revisionToSkip.longValue();
 	}
 
+	@Override
+	public void onRevisionToSkip(BsonInt64 revision) {
+		LOGGER.debug("+ onRevisionToSkip({})", revision.longValue());
+		revisionToSkip = revision;
+		flushLock.finishedRevision(revision);
+	}
+
 	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 

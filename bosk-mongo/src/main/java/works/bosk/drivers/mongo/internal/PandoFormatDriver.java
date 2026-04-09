@@ -446,13 +446,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.debug("Ignoring benign manifest change event");
 	}
 
-	@Override
-	public void onRevisionToSkip(BsonInt64 revision) {
-		LOGGER.debug("+ onRevisionToSkip({})", revision.longValue());
-		revisionToSkip = revision;
-		flushLock.finishedRevision(revision);
-	}
-
 	private static boolean updateEventHasField(ChangeStreamDocument<BsonDocument> event, DocumentFields field) {
 		if (event == null) {
 			return false;

@@ -266,13 +266,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		LOGGER.debug("Ignoring benign manifest change event");
 	}
 
-	@Override
-	public void onRevisionToSkip(BsonInt64 revision) {
-		LOGGER.debug("+ onRevisionToSkip({})", revision.longValue());
-		revisionToSkip = revision;
-		flushLock.finishedRevision(revision);
-	}
-
 	//
 	// MongoDB helpers
 	//
