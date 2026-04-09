@@ -99,19 +99,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	public void flush() throws IOException, InterruptedException {
-		flushLock.awaitRevision(readRevisionNumber());
-		LOGGER.debug("| Flush downstream");
-		downstream.flush();
-	}
-
-	@Override
-	public void close() {
-		LOGGER.debug("+ close()");
-		flushLock.close();
-	}
-
-	@Override
 	BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException {
 		try (MongoCursor<BsonDocument> cursor = collection
 			.withReadConcern(LOCAL) // The revision field needs to be the latest
@@ -274,7 +261,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	 * @return Non-null revision number as per the database.
 	 * If the database contains no revision number, returns {@link Formatter#REVISION_ZERO}.
 	 */
-	private BsonInt64 readRevisionNumber() throws FlushFailureException {
+	protected BsonInt64 readRevisionNumber() throws FlushFailureException {
 		LOGGER.debug("readRevisionNumber");
 		try {
 			try (MongoCursor<BsonDocument> cursor = collection

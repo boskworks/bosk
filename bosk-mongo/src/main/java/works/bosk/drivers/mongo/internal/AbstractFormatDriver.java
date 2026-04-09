@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.MapValue;
+import works.bosk.exceptions.FlushFailureException;
 import works.bosk.Reference;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
@@ -140,6 +141,21 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		LOGGER.debug("+ onRevisionToSkip({})", revision.longValue());
 		revisionToSkip = revision;
 		flushLock.finishedRevision(revision);
+	}
+
+	protected abstract BsonInt64 readRevisionNumber() throws FlushFailureException;
+
+	@Override
+	public void flush() throws IOException, InterruptedException {
+		flushLock.awaitRevision(readRevisionNumber());
+		LOGGER.debug("| Flush downstream");
+		downstream.flush();
+	}
+
+	@Override
+	public void close() {
+		LOGGER.debug("+ close()");
+		flushLock.close();
 	}
 
 	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
