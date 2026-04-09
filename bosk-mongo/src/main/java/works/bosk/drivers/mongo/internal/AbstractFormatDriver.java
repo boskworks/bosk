@@ -1,11 +1,15 @@
 package works.bosk.drivers.mongo.internal;
 
 import java.io.IOException;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonString;
 import org.bson.BsonValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
 import works.bosk.MapValue;
 import works.bosk.RootReference;
@@ -14,7 +18,9 @@ import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.drivers.mongo.status.BsonComparator;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.drivers.mongo.status.StateStatus;
+import works.bosk.exceptions.InvalidTypeException;
 
+import static java.util.Collections.newSetFromMap;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
 
 @RequiredArgsConstructor
@@ -88,6 +94,13 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 			);
 	}
 
+	protected void logNonexistentField(String dottedName, InvalidTypeException e) {
+		LOGGER.trace("Nonexistent field {}", dottedName, e);
+		if (LOGGER.isWarnEnabled() && ALREADY_WARNED.add(dottedName)) {
+			LOGGER.warn("Ignoring updates of nonexistent field {}", dottedName);
+		}
+	}
+
 	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
@@ -108,5 +121,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		BsonInt64 revision,
 		BsonDocument diagnosticAttributes
 	){}
+
+	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
+	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractFormatDriver.class);
 
 }

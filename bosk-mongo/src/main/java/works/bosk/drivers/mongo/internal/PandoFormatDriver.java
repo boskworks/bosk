@@ -19,8 +19,6 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -55,7 +53,6 @@ import static com.mongodb.client.model.Filters.regex;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
-import static java.util.Collections.newSetFromMap;
 import static java.util.Collections.singletonList;
 import static java.util.Comparator.comparing;
 import static java.util.Objects.requireNonNull;
@@ -889,19 +886,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	}
 
-	private void logNonexistentField(String dottedName, InvalidTypeException e) {
-		LOGGER.trace("Nonexistent field {}",  dottedName, e);
-		if (LOGGER.isWarnEnabled() && ALREADY_WARNED.add(dottedName)) {
-			LOGGER.warn("Ignoring updates of nonexistent field {}", dottedName);
-		}
-	}
-
 	@Override
 	public String toString() {
 		return description;
 	}
 
-	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
 	private static final BsonDocument ROOT_DOCUMENT_FILTER = new BsonDocument("_id", ROOT_DOCUMENT_ID);
 	private static final EnumSet<OperationType> OPERATIONS_TO_INCLUDE_IN_GATHER = EnumSet.of(INSERT);
 	private static final Logger LOGGER = LoggerFactory.getLogger(PandoFormatDriver.class);

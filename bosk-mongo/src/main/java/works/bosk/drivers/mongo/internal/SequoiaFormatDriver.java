@@ -12,8 +12,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonNull;
@@ -39,7 +37,6 @@ import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
-import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
 import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
@@ -457,19 +454,11 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		}
 	}
 
-	private void logNonexistentField(String dottedName, InvalidTypeException e) {
-		LOGGER.trace("Nonexistent field {}",  dottedName, e);
-		if (LOGGER.isWarnEnabled() && ALREADY_WARNED.add(dottedName)) {
-			LOGGER.warn("Ignoring updates of nonexistent field {}", dottedName);
-		}
-	}
-
 	@Override
 	public String toString() {
 		return description;
 	}
 
-	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
 	private static final BsonDocument DOCUMENT_FILTER = new BsonDocument("_id", DOCUMENT_ID);
 	private static final Logger LOGGER = LoggerFactory.getLogger(SequoiaFormatDriver.class);
 }
