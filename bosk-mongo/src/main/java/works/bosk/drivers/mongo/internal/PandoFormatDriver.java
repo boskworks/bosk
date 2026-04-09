@@ -77,8 +77,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private final Demultiplexer demultiplexer = new Demultiplexer();
 	private final List<Reference<? extends EnumerableByIdentifier<?>>> graftPoints;
 
-	private volatile BsonInt64 revisionToSkip = null;
-
 	static final BsonString ROOT_DOCUMENT_ID = new BsonString("|");
 
 	PandoFormatDriver(
@@ -788,10 +786,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				}
 			}
 		}
-	}
-
-	private boolean shouldSkip(BsonInt64 revision) {
-		return revision != null && revisionToSkip != null && revision.longValue() <= revisionToSkip.longValue();
 	}
 
 	/**

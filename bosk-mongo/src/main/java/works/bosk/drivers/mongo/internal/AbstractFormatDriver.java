@@ -124,6 +124,13 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		return blankUpdateDoc().append("$unset", new BsonDocument(key, new BsonNull()));
 	}
 
+	protected volatile BsonInt64 revisionToSkip = null;
+
+	protected boolean shouldSkip(BsonInt64 revision) {
+		return revision != null && revisionToSkip != null
+			&& revision.longValue() <= revisionToSkip.longValue();
+	}
+
 	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 

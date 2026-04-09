@@ -52,8 +52,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	private final BoskDriver downstream;
 	private final FlushLock flushLock;
 
-	private volatile BsonInt64 revisionToSkip = null;
-
 	static final BsonString DOCUMENT_ID = new BsonString("boskDocument");
 
 	SequoiaFormatDriver(
@@ -224,7 +222,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				UpdateDescription updateDescription = event.getUpdateDescription();
 				if (updateDescription != null) {
 					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(event);
-					if (shouldNotSkip(revision)) {
+					if (!shouldSkip(revision)) {
 						Tenant.Established tenant = formatter.eventTenantFromUpdate(event);
 						MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromUpdate(event);
 						try (
@@ -406,10 +404,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				}
 			}
 		}
-	}
-
-	private boolean shouldNotSkip(BsonInt64 revision) {
-		return revision == null || revisionToSkip == null || revision.longValue() > revisionToSkip.longValue();
 	}
 
 	/**
