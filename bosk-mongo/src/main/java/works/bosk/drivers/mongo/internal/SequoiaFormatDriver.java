@@ -48,9 +48,6 @@ import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
  */
 final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatDriver<R> {
 	private final String description;
-	private final TransactionalCollection collection;
-	private final BoskDriver downstream;
-	private final FlushLock flushLock;
 
 	static final BsonString DOCUMENT_ID = new BsonString("boskDocument");
 
@@ -62,11 +59,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer));
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
-		this.collection = collection;
-		this.downstream = downstream;
-		this.flushLock = flushLock;
 	}
 
 	@Override

@@ -70,9 +70,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private final String description;
 	private final PandoFormat format;
 	private final MongoDriverSettings settings;
-	private final TransactionalCollection collection;
-	private final BoskDriver downstream;
-	private final FlushLock flushLock;
 	private final BsonSurgeon bsonSurgeon;
 	private final Demultiplexer demultiplexer = new Demultiplexer();
 	private final List<Reference<? extends EnumerableByIdentifier<?>>> graftPoints;
@@ -87,13 +84,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer));
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
 		this.format = format;
-		this.collection = collection;
-		this.downstream = downstream;
-		this.flushLock = flushLock;
 		this.graftPoints = format.graftPoints().stream()
 			.map(s -> referenceTo(s, rootRef))
 			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())

@@ -12,6 +12,7 @@ import org.bson.BsonValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
+import works.bosk.BoskDriver;
 import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.RootReference;
@@ -31,6 +32,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	final RootReference<R> rootRef;
 	final BoskContext context;
 	final Formatter formatter;
+	final TransactionalCollection collection;
+	final BoskDriver downstream;
+	final FlushLock flushLock;
 
 	@Override
 	public MongoStatus readStatus() {
