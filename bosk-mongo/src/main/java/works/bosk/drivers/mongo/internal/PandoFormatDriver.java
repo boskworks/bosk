@@ -3,7 +3,6 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
@@ -13,7 +12,6 @@ import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.lang.Nullable;
 import jakarta.annotation.Nonnull;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -194,17 +192,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.trace("| Options: {}", options);
 		UpdateResult result = collection.updateOne(filter, update, options);
 		LOGGER.debug("| Result: {}", result);
-		writeManifest();
-	}
-
-	private void writeManifest() {
-		BsonDocument doc = new BsonDocument("_id", MainDriver.MANIFEST_ID);
-		doc.putAll((BsonDocument) formatter.object2bsonValue(Manifest.forPando(format), Manifest.class));
-		BsonDocument filter = new BsonDocument("_id", MainDriver.MANIFEST_ID);
-		LOGGER.debug("| Initial manifest: {}", doc);
-		ReplaceOptions options = new ReplaceOptions().upsert(true);
-		UpdateResult result = collection.replaceOne(filter, doc, options);
-		LOGGER.debug("| Manifest result: {}", result);
+		writeManifest(Manifest.forPando(format));
 	}
 
 	/**

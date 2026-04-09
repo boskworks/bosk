@@ -1,14 +1,12 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.MongoCursor;
-import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
 import com.mongodb.client.model.changestream.UpdateDescription;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.lang.Nullable;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -138,17 +136,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		// Aside from refurbish, it's the only reason we'd want multi-document transactions,
 		// and it's not even a strong reason, because this still works correctly
 		// if interpreted as two separate events.
-		writeManifest();
-	}
-
-	private void writeManifest() {
-		BsonDocument doc = new BsonDocument("_id", MANIFEST_ID);
-		doc.putAll((BsonDocument) formatter.object2bsonValue(Manifest.forSequoia(), Manifest.class));
-		BsonDocument filter = new BsonDocument("_id", MANIFEST_ID);
-		LOGGER.debug("| Initial manifest: {}", doc);
-		ReplaceOptions options = new ReplaceOptions().upsert(true);
-		UpdateResult result = collection.replaceOne(filter, doc, options);
-		LOGGER.debug("| Manifest result: {}", result);
+		writeManifest(Manifest.forSequoia());
 	}
 
 	/**

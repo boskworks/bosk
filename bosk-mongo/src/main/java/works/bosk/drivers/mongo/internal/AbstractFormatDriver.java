@@ -1,5 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,7 +16,6 @@ import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.MapValue;
-import works.bosk.exceptions.FlushFailureException;
 import works.bosk.Reference;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
@@ -22,6 +23,7 @@ import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.drivers.mongo.status.BsonComparator;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.drivers.mongo.status.StateStatus;
+import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.Collections.newSetFromMap;
@@ -156,6 +158,16 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	public void close() {
 		LOGGER.debug("+ close()");
 		flushLock.close();
+	}
+
+	protected void writeManifest(Manifest manifest) {
+		BsonDocument doc = new BsonDocument("_id", MainDriver.MANIFEST_ID);
+		doc.putAll((BsonDocument) formatter.object2bsonValue(manifest, Manifest.class));
+		BsonDocument filter = new BsonDocument("_id", MainDriver.MANIFEST_ID);
+		LOGGER.debug("| Initial manifest: {}", doc);
+		ReplaceOptions options = new ReplaceOptions().upsert(true);
+		UpdateResult result = collection.replaceOne(filter, doc, options);
+		LOGGER.debug("| Manifest result: {}", result);
 	}
 
 	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
