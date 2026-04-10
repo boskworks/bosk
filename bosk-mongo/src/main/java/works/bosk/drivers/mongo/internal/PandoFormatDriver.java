@@ -475,7 +475,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * and so the actual replacement/deletion is unconditional, because it won't be executed if the precondition fails.
 	 * <p>
 	 * TODO: We could organize the Sequoia code in a similar manner if doReplacement and doDelete
-	 * accepted filter arguments (which Pando simply wouldn't use).
+	 *  accepted filter arguments (which Pando simply wouldn't use).
+	 *  It's complicated by the fact that the zero-match case in Sequoia is highly ambiguous.
 	 */
 	private <T> void doReplacement(Reference<T> target, T newValue) {
 		collection.ensureTransactionStarted();
