@@ -269,7 +269,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			.getCollection(COLLECTION_NAME)
 			.updateOne(
 				new BsonDocument(),
-				new BsonDocument("$unset", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonNull())) // Value is ignored
+				new BsonDocument("$unset", new BsonDocument(Formatter.DocumentFields.revision.name(), BsonNull.VALUE)) // Value is ignored
 			);
 
 		LOGGER.debug("Ensure flush works");

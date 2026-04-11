@@ -128,7 +128,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected <T> BsonDocument deletionDoc(Reference<T> target, Reference<?> startingRef) {
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Unset field {}", key);
-		return blankUpdateDoc().append("$unset", new BsonDocument(key, new BsonNull()));
+		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE));
 	}
 
 	protected volatile BsonInt64 revisionToSkip = null;

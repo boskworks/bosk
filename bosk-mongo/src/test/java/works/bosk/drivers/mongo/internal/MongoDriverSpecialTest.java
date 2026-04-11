@@ -807,7 +807,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	private void deleteFields(MongoCollection<Document> collection, Formatter.DocumentFields... fields) {
 		BsonDocument fieldsToUnset = new BsonDocument();
 		for (Formatter.DocumentFields field: fields) {
-			fieldsToUnset.append(field.name(), new BsonNull()); // Value is ignored
+			fieldsToUnset.append(field.name(), BsonNull.VALUE); // Value is ignored
 		}
 		BsonDocument filterDoc = new BsonDocument("_id", rootDocumentID());
 		collection.updateOne(
