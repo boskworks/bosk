@@ -21,7 +21,7 @@ interface ChangeListener {
 		InterruptedException,
 		IOException,
 		InitialStateActionException,
-		TimeoutException, FailedSessionException;
+		TimeoutException, FailedMongoClientSessionException;
 
 	/**
 	 * @param event is a document-specific event, with a non-null {@link ChangeStreamDocument#getDocumentKey() document key}.

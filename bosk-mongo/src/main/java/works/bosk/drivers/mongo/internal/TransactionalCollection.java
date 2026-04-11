@@ -38,11 +38,11 @@ class TransactionalCollection {
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
 	private static final AtomicLong identityCounter = new AtomicLong(1);
 
-	public Session newSession() throws FailedSessionException {
+	public Session newSession() throws FailedMongoClientSessionException {
 		return new Session(false);
 	}
 
-	public Session newReadOnlySession() throws FailedSessionException {
+	public Session newReadOnlySession() throws FailedMongoClientSessionException {
 		return new Session(true);
 	}
 
@@ -58,15 +58,15 @@ class TransactionalCollection {
 		final String name;
 		final String oldMDC;
 
-		public Session(boolean isReadOnly) throws FailedSessionException {
+		public Session(boolean isReadOnly) throws FailedMongoClientSessionException {
 			this.isReadOnly = isReadOnly;
 			name = (isReadOnly? "r":"s") + identityCounter.getAndIncrement();
 			oldMDC = MDC.get(MdcKeys.TRANSACTION);
 			if (currentSession.get() != null) {
-				// Note: we don't throw FailedSessionException because this
+				// Note: we don't throw FailedMongoClientSessionException because this
 				// is not a transient exception that can be remedied by waiting
 				// and retrying (which is what callers typically do when they
-				// catch FailedSessionException). This isn't a "failure" so much
+				// catch FailedMongoClientSessionException). This isn't a "failure" so much
 				// as a bosk bug!
 				throw new IllegalStateException("Cannot start nested session");
 			}
@@ -81,7 +81,7 @@ class TransactionalCollection {
 			try {
 				this.clientSession = mongoClient.startSession(sessionOptions);
 			} catch (RuntimeException | Error e) {
-				throw new FailedSessionException(e);
+				throw new FailedMongoClientSessionException(e);
 			}
 			currentSession.set(this);
 			MDC.put(MdcKeys.TRANSACTION, name);

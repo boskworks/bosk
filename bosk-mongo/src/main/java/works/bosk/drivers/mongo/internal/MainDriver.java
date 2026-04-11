@@ -296,11 +296,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// We can now publish the driver knowing that the transaction, if there is one, has committed
 				publishFormatDriver(preferredDriver);
 				preferredDriver.onRevisionToSkip(REVISION_ONE); // initialState handles REVISION_ONE; downstream only needs to know about changes after that
-			} catch (RuntimeException | FailedSessionException e2) {
+			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2);
 			}
-		} catch (RuntimeException | UnrecognizedFormatException | IOException | FailedSessionException e) {
+		} catch (RuntimeException | UnrecognizedFormatException | IOException | FailedMongoClientSessionException e) {
 			switch (driverSettings.initialDatabaseUnavailableMode()) {
 				case FAIL_FAST:
 					LOGGER.debug("Unable to load initial state from database; aborting initialization", e);
@@ -471,7 +471,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		public void onConnectionSucceeded() throws
 			UnrecognizedFormatException,
 			UninitializedCollectionException,
-			FailedSessionException,
+			FailedMongoClientSessionException,
 			InterruptedException,
 			IOException,
 			InitialStateActionException,
@@ -697,7 +697,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				try (var session = queryCollection.newSession()) {
 					operation.run();
 					session.commitTransactionIfAny();
-				} catch (FailedSessionException e) {
+				} catch (FailedMongoClientSessionException e) {
 					setDisconnectedDriver(e);
 					throw new DisconnectedException(e);
 				} catch (MongoException e) {
