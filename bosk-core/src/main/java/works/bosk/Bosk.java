@@ -95,7 +95,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final BoskContext context;
 	private final TenancyModel tenancyModel;
 
-	private final InitialDriver initialDriver;
+	private final IngressDriver ingressDriver;
 	private final LocalDriver localDriver;
 	private final RootRef rootRef;
 	private final ThreadLocal<InitialState<R>> rootSnapshot = new ThreadLocal<>();
@@ -156,11 +156,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		// to do such things as create References, so it needs the rest of the
 		// initialization to have completed already.
 		//
-		this.initialDriver = new InitialDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
+		this.ingressDriver = new IngressDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
 		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
 
 		try {
-			this.currentState = initialDriver
+			this.currentState = ingressDriver
 				.initialState(rootRef.targetClass())
 				.cast(rootRef.targetClass()); // Double check!
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
@@ -236,7 +236,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @return the {@link BoskDriver} to use for submitting updates to this bosk's state tree.
 	 */
 	public BoskDriver driver() {
-		return initialDriver;
+		return ingressDriver;
 	}
 
 	/**
@@ -262,7 +262,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 */
 	@SuppressWarnings("unchecked")
 	public <D extends BoskDriver> D getDriver(Class<? super D> driverType) {
-		var userSuppliedDriver = initialDriver.downstream;
+		var userSuppliedDriver = ingressDriver.downstream;
 		if (driverType.isInstance(userSuppliedDriver)) {
 			return (D) driverType.cast(userSuppliedDriver);
 		} else {
@@ -274,10 +274,10 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * We wrap the user-supplied driver with one of these so we're in control
 	 * of the incoming driver operations.
 	 */
-	final class InitialDriver implements BoskDriver {
+	final class IngressDriver implements BoskDriver {
 		final BoskDriver downstream;
 
-		public InitialDriver(BoskDriver downstream) {
+		public IngressDriver(BoskDriver downstream) {
 			this.downstream = downstream;
 		}
 
