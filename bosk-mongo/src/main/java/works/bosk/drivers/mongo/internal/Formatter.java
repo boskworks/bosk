@@ -145,7 +145,7 @@ final class Formatter extends BsonFormatter {
 
 	BsonValue encodeMaybeTenant(Tenant tenant) {
 		return switch(tenant) {
-			case Tenant.NotEstablished _ -> new BsonNull();
+			case Tenant.NotEstablished _ -> BsonNull.VALUE;
 			case Tenant.Established t -> encodeTenant(t);
 		};
 	}

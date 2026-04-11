@@ -3,7 +3,6 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
@@ -13,14 +12,11 @@ import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.lang.Nullable;
 import jakarta.annotation.Nonnull;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -55,7 +51,6 @@ import static com.mongodb.client.model.Filters.regex;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
-import static java.util.Collections.newSetFromMap;
 import static java.util.Collections.singletonList;
 import static java.util.Comparator.comparing;
 import static java.util.Objects.requireNonNull;
@@ -73,14 +68,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private final String description;
 	private final PandoFormat format;
 	private final MongoDriverSettings settings;
-	private final TransactionalCollection collection;
-	private final BoskDriver downstream;
-	private final FlushLock flushLock;
 	private final BsonSurgeon bsonSurgeon;
 	private final Demultiplexer demultiplexer = new Demultiplexer();
 	private final List<Reference<? extends EnumerableByIdentifier<?>>> graftPoints;
-
-	private volatile BsonInt64 revisionToSkip = null;
 
 	static final BsonString ROOT_DOCUMENT_ID = new BsonString("|");
 
@@ -92,13 +82,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer));
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
 		this.format = format;
-		this.collection = collection;
-		this.downstream = downstream;
-		this.flushLock = flushLock;
 		this.graftPoints = format.graftPoints().stream()
 			.map(s -> referenceTo(s, rootRef))
 			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
@@ -159,19 +146,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	public void flush() throws IOException, InterruptedException {
-		flushLock.awaitRevision(readRevisionNumber());
-		LOGGER.debug("| Flush downstream");
-		downstream.flush();
-	}
-
-	@Override
-	public void close() {
-		LOGGER.debug("+ close()");
-		flushLock.close();
-	}
-
-	@Override
 	BsonStateAndMetadata loadBsonStateAndMetadata() throws UninitializedCollectionException {
 		List<BsonDocument> allParts = new ArrayList<>();
 		try (MongoCursor<BsonDocument> cursor = collection
@@ -218,17 +192,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.trace("| Options: {}", options);
 		UpdateResult result = collection.updateOne(filter, update, options);
 		LOGGER.debug("| Result: {}", result);
-		writeManifest();
-	}
-
-	private void writeManifest() {
-		BsonDocument doc = new BsonDocument("_id", MainDriver.MANIFEST_ID);
-		doc.putAll((BsonDocument) formatter.object2bsonValue(Manifest.forPando(format), Manifest.class));
-		BsonDocument filter = new BsonDocument("_id", MainDriver.MANIFEST_ID);
-		LOGGER.debug("| Initial manifest: {}", doc);
-		ReplaceOptions options = new ReplaceOptions().upsert(true);
-		UpdateResult result = collection.replaceOne(filter, doc, options);
-		LOGGER.debug("| Manifest result: {}", result);
+		writeManifest(Manifest.forPando(format));
 	}
 
 	/**
@@ -298,6 +262,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				) {
 					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name());
 					if (state == null) {
+						// Final event has only the new revision number; the previous event is the main event
 						ChangeStreamDocument<BsonDocument> mainEvent = events.get(events.size() - 2);
 						LOGGER.debug("Main event is {} on {}", mainEvent.getOperationType(), mainEvent.getDocumentKey());
 						propagateDownstream(mainEvent, events.subList(0, events.size() - 2));
@@ -457,13 +422,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.debug("Ignoring benign manifest change event");
 	}
 
-	@Override
-	public void onRevisionToSkip(BsonInt64 revision) {
-		LOGGER.debug("+ onRevisionToSkip({})", revision.longValue());
-		revisionToSkip = revision;
-		flushLock.finishedRevision(revision);
-	}
-
 	private static boolean updateEventHasField(ChangeStreamDocument<BsonDocument> event, DocumentFields field) {
 		if (event == null) {
 			return false;
@@ -509,6 +467,30 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	//
 
 	/**
+	 * A note on <em>pre-delete</em> operations:
+	 * <p>
+	 * We are changing a target field located either in the root document or in a sub-document.
+	 * We distinguish these cases based on whether the root document's update event contains
+	 * the {@code state} field: if it does, then that's the main event;
+	 * if it doesn't, then that event is simply transmitting the new revision number,
+	 * and the previous event is the main event.
+	 * <p>
+	 * This algorithm falls down in the following case:
+	 * if, say, an entire {@code Catalog} in the root document is replaced by one that has
+	 * the same domain and the same number of entries with the same IDs,
+	 * then the root document's update should be considered the main event,
+	 * yet because the document's contents are actually unchanged,
+	 * MongoDB will suppress that event, and we're left with no main event!
+	 * <p>
+	 * To prevent this suppression, we delete the target fields before setting them.
+	 * In this way, the update operation is never a no-op even if the document ends up unchanged.
+	 * This seems slightly sensitive to the exact behaviour of MongoDB transactions,
+	 * but if this stops working, there are alternatives we could consider.
+	 * For example, the revision field could become an object that contains the path
+	 * to the updated field, like <code>{ "12345": "/path/to/target" }</code>.
+	 * Since the revision field always changes on every update, no amount of cleverness
+	 * could end up suppressing this update.
+	 * <p>
 	 * <em>Implementation note</em>: While {@link SequoiaFormatDriver} has calls like <code>doUpdate</code>,
 	 * Pando uses <code>doReplacement</code> and <code>doDelete</code>.
 	 * The reason is that Sequoia, being a single-document format, can implement all its preconditions
@@ -518,7 +500,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * and so the actual replacement/deletion is unconditional, because it won't be executed if the precondition fails.
 	 * <p>
 	 * TODO: We could organize the Sequoia code in a similar manner if doReplacement and doDelete
-	 * accepted filter arguments (which Pando simply wouldn't use).
+	 *  accepted filter arguments (which Pando simply wouldn't use).
+	 *  It's complicated by the fact that the zero-match case in Sequoia is highly ambiguous.
 	 */
 	private <T> void doReplacement(Reference<T> target, T newValue) {
 		collection.ensureTransactionStarted();
@@ -657,7 +640,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * @return Non-null revision number as per the database.
 	 * If the database contains no revision number, returns {@link Formatter#REVISION_ZERO}.
 	 */
-	private BsonInt64 readRevisionNumber() throws FlushFailureException {
+	protected BsonInt64 readRevisionNumber() throws FlushFailureException {
 		LOGGER.debug("readRevisionNumber");
 		try {
 			try (MongoCursor<BsonDocument> cursor = collection
@@ -710,26 +693,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			LOGGER.debug("| Precondition: {} {}", enclosingObjectKey, condition);
 		}
 		return filter;
-	}
-
-	private <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {
-		String key = BsonFormatter.dottedFieldNameOf(target, startingRef);
-		LOGGER.debug("| Set field {}: {}", key, value);
-		BsonDocument result = blankUpdateDoc();
-		result.compute("$set", (_,existing) -> {
-			if (existing == null) {
-				return new BsonDocument(key, value);
-			} else {
-				return existing.asDocument().append(key, value);
-			}
-		});
-		return result;
-	}
-
-	private <T> BsonDocument deletionDoc(Reference<T> target, Reference<?> startingRef) {
-		String key = BsonFormatter.dottedFieldNameOf(target, startingRef);
-		LOGGER.debug("| Unset field {}", key);
-		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE)); // Value is ignored
 	}
 
 	/**
@@ -813,10 +776,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
-	private boolean shouldSkip(BsonInt64 revision) {
-		return revision != null && revisionToSkip != null && revision.longValue() <= revisionToSkip.longValue();
-	}
-
 	/**
 	 * Call <code>downstream.{@link BoskDriver#submitDeletion submitDeletion}</code>
 	 * for each removed field.
@@ -889,19 +848,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	}
 
-	private void logNonexistentField(String dottedName, InvalidTypeException e) {
-		LOGGER.trace("Nonexistent field {}",  dottedName, e);
-		if (LOGGER.isWarnEnabled() && ALREADY_WARNED.add(dottedName)) {
-			LOGGER.warn("Ignoring updates of nonexistent field {}", dottedName);
-		}
-	}
-
 	@Override
 	public String toString() {
 		return description;
 	}
 
-	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
 	private static final BsonDocument ROOT_DOCUMENT_FILTER = new BsonDocument("_id", ROOT_DOCUMENT_ID);
 	private static final EnumSet<OperationType> OPERATIONS_TO_INCLUDE_IN_GATHER = EnumSet.of(INSERT);
 	private static final Logger LOGGER = LoggerFactory.getLogger(PandoFormatDriver.class);

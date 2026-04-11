@@ -1,20 +1,33 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
+import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
+import works.bosk.BoskDriver;
 import works.bosk.MapValue;
+import works.bosk.Reference;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.drivers.mongo.status.BsonComparator;
 import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.drivers.mongo.status.StateStatus;
+import works.bosk.exceptions.FlushFailureException;
+import works.bosk.exceptions.InvalidTypeException;
 
+import static java.util.Collections.newSetFromMap;
+import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
 
 @RequiredArgsConstructor
@@ -22,6 +35,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	final RootReference<R> rootRef;
 	final BoskContext context;
 	final Formatter formatter;
+	final TransactionalCollection collection;
+	final BoskDriver downstream;
+	final FlushLock flushLock;
 
 	@Override
 	public MongoStatus readStatus() {
@@ -88,6 +104,72 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 			);
 	}
 
+	protected void logNonexistentField(String dottedName, InvalidTypeException e) {
+		LOGGER.trace("Nonexistent field {}", dottedName, e);
+		if (LOGGER.isWarnEnabled() && ALREADY_WARNED.add(dottedName)) {
+			LOGGER.warn("Ignoring updates of nonexistent field {}", dottedName);
+		}
+	}
+
+	protected <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {
+		String key = dottedFieldNameOf(target, startingRef);
+		LOGGER.debug("| Set field {}: {}", key, value);
+		BsonDocument result = blankUpdateDoc();
+		result.compute("$set", (_, existing) -> {
+			if (existing == null) {
+				return new BsonDocument(key, value);
+			} else {
+				return existing.asDocument().append(key, value);
+			}
+		});
+		return result;
+	}
+
+	protected <T> BsonDocument deletionDoc(Reference<T> target, Reference<?> startingRef) {
+		String key = dottedFieldNameOf(target, startingRef);
+		LOGGER.debug("| Unset field {}", key);
+		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE));
+	}
+
+	protected volatile BsonInt64 revisionToSkip = null;
+
+	protected boolean shouldSkip(BsonInt64 revision) {
+		return revision != null && revisionToSkip != null
+			&& revision.longValue() <= revisionToSkip.longValue();
+	}
+
+	@Override
+	public void onRevisionToSkip(BsonInt64 revision) {
+		LOGGER.debug("+ onRevisionToSkip({})", revision.longValue());
+		revisionToSkip = revision;
+		flushLock.finishedRevision(revision);
+	}
+
+	protected abstract BsonInt64 readRevisionNumber() throws FlushFailureException;
+
+	@Override
+	public void flush() throws IOException, InterruptedException {
+		flushLock.awaitRevision(readRevisionNumber());
+		LOGGER.debug("| Flush downstream");
+		downstream.flush();
+	}
+
+	@Override
+	public void close() {
+		LOGGER.debug("+ close()");
+		flushLock.close();
+	}
+
+	protected void writeManifest(Manifest manifest) {
+		BsonDocument doc = new BsonDocument("_id", MainDriver.MANIFEST_ID);
+		doc.putAll((BsonDocument) formatter.object2bsonValue(manifest, Manifest.class));
+		BsonDocument filter = new BsonDocument("_id", MainDriver.MANIFEST_ID);
+		LOGGER.debug("| Initial manifest: {}", doc);
+		ReplaceOptions options = new ReplaceOptions().upsert(true);
+		UpdateResult result = collection.replaceOne(filter, doc, options);
+		LOGGER.debug("| Manifest result: {}", result);
+	}
+
 	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
@@ -108,5 +190,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		BsonInt64 revision,
 		BsonDocument diagnosticAttributes
 	){}
+
+	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
+	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractFormatDriver.class);
 
 }

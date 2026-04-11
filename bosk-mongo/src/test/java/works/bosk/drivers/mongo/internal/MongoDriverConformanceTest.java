@@ -57,7 +57,7 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 		return TestParameters.driverSettings(
 				Stream.of(
 					PandoFormat.oneBigDocument(),
-//					PandoFormat.withGraftPoints("/catalog", "/sideTable"), // Basic
+					PandoFormat.withGraftPoints("/catalog", "/sideTable"), // Exercises pre-deletion
 //					PandoFormat.withGraftPoints("/nestedSideTable"), // Documents are themselves side tables
 					PandoFormat.withGraftPoints("/nestedSideTable/-x-"), // Graft points are side table entries
 //					PandoFormat.withGraftPoints("/catalog/-x-/sideTable", "/sideTable/-x-/catalog", "/sideTable/-x-/sideTable/-y-/catalog"), // Nesting, parameters

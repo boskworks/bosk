@@ -1,22 +1,17 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.MongoCursor;
-import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
 import com.mongodb.client.model.changestream.UpdateDescription;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.lang.Nullable;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
-import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.slf4j.Logger;
@@ -39,7 +34,6 @@ import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
-import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
 import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
@@ -52,11 +46,6 @@ import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
  */
 final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatDriver<R> {
 	private final String description;
-	private final TransactionalCollection collection;
-	private final BoskDriver downstream;
-	private final FlushLock flushLock;
-
-	private volatile BsonInt64 revisionToSkip = null;
 
 	static final BsonString DOCUMENT_ID = new BsonString("boskDocument");
 
@@ -68,11 +57,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		FlushLock flushLock,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer));
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
-		this.collection = collection;
-		this.downstream = downstream;
-		this.flushLock = flushLock;
 	}
 
 	@Override
@@ -93,7 +79,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		doUpdate(deletionDoc(target), standardPreconditions(target));
+		doUpdate(deletionDoc(target, rootRef), standardPreconditions(target));
 	}
 
 	@Override
@@ -106,21 +92,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		doUpdate(
-			deletionDoc(target),
+			deletionDoc(target, rootRef),
 			explicitPreconditions(target, precondition, requiredValue));
-	}
-
-	@Override
-	public void flush() throws IOException, InterruptedException {
-		flushLock.awaitRevision(readRevisionNumber());
-		LOGGER.debug("| Flush downstream");
-		downstream.flush();
-	}
-
-	@Override
-	public void close() {
-		LOGGER.debug("+ close()");
-		flushLock.close();
 	}
 
 	@Override
@@ -163,17 +136,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		// Aside from refurbish, it's the only reason we'd want multi-document transactions,
 		// and it's not even a strong reason, because this still works correctly
 		// if interpreted as two separate events.
-		writeManifest();
-	}
-
-	private void writeManifest() {
-		BsonDocument doc = new BsonDocument("_id", MANIFEST_ID);
-		doc.putAll((BsonDocument) formatter.object2bsonValue(Manifest.forSequoia(), Manifest.class));
-		BsonDocument filter = new BsonDocument("_id", MANIFEST_ID);
-		LOGGER.debug("| Initial manifest: {}", doc);
-		ReplaceOptions options = new ReplaceOptions().upsert(true);
-		UpdateResult result = collection.replaceOne(filter, doc, options);
-		LOGGER.debug("| Manifest result: {}", result);
+		writeManifest(Manifest.forSequoia());
 	}
 
 	/**
@@ -228,7 +191,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				UpdateDescription updateDescription = event.getUpdateDescription();
 				if (updateDescription != null) {
 					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(event);
-					if (shouldNotSkip(revision)) {
+					if (!shouldSkip(revision)) {
 						Tenant.Established tenant = formatter.eventTenantFromUpdate(event);
 						MapValue<String> diagnosticAttributes = formatter.eventDiagnosticAttributesFromUpdate(event);
 						try (
@@ -278,13 +241,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		LOGGER.debug("Ignoring benign manifest change event");
 	}
 
-	@Override
-	public void onRevisionToSkip(BsonInt64 revision) {
-		LOGGER.debug("+ onRevisionToSkip({})", revision.longValue());
-		revisionToSkip = revision;
-		flushLock.finishedRevision(revision);
-	}
-
 	//
 	// MongoDB helpers
 	//
@@ -293,7 +249,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	 * @return Non-null revision number as per the database.
 	 * If the database contains no revision number, returns {@link Formatter#REVISION_ZERO}.
 	 */
-	private BsonInt64 readRevisionNumber() throws FlushFailureException {
+	protected BsonInt64 readRevisionNumber() throws FlushFailureException {
 		LOGGER.debug("readRevisionNumber");
 		try {
 			try (MongoCursor<BsonDocument> cursor = collection
@@ -349,24 +305,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	private <T> BsonDocument replacementDoc(Reference<T> target, T newValue) {
-		String key = dottedFieldNameOf(target, rootRef);
-		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
-		LOGGER.debug("| Set field {}: {}", key, value);
-		BsonDocument result = blankUpdateDoc();
-		result.compute("$set", (_,existing) -> {
-			if (existing == null) {
-				return new BsonDocument(key, value);
-			} else {
-				return existing.asDocument().append(key, value);
-			}
-		});
-		return result;
-	}
-
-	private <T> BsonDocument deletionDoc(Reference<T> target) {
-		String key = dottedFieldNameOf(target, rootRef);
-		LOGGER.debug("| Unset field {}", key);
-		return blankUpdateDoc().append("$unset", new BsonDocument(key, new BsonNull())); // Value is ignored
+		return super.replacementDoc(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef);
 	}
 
 	/**
@@ -429,10 +368,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		}
 	}
 
-	private boolean shouldNotSkip(BsonInt64 revision) {
-		return revision == null || revisionToSkip == null || revision.longValue() > revisionToSkip.longValue();
-	}
-
 	/**
 	 * Call <code>downstream.{@link BoskDriver#submitDeletion submitDeletion}</code>
 	 * for each removed field.
@@ -457,19 +392,11 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		}
 	}
 
-	private void logNonexistentField(String dottedName, InvalidTypeException e) {
-		LOGGER.trace("Nonexistent field {}",  dottedName, e);
-		if (LOGGER.isWarnEnabled() && ALREADY_WARNED.add(dottedName)) {
-			LOGGER.warn("Ignoring updates of nonexistent field {}", dottedName);
-		}
-	}
-
 	@Override
 	public String toString() {
 		return description;
 	}
 
-	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
 	private static final BsonDocument DOCUMENT_FILTER = new BsonDocument("_id", DOCUMENT_ID);
 	private static final Logger LOGGER = LoggerFactory.getLogger(SequoiaFormatDriver.class);
 }
