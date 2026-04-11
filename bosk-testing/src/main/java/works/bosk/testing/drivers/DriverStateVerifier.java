@@ -20,7 +20,6 @@ import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
-import works.bosk.drivers.BufferingDriver;
 import works.bosk.drivers.ContextScopeDriver;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
@@ -84,7 +83,8 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 				// Send to the subject driver
 				subject,
 				// Delay to ensure the subject doesn't depend on immediate downstream propagation of updates
-				BufferingDriver.factory(),
+				// Note: this can actually cause some bad drivers to pass because it runs actions reliably in the context of the subsequent flush
+//				BufferingDriver.factory(),
 				// Report the updates as they appear on their way out of the subject driver
 				ReportingDriver.factory(verifier::outgoingUpdate, verifier::preOutgoingFlush, _->{})
 			).build(b,d);
