@@ -11,11 +11,15 @@ import works.bosk.Bosk;
 public final class MdcKeys {
 	/**
 	 * The value of {@link Bosk#name()}.
+	 * <p>
+	 * Propagated automatically by drivers.
 	 */
 	public static final String BOSK_NAME = "bosk.name";
 
 	/**
 	 * The value of {@link Bosk#instanceID()}.
+	 * <p>
+	 * Propagated automatically by drivers.
 	 */
 	public static final String BOSK_INSTANCE_ID = "bosk.instanceID";
 

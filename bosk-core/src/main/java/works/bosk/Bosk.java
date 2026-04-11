@@ -55,6 +55,7 @@ import static java.util.UUID.randomUUID;
 import static works.bosk.Path.parameterNameFromSegment;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.TypeValidation.validateType;
+import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
  * A mutable container for an immutable object tree with cross-tree {@link Reference}s,
@@ -283,57 +284,72 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 		@Override
 		public <T> void submitReplacement(Reference<T> target, T newValue) {
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			downstream.submitReplacement(target, newValue);
+			try (var _ = setupMDC(name(), instanceID())) {
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				downstream.submitReplacement(target, newValue);
+			}
 		}
 
 		@Override
 		public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			assertCorrectBosk(precondition);
-			downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
+			try (var _ = setupMDC(name(), instanceID())) {
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				assertCorrectBosk(precondition);
+				downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
+			}
 		}
 
 		@Override
 		public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			downstream.submitConditionalCreation(target, newValue);
+			try (var _ = setupMDC(name(), instanceID())) {
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				downstream.submitConditionalCreation(target, newValue);
+			}
 		}
 
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
-			if (target.path().isEmpty()) {
-				// TODO: Augment dereferencer so it can tell us this for all references, not just the root
-				throw new IllegalArgumentException("Cannot delete root object");
+			try (var _ = setupMDC(name(), instanceID())) {
+				if (target.path().isEmpty()) {
+					// TODO: Augment dereferencer so it can tell us this for all references, not just the root
+					throw new IllegalArgumentException("Cannot delete root object");
+				}
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				downstream.submitDeletion(target);
 			}
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			downstream.submitDeletion(target);
 		}
 
 		@Override
 		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			assertCorrectBosk(precondition);
-			downstream.submitConditionalDeletion(target, precondition, requiredValue);
+			try (var _ = setupMDC(name(), instanceID())) {
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				assertCorrectBosk(precondition);
+				downstream.submitConditionalDeletion(target, precondition, requiredValue);
+			}
 		}
 
 		@Override
 		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
-			return downstream.initialState(rootType)
-				.cast(rootRef.targetClass())
-				.cast(rootType);
+			try (var _ = setupMDC(name(), instanceID())) {
+				return downstream.initialState(rootType)
+					.cast(rootRef.targetClass())
+					.cast(rootType);
+			}
 		}
 
 		@Override
 		public void flush() throws IOException, InterruptedException {
 			// Flushes can lead to downstream updates against any number of different tenants.
 			// We must clear the tenant context because other drivers have no way to do so.
-			try (var _ = context.withTenantTemporarilyIgnored()) {
+			try (
+				var _ = setupMDC(name(), instanceID());
+				var _ = context.withTenantTemporarilyIgnored()
+			) {
 				downstream.flush();
 			}
 		}

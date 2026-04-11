@@ -12,9 +12,10 @@ import java.util.concurrent.LinkedBlockingDeque;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskContext;
+import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
@@ -30,6 +31,8 @@ import works.bosk.testing.drivers.operations.UpdateOperation;
 
 import static java.lang.Thread.currentThread;
 import static lombok.AccessLevel.PRIVATE;
+import static works.bosk.logging.MdcKeys.BOSK_INSTANCE_ID;
+import static works.bosk.logging.MdcKeys.BOSK_NAME;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -39,6 +42,9 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  */
 @RequiredArgsConstructor(access = PRIVATE)
 public final class DriverStateVerifier<R extends StateTreeNode> {
+	final String boskName;
+	final String boskInstanceID;
+
 	/**
 	 * Used to model the effect of each operation on the bosk state
 	 */
@@ -72,6 +78,8 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 					.build()
 			);
 			DriverStateVerifier<RR> verifier = new DriverStateVerifier<>(
+				b.name(),
+				b.instanceID().toString(),
 				stateTrackingBosk,
 				ReplicaSet.redirectingTo(stateTrackingBosk)
 			);
@@ -97,6 +105,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	 */
 	private void incomingUpdate(UpdateOperation updateOperation) {
 		LOGGER.debug("---> IN: {}", updateOperation);
+		checkMDC();
 		// Note: because we have a separate queue for each thread, this isn't actually blocking
 		pendingOperationsByThreadID
 			.computeIfAbsent(threadId(updateOperation), _ -> new LinkedBlockingDeque<>())
@@ -110,7 +119,8 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	 */
 	private synchronized void outgoingUpdate(UpdateOperation op) {
 		LOGGER.debug("---> OUT: {}", op);
-		if (!(op.boskContext().tenant() instanceof BoskContext.Tenant.Established tenant)) {
+		checkMDC();
+		if (!(op.boskContext().tenant() instanceof Tenant.Established tenant)) {
 			throw new AssertionError("Missing tenant on update: " + op);
 		}
 		try (var _ = stateTrackingBosk.context().withTenant(tenant)) {
@@ -256,6 +266,15 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 
 	private static @Nullable String threadId(DriverOperation op) {
 		return op.boskContext().diagnosticAttributes().get(THREAD_ID);
+	}
+
+	private void checkMDC() {
+		if (!boskName.equals(MDC.get(BOSK_NAME))) {
+			throw new AssertionError("MDC bosk name must be " + boskName + " but was " + MDC.get(BOSK_NAME));
+		}
+		if (!boskInstanceID.equals(MDC.get(BOSK_INSTANCE_ID))) {
+			throw new AssertionError("MDC bosk instance ID must be " + boskInstanceID + " but was " + MDC.get(BOSK_INSTANCE_ID));
+		}
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(DriverStateVerifier.class);

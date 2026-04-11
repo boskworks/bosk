@@ -214,7 +214,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, InterruptedException, IOException {
-		try (MDCScope _ = beginDriverOperation("initialState({})", rootType)) {
+		try (var _ = beginDriverOperation("initialState({})", rootType)) {
 			// The actual loading of the initial state happens on the ChangeReceiver thread.
 			// Here, we just wait for that to finish and deal with the consequences.
 			var task = listener.taskRef.get();

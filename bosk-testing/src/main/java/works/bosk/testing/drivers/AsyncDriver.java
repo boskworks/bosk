@@ -16,6 +16,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static lombok.AccessLevel.PRIVATE;
+import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 @RequiredArgsConstructor(access = PRIVATE)
 public class AsyncDriver implements BoskDriver {
@@ -80,12 +81,15 @@ public class AsyncDriver implements BoskDriver {
 		var tenant = bosk.context().getTenant();
 		var diagnosticAttributes = bosk.context().getAttributes();
 		executor.submit(()->{
-			LOGGER.debug("Run {}", description);
 			try (
+				var _ = setupMDC(bosk.name(), bosk.instanceID());
 				var _ = bosk.context().withMaybeTenant(tenant);
 				var _ = bosk.context().withOnly(diagnosticAttributes)
 			) {
 				task.run();
+			} catch (Throwable t) {
+				LOGGER.error("Error during {}", description, t);
+				throw t;
 			} finally {
 				LOGGER.debug("Proceeding after {}", description);
 			}
