@@ -1,5 +1,11 @@
 <configuration>
 	<turboFilter class="works.bosk.logback.BoskLogFilter"/>
+	<turboFilter class="works.bosk.logback.RecordingTurboFilter">
+		<!-- To enable globally, rather than per-test -->
+<!--		<enabled>true</enabled>-->
+		<capacity>10</capacity>
+		<routingKey>bosk.instanceID</routingKey>
+	</turboFilter>
 	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
 		<encoder>
 			<pattern>%d %-5level [%thread] [%X{bosk.name}]%X{bosk.MongoDriver.transaction}%X{bosk.MongoDriver.event} %logger{25}: %msg%n</pattern>
