@@ -131,14 +131,7 @@ public class RecordingTurboFilter extends TurboFilter {
 	// These things are static so the test lifecycle methods don't need to
 	// get their hands on the filter instance.
 
-	/**
-	 * If there's no entry for a given test ID, replay is disabled.
-	 * That is different from an {@link Overrides} where everything is null,
-	 * which means "use the filter's global defaults"
-	 * (which might also mean replay is disabled depending on {@link #enabled}).
-	 */
 	private static final ConcurrentHashMap<String, Overrides> overridesByTestId = new ConcurrentHashMap<>();
-
 	private static final ConcurrentHashMap<String, LogEventBuffer> buffersByTestId = new ConcurrentHashMap<>();
 	private static final ConcurrentHashMap<String, String> testIdsByRoutingKey = new ConcurrentHashMap<>();
 
