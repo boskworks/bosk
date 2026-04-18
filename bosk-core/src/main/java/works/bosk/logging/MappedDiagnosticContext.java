@@ -4,6 +4,7 @@ import org.slf4j.MDC;
 import works.bosk.Identifier;
 
 public final class MappedDiagnosticContext {
+	private MappedDiagnosticContext() {}
 
 	public static MDCScope setupMDC(String boskName, Identifier boskID) {
 		MDCScope result = new MDCScope();
@@ -16,7 +17,6 @@ public final class MappedDiagnosticContext {
 	 * This is like {@link org.slf4j.MDC.MDCCloseable} except instead of
 	 * deleting the MDC entry at the end, it restores it to its prior value,
 	 * which allows us to nest these.
-	 *
 	 * <p>
 	 * You are going to have the urge to use this in an existing
 	 * try block that has catch and finally clauses. Resist that urge.
@@ -25,6 +25,7 @@ public final class MappedDiagnosticContext {
 	 * You really want to use this in a try block that has no catch or finally clause.
 	 */
 	public static final class MDCScope implements AutoCloseable {
+		MDCScope(){}
 		final String oldName = MDC.get(MdcKeys.BOSK_NAME);
 		final String oldID = MDC.get(MdcKeys.BOSK_INSTANCE_ID);
 		@Override public void close() {

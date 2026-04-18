@@ -32,8 +32,8 @@ import static works.bosk.logging.MdcKeys.BOSK_INSTANCE_ID;
  * This class infers that a log message is associated with a particular bosk
  * by checking the MDC for the key {@link MdcKeys#BOSK_INSTANCE_ID},
  * which you can set using {@link works.bosk.logging.MappedDiagnosticContext#setupMDC setupMDC}.
- * <p>
- * <em>Note</em>: most bosk drivers don't set this MDC key. TODO: Improve this.
+ * This is part of the driver conformance test,
+ * so all drivers should be propagating this MDC key.
  * <p>
  * Log levels are determined using the following precedence:
  * <ol>

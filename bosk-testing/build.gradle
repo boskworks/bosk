@@ -2,6 +2,7 @@
 dependencies {
 	api project(":bosk-core")
 	api project(":bosk-junit")
+	api project(":bosk-logback")
 
 	// The main build.gradle brings these in as test dependencies,
 	// but we need them as main dependencies.

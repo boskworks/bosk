@@ -249,41 +249,39 @@ class SqlDriverImpl implements SqlDriver {
 	@Override
 	public <R extends StateTreeNode> InitialState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		// TODO: Consider a disconnected mode where we delegate downstream if something goes wrong
-		try (MDCScope _ = setupMDC(boskName, boskID)) {
-			LOGGER.debug("initialState({})", rootType);
-			try (
-				var connection = connectionSource.get()
-			){
-				// TODO: It seems wrong to schedule the listener loop here. It should be in the constructor.
-				ensureTablesExist(connection);
-				InitialState<R> result;
-				var stateAndEpoch = loadStateAndEpoch(connection);
-				if (stateAndEpoch == null) {
-					LOGGER.debug("No current state; initializing {} table from downstream", BOSK);
-					this.epoch = UUID.randomUUID().toString();
-					result = downstream.initialState(rootType);
-					var root = switch (result) {
-						case InitialState.SingleTree(var r) -> r;
-					};
-					String stateJson = mapper.writeValueAsString(root);
+		LOGGER.debug("initialState({})", rootType);
+		try (
+			var connection = connectionSource.get()
+		){
+			// TODO: It seems wrong to schedule the listener loop here. It should be in the constructor.
+			ensureTablesExist(connection);
+			InitialState<R> result;
+			var stateAndEpoch = loadStateAndEpoch(connection);
+			if (stateAndEpoch == null) {
+				LOGGER.debug("No current state; initializing {} table from downstream", BOSK);
+				this.epoch = UUID.randomUUID().toString();
+				result = downstream.initialState(rootType);
+				var root = switch (result) {
+					case InitialState.SingleTree(var r) -> r;
+				};
+				String stateJson = mapper.writeValueAsString(root);
 
-					using(connection)
-						.insertInto(BOSK).columns(ID, STATE, BOSK.EPOCH)
-						.values("current", stateJson, epoch)
-						.onConflictDoNothing()
-						.execute();
-					long changeID = insertChange(connection, rootRef, stateJson);
-					connection.commit();
-					lastChangeSubmittedDownstream.getAndSet(changeID); // Not technically "submitted"
-				} else {
-					LOGGER.debug("Database state exists; initializing downstream from {} table", BOSK);
-					result = resetBoskState(rootType, stateAndEpoch, connection);
-				}
-				listener.scheduleWithFixedDelay(this::listenForChanges, 0, settings.timescaleMS(), MILLISECONDS);
-				return result;
-			} catch (SQLException e) {
-				throw new NotYetImplementedException(e);
+				using(connection)
+					.insertInto(BOSK).columns(ID, STATE, BOSK.EPOCH)
+					.values("current", stateJson, epoch)
+					.onConflictDoNothing()
+					.execute();
+				long changeID = insertChange(connection, rootRef, stateJson);
+				connection.commit();
+				lastChangeSubmittedDownstream.getAndSet(changeID); // Not technically "submitted"
+			} else {
+				LOGGER.debug("Database state exists; initializing downstream from {} table", BOSK);
+				result = resetBoskState(rootType, stateAndEpoch, connection);
 			}
+			listener.scheduleWithFixedDelay(this::listenForChanges, 0, settings.timescaleMS(), MILLISECONDS);
+			return result;
+		} catch (SQLException e) {
+			throw new NotYetImplementedException(e);
 		}
 	}
 
@@ -333,82 +331,72 @@ class SqlDriverImpl implements SqlDriver {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		try (MDCScope _ = setupMDC(boskName, boskID)) {
-			LOGGER.debug("submitReplacement({}, {})", target, newValue);
-			try (
-				var connection = connectionSource.get()
-			) {
-				// TODO optimization: no need to read the current state for root
-				replaceAndCommit(readState(connection), target, newValue, connection);
-			} catch (SQLException e) {
-				throw new NotYetImplementedException(e);
-			}
+		LOGGER.debug("submitReplacement({}, {})", target, newValue);
+		try (
+			var connection = connectionSource.get()
+		) {
+			// TODO optimization: no need to read the current state for root
+			replaceAndCommit(readState(connection), target, newValue, connection);
+		} catch (SQLException e) {
+			throw new NotYetImplementedException(e);
 		}
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		try (MDCScope _ = setupMDC(boskName, boskID)) {
-			LOGGER.debug("submitConditionalReplacement({}, {}, {}, {})", target, newValue, precondition, requiredValue);
-			try (
-				var connection = connectionSource.get()
-			) {
-				JsonNode state = readState(connection);
-				if (isMatchingTextNode(precondition, requiredValue, state)) {
-					replaceAndCommit(state, target, newValue, connection);
-				}
-			} catch (SQLException e) {
-				throw new NotYetImplementedException(e);
+		LOGGER.debug("submitConditionalReplacement({}, {}, {}, {})", target, newValue, precondition, requiredValue);
+		try (
+			var connection = connectionSource.get()
+		) {
+			JsonNode state = readState(connection);
+			if (isMatchingTextNode(precondition, requiredValue, state)) {
+				replaceAndCommit(state, target, newValue, connection);
 			}
+		} catch (SQLException e) {
+			throw new NotYetImplementedException(e);
 		}
 	}
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		try (MDCScope _ = setupMDC(boskName, boskID)) {
-			LOGGER.debug("submitConditionalCreation({}, {})", target, newValue);
-			try (
-				var connection = connectionSource.get()
-			) {
-				JsonNode state = readState(connection);
-				NodeInfo node = surgeon.nodeInfo(state, target);
-				if (surgeon.node(node.valueLocation(), state) == null) {
-					replaceAndCommit(state, target, newValue, connection);
-				}
-			} catch (SQLException e) {
-				throw new NotYetImplementedException(e);
+		LOGGER.debug("submitConditionalCreation({}, {})", target, newValue);
+		try (
+			var connection = connectionSource.get()
+		) {
+			JsonNode state = readState(connection);
+			NodeInfo node = surgeon.nodeInfo(state, target);
+			if (surgeon.node(node.valueLocation(), state) == null) {
+				replaceAndCommit(state, target, newValue, connection);
 			}
+		} catch (SQLException e) {
+			throw new NotYetImplementedException(e);
 		}
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		try (MDCScope _ = setupMDC(boskName, boskID)) {
-			LOGGER.debug("submitDeletion({})", target);
-			try (
-				var connection = connectionSource.get()
-			) {
-				replaceAndCommit(readState(connection), target, null, connection);
-			} catch (SQLException e) {
-				throw new NotYetImplementedException(e);
-			}
+		LOGGER.debug("submitDeletion({})", target);
+		try (
+			var connection = connectionSource.get()
+		) {
+			replaceAndCommit(readState(connection), target, null, connection);
+		} catch (SQLException e) {
+			throw new NotYetImplementedException(e);
 		}
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		try (MDCScope _ = setupMDC(boskName, boskID)) {
-			LOGGER.debug("submitConditionalDeletion({}, {}, {})", target, precondition, requiredValue);
-			try (
-				var connection = connectionSource.get()
-			) {
-				JsonNode state = readState(connection);
-				if (isMatchingTextNode(precondition, requiredValue, state)) {
-					replaceAndCommit(state, target, null, connection);
-				}
-			} catch (SQLException e) {
-				throw new NotYetImplementedException(e);
+		LOGGER.debug("submitConditionalDeletion({}, {}, {})", target, precondition, requiredValue);
+		try (
+			var connection = connectionSource.get()
+		) {
+			JsonNode state = readState(connection);
+			if (isMatchingTextNode(precondition, requiredValue, state)) {
+				replaceAndCommit(state, target, null, connection);
 			}
+		} catch (SQLException e) {
+			throw new NotYetImplementedException(e);
 		}
 	}
 
@@ -419,39 +407,37 @@ class SqlDriverImpl implements SqlDriver {
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		try (MDCScope _ = setupMDC(boskName, boskID)) {
-			try (
-				var connection = connectionSource.get()
-			) {
-				long currentChangeID = latestChangeID(connection);
-				LOGGER.debug("flush({})", currentChangeID);
+		try (
+			var connection = connectionSource.get()
+		) {
+			long currentChangeID = latestChangeID(connection);
+			LOGGER.debug("flush({})", currentChangeID);
 
-				// Exponential backoff starting from timescaleMS
-				long sleepTime = settings.timescaleMS();
-				long sleepDeadline = currentTimeMillis() + multiplyExact(sleepTime, settings.patienceFactor());
-				while (lastChangeSubmittedDownstream.get() < currentChangeID) {
-					long sleepBudget = sleepDeadline - currentTimeMillis();
-					if (sleepBudget <= 0) {
-						throw new FlushFailureException("Timed out waiting for change #" + currentChangeID);
-					}
-					LOGGER.debug("Will retry");
-					Thread.sleep(min(sleepBudget, sleepTime));
-					sleepTime *= 2;
+			// Exponential backoff starting from timescaleMS
+			long sleepTime = settings.timescaleMS();
+			long sleepDeadline = currentTimeMillis() + multiplyExact(sleepTime, settings.patienceFactor());
+			while (lastChangeSubmittedDownstream.get() < currentChangeID) {
+				long sleepBudget = sleepDeadline - currentTimeMillis();
+				if (sleepBudget <= 0) {
+					throw new FlushFailureException("Timed out waiting for change #" + currentChangeID);
 				}
-			} catch (SQLException e) {
-				throw new FlushFailureException(e);
-			} catch (EpochMismatchException e) {
-				LOGGER.debug("Epoch mismatch: reload state from database");
-				try (var c = connectionSource.get()) {
-					resetBoskState(rootRef.targetType(), loadStateAndEpoch(c), c);
-				} catch (SQLException | RuntimeException ex) {
-					throw new FlushFailureException(ex);
-				}
-			} catch (RuntimeException e) {
-				throw new FlushFailureException("Unexpected error while flushing", e);
+				LOGGER.debug("Will retry");
+				Thread.sleep(min(sleepBudget, sleepTime));
+				sleepTime *= 2;
 			}
-			downstream.flush();
+		} catch (SQLException e) {
+			throw new FlushFailureException(e);
+		} catch (EpochMismatchException e) {
+			LOGGER.debug("Epoch mismatch: reload state from database");
+			try (var c = connectionSource.get()) {
+				resetBoskState(rootRef.targetType(), loadStateAndEpoch(c), c);
+			} catch (SQLException | RuntimeException ex) {
+				throw new FlushFailureException(ex);
+			}
+		} catch (RuntimeException e) {
+			throw new FlushFailureException("Unexpected error while flushing", e);
 		}
+		downstream.flush();
 	}
 
 	/**

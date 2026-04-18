@@ -55,6 +55,7 @@ import static java.util.UUID.randomUUID;
 import static works.bosk.Path.parameterNameFromSegment;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.TypeValidation.validateType;
+import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
  * A mutable container for an immutable object tree with cross-tree {@link Reference}s,
@@ -95,7 +96,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final BoskContext context;
 	private final TenancyModel tenancyModel;
 
-	private final InitialDriver initialDriver;
+	private final IngressDriver ingressDriver;
 	private final LocalDriver localDriver;
 	private final RootRef rootRef;
 	private final ThreadLocal<InitialState<R>> rootSnapshot = new ThreadLocal<>();
@@ -156,11 +157,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		// to do such things as create References, so it needs the rest of the
 		// initialization to have completed already.
 		//
-		this.initialDriver = new InitialDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
+		this.ingressDriver = new IngressDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
 		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
 
 		try {
-			this.currentState = initialDriver
+			this.currentState = ingressDriver
 				.initialState(rootRef.targetClass())
 				.cast(rootRef.targetClass()); // Double check!
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
@@ -236,7 +237,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @return the {@link BoskDriver} to use for submitting updates to this bosk's state tree.
 	 */
 	public BoskDriver driver() {
-		return initialDriver;
+		return ingressDriver;
 	}
 
 	/**
@@ -262,7 +263,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 */
 	@SuppressWarnings("unchecked")
 	public <D extends BoskDriver> D getDriver(Class<? super D> driverType) {
-		var userSuppliedDriver = initialDriver.downstream;
+		var userSuppliedDriver = ingressDriver.downstream;
 		if (driverType.isInstance(userSuppliedDriver)) {
 			return (D) driverType.cast(userSuppliedDriver);
 		} else {
@@ -274,66 +275,81 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * We wrap the user-supplied driver with one of these so we're in control
 	 * of the incoming driver operations.
 	 */
-	final class InitialDriver implements BoskDriver {
+	final class IngressDriver implements BoskDriver {
 		final BoskDriver downstream;
 
-		public InitialDriver(BoskDriver downstream) {
+		public IngressDriver(BoskDriver downstream) {
 			this.downstream = downstream;
 		}
 
 		@Override
 		public <T> void submitReplacement(Reference<T> target, T newValue) {
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			downstream.submitReplacement(target, newValue);
+			try (var _ = setupMDC(name(), instanceID())) {
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				downstream.submitReplacement(target, newValue);
+			}
 		}
 
 		@Override
 		public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			assertCorrectBosk(precondition);
-			downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
+			try (var _ = setupMDC(name(), instanceID())) {
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				assertCorrectBosk(precondition);
+				downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
+			}
 		}
 
 		@Override
 		public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			downstream.submitConditionalCreation(target, newValue);
+			try (var _ = setupMDC(name(), instanceID())) {
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				downstream.submitConditionalCreation(target, newValue);
+			}
 		}
 
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
-			if (target.path().isEmpty()) {
-				// TODO: Augment dereferencer so it can tell us this for all references, not just the root
-				throw new IllegalArgumentException("Cannot delete root object");
+			try (var _ = setupMDC(name(), instanceID())) {
+				if (target.path().isEmpty()) {
+					// TODO: Augment dereferencer so it can tell us this for all references, not just the root
+					throw new IllegalArgumentException("Cannot delete root object");
+				}
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				downstream.submitDeletion(target);
 			}
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			downstream.submitDeletion(target);
 		}
 
 		@Override
 		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-			assertTenantEstablished();
-			assertCorrectBosk(target);
-			assertCorrectBosk(precondition);
-			downstream.submitConditionalDeletion(target, precondition, requiredValue);
+			try (var _ = setupMDC(name(), instanceID())) {
+				assertTenantEstablished();
+				assertCorrectBosk(target);
+				assertCorrectBosk(precondition);
+				downstream.submitConditionalDeletion(target, precondition, requiredValue);
+			}
 		}
 
 		@Override
 		public <RR extends StateTreeNode> InitialState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
-			return downstream.initialState(rootType)
-				.cast(rootRef.targetClass())
-				.cast(rootType);
+			try (var _ = setupMDC(name(), instanceID())) {
+				return downstream.initialState(rootType)
+					.cast(rootRef.targetClass())
+					.cast(rootType);
+			}
 		}
 
 		@Override
 		public void flush() throws IOException, InterruptedException {
 			// Flushes can lead to downstream updates against any number of different tenants.
 			// We must clear the tenant context because other drivers have no way to do so.
-			try (var _ = context.withTenantTemporarilyIgnored()) {
+			try (
+				var _ = setupMDC(name(), instanceID());
+				var _ = context.withTenantTemporarilyIgnored()
+			) {
 				downstream.flush();
 			}
 		}
