@@ -123,6 +123,20 @@ class RecordingTurboFilterTest {
 		assertEquals(expected, actual);
 	}
 
+	@Test
+	void capacityZero_retainsNoEvents() {
+		filter.setEnabled(true);
+		filter.setCapacity(0);
+
+		MDC.put(TEST_ID_KEY, TEST);
+		testLogger.debug("event 1");
+		testLogger.debug("event 2");
+
+		var actual = filter.queueContents(TEST).events().size();
+
+		assertEquals(0, actual);
+	}
+
 	@InjectedTest
 	void logLevel_filtering(@FilterLevel Level filterLevel, @LogLevel Level logLevel) {
 		filter.setEnabled(true);

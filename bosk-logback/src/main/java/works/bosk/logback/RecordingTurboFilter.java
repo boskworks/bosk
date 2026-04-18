@@ -158,7 +158,12 @@ public class RecordingTurboFilter extends TurboFilter {
 	 */
 	public void setRoutingKey(String routingKey) { this.routingKey = routingKey; }
 
-	public void setCapacity(int capacity) { this.capacity = capacity; }
+	public void setCapacity(int capacity) {
+		if (capacity < 0) {
+			throw new IllegalArgumentException("capacity must be non-negative");
+		}
+		this.capacity = capacity;
+	}
 
 	public void setLevel(Level level) { this.level = level; }
 
@@ -226,6 +231,11 @@ public class RecordingTurboFilter extends TurboFilter {
 		int effectiveCapacity = (overrides != null && overrides.capacity() != null)
 			? overrides.capacity()
 			: this.capacity;
+
+		if (effectiveCapacity <= 0) {
+			// Bail out before bothering to instantiate the event object
+			return NEUTRAL;
+		}
 
 		// Capture event for potential replay on failure
 		LoggingEvent event = new LoggingEvent(
