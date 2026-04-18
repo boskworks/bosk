@@ -16,6 +16,7 @@ import works.bosk.logback.ReplayLogsOnFailureExtension.Overrides;
 import works.bosk.logback.ReplayLogsOnFailureExtension.QueueContents;
 
 import static ch.qos.logback.core.spi.FilterReply.NEUTRAL;
+import static java.util.Objects.requireNonNull;
 
 /**
  * Records log events that would otherwise be suppressed so they can be replayed on test failure.
@@ -250,7 +251,8 @@ public class RecordingTurboFilter extends TurboFilter {
 		event.addMarker(marker);
 
 		// We need to capture the current MDC. Can't wait until replay.
-		event.setMDCPropertyMap(MDC.getCopyOfContextMap()); // ew, this is O(n)
+		event.setMDCPropertyMap(requireNonNull(MDC.getCopyOfContextMap(), // ew, this is O(n)
+			"MDC can't be absent here!"));
 
 		LogEventBuffer buffer = buffersByTestId
 			.computeIfAbsent(testIdValue, _ -> new LogEventBuffer(effectiveCapacity));
