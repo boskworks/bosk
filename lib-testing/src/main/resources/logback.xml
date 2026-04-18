@@ -1,9 +1,6 @@
 <configuration>
 	<turboFilter class="works.bosk.logback.BoskLogFilter"/>
 	<turboFilter class="works.bosk.logback.RecordingTurboFilter">
-		<!-- To enable globally, rather than per-test -->
-<!--		<enabled>true</enabled>-->
-		<capacity>10</capacity>
 		<routingKey>bosk.instanceID</routingKey>
 	</turboFilter>
 	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
