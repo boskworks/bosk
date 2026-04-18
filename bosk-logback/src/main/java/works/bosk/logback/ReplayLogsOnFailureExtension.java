@@ -3,9 +3,7 @@ package works.bosk.logback;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.PatternLayout;
 import ch.qos.logback.classic.encoder.PatternLayoutEncoder;
-import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.OutputStreamAppender;
-import java.util.Collection;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
@@ -15,6 +13,8 @@ import org.slf4j.MDC;
 
 import static org.junit.platform.commons.support.AnnotationSupport.findAnnotation;
 import static org.slf4j.Logger.ROOT_LOGGER_NAME;
+import static works.bosk.logback.RecordingTurboFilter.Overrides;
+import static works.bosk.logback.RecordingTurboFilter.QueueContents;
 import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
 
 /**
@@ -40,16 +40,6 @@ import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
 public class ReplayLogsOnFailureExtension implements BeforeEachCallback, AfterEachCallback {
 
 	static final int UNSPECIFIED_CAPACITY = -1;
-
-	/**
-	 * Per-test config overrides.
-	 * <p>
-	 * Null values mean "nothing is overridden" - the filter will use its global defaults.
-	 */
-	record Overrides(
-		@Nullable Boolean enabled,
-		@Nullable Integer capacity
-	) {}
 
 	@Override
 	public void beforeEach(ExtensionContext context) {
@@ -115,10 +105,8 @@ public class ReplayLogsOnFailureExtension implements BeforeEachCallback, AfterEa
 		return null;
 	}
 
-	record QueueContents(Collection<ILoggingEvent> events, long dropped) {}
-
 	private void replay(QueueContents queueContents) {
-		if (queueContents.events.isEmpty()) {
+		if (queueContents.events().isEmpty()) {
 			// This happens in two cases:
 			// - The test emitted no logs
 			// - Replay is disabled for this test

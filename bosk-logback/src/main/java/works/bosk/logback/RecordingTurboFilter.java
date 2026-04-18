@@ -6,14 +6,14 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import ch.qos.logback.classic.turbo.TurboFilter;
 import ch.qos.logback.core.spi.FilterReply;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
 import org.slf4j.Marker;
-import works.bosk.logback.ReplayLogsOnFailureExtension.Overrides;
-import works.bosk.logback.ReplayLogsOnFailureExtension.QueueContents;
 
 import static ch.qos.logback.core.spi.FilterReply.NEUTRAL;
 import static java.util.Objects.requireNonNull;
@@ -291,5 +291,9 @@ public class RecordingTurboFilter extends TurboFilter {
 			queue.offer(event);
 		}
 	}
+
+	record Overrides(@Nullable Boolean enabled, @Nullable Integer capacity) {}
+
+	record QueueContents(Collection<ILoggingEvent> events, long dropped) {}
 
 }

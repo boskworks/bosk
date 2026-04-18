@@ -21,7 +21,6 @@ import org.slf4j.MarkerFactory;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
 import works.bosk.junit.Injector;
-import works.bosk.logback.ReplayLogsOnFailureExtension.Overrides;
 
 import static ch.qos.logback.classic.Level.DEBUG;
 import static ch.qos.logback.classic.Level.INFO;
@@ -29,6 +28,7 @@ import static ch.qos.logback.classic.Level.TRACE;
 import static java.lang.annotation.ElementType.PARAMETER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.slf4j.Logger.ROOT_LOGGER_NAME;
+import static works.bosk.logback.RecordingTurboFilter.Overrides;
 import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
 import static works.bosk.logback.RecordingTurboFilter.removeOverrides;
 
