@@ -283,6 +283,7 @@ public class RecordingTurboFilter extends TurboFilter {
 		}
 
 		void offer(ILoggingEvent event) {
+			assert capacity >= 1: "If capacity is not at least 1, you shouldn't have created the event object";
 			if (this.count.incrementAndGet() > capacity) {
 				// Once we're past capacity, remove the oldest event each time to make room for the new one.
 				queue.poll();
