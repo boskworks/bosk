@@ -278,10 +278,9 @@ public class RecordingTurboFilter extends TurboFilter {
 		}
 
 		void offer(ILoggingEvent event) {
-			long count = this.count.incrementAndGet();
-			if (count > capacity) {
+			if (this.count.incrementAndGet() > capacity) {
+				// Once we're past capacity, remove the oldest event each time to make room for the new one.
 				queue.poll();
-			} else {
 			}
 			queue.offer(event);
 		}

@@ -2,8 +2,8 @@
 dependencies {
 	api project(":bosk-core")
 	implementation libs.logback.classic
-	implementation platform(libs.junit.bom)
-	implementation libs.junit.api
+	compileOnly platform(libs.junit.bom)
+	compileOnly libs.junit.api
 	testImplementation libs.junit.params
 	testImplementation project(":bosk-junit")
 }

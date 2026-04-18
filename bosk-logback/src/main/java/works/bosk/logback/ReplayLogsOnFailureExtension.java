@@ -37,9 +37,8 @@ import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
  * @see RecordingTurboFilter
  * @see works.bosk.logback
  */
-	public class ReplayLogsOnFailureExtension implements BeforeEachCallback, AfterEachCallback {
+public class ReplayLogsOnFailureExtension implements BeforeEachCallback, AfterEachCallback {
 
-	static final String UNSPECIFIED_MDC_KEY = "";
 	static final int UNSPECIFIED_CAPACITY = -1;
 
 	/**
