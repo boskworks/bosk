@@ -10,11 +10,14 @@ import java.lang.annotation.Target;
 import java.lang.reflect.AnnotatedElement;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
 import works.bosk.junit.Injector;
@@ -159,6 +162,15 @@ class RecordingTurboFilterTest {
 
 		MDC.put(TEST_ID_KEY, TEST_B);
 		testLogger.debug("event for TestB");
+
+		var testAEvents = EventSnapshot.from(filter.queueContents(TEST_A).events());
+		var testBEvents = EventSnapshot.from(filter.queueContents(TEST_B).events());
+		assertEquals(List.of(
+			new EventSnapshot(DEBUG, "event for TestA", LOGGER_NAME, null)
+		), testAEvents);
+		assertEquals(List.of(
+			new EventSnapshot(DEBUG, "event for TestB", LOGGER_NAME, null)
+		), testBEvents);
 	}
 
 	@Test
@@ -255,6 +267,39 @@ class RecordingTurboFilterTest {
 		testLogger.debug("should not be buffered");
 
 		assertEquals(List.of(), EventSnapshot.from(filter.queueContents(TEST).events()));
+	}
+
+	@Test
+	void recordedEvent_containsMdcAndMarker() {
+		MDC.put(TEST_ID_KEY, TEST);
+		MDC.put("bosk.name", "test-instance-123");
+		MDC.put("customKey", "customValue");
+
+		testLogger.debug("test message");
+
+		var events = filter.queueContents(TEST).events();
+		assertEquals(1, events.size());
+
+		var event = (ch.qos.logback.classic.spi.LoggingEvent) events.iterator().next();
+		assertEquals(Map.of(
+			"bosk.junit.testId", TEST,
+			"bosk.name", "test-instance-123",
+			"customKey", "customValue"
+		), event.getMDCPropertyMap());
+	}
+
+	@Test
+	void recordedEvent_capturesMarker() {
+		MDC.put(TEST_ID_KEY, TEST);
+		Marker marker = MarkerFactory.getMarker("TEST_MARKER");
+
+		testLogger.debug(marker, "test message with marker");
+
+		var events = filter.queueContents(TEST).events();
+		assertEquals(1, events.size());
+
+		var event = (ch.qos.logback.classic.spi.LoggingEvent) events.iterator().next();
+		assertEquals(marker, event.getMarker());
 	}
 
 	/**

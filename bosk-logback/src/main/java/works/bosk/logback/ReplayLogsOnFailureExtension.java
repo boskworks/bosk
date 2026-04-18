@@ -116,7 +116,7 @@ import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
 		return null;
 	}
 
-	record QueueContents(Collection<ILoggingEvent> events, int dropped) {}
+	record QueueContents(Collection<ILoggingEvent> events, long dropped) {}
 
 	private void replay(QueueContents queueContents) {
 		if (queueContents.events.isEmpty()) {

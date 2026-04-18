@@ -11,10 +11,13 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static works.bosk.logback.ReplayLogsOnFailureExtension.UNSPECIFIED_CAPACITY;
 
 /**
- * Configures log replay on failure for a test class.
+ * Configures log replay on failure for a test.
  * <p>
  * When a test fails, any log events at or above the configured level are captured
  * and printed to the console, helping diagnose test failures.
+ * <p>
+ * Can be applied at the class or method level.
+ * Method-level annotations override class-level settings in their entirety.
  * <p>
  * <em>For a complete how-to guide, see the package documentation for {@link works.bosk.logback}.</em>
  *

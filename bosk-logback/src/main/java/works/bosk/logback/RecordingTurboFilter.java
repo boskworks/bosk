@@ -9,7 +9,7 @@ import ch.qos.logback.core.spi.FilterReply;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.MDC;
 import org.slf4j.Marker;
 import works.bosk.logback.ReplayLogsOnFailureExtension.Overrides;
@@ -52,6 +52,12 @@ import static ch.qos.logback.core.spi.FilterReply.NEUTRAL;
  *       The filter only captures events that reach it in the filter chain.
  *       If you have some other filter that drops events before they reach this one,
  *       those events won't be captured and thus won't be replayed on failure.
+ *   </li>
+ *   <li>
+ *       The filter captures the MDC at the time of logging,
+ *       which is necessary to avoid getting the wrong values at replay time,
+ *       but it adds overhead even for events that are ultimately discarded.
+ *       This overhead is O(n) in the number of MDC entries.
  *   </li>
  * </ul>
  * <h2>Configuration properties:</h2>
@@ -231,6 +237,10 @@ public class RecordingTurboFilter extends TurboFilter {
 			params
 		);
 		event.setLoggerContext(logger.getLoggerContext());
+		event.addMarker(marker);
+
+		// We need to capture the current MDC. Can't wait until replay.
+		event.setMDCPropertyMap(MDC.getCopyOfContextMap()); // ew, this is O(n)
 
 		LogEventBuffer buffer = buffersByTestId
 			.computeIfAbsent(testIdValue, _ -> new LogEventBuffer(effectiveCapacity));
@@ -246,7 +256,7 @@ public class RecordingTurboFilter extends TurboFilter {
 			return new QueueContents(List.of(), 0);
 		}
 		// This isn't atomic, but the dropped count isn't really important enough to worry
-		return new QueueContents(buffer.queue, buffer.dropped.get());
+		return new QueueContents(buffer.queue, buffer.count.get() - buffer.queue.size());
 	}
 
 	static void cleanupForTest(String testId) {
@@ -260,17 +270,18 @@ public class RecordingTurboFilter extends TurboFilter {
 
 	static class LogEventBuffer {
 		private final ConcurrentLinkedQueue<ILoggingEvent> queue = new ConcurrentLinkedQueue<>();
-		private final AtomicInteger dropped = new AtomicInteger(0);
 		private final int capacity;
+		private final AtomicLong count = new AtomicLong(0);
 
 		LogEventBuffer(int capacity) {
 			this.capacity = capacity;
 		}
 
 		void offer(ILoggingEvent event) {
-			if (queue.size() >= capacity) {
+			long count = this.count.incrementAndGet();
+			if (count > capacity) {
 				queue.poll();
-				dropped.incrementAndGet();
+			} else {
 			}
 			queue.offer(event);
 		}
