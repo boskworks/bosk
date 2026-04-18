@@ -30,6 +30,8 @@ public record PandoFormat(
 	// TODO: Since this is used for updates and not reads, it should probably be called prunePoints or something
 	ListValue<String> graftPoints
 ) implements StateTreeNode, MongoDriverSettings.DatabaseFormat {
+	@Override public String name() { return "Pando"; }
+
 	/**
 	 * Differs from Sequoia in that (1) the root document has a different ID, rendering the formats incompatible;
 	 * and (2) Sequoia is designed not to need multi-document transactions.

@@ -90,6 +90,8 @@ public class MongoDriverSettings {
 	public sealed interface DatabaseFormat
 		permits SequoiaFormat, PandoFormat
 	{
+		public String name();
+
 		/**
 		 * Simple format that stores the entire bosk state in a single document,
 		 * and (except for {@link MongoDriver#refurbish() refirbish})
@@ -103,6 +105,7 @@ public class MongoDriverSettings {
 
 	public static final class SequoiaFormat implements DatabaseFormat {
 		SequoiaFormat() { }
+		@Override public String name() { return "Sequoia"; }
 		@Override public String toString() { return "SequoiaFormat"; }
 	}
 
