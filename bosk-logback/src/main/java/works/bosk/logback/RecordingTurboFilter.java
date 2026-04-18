@@ -17,6 +17,7 @@ import org.slf4j.Marker;
 
 import static ch.qos.logback.core.spi.FilterReply.NEUTRAL;
 import static java.util.Objects.requireNonNull;
+import static works.bosk.logback.RecordingTurboFilter.Overrides.NONE;
 
 /**
  * Records log events that would otherwise be suppressed so they can be replayed on test failure.
@@ -162,7 +163,12 @@ public class RecordingTurboFilter extends TurboFilter {
 	public void setLevel(Level level) { this.level = level; }
 
 	static void putOverrides(String testId, Overrides overrides) {
-		overridesByTestId.put(testId, overrides);
+		if (overrides == null || NONE.equals(overrides)) {
+			// We want to keep this map tidy so we can tell when it's empty
+			overridesByTestId.remove(testId);
+		} else {
+			overridesByTestId.put(testId, overrides);
+		}
 	}
 
 	static void removeOverrides(String testId) {
@@ -184,6 +190,10 @@ public class RecordingTurboFilter extends TurboFilter {
 			// We don't modify their behaviour.
 			return NEUTRAL;
 		}
+
+		// We could exit early here if !enabled and there are no overrides.
+		// But I think it's best if adding an override to one test doesn't alter
+		// the behaviour of other tests in any way.
 
 		String testIdValue = MDC.get(TEST_ID_KEY);
 		String routingKeyValue = MDC.get(this.routingKey);
@@ -292,7 +302,9 @@ public class RecordingTurboFilter extends TurboFilter {
 		}
 	}
 
-	record Overrides(@Nullable Boolean enabled, @Nullable Integer capacity) {}
+	record Overrides(@Nullable Boolean enabled, @Nullable Integer capacity) {
+		static final Overrides NONE = new Overrides(null, null);
+	}
 
 	record QueueContents(Collection<ILoggingEvent> events, long dropped) {}
 

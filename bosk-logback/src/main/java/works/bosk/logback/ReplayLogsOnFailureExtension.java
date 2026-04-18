@@ -70,7 +70,7 @@ public class ReplayLogsOnFailureExtension implements BeforeEachCallback, AfterEa
 		var element = context.getElement().orElse(null);
 		if (element == null) {
 			// No annotated element, no overrides
-			return new Overrides(null, null);
+			return Overrides.NONE;
 		}
 
 		var annotation = findAnnotation(element, ReplayLogsOnFailure.class).orElse(null);
@@ -80,7 +80,7 @@ public class ReplayLogsOnFailureExtension implements BeforeEachCallback, AfterEa
 		}
 		if (annotation == null) {
 			// No annotation, no overrides
-			return new Overrides(null, null);
+			return Overrides.NONE;
 		}
 
 		// For the enabled flag, the annotation always overrides the global default.
