@@ -322,7 +322,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2);
 			}
-		} catch (RuntimeException | UnrecognizedFormatException | IOException | FailedMongoClientSessionException e) {
+		} catch (RuntimeException | UnrecognizedFormatException | InvalidCollectionContentsException | IOException | FailedMongoClientSessionException e) {
 			switch (driverSettings.initialDatabaseUnavailableMode()) {
 				case FAIL_FAST:
 					LOGGER.debug("Unable to load initial state from database; aborting initialization", e);
@@ -497,7 +497,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			InterruptedException,
 			IOException,
 			InitialStateActionException,
-			TimeoutException
+			TimeoutException,
+			InvalidCollectionContentsException
 		{
 			LOGGER.debug("onConnectionSucceeded");
 			FutureTask<InitialState<R>> initialStateAction = this.taskRef.get();
@@ -615,7 +616,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		throw new AssertionError("Unknown database format setting: " + preferred);
 	}
 
-	private FormatDriver<R> detectFormat() throws UninitializedCollectionException, UnrecognizedFormatException {
+	private FormatDriver<R> detectFormat() throws UninitializedCollectionException, UnrecognizedFormatException, InvalidCollectionContentsException {
 		LOGGER.debug("Detecting format");
 		Manifest manifest = loadManifest();
 		DatabaseFormat format = manifest.pando().isPresent()? manifest.pando().get() : SEQUOIA;
@@ -640,12 +641,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 				return newFormatDriver(revisionAlreadySeen, format);
 			} else {
-				// Note that this message is confusing if the user specified
-				// a preference for Pando but no manifest file exists, because
-				// the message will say it couldn't find the Sequoia document.
-				// One day when we drop support for collections with no
-				// manifest, we can eliminate this confusion.
-				throw new UninitializedCollectionException("Document doesn't exist: "
+				throw new InvalidCollectionContentsException(format, "Document doesn't exist: "
 					+ "collection=" + driverSettings.database()
 					+ "." + COLLECTION_NAME
 					+ " id=" + documentId.getValue());
@@ -653,15 +649,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 	}
 
-	private Manifest loadManifest() throws UnrecognizedFormatException {
+	private Manifest loadManifest() throws UnrecognizedFormatException, UninitializedCollectionException {
 		try (MongoCursor<BsonDocument> cursor = queryCollection.find(new BsonDocument("_id", MANIFEST_ID)).cursor()) {
 			if (cursor.hasNext()) {
 				LOGGER.debug("Found manifest");
 				return formatter.decodeManifest(cursor.next());
 			} else {
-				// For legacy databases with no manifest
-				LOGGER.debug("Manifest is missing; checking for Sequoia format in {}", driverSettings.database());
-				return Manifest.forSequoia();
+				throw new UninitializedCollectionException("No manifest document: "
+					+ "collection=" + driverSettings.database()
+					+ "." + COLLECTION_NAME
+					+ " id=" + MANIFEST_ID);
 			}
 		}
 	}
