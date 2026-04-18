@@ -66,7 +66,8 @@ import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
 		String testId = context.getUniqueId();
 
 		if (context.getExecutionException().isPresent()) {
-			if (findFilter(loggerContext) instanceof RecordingTurboFilter filter) {
+			RecordingTurboFilter filter = findFilter(loggerContext);
+			if (filter != null) {
 				// This is what it's all about
 				replay(filter.queueContents(testId));
 			}
@@ -139,7 +140,7 @@ import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
 		System.out.println(header);
 
 		var loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
-		var rootLogger = loggerContext.getLogger(ROOT_LOGGER_NAME);
+//		var rootLogger = loggerContext.getLogger(ROOT_LOGGER_NAME);
 		var patternLayout = findPatternLayout(loggerContext);
 
 		// I tried sending the events to the proper appenders, and that works when a single test
@@ -150,17 +151,17 @@ import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
 
 		for (var event : queueContents.events()) {
 			if (false) {
-				var eventLogger = loggerContext.getLogger(event.getLoggerName());
-				var appenderMap = eventLogger.iteratorForAppenders();
-
-				if (!appenderMap.hasNext()) {
-					appenderMap = rootLogger.iteratorForAppenders();
-				}
-
-				while (appenderMap.hasNext()) {
-					var appender = appenderMap.next();
-					appender.doAppend(event);
-				}
+//				var eventLogger = loggerContext.getLogger(event.getLoggerName());
+//				var appenderMap = eventLogger.iteratorForAppenders();
+//
+//				if (!appenderMap.hasNext()) {
+//					appenderMap = rootLogger.iteratorForAppenders();
+//				}
+//
+//				while (appenderMap.hasNext()) {
+//					var appender = appenderMap.next();
+//					appender.doAppend(event);
+//				}
 			} else {
 				System.out.print(patternLayout.doLayout(event));
 			}
