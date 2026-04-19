@@ -121,7 +121,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		Function<MongoClientSettings, MongoClient> function,
 		boolean shouldClose
 	) {
-		static MongoClientFactory ALWAYS_CREATE = new MongoClientFactory(MongoClients::create, true);
+		private static final MongoClientFactory ALWAYS_CREATE = new MongoClientFactory(MongoClients::create, true);
 	}
 
 	public MainDriver(

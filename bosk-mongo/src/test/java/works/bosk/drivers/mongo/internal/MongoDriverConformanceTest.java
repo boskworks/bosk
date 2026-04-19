@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +65,11 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 		MainDriver.MONGO_CLIENT_FACTORY.remove();
 		errorRecorder.assertAllClear("after test");
 		MainDriver.LISTENER_FACTORY.remove();
+	}
+
+	@AfterAll
+	static void closeClients() {
+		SHARED_CLIENTS.values().forEach(MongoClient::close);
 	}
 
 	static List<ParameterSet> parameterSets() {
