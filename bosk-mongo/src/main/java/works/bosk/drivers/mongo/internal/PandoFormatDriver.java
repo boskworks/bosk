@@ -78,9 +78,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		MongoDriverSettings driverSettings,
 		PandoFormat format, BsonSerializer bsonSerializer,
 		FlushLock flushLock,
+		BsonString manifestId,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock);
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock, manifestId);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
 		this.format = format;
@@ -200,7 +201,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 		assert event.getDocumentKey() != null;
 		BsonValue bsonDocumentID = event.getDocumentKey().get("_id");
-		if (MainDriver.MANIFEST_ID.equals(bsonDocumentID)) {
+		if (isManifestID(bsonDocumentID)) {
 			onManifestEvent(event);
 			return;
 		}

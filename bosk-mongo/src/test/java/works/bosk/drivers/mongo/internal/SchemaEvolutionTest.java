@@ -2,10 +2,13 @@ package works.bosk.drivers.mongo.internal;
 
 import ch.qos.logback.classic.Level;
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.bson.BsonInt32;
+import org.bson.BsonString;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +36,11 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Slow
 @InjectFields
-@InjectFrom({SchemaEvolutionTest.FromConfigInjector.class, SchemaEvolutionTest.ToConfigInjector.class})
+@InjectFrom({
+	SchemaEvolutionTest.FromConfigInjector.class,
+	SchemaEvolutionTest.ToConfigInjector.class,
+	SchemaEvolutionTest.ManifestScenarioInjector.class
+})
 public class SchemaEvolutionTest {
 
 	@Injected
@@ -43,6 +50,27 @@ public class SchemaEvolutionTest {
 	@Injected
 	@To
 	Configuration toConfig;
+
+	@Injected ManifestScenario manifestScenario;
+
+	enum ManifestScenario {
+		LEGACY(1, "manifest"),
+		NEW(2, "!manifest");
+
+		final BsonInt32 manifestVersion;
+		final BsonString documentId;
+
+		ManifestScenario(int manifestVersion, String documentId) {
+			this.manifestVersion = new BsonInt32(manifestVersion);
+			this.documentId = new BsonString(documentId);
+		}
+
+		public void fixupManifestIfNecessary(Helper fromHelper) {
+			if (this == LEGACY) {
+				fromHelper.changeManifestToLegacyFormat();
+			}
+		}
+	}
 
 	private Helper fromHelper;
 	private Helper toHelper;
@@ -84,6 +112,8 @@ public class SchemaEvolutionTest {
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
 		Refs fromRefs = fromBosk.buildReferences(Refs.class);
 
+		manifestScenario.fixupManifestIfNecessary(fromHelper);
+
 		// TODO: Make this test less lame
 		LOGGER.debug("Set distinctive string");
 		fromBosk.driver().submitReplacement(fromRefs.string(), "Distinctive String");
@@ -101,6 +131,16 @@ public class SchemaEvolutionTest {
 		LOGGER.debug("Refurbish");
 		MongoDriver driver = toBosk.getDriver(MongoDriver.class);
 		driver.refurbish();
+
+
+		LOGGER.debug("Verify that the manifest prescribes the preferred format");
+		try (var _ = toBosk.readSession()) {
+			var status = driver.readStatus();
+			assertEquals(
+				Manifest.forFormat(toConfig.preferredFormat),
+				status.manifest().actual()
+			);
+		}
 
 		LOGGER.debug("Perform fromBosk read");
 		try (var _ = fromBosk.readSession()) {
@@ -121,6 +161,8 @@ public class SchemaEvolutionTest {
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
 		Refs fromRefs = fromBosk.buildReferences(Refs.class);
 
+		manifestScenario.fixupManifestIfNecessary(fromHelper);
+
 		LOGGER.debug("Create toBosk [{}]", toHelper.name);
 		Bosk<TestEntity> toBosk = newBosk(toHelper);
 		Refs toRefs = toBosk.buildReferences(Refs.class);
@@ -130,6 +172,15 @@ public class SchemaEvolutionTest {
 		driver.refurbish();
 
 		flushIfLiveRefurbishIsNotSupported(fromBosk, fromHelper, toHelper);
+
+		LOGGER.debug("Verify that the manifest prescribes the preferred format");
+		try (var _ = toBosk.readSession()) {
+			var status = driver.readStatus();
+			assertEquals(
+				Manifest.forFormat(toConfig.preferredFormat),
+				status.manifest().actual()
+			);
+		}
 
 		LOGGER.debug("Set distinctive string using fromBosk ({})", fromBosk.name());
 		fromBosk.driver().submitReplacement(fromRefs.string(), "Distinctive String");
@@ -200,9 +251,9 @@ public class SchemaEvolutionTest {
 	}
 
 	static abstract class ConfigInjector implements Injector {
-		private final Class<? extends java.lang.annotation.Annotation> annotationType;
+		private final Class<? extends Annotation> annotationType;
 
-		ConfigInjector(Class<? extends java.lang.annotation.Annotation> annotationType) {
+		ConfigInjector(Class<? extends Annotation> annotationType) {
 			this.annotationType = annotationType;
 		}
 
@@ -235,6 +286,18 @@ public class SchemaEvolutionTest {
 		new Configuration(PandoFormat.oneBigDocument()),
 		new Configuration(PandoFormat.withGraftPoints("/catalog", "/sideTable"))
 	);
+
+	record ManifestScenarioInjector() implements Injector {
+		@Override
+		public boolean supports(AnnotatedElement element, Class<?> elementType) {
+			return elementType == SchemaEvolutionTest.ManifestScenario.class;
+		}
+
+		@Override
+		public List<ManifestScenario> values() {
+			return List.of(ManifestScenario.values());
+		}
+	}
 
 	static final class Helper extends AbstractMongoDriverTest {
 		final String name;

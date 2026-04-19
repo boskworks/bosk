@@ -82,7 +82,7 @@ final class Formatter extends BsonFormatter {
 	 */
 	static final BsonInt64 REVISION_ONE = new BsonInt64(1);
 
-	private final BsonInt32 SUPPORTED_MANIFEST_VERSION = new BsonInt32(1);
+	private static final Set<BsonInt32> SUPPORTED_MANIFEST_VERSIONS = Set.of(new BsonInt32(1));
 
 	//
 	// Helpers to translate Bosk <-> MongoDB
@@ -125,8 +125,8 @@ final class Formatter extends BsonFormatter {
 					throw new UnrecognizedFormatException("Unrecognized keys in manifest: " + keys);
 				}
 			}
-			if (!SUPPORTED_MANIFEST_VERSION.equals(manifest.getInt32("version"))) {
-				throw new UnrecognizedFormatException("Manifest version " + manifest.getInt32("version") + " not suppoted");
+			if (!SUPPORTED_MANIFEST_VERSIONS.contains(manifest.getInt32("version"))) {
+				throw new UnrecognizedFormatException("Manifest version " + manifest.getInt32("version") + " not supported");
 			}
 		} catch (ClassCastException e) {
 			throw new UnrecognizedFormatException("Manifest field has unexpected type", e);

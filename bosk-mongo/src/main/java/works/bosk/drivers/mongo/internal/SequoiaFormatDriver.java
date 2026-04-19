@@ -36,7 +36,6 @@ import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.referenceTo;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
-import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 
 /**
  * Implements the {@link MongoDriverSettings.DatabaseFormat#SEQUOIA Sequoia} format.
@@ -52,9 +51,10 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		MongoDriverSettings driverSettings,
 		BsonSerializer bsonSerializer,
 		FlushLock flushLock,
+		@Nullable BsonString manifestId,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock);
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock, manifestId);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 	}
 
@@ -142,7 +142,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 		assert event.getDocumentKey() != null;
-		if (MANIFEST_ID.equals(event.getDocumentKey().get("_id"))) {
+		if (isManifestID(event.getDocumentKey().get("_id"))) {
 			onManifestEvent(event);
 			return;
 		}
@@ -255,7 +255,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			}
 		} catch (NoSuchElementException e) {
 			LOGGER.debug("Document is missing", e);
-			throw new RevisionFieldDisruptedException(e);
+			throw new RevisionFieldDisruptedException("State document is missing", e);
 		} catch (RuntimeException e) {
 			LOGGER.debug("readRevisionNumber failed", e);
 			throw new FlushFailureException(e);
