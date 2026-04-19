@@ -836,7 +836,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	public static final String COLLECTION_NAME = "boskCollection";
-	public static final BsonString MANIFEST_ID = new BsonString("manifest");
+	public static final BsonString MANIFEST_ID = new BsonString("!manifest");
 	private static final Exception FAILURE_TO_COMPUTE_INITIAL_STATE = new InitialStateFailureException("Failure to compute initial state");
 	private static final Logger LOGGER = LoggerFactory.getLogger(MainDriver.class);
 	private static final Logger UNINITIALIZED_COLLECTION_LOGGER = LoggerFactory.getLogger(UNINITIALIZED_COLLECTION_LOGGER_NAME);
