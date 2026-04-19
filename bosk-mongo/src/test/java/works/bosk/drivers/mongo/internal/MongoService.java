@@ -4,6 +4,12 @@ import com.mongodb.MongoClientSettings;
 import com.mongodb.ServerAddress;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.event.ConnectionCheckOutFailedEvent;
+import com.mongodb.event.ConnectionCheckOutStartedEvent;
+import com.mongodb.event.ConnectionCheckedOutEvent;
+import com.mongodb.event.ConnectionClosedEvent;
+import com.mongodb.event.ConnectionCreatedEvent;
+import com.mongodb.event.ConnectionPoolListener;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import java.io.Closeable;
@@ -43,6 +49,35 @@ public class MongoService implements Closeable {
 	// We do logging in some static initializers, so this needs to be initialized first
 	private static final Logger LOGGER = LoggerFactory.getLogger(MongoService.class);
 	private final MongoClient mongoClient = MongoClients.create(normalClientSettings);
+
+	// We need this in static initializers too
+	private static final ConnectionPoolListener CONNECTION_POOL_LOGGER = new ConnectionPoolListener() {
+		@Override
+		public void connectionCheckOutStarted(ConnectionCheckOutStartedEvent event) {
+			LOGGER.debug("Pool checkout started: {}", event.getServerId());
+		}
+
+		@Override
+		public void connectionCheckedOut(ConnectionCheckedOutEvent event) {
+			LOGGER.debug("Pool checkout: {}", event.getConnectionId());
+		}
+
+		@Override
+		public void connectionCheckOutFailed(ConnectionCheckOutFailedEvent event) {
+			LOGGER.debug("Pool checkout FAILED: {} reason={}", event.getServerId(), event.getReason());
+		}
+
+		@Override
+		public void connectionCreated(ConnectionCreatedEvent event) {
+			LOGGER.debug("Connection created: {}", event.getConnectionId());
+		}
+
+		@Override
+		public void connectionClosed(ConnectionClosedEvent event) {
+			LOGGER.debug("Connection closed: {} reason={}", event.getConnectionId(), event.getReason());
+		}
+	};
+
 
 	// Expensive stuff shared among instances as much as possible, hence static
 	private static final Network NETWORK = Network.newNetwork();
@@ -161,6 +196,9 @@ public class MongoService implements Closeable {
 			.applyToClusterSettings(builder ->
 				builder.hosts(singletonList(serverAddress))
 			)
+			.applyToConnectionPoolSettings(builder ->
+				builder.addConnectionPoolListener(CONNECTION_POOL_LOGGER))
 			.build();
 	}
+
 }

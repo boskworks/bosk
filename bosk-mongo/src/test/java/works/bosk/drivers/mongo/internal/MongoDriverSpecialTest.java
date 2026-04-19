@@ -507,7 +507,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 	@Test
 	void updateNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, SequoiaFormatDriver.class, PandoFormatDriver.class, StateTreeSerializer.class);
+		setLogging(ERROR, AbstractFormatDriver.class, StateTreeSerializer.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("Newer"),

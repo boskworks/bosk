@@ -178,7 +178,7 @@ class ChangeReceiver implements Closeable {
 						} catch (InterruptedException e) {
 							disconnect("Interrupted while processing MongoDB change events", REMEDY_CONTINUE, e);
 							continue;
-						} catch (IOException | FailedSessionException e) {
+						} catch (IOException | FailedMongoClientSessionException e) {
 							disconnect("Unexpected exception while processing MongoDB change events", REMEDY_RETURN, e);
 							return;
 						} catch (UnrecognizedFormatException e) {

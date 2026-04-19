@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
@@ -108,6 +109,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 */
 	static final ThreadLocal<UnaryOperator<ChangeListener>> LISTENER_FACTORY = new ThreadLocal<>();
 
+	/**
+	 * Allows tests to control creation of {@link MongoClient}s.
+	 * Tests create clients at a furious rate and can overwhelm
+	 * the operating system's management of ephemeral ports.
+	 * This provides a way that they can use the same client across tests.
+	 */
+	static final ThreadLocal<MongoClientFactory> MONGO_CLIENT_FACTORY = ThreadLocal.withInitial(()-> MongoClientFactory.ALWAYS_CREATE);
+
+	record MongoClientFactory(
+		Function<MongoClientSettings, MongoClient> function,
+		boolean shouldClose
+	) {
+		private static final MongoClientFactory ALWAYS_CREATE = new MongoClientFactory(MongoClients::create, true);
+	}
+
 	public MainDriver(
 		BoskInfo<R> boskInfo,
 		MongoClientSettings clientSettings,
@@ -178,16 +194,22 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						.readTimeout(0, MILLISECONDS))
 				;
 
-			var changeStreamClient = MongoClients.create(changeStreamSettingsBuilder.build());
-			closeables.addFirst(changeStreamClient);
+			var clientFactory = MONGO_CLIENT_FACTORY.get();
+
+			var changeStreamClient = clientFactory.function.apply(changeStreamSettingsBuilder.build());
+			if (clientFactory.shouldClose) {
+				closeables.addFirst(changeStreamClient);
+			}
 
 			// Override timeouts to make them compatible with driverSettings.timescaleMS()
 			var querySettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build());
 			querySettingsBuilder
 				.timeout(flushTimeout, MILLISECONDS);
 
-			var queryClient = MongoClients.create(querySettingsBuilder.build());
-			closeables.addFirst(queryClient);
+			var queryClient = clientFactory.function.apply(querySettingsBuilder.build());
+			if (clientFactory.shouldClose) {
+				closeables.addFirst(queryClient);
+			}
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
@@ -296,11 +318,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// We can now publish the driver knowing that the transaction, if there is one, has committed
 				publishFormatDriver(preferredDriver);
 				preferredDriver.onRevisionToSkip(REVISION_ONE); // initialState handles REVISION_ONE; downstream only needs to know about changes after that
-			} catch (RuntimeException | FailedSessionException e2) {
+			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2);
 			}
-		} catch (RuntimeException | UnrecognizedFormatException | IOException | FailedSessionException e) {
+		} catch (RuntimeException | UnrecognizedFormatException | IOException | FailedMongoClientSessionException e) {
 			switch (driverSettings.initialDatabaseUnavailableMode()) {
 				case FAIL_FAST:
 					LOGGER.debug("Unable to load initial state from database; aborting initialization", e);
@@ -471,7 +493,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		public void onConnectionSucceeded() throws
 			UnrecognizedFormatException,
 			UninitializedCollectionException,
-			FailedSessionException,
+			FailedMongoClientSessionException,
 			InterruptedException,
 			IOException,
 			InitialStateActionException,
@@ -697,7 +719,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				try (var session = queryCollection.newSession()) {
 					operation.run();
 					session.commitTransactionIfAny();
-				} catch (FailedSessionException e) {
+				} catch (FailedMongoClientSessionException e) {
 					setDisconnectedDriver(e);
 					throw new DisconnectedException(e);
 				} catch (MongoException e) {

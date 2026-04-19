@@ -55,6 +55,11 @@ configure(subprojects.findAll {
 
 	tasks.withType(JavaCompile).configureEach {
 		options.encoding = 'UTF-8'
+
+		// Gradle is in control. We don't need javac meddling.
+		options.compilerArgs << '-implicit:none'
+
+		// Suppress some lint warnings
 		options.compilerArgs << '-Xlint'
 		options.compilerArgs << '-Xlint:-serial'     // Don't care about Java serialization
 		options.compilerArgs << '-Xlint:-try'        // Really annoying bogus "auto-closeable never used" warnings
