@@ -187,6 +187,9 @@ class ChangeReceiver implements Closeable {
 						} catch (UninitializedCollectionException e) {
 							disconnect("MongoDB collection is not initialized", REMEDY_RETURN, e);
 							return;
+						} catch (InvalidCollectionContentsException e) {
+							disconnect("MongoDB collection contents are invalid", REMEDY_RETURN, e);
+							return;
 						} catch (InitialStateActionException e) {
 							disconnect("Unable to initialize bosk state", REMEDY_RETURN, e);
 							return;
