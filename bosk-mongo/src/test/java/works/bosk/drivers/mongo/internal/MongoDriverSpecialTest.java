@@ -74,6 +74,13 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 @ParameterizedClass
 @MethodSource("parameterSets")
 class MongoDriverSpecialTest extends AbstractMongoDriverTest {
+	/**
+	 * We deliberately don't reference {@link MainDriver#MANIFEST_ID} here
+	 * because if we change the manifest ID then that's a breaking change,
+	 * and we want this test to fail.
+	 */
+	public static final String MANIFEST_ID = "manifest";
+
 	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
 
 	@BeforeEach
@@ -735,7 +742,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			.getDatabase(driverSettings.database())
 			.getCollection(MainDriver.COLLECTION_NAME);
 		collection.updateOne(
-			new BsonDocument("_id", new BsonString("manifest")),
+			new BsonDocument("_id", new BsonString(MANIFEST_ID)),
 			new BsonDocument("$inc", new BsonDocument("version", new BsonInt32(1)))
 		);
 		// Must also bump the revision number or else flush rightly does nothing
