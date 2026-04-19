@@ -28,6 +28,7 @@ import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.junit.Slow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Slow
@@ -83,6 +84,7 @@ public class SchemaEvolutionTest {
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
 		Refs fromRefs = fromBosk.buildReferences(Refs.class);
 
+		// TODO: Make this test less lame
 		LOGGER.debug("Set distinctive string");
 		fromBosk.driver().submitReplacement(fromRefs.string(), "Distinctive String");
 		fromBosk.driver().flush();
@@ -160,8 +162,8 @@ public class SchemaEvolutionTest {
 		Helper helperForUpdate,
 		Helper helperForRefurbish
 	) throws IOException, InterruptedException {
-		if (helperForUpdate.driverSettings.preferredDatabaseFormat() == MongoDriverSettings.DatabaseFormat.SEQUOIA
-			&& helperForRefurbish.driverSettings.preferredDatabaseFormat() != MongoDriverSettings.DatabaseFormat.SEQUOIA) {
+		if (SEQUOIA == helperForUpdate.driverSettings.preferredDatabaseFormat()
+			&& SEQUOIA != helperForRefurbish.driverSettings.preferredDatabaseFormat()) {
 			// When switching format classes, the old format's state documents
 			// disappear.
 			//
@@ -229,7 +231,7 @@ public class SchemaEvolutionTest {
 	}
 
 	private static final List<Configuration> CONFIGURATIONS = List.of(
-		new Configuration(MongoDriverSettings.DatabaseFormat.SEQUOIA),
+		new Configuration(SEQUOIA),
 		new Configuration(PandoFormat.oneBigDocument()),
 		new Configuration(PandoFormat.withGraftPoints("/catalog", "/sideTable"))
 	);
@@ -241,8 +243,7 @@ public class SchemaEvolutionTest {
 			super(MongoDriverSettings.builder()
 				.database(SchemaEvolutionTest.class.getSimpleName() + "_" + dbCounter)
 				.preferredDatabaseFormat(config.preferredFormat())
-				.experimental(MongoDriverSettings.Experimental.builder()
-					.build()));
+			);
 			this.name = config.preferredFormat().toString().toLowerCase(Locale.ROOT);
 		}
 
@@ -253,8 +254,7 @@ public class SchemaEvolutionTest {
 	}
 
 	public interface Refs {
-		@ReferencePath("/string")
-		Reference<String> string();
+		@ReferencePath("/string") Reference<String> string();
 	}
 
 	private static final AtomicInteger DB_COUNTER = new AtomicInteger(0);
