@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
@@ -108,6 +109,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 */
 	static final ThreadLocal<UnaryOperator<ChangeListener>> LISTENER_FACTORY = new ThreadLocal<>();
 
+	/**
+	 * Allows tests to control creation of {@link MongoClient}s.
+	 * Tests create clients at a furious rate and can overwhelm
+	 * the operating system's management of ephemeral ports.
+	 * This provides a way that they can use the same client across tests.
+	 */
+	static final ThreadLocal<MongoClientFactory> MONGO_CLIENT_FACTORY = ThreadLocal.withInitial(()-> MongoClientFactory.ALWAYS_CREATE);
+
+	record MongoClientFactory(
+		Function<MongoClientSettings, MongoClient> function,
+		boolean shouldClose
+	) {
+		static MongoClientFactory ALWAYS_CREATE = new MongoClientFactory(MongoClients::create, true);
+	}
+
 	public MainDriver(
 		BoskInfo<R> boskInfo,
 		MongoClientSettings clientSettings,
@@ -178,16 +194,22 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						.readTimeout(0, MILLISECONDS))
 				;
 
-			var changeStreamClient = MongoClients.create(changeStreamSettingsBuilder.build());
-			closeables.addFirst(changeStreamClient);
+			var clientFactory = MONGO_CLIENT_FACTORY.get();
+
+			var changeStreamClient = clientFactory.function.apply(changeStreamSettingsBuilder.build());
+			if (clientFactory.shouldClose) {
+				closeables.addFirst(changeStreamClient);
+			}
 
 			// Override timeouts to make them compatible with driverSettings.timescaleMS()
 			var querySettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build());
 			querySettingsBuilder
 				.timeout(flushTimeout, MILLISECONDS);
 
-			var queryClient = MongoClients.create(querySettingsBuilder.build());
-			closeables.addFirst(queryClient);
+			var queryClient = clientFactory.function.apply(querySettingsBuilder.build());
+			if (clientFactory.shouldClose) {
+				closeables.addFirst(queryClient);
+			}
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())

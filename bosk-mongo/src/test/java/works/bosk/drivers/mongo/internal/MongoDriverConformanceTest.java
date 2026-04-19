@@ -1,9 +1,13 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoClient;
 import java.lang.reflect.AnnotatedElement;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -18,6 +22,7 @@ import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
 import works.bosk.drivers.mongo.internal.MongoDriverConformanceTest.ParameterSetInjector;
 import works.bosk.drivers.mongo.internal.TestParameters.EventTiming;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
@@ -45,10 +50,18 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 	void setupErrorRecording() {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
 		MainDriver.LISTENER_FACTORY.set(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream));
+
+		// This guy uses a literal bazillion TCP ports if we don't share clients
+		var defaultFactory = MainDriver.MONGO_CLIENT_FACTORY.get();
+		MainDriver.MONGO_CLIENT_FACTORY.set(new MongoClientFactory(
+			settings -> SHARED_CLIENTS.computeIfAbsent(settings, defaultFactory.function()),
+			false
+		));
 	}
 
 	@AfterEach
 	void teardownErrorRecording() {
+		MainDriver.MONGO_CLIENT_FACTORY.remove();
 		errorRecorder.assertAllClear("after test");
 		MainDriver.LISTENER_FACTORY.remove();
 	}
@@ -113,6 +126,8 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 			return driver;
 		};
 	}
+
+	private static final Map<MongoClientSettings, MongoClient> SHARED_CLIENTS = new ConcurrentHashMap<>();
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(MongoDriverConformanceTest.class);
 }
