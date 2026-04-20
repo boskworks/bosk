@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +23,6 @@ import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.Injected;
-import works.bosk.junit.InjectedTest;
 import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.junit.Slow;
@@ -77,7 +77,7 @@ public class SchemaEvolutionTest {
 		toHelper  .runTearDown(testInfo);
 	}
 
-	@InjectedTest
+	@Test
 	void pairwise_readCompatible() throws Exception {
 		LOGGER.debug("Create fromBosk [{}]", fromHelper.name);
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
@@ -113,7 +113,7 @@ public class SchemaEvolutionTest {
 //		System.out.println("Status: " + ((MongoDriver<?>)toBosk.driver()).readStatus());
 	}
 
-	@InjectedTest
+	@Test
 	void pairwise_writeCompatible() throws Exception {
 		LOGGER.debug("Create fromBosk [{}]", fromHelper.name);
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
