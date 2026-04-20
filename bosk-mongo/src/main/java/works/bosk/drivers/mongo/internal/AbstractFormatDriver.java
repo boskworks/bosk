@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.util.Set;
@@ -26,7 +27,10 @@ import works.bosk.drivers.mongo.status.StateStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
+import static com.mongodb.client.model.changestream.OperationType.INSERT;
+import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.newSetFromMap;
+import static java.util.Objects.requireNonNull;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
 
@@ -143,6 +147,32 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		LOGGER.debug("+ onRevisionToSkip({})", revision.longValue());
 		revisionToSkip = revision;
 		flushLock.finishedRevision(revision);
+	}
+
+	/**
+	 * We're required to cope with anything we might ourselves do in {@link #initializeCollection},
+	 * but outside that, we want to be as strict as possible
+	 * so incompatible database changes don't go unnoticed.
+	 */
+	protected void validateManifestEvent(ChangeStreamDocument<BsonDocument> event, Manifest effectiveManifest) throws UnprocessableEventException {
+		LOGGER.debug("onManifestEvent({})", event.getOperationType().name());
+		if (event.getOperationType() == INSERT || event.getOperationType() == REPLACE) {
+			BsonDocument manifestDoc = requireNonNull(event.getFullDocument());
+			Manifest manifest;
+			try {
+				manifest = formatter.decodeManifest(manifestDoc);
+			} catch (UnrecognizedFormatException e) {
+				throw new UnprocessableEventException("Invalid manifest", e, event.getOperationType());
+			}
+			if (!manifest.equals(effectiveManifest)) {
+				throw new UnprocessableEventException("Manifest indicates format has changed", event.getOperationType());
+			}
+		} else {
+			// We always use INSERT/REPLACE to update the manifest;
+			// anything else is unexpected.
+			throw new UnprocessableEventException("Unexpected change to manifest document", event.getOperationType());
+		}
+		LOGGER.debug("Ignoring benign manifest change event");
 	}
 
 	protected abstract BsonInt64 readRevisionNumber() throws FlushFailureException;

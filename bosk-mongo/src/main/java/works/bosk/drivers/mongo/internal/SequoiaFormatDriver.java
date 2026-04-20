@@ -32,9 +32,6 @@ import works.bosk.exceptions.InvalidTypeException;
 import static com.mongodb.ReadConcern.LOCAL;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
-import static com.mongodb.client.model.changestream.OperationType.INSERT;
-import static com.mongodb.client.model.changestream.OperationType.REPLACE;
-import static java.util.Objects.requireNonNull;
 import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.referenceTo;
@@ -221,24 +218,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	 * so incompatible database changes don't go unnoticed.
 	 */
 	private void onManifestEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
-		LOGGER.debug("onManifestEvent({})", event.getOperationType().name());
-		if (event.getOperationType() == INSERT || event.getOperationType() == REPLACE) {
-			BsonDocument manifest = requireNonNull(event.getFullDocument());
-			manifest.remove("_id");
-			try {
-				formatter.validateManifest(manifest);
-			} catch (UnrecognizedFormatException e) {
-				throw new UnprocessableEventException("Invalid manifest", e, event.getOperationType());
-			}
-			if (!new BsonDocument().equals(manifest.get("sequoia"))) {
-				throw new UnprocessableEventException("Unexpected value in manifest \"sequoia\" field: " + manifest.get("sequoia"), event.getOperationType());
-			}
-		} else {
-			// SequoiaFormatDriver always uses INSERT/REPLACE to update the manifest;
-			// anything else is unexpected.
-			throw new UnprocessableEventException("Unexpected change to manifest document", event.getOperationType());
-		}
-		LOGGER.debug("Ignoring benign manifest change event");
+		validateManifestEvent(event, Manifest.forSequoia());
 	}
 
 	//

@@ -50,10 +50,8 @@ import static com.mongodb.ReadConcern.LOCAL;
 import static com.mongodb.client.model.Filters.regex;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
-import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.singletonList;
 import static java.util.Comparator.comparing;
-import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static org.bson.BsonBoolean.TRUE;
@@ -396,30 +394,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
-	/**
-	 * We're required to cope with anything we might ourselves do in {@link #initializeCollection},
-	 * but outside that, we want to be as strict as possible
-	 * so incompatible database changes don't go unnoticed.
-	 */
 	private void onManifestEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
-		LOGGER.debug("onManifestEvent({})", event.getOperationType().name());
-		if (event.getOperationType() == INSERT || event.getOperationType() == REPLACE) {
-			BsonDocument manifestDoc = requireNonNull(event.getFullDocument());
-			Manifest manifest;
-			try {
-				manifest = formatter.decodeManifest(manifestDoc);
-			} catch (UnrecognizedFormatException e) {
-				throw new UnprocessableEventException("Invalid manifest", e, event.getOperationType());
-			}
-			if (!manifest.equals(Manifest.forPando(format))) {
-				throw new UnprocessableEventException("Manifest indicates format has changed", event.getOperationType());
-			}
-		} else {
-			// PandoFormatDriver always uses INSERT/REPLACE to update the manifest;
-			// anything else is unexpected.
-			throw new UnprocessableEventException("Unexpected change to manifest document", event.getOperationType());
-		}
-		LOGGER.debug("Ignoring benign manifest change event");
+		validateManifestEvent(event, Manifest.forPando(format));
 	}
 
 	private static boolean updateEventHasField(ChangeStreamDocument<BsonDocument> event, DocumentFields field) {
