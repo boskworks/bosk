@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoClientSettings;
+import com.mongodb.MongoClientSettings.Builder;
 import com.mongodb.MongoException;
 import com.mongodb.ReadConcern;
 import com.mongodb.WriteConcern;
@@ -35,6 +36,7 @@ import org.bson.BsonValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskDriver;
+import works.bosk.BoskDriver.InitialState.SingleTree;
 import works.bosk.BoskInfo;
 import works.bosk.Identifier;
 import works.bosk.Reference;
@@ -160,7 +162,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					+ driverSettings.timescaleMS() // Extra buffer
 			;
 
-			MongoClientSettings.Builder commonSettingsBuilder = MongoClientSettings
+			Builder commonSettingsBuilder = MongoClientSettings
 				.builder(clientSettings)
 				.applyToServerSettings(s ->
 					// If timescaleMS is shorter than the default min heartbeat,
@@ -315,7 +317,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
 				var root = switch (initialState) {
-					case InitialState.SingleTree(var r) -> r;
+					case SingleTree(var r) -> r;
 				};
 				preferredDriver.initializeCollection(new StateAndMetadata<>(root, REVISION_ZERO, boskInfo.context().getAttributes()));
 				session.commitTransactionIfAny();
@@ -375,8 +377,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// FormatDriver must cope with deletions of the manifest document
 			// to avoid disconnection during refurbish operations,
 			// which is a burden. Let's just not.
-			// Note that this does delete LEGACY_MANIFEST_ID if it exists, which is deliberate.
-			BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
+			// Note that this does delete the other manifest if it exists,
+			// which is deliberate.
+			BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", driverSettings.manifestDocumentIdMode().manifestDocumentId()));
 			LOGGER.trace("Deleting state documents: {}", deletionFilter);
 			queryCollection.deleteMany(deletionFilter);
 
@@ -616,9 +619,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private FormatDriver<R> newPreferredFormatDriver() {
 		DatabaseFormat preferred = driverSettings.preferredDatabaseFormat();
 		if (preferred.equals(SEQUOIA) || preferred instanceof PandoFormat) {
-			// TODO: We might want to offer a way to make new manifests
-			//  with the legacy ID
-			return newFormatDriver(REVISION_ZERO.longValue(), preferred, MANIFEST_ID);
+			return newFormatDriver(
+				REVISION_ZERO.longValue(),
+				preferred,
+				driverSettings.manifestDocumentIdMode().manifestDocumentId()
+			);
 		}
 		throw new AssertionError("Unknown database format setting: " + preferred);
 	}
@@ -685,6 +690,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				LOGGER.debug("Manifest is missing; checking for Sequoia format in {}", driverSettings.database());
 				return new ManifestInfo(Manifest.forSequoia(), null);
 			}
+		}
+	}
+
+	/**
+	 * Meant for tests
+	 */
+	ManifestInfo loadManifestInfo() throws UnrecognizedFormatException, FailedMongoClientSessionException {
+		try (var _ = queryCollection.newReadOnlySession()) {
+			return loadManifest();
 		}
 	}
 

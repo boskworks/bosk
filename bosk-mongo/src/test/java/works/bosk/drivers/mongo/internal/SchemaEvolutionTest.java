@@ -7,8 +7,7 @@ import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.bson.BsonInt32;
-import org.bson.BsonString;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +22,7 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.drivers.mongo.internal.MainDriver.ManifestInfo;
 import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.Injected;
@@ -32,6 +32,10 @@ import works.bosk.testing.junit.Slow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
+import static works.bosk.drivers.mongo.MongoDriverSettings.ManifestDocumentIdMode.LEGACY;
+import static works.bosk.drivers.mongo.MongoDriverSettings.ManifestDocumentIdMode.STANDARD;
+import static works.bosk.drivers.mongo.internal.MainDriver.LEGACY_MANIFEST_ID;
+import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Slow
@@ -39,7 +43,6 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 @InjectFrom({
 	SchemaEvolutionTest.FromConfigInjector.class,
 	SchemaEvolutionTest.ToConfigInjector.class,
-	SchemaEvolutionTest.ManifestScenarioInjector.class
 })
 public class SchemaEvolutionTest {
 
@@ -50,27 +53,6 @@ public class SchemaEvolutionTest {
 	@Injected
 	@To
 	Configuration toConfig;
-
-	@Injected ManifestScenario manifestScenario;
-
-	enum ManifestScenario {
-		LEGACY(1, "manifest"),
-		NEW(2, "!manifest");
-
-		final BsonInt32 manifestVersion;
-		final BsonString documentId;
-
-		ManifestScenario(int manifestVersion, String documentId) {
-			this.manifestVersion = new BsonInt32(manifestVersion);
-			this.documentId = new BsonString(documentId);
-		}
-
-		public void fixupManifestIfNecessary(Helper fromHelper) {
-			if (this == LEGACY) {
-				fromHelper.changeManifestToLegacyFormat();
-			}
-		}
-	}
 
 	private Helper fromHelper;
 	private Helper toHelper;
@@ -112,7 +94,16 @@ public class SchemaEvolutionTest {
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
 		Refs fromRefs = fromBosk.buildReferences(Refs.class);
 
-		manifestScenario.fixupManifestIfNecessary(fromHelper);
+		try (var _ = fromBosk.readSession()) {
+			ManifestInfo expected = fromConfig.expectedManifestInfo();
+			LOGGER.debug("Confirm starting manifest is {}", expected);
+			assertEquals(
+				expected,
+				fromBosk.getDriver(MainDriver.class).loadManifestInfo()
+			);
+		}
+
+		LOGGER.debug("Confirm starting manifest ID");
 
 		// TODO: Make this test less lame
 		LOGGER.debug("Set distinctive string");
@@ -133,12 +124,12 @@ public class SchemaEvolutionTest {
 		driver.refurbish();
 
 
-		LOGGER.debug("Verify that the manifest prescribes the preferred format");
 		try (var _ = toBosk.readSession()) {
-			var status = driver.readStatus();
+			ManifestInfo expected = toConfig.expectedManifestInfo();
+			LOGGER.debug("Confirm ending manifest is {}", expected);
 			assertEquals(
-				Manifest.forFormat(toConfig.preferredFormat),
-				status.manifest().actual()
+				expected,
+				toBosk.getDriver(MainDriver.class).loadManifestInfo()
 			);
 		}
 
@@ -160,8 +151,6 @@ public class SchemaEvolutionTest {
 		LOGGER.debug("Create fromBosk [{}]", fromHelper.name);
 		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
 		Refs fromRefs = fromBosk.buildReferences(Refs.class);
-
-		manifestScenario.fixupManifestIfNecessary(fromHelper);
 
 		LOGGER.debug("Create toBosk [{}]", toHelper.name);
 		Bosk<TestEntity> toBosk = newBosk(toHelper);
@@ -238,15 +227,33 @@ public class SchemaEvolutionTest {
 	}
 
 	private static Bosk<TestEntity> newBosk(Helper helper) {
-		return new Bosk<>(boskName(helper.toString()), TestEntity.class, AbstractMongoDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(helper.driverFactory).build());
+		return new Bosk<>(
+			boskName(helper.toString()),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder()
+				.driverFactory(helper.driverFactory)
+				.build()
+		);
 	}
 
 	record Configuration(
-		MongoDriverSettings.DatabaseFormat preferredFormat
+		MongoDriverSettings.DatabaseFormat preferredFormat,
+		MongoDriverSettings.ManifestDocumentIdMode manifestDocumentIdMode
 	) {
+		public ManifestInfo expectedManifestInfo() {
+			return new ManifestInfo(
+				Manifest.forFormat(preferredFormat),
+				switch (manifestDocumentIdMode) {
+					case LEGACY -> LEGACY_MANIFEST_ID;
+					case STANDARD -> MANIFEST_ID;
+				}
+			);
+		}
+
 		@Override
 		public String toString() {
-			return preferredFormat.toString();
+			return manifestDocumentIdMode.toString() + "+" + preferredFormat.toString();
 		}
 	}
 
@@ -281,23 +288,14 @@ public class SchemaEvolutionTest {
 		}
 	}
 
-	private static final List<Configuration> CONFIGURATIONS = List.of(
-		new Configuration(SEQUOIA),
-		new Configuration(PandoFormat.oneBigDocument()),
-		new Configuration(PandoFormat.withGraftPoints("/catalog", "/sideTable"))
-	);
-
-	record ManifestScenarioInjector() implements Injector {
-		@Override
-		public boolean supports(AnnotatedElement element, Class<?> elementType) {
-			return elementType == SchemaEvolutionTest.ManifestScenario.class;
-		}
-
-		@Override
-		public List<ManifestScenario> values() {
-			return List.of(ManifestScenario.values());
-		}
-	}
+	private static final List<Configuration> CONFIGURATIONS = Stream.of(
+		SEQUOIA,
+		PandoFormat.oneBigDocument(),
+		PandoFormat.withGraftPoints("/catalog", "/sideTable")
+	).flatMap(format -> Stream.of(
+		new Configuration(format, LEGACY),
+		new Configuration(format, STANDARD)
+	)).toList();
 
 	static final class Helper extends AbstractMongoDriverTest {
 		final String name;
@@ -306,6 +304,7 @@ public class SchemaEvolutionTest {
 			super(MongoDriverSettings.builder()
 				.database(SchemaEvolutionTest.class.getSimpleName() + "_" + dbCounter)
 				.preferredDatabaseFormat(config.preferredFormat())
+				.manifestDocumentIdMode(config.manifestDocumentIdMode())
 			);
 			this.name = config.preferredFormat().toString().toLowerCase(Locale.ROOT);
 		}

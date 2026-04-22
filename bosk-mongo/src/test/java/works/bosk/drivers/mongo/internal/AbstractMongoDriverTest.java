@@ -1,13 +1,10 @@
 package works.bosk.drivers.mongo.internal;
 
 import ch.qos.logback.classic.Level;
-import com.mongodb.client.MongoCollection;
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Optional;
-import org.bson.BsonDocument;
-import org.bson.BsonInt32;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,21 +91,6 @@ abstract class AbstractMongoDriverTest {
 	void runTearDown(TestInfo testInfo) {
 		tearDownActions.forEach(Runnable::run);
 		logTest("\\=== Done", testInfo);
-	}
-
-	public void changeManifestToLegacyFormat() {
-		MongoCollection<BsonDocument> collection = mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME, BsonDocument.class);
-		BsonDocument modernManifestFilter = new BsonDocument("_id", MainDriver.MANIFEST_ID);
-		var existingManifest = collection
-			.find(modernManifestFilter)
-			.first();
-		var legacyManifest = existingManifest.clone()
-			.append("_id", MainDriver.LEGACY_MANIFEST_ID)
-			.append("version", new BsonInt32(1));
-		collection.deleteOne(modernManifestFilter);
-		collection.insertOne(legacyManifest);
 	}
 
 	public static void logTest(String verb, TestInfo testInfo) {

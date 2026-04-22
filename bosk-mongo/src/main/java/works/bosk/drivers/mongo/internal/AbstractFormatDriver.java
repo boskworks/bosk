@@ -35,7 +35,6 @@ import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
-import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_IDS;
 
 @RequiredArgsConstructor
@@ -166,6 +165,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 			// deletes the old manifest and creates a new one with a different ID.
 			// We'll already be handling this when the manifest we care about changes;
 			// no need to react to the other one.
+			// Note that it actually doesn't matter which one we watch, as long
+			// as we watch just one.
 			LOGGER.debug("Ignoring event for different manifest document with ID {}", event.getDocumentKey().get("_id"));
 			return;
 		} else if (event.getOperationType() == INSERT || event.getOperationType() == REPLACE) {
@@ -203,9 +204,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	protected void writeManifest(Manifest manifest) {
-		BsonDocument doc = new BsonDocument("_id", MANIFEST_ID);
+		BsonDocument doc = new BsonDocument("_id", requireNonNull(manifestId));
 		doc.putAll((BsonDocument) formatter.object2bsonValue(manifest, Manifest.class));
-		BsonDocument filter = new BsonDocument("_id", MANIFEST_ID);
+		BsonDocument filter = new BsonDocument("_id", manifestId);
 		LOGGER.debug("| Initial manifest: {}", doc);
 		ReplaceOptions options = new ReplaceOptions().upsert(true);
 		UpdateResult result = collection.replaceOne(filter, doc, options);
