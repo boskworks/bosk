@@ -3,11 +3,17 @@ package works.bosk.drivers.mongo;
 import lombok.Builder;
 import lombok.Builder.Default;
 import lombok.Value;
+import org.bson.BsonString;
 import works.bosk.Bosk;
 import works.bosk.BoskDriver;
 
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
+import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.DISCONNECT;
+import static works.bosk.drivers.mongo.MongoDriverSettings.ManifestDocumentIdMode.STANDARD;
 import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.EARNEST;
+import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
+import static works.bosk.drivers.mongo.internal.MainDriver.LEGACY_MANIFEST_ID;
+import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 
 @Value
 @Builder(toBuilder = true)
@@ -47,6 +53,8 @@ public class MongoDriverSettings {
 	 */
 	@Default int timescaleMS = 10_000;
 
+	@Default ManifestDocumentIdMode manifestDocumentIdMode = STANDARD;
+
 	/**
 	 * @see DatabaseFormat#SEQUOIA
 	 * @see PandoFormat
@@ -58,7 +66,7 @@ public class MongoDriverSettings {
 	 * because it simplifies production deployments and repairs,
 	 * but these very fault-tolerance features can be confusing during development.
 	 */
-	@Default InitialDatabaseUnavailableMode initialDatabaseUnavailableMode = InitialDatabaseUnavailableMode.DISCONNECT;
+	@Default InitialDatabaseUnavailableMode initialDatabaseUnavailableMode = DISCONNECT;
 
 	@Default Experimental experimental = Experimental.builder().build();
 	@Default Testing testing = Testing.builder().build();
@@ -70,7 +78,7 @@ public class MongoDriverSettings {
 	@Builder
 	public static class Experimental {
 		@Default long changeStreamInitialWaitMS = 20;
-		@Default OrphanDocumentMode orphanDocumentMode = OrphanDocumentMode.HASTY;
+		@Default OrphanDocumentMode orphanDocumentMode = HASTY;
 	}
 
 	/**
@@ -90,7 +98,7 @@ public class MongoDriverSettings {
 	public sealed interface DatabaseFormat
 		permits SequoiaFormat, PandoFormat
 	{
-		public String name();
+		String name();
 
 		/**
 		 * Simple format that stores the entire bosk state in a single document,
@@ -141,6 +149,23 @@ public class MongoDriverSettings {
 		 * Unused documents may be left behind, to be cleaned up later.
 		 */
 		HASTY,
+	}
+
+	public enum ManifestDocumentIdMode {
+		/**
+		 * Use {@code manifest}
+		 */
+		LEGACY,
+
+		/**
+		 * Use {@code !Manifest}
+		 */
+		STANDARD,
+		;
+
+		public BsonString manifestDocumentId() {
+			return this == LEGACY ? LEGACY_MANIFEST_ID : MANIFEST_ID;
+		}
 	}
 
 	public void validate() {

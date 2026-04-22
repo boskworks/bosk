@@ -32,14 +32,10 @@ import works.bosk.exceptions.InvalidTypeException;
 import static com.mongodb.ReadConcern.LOCAL;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
-import static com.mongodb.client.model.changestream.OperationType.INSERT;
-import static com.mongodb.client.model.changestream.OperationType.REPLACE;
-import static java.util.Objects.requireNonNull;
 import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.referenceTo;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
-import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 
 /**
  * Implements the {@link MongoDriverSettings.DatabaseFormat#SEQUOIA Sequoia} format.
@@ -55,9 +51,10 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		MongoDriverSettings driverSettings,
 		BsonSerializer bsonSerializer,
 		FlushLock flushLock,
+		@Nullable BsonString manifestId,
 		BoskDriver downstream
 	) {
-		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock);
+		super(boskInfo.rootReference(), boskInfo.context(), new Formatter(boskInfo, bsonSerializer), collection, downstream, flushLock, manifestId);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 	}
 
@@ -145,7 +142,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 		assert event.getDocumentKey() != null;
-		if (MANIFEST_ID.equals(event.getDocumentKey().get("_id"))) {
+		if (isManifestID(event.getDocumentKey().get("_id"))) {
 			onManifestEvent(event);
 			return;
 		}
@@ -221,24 +218,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	 * so incompatible database changes don't go unnoticed.
 	 */
 	private void onManifestEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
-		LOGGER.debug("onManifestEvent({})", event.getOperationType().name());
-		if (event.getOperationType() == INSERT || event.getOperationType() == REPLACE) {
-			BsonDocument manifest = requireNonNull(event.getFullDocument());
-			manifest.remove("_id");
-			try {
-				formatter.validateManifest(manifest);
-			} catch (UnrecognizedFormatException e) {
-				throw new UnprocessableEventException("Invalid manifest", e, event.getOperationType());
-			}
-			if (!new BsonDocument().equals(manifest.get("sequoia"))) {
-				throw new UnprocessableEventException("Unexpected value in manifest \"sequoia\" field: " + manifest.get("sequoia"), event.getOperationType());
-			}
-		} else {
-			// SequoiaFormatDriver always uses INSERT/REPLACE to update the manifest;
-			// anything else is unexpected.
-			throw new UnprocessableEventException("Unexpected change to manifest document", event.getOperationType());
-		}
-		LOGGER.debug("Ignoring benign manifest change event");
+		validateManifestEvent(event, Manifest.forSequoia());
 	}
 
 	//
@@ -275,7 +255,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			}
 		} catch (NoSuchElementException e) {
 			LOGGER.debug("Document is missing", e);
-			throw new RevisionFieldDisruptedException(e);
+			throw new RevisionFieldDisruptedException("State document is missing", e);
 		} catch (RuntimeException e) {
 			LOGGER.debug("readRevisionNumber failed", e);
 			throw new FlushFailureException(e);
