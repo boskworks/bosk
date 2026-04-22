@@ -83,7 +83,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	 * because if we change the manifest ID then that's a breaking change,
 	 * and we want this test to fail.
 	 */
-	public static final String MANIFEST_ID = "!manifest";
+	public static final String MANIFEST_ID = "!Manifest";
 	public static final String LEGACY_MANIFEST_ID = "manifest"; // Ditto
 
 	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;

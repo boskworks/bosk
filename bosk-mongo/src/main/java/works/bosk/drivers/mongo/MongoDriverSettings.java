@@ -158,7 +158,7 @@ public class MongoDriverSettings {
 		LEGACY,
 
 		/**
-		 * Use {@code !manifest}
+		 * Use {@code !Manifest}
 		 */
 		STANDARD,
 		;
