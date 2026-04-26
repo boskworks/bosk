@@ -6,11 +6,11 @@ jetbrains-annotations = "26.1.0"
 jmh = "1.37"
 junit = "6.0.3"
 logback = "1.5.32"
-lombok = "1.18.44"
+lombok = "1.18.46"
 pcollections = "5.0.0"
 slf4j = "2.0.17"
-spring-boot = "4.0.5"
-testcontainers = "2.0.4"
+spring-boot = "4.0.6"
+testcontainers = "2.0.5"
 
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
@@ -33,7 +33,7 @@ junit-params = { module = "org.junit.jupiter:junit-jupiter-params" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.6.5" }
-mysql = { module = "com.mysql:mysql-connector-j", version = "9.6.0" }
+mysql = { module = "com.mysql:mysql-connector-j", version = "9.7.0" }
 opentelemetry = { module="io.opentelemetry:opentelemetry-sdk", version="1.61.0" }
 pcollections = { module = "org.pcollections:pcollections", version.ref="pcollections" }
 postgresql = { module = "org.postgresql:postgresql", version = "42.7.10" }
