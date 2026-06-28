@@ -16,7 +16,10 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskConfig;
+import works.bosk.BoskConfig.TenancyModel.Persistent;
 import works.bosk.BoskContext;
+import works.bosk.BoskContext.Tenant;
+import works.bosk.BoskContext.Tenant.TenantId;
 import works.bosk.BoskDriver;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -610,6 +613,26 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 		assertTrue(contextVerified.tryAcquire(5, SECONDS));
 		hookEnabled.set(false); // Deactivate the hook
+	}
+
+	@Test
+	void newTenant() throws InvalidTypeException {
+		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
+		closeTenantScope();
+		switch (scenario.tenancyModel) {
+			case Persistent _ -> makeNewTenant();
+			default -> // Can't switch tenants in this model
+				assertThrows(IllegalArgumentException.class, this::makeNewTenant);
+		}
+		assertCorrectBoskContents();
+	}
+
+	private void makeNewTenant() throws InvalidTypeException {
+		TestEntity root = initialRoot(bosk).withString("newcomer!");
+		TenantId newTenant = Tenant.setTo(Identifier.from("newcomer"));
+		try (var _ = bosk.context().withTenant(newTenant)) {
+			driver.submitReplacement(bosk.rootReference(), root);
+		}
 	}
 
 	private Reference<TestValues> initializeBoskWithBlankValues(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {

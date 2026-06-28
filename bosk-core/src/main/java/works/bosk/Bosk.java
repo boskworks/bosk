@@ -44,6 +44,7 @@ import works.bosk.dereferencers.Dereferencer;
 import works.bosk.dereferencers.PathCompiler;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NoReadSessionException;
+import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.exceptions.NotYetImplementedException;
 import works.bosk.exceptions.ReferenceBindingException;
@@ -417,11 +418,28 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@Override
 		public <T> void submitReplacement(Reference<T> target, T newValue) {
 			synchronized (this) {
-				R priorRoot = currentRoot();
-				if (!tryGraftReplacement(target, newValue)) {
-					return;
+				try {
+					@Nullable R priorRoot = currentRoot();
+					if (!tryGraftReplacement(target, newValue)) {
+						return;
+					}
+					queueHooks(target, priorRoot);
+				} catch (NoSuchTenantException e) {
+					if (target.path().isEmpty()) {
+						// A replacement of the root on a nonexistent tenant is special:
+						// it creates the tenant.
+						currentState = switch (currentState) {
+							case SingleTree<R> _ -> throw e;
+							case MultiTree<R> m -> m.with(
+								e.tenant,
+								rootRef.targetClass().cast(requireNonNull(newValue))
+							);
+							case null -> throw new IllegalStateException("Bosk initialization is not yet finished", e);
+						};
+					} else {
+						throw e;
+					}
 				}
-				queueHooks(target, priorRoot);
 			}
 			drainQueueIfAllowed();
 		}
@@ -1524,6 +1542,10 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		return instanceID() + " \"" + name + "\"::" + rootRef.targetClass().getSimpleName();
 	}
 
+	/**
+	 * @return null if {@code currentState} is not yet established, during the Bosk constructor.
+	 * @throws IllegalStateException if the tenant currently does not exist
+	 */
 	@Nullable
 	final R currentRoot() {
 		return getRoot(currentState);
@@ -1537,7 +1559,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				if (context().getTenant() instanceof TenantId s) {
 					RR result = r.get(s);
 					if (result == null) {
-						throw new IllegalStateException("Tenant " + s + " does not exist");
+						throw new NoSuchTenantException(s, "Tenant " + s + " does not exist");
 					}
 					yield result;
 				} else {
