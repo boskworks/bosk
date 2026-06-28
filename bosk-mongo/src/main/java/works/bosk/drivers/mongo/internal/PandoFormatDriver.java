@@ -67,6 +67,7 @@ import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 import static works.bosk.drivers.mongo.internal.BsonSurgeon.BSON_PATH_FIELD;
+import static works.bosk.drivers.mongo.internal.Formatter.REVISION_BEFORE_ANY;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
 import static works.bosk.drivers.mongo.internal.Formatter.getTenantFromDocumentId;
 import static works.bosk.util.Classes.enumerableByIdentifier;
@@ -128,7 +129,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		try {
 			doReplacement(target, newValue);
 		} catch (NoSuchTenantException e) {
-			initializeTenant(context.getTenantId(), formatter.object2bsonValue(newValue, target.targetType()), REVISION_ZERO);
+			var tid = context.getTenantId();
+			initializeTenant(tid, formatter.object2bsonValue(newValue, target.targetType()), REVISION_ZERO, false);
+			finishedRevision(tid, REVISION_BEFORE_ANY);
 		}
 	}
 
@@ -337,12 +340,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			BsonInt64 priorRevision = priorContents.revision();
 
 			LOGGER.debug("** Initial upsert");
-			initializeTenant(tenant, initialState, priorRevision);
+			initializeTenant(tenant, initialState, priorRevision, true);
 		});
 		writeManifest(Manifest.forPando(format));
 	}
 
-	private void initializeTenant(Established tenant, BsonValue initialState, BsonInt64 priorRevision) {
+	private void initializeTenant(Established tenant, BsonValue initialState, BsonInt64 priorRevision, boolean callFinishedRevision) {
 		// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
 		collection.ensureTransactionStarted();
 		String tenantPrefix = tenantPrefix(tenant);
@@ -362,7 +365,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.debug("| Result: {}", result);
 
 		// Update the state that we "know about"
-		finishedRevision(tenant, newRevision);
+		if (callFinishedRevision) {
+			finishedRevision(tenant, newRevision);
+		}
 	}
 
 	/**
