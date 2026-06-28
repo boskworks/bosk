@@ -146,7 +146,7 @@ public class JsonNodeDriver implements BoskDriver {
 				TenantId tenantId = context.getTenantId();
 				JsonNode root = roots.get(tenantId);
 				if (root == null) {
-					throw new NoSuchTenantException(tenantId, "No state for tenant");
+					throw new NoSuchTenantException(tenantId);
 				}
 				yield root;
 			}

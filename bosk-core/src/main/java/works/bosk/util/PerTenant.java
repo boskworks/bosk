@@ -17,6 +17,7 @@ import works.bosk.BoskDriver.EntireState;
 import works.bosk.BoskDriver.EntireState.MultiTree;
 import works.bosk.BoskDriver.EntireState.SingleTree;
 import works.bosk.StateTreeNode;
+import works.bosk.exceptions.NoSuchTenantException;
 
 import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
@@ -120,7 +121,7 @@ public sealed interface PerTenant<T> {
 			if (tenant instanceof TenantId tenantId) {
 				T value = values.get(tenantId);
 				if (value == null) {
-					throw new IllegalStateException("No such tenant: " + tenant);
+					throw new NoSuchTenantException(tenantId);
 				} else {
 					return value;
 				}

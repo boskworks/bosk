@@ -50,6 +50,7 @@ import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.exceptions.NotYetImplementedException;
 import works.bosk.util.PerTenant;
 import works.bosk.util.PerTenant.MultiTenant;
@@ -123,7 +124,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		doReplacement(target, newValue);
+		collection.ensureTransactionStarted();
+		try {
+			doReplacement(target, newValue);
+		} catch (NoSuchTenantException e) {
+			initializeTenant(context.getTenantId(), formatter.object2bsonValue(newValue, target.targetType()), REVISION_ZERO);
+		}
 	}
 
 	@Override
@@ -328,30 +334,35 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		ensureFlushLocksInitialized(allPriorContents);
 		allPriorContents.forEach((tenant, priorContents) -> {
 			BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
-			BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
-			// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
+			BsonInt64 priorRevision = priorContents.revision();
 
 			LOGGER.debug("** Initial upsert");
-			collection.ensureTransactionStarted();
-			String tenantPrefix = tenantPrefix(tenant);
-			if (initialState instanceof BsonDocument) {
-				upsertAndRemoveSubParts(rootRef, initialState.asDocument(), tenantPrefix); // Mutates initialState!
-			}
-			BsonString documentId = new BsonString(tenantPrefix + "|");
-			BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, documentId));
-			BsonDocument filter = rootDocumentsFilter();
-			filter.put("_id", documentId);
-			UpdateOptions options = new UpdateOptions().upsert(true);
-			LOGGER.trace("| Filter: {}", filter);
-			LOGGER.trace("| Update: {}", update);
-			LOGGER.trace("| Options: {}", options);
-			UpdateResult result = collection.updateOne(filter, update, options);
-			LOGGER.debug("| Result: {}", result);
-			writeManifest(Manifest.forPando(format));
-
-			// Update the state that we "know about"
-			finishedRevision(tenant, newRevision);
+			initializeTenant(tenant, initialState, priorRevision);
 		});
+		writeManifest(Manifest.forPando(format));
+	}
+
+	private void initializeTenant(Established tenant, BsonValue initialState, BsonInt64 priorRevision) {
+		// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
+		collection.ensureTransactionStarted();
+		String tenantPrefix = tenantPrefix(tenant);
+		if (initialState instanceof BsonDocument) {
+			upsertAndRemoveSubParts(rootRef, initialState.asDocument(), tenantPrefix); // Mutates initialState!
+		}
+		BsonString documentId = new BsonString(tenantPrefix + "|");
+		BsonInt64 newRevision = new BsonInt64(1 + priorRevision.longValue());
+		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, documentId));
+		BsonDocument filter = rootDocumentsFilter();
+		filter.put("_id", documentId);
+		UpdateOptions options = new UpdateOptions().upsert(true);
+		LOGGER.trace("| Filter: {}", filter);
+		LOGGER.trace("| Update: {}", update);
+		LOGGER.trace("| Options: {}", options);
+		UpdateResult result = collection.updateOne(filter, update, options);
+		LOGGER.debug("| Result: {}", result);
+
+		// Update the state that we "know about"
+		finishedRevision(tenant, newRevision);
 	}
 
 	/**
@@ -864,7 +875,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				LOGGER.debug("| -> No documents were updated; double-checking that the root document still exists");
 				try (var cursor = collection.find(documentFilter(rootRef)).limit(1).cursor()) {
 					if (!cursor.hasNext()) {
-						throw new IllegalStateException("Root document disappeared");
+						switch (context.getEstablishedTenant()) {
+							case TenantId t -> throw new NoSuchTenantException(t, "No root document for " + t);
+							case None _ -> throw new IllegalStateException("Root document disappeared");
+						}
 					}
 				}
 			}

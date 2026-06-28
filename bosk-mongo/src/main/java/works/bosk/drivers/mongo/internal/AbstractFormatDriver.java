@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.ReadConcern;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
@@ -38,6 +39,7 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.drivers.mongo.status.StateStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.util.PerTenant;
 import works.bosk.util.PerTenant.MultiTenant;
 import works.bosk.util.PerTenant.NoTenant;
@@ -188,22 +190,24 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected void ensureFlushLocksInitialized(PerTenant<?> contents) {
 		flushLocks.compareAndSet(null, switch (contents) {
 			case NoTenant<?> _ -> switch (tenancyModel) {
-				case None _ -> NoTenant.just(new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS));
-				case Fixed(var id) -> MultiTenant.singleton(Tenant.setTo(id),
-					new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS));
+				case None _ -> NoTenant.just(newFlushLock());
+				case Fixed(var id) -> MultiTenant.singleton(Tenant.setTo(id), newFlushLock());
 				case Persistent _ -> throw new AssertionError(
 					"Should not have NoTenant contents with Persistent tenancy");
 			};
 			case MultiTenant<?> m -> {
 				SortedMap<TenantId, FlushLock> locks = new TreeMap<>();
 				for (var tenantId : m.values().keySet()) {
-					locks.put(tenantId, new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS));
+					locks.put(tenantId, newFlushLock());
 				}
 				yield new MultiTenant<>(locks);
 			}
 		});
 	}
 
+	private @NonNull FlushLock newFlushLock() {
+		return new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS);
+	}
 
 	/**
 	 * Low-level read of the database contents, with only the minimum interpretation
@@ -288,14 +292,22 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	protected void finishedRevision(Established tenant, BsonInt64 revision) {
-		flushLocks.get().get(tenant).finishedRevision(revision);
+		PerTenant<FlushLock> f = flushLocks.get();
+		try {
+			f.get(tenant).finishedRevision(revision);
+		} catch (NoSuchTenantException e) {
+			flushLocks.compareAndSet(f, switch (f) {
+				case MultiTenant<FlushLock> m -> m.with(e.tenant, new FlushLock(revision.longValue(), flushTimeoutMS));
+				case NoTenant<FlushLock> _ -> throw new IllegalStateException("Cannot add tenant " + e.tenant);
+			});
+		}
 	}
 
 	/**
 	 * @return the {@link Tenant} that should be established before processing
 	 * a document with the given {@code id}
 	 */
-	protected BoskContext.Tenant.@NonNull Established tenantFor(BsonString id) {
+	protected @NonNull Established tenantFor(BsonString id) {
 		return switch (tenancyModel) {
 			case None _ -> Tenant.NONE;
 			case Fixed(var fixedId) -> Tenant.setTo(fixedId);
@@ -306,7 +318,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	/**
 	 * @return cursor giving the {@code _id} and {@code revision}
 	 * for all documents that have a revision field,
-	 * read using read concern {@link com.mongodb.ReadConcern#LOCAL LOCAL}.
+	 * read using read concern {@link ReadConcern#LOCAL LOCAL}.
 	 */
 	protected MongoCursor<BsonDocument> revisionDocumentCursor() {
 		return collection

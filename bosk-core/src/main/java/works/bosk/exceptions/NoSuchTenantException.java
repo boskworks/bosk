@@ -5,6 +5,11 @@ import works.bosk.BoskContext.Tenant.TenantId;
 public class NoSuchTenantException extends RuntimeException {
 	public final TenantId tenant;
 
+	public NoSuchTenantException(TenantId tenant) {
+		super("No such tenant: " + tenant);
+		this.tenant = tenant;
+	}
+
 	public NoSuchTenantException(TenantId tenant, String message) {
 		super(message);
 		this.tenant = tenant;
@@ -16,7 +21,7 @@ public class NoSuchTenantException extends RuntimeException {
 	}
 
 	public NoSuchTenantException(TenantId tenant, Throwable cause) {
-		super(cause);
+		super("No such tenant: " + tenant, cause);
 		this.tenant = tenant;
 	}
 }

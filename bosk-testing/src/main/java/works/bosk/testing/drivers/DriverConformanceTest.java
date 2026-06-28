@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskConfig;
-import works.bosk.BoskConfig.TenancyModel.Persistent;
+import works.bosk.BoskConfig.TenancyModel.Implicit;
 import works.bosk.BoskContext;
 import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskContext.Tenant.TenantId;
@@ -37,6 +37,7 @@ import works.bosk.SideTableReference;
 import works.bosk.TaggedUnion;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.junit.Ante;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
@@ -45,6 +46,7 @@ import works.bosk.junit.RunAnteTestsFirst;
 import works.bosk.testing.drivers.state.Primitives;
 import works.bosk.testing.drivers.state.SelfValue;
 import works.bosk.testing.drivers.state.TestEntity;
+import works.bosk.testing.drivers.state.TestEntity.Fields;
 import works.bosk.testing.drivers.state.TestEntity.IdentifierCase;
 import works.bosk.testing.drivers.state.TestEntity.StringCase;
 import works.bosk.testing.drivers.state.TestEntity.Variant;
@@ -620,9 +622,9 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		closeTenantScope();
 		switch (scenario.tenancyModel) {
-			case Persistent _ -> makeNewTenant();
-			default -> // Can't switch tenants in this model
+			case Implicit _ -> // Can't switch tenants in these models
 				assertThrows(IllegalArgumentException.class, this::makeNewTenant);
+			default -> makeNewTenant();
 		}
 		assertCorrectBoskContents();
 	}
@@ -633,6 +635,22 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		try (var _ = bosk.context().withTenant(newTenant)) {
 			driver.submitReplacement(bosk.rootReference(), root);
 		}
+	}
+
+	@Test
+	void nonexistentTenant() throws InvalidTypeException {
+		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
+		if ((scenario.tenancyModel instanceof Implicit)) {
+			// Can't set a nonexistent tenant in these models anyway
+			return;
+		}
+		closeTenantScope();
+		assertThrows(NoSuchTenantException.class, () -> {
+			try (var _ = bosk.context().withTenant(Tenant.setTo(Identifier.from("nonexistent")))) {
+				// Anything but the root reference should throw
+				driver.submitReplacement(bosk.rootReference().then(String.class, Fields.string), "new value");
+			}
+		});
 	}
 
 	private Reference<TestValues> initializeBoskWithBlankValues(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {

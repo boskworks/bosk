@@ -1559,7 +1559,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				if (context().getTenant() instanceof TenantId s) {
 					RR result = r.get(s);
 					if (result == null) {
-						throw new NoSuchTenantException(s, "Tenant " + s + " does not exist");
+						throw new NoSuchTenantException(s);
 					}
 					yield result;
 				} else {

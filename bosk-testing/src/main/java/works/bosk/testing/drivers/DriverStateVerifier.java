@@ -10,7 +10,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -277,8 +276,11 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		}
 	}
 
-	private static @Nullable String threadId(DriverOperation op) {
-		return op.boskContext().diagnosticAttributes().get(THREAD_ID);
+	private static String threadId(DriverOperation op) {
+		String result = op.boskContext().diagnosticAttributes().get(THREAD_ID);
+		assert result != null:
+			"Operation must have diagnostic attribute " + THREAD_ID;
+		return result;
 	}
 
 	private void checkMDC() {
