@@ -261,8 +261,13 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	protected boolean shouldSkip(Established tenant, BsonInt64 revision) {
-		FlushLock lock = flushLocks.get().get(tenant);
-		return lock == null || lock.alreadySeen(revision);
+		try {
+			FlushLock lock = flushLocks.get().get(tenant);
+			return lock == null || lock.alreadySeen(revision);
+		} catch (NoSuchTenantException e) {
+			LOGGER.debug("Unknown tenant {}; processing revision {}", tenant, revision);
+			return false;
+		}
 	}
 
 	/**

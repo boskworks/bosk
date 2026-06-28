@@ -130,7 +130,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			doReplacement(target, newValue);
 		} catch (NoSuchTenantException e) {
 			var tid = context.getTenantId();
-			initializeTenant(tid, formatter.object2bsonValue(newValue, target.targetType()), REVISION_ZERO, false);
+			initializeTenant(tid, formatter.object2bsonValue(newValue, target.targetType()), nextRevision(REVISION_ZERO));
+
+			// For newly created tenants, we use the change stream event to
+			// update the downstream driver. We could manually stuff it downstream,
+			// but the change stream path needs to work for remote bosks anyway,
+			// so we might as well reduce variety and make that the only way.
 			finishedRevision(tid, REVISION_BEFORE_ANY);
 		}
 	}
@@ -337,15 +342,20 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		ensureFlushLocksInitialized(allPriorContents);
 		allPriorContents.forEach((tenant, priorContents) -> {
 			BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
-			BsonInt64 priorRevision = priorContents.revision();
+			BsonInt64 revision = nextRevision(priorContents.revision());
 
 			LOGGER.debug("** Initial upsert");
-			initializeTenant(tenant, initialState, priorRevision, true);
+			initializeTenant(tenant, initialState, revision);
+
+			// When initializing the collection, whether for initialState() or
+			// for refurbish(), the local state will be up to date with no need
+			// to process a change stream event.
+			finishedRevision(tenant, revision);
 		});
 		writeManifest(Manifest.forPando(format));
 	}
 
-	private void initializeTenant(Established tenant, BsonValue initialState, BsonInt64 priorRevision, boolean callFinishedRevision) {
+	private void initializeTenant(Established tenant, BsonValue initialState, BsonInt64 newRevision) {
 		// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
 		collection.ensureTransactionStarted();
 		String tenantPrefix = tenantPrefix(tenant);
@@ -353,7 +363,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			upsertAndRemoveSubParts(rootRef, initialState.asDocument(), tenantPrefix); // Mutates initialState!
 		}
 		BsonString documentId = new BsonString(tenantPrefix + "|");
-		BsonInt64 newRevision = new BsonInt64(1 + priorRevision.longValue());
 		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, documentId));
 		BsonDocument filter = rootDocumentsFilter();
 		filter.put("_id", documentId);
@@ -363,11 +372,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.trace("| Options: {}", options);
 		UpdateResult result = collection.updateOne(filter, update, options);
 		LOGGER.debug("| Result: {}", result);
+	}
 
-		// Update the state that we "know about"
-		if (callFinishedRevision) {
-			finishedRevision(tenant, newRevision);
-		}
+	private static @NonNull BsonInt64 nextRevision(BsonInt64 priorRevision) {
+		return new BsonInt64(1 + priorRevision.longValue());
 	}
 
 	/**
