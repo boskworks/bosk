@@ -8,6 +8,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import works.bosk.BoskContext;
+import works.bosk.BoskContext.Tenant.TenantId;
 import works.bosk.BoskDriver;
 import works.bosk.BoskDriver.EntireState.MultiTree;
 import works.bosk.BoskDriver.EntireState.SingleTree;
@@ -17,6 +18,7 @@ import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.jackson.JsonNodeSurgeon.NodeInfo;
 import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.Root;
 import works.bosk.util.PerTenant;
@@ -63,7 +65,14 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitReplacement(Reference<T> target, T newValue) {
 		traceCurrentState("Before submitReplacement");
-		doReplacement(surgeon.nodeInfo(currentRoot(), target), target.path().lastSegment(), newValue);
+		try {
+			doReplacement(surgeon.nodeInfo(currentRoot(), target), target.path().lastSegment(), newValue);
+		} catch (NoSuchTenantException e) {
+			contents = switch (contents) {
+				case MultiTenant<JsonNode> m -> m.with(context.getTenantId(), mapper.convertValue(newValue, JsonNode.class));
+				case NoTenant<JsonNode> _ -> throw new IllegalStateException("Cannot add a new tenant");
+			};
+		}
 		downstream.submitReplacement(target, newValue);
 		traceCurrentState("After submitReplacement");
 	}
@@ -116,8 +125,8 @@ public class JsonNodeDriver implements BoskDriver {
 		JsonNode replacement = surgeon.replacementNode(nodeInfo, lastSegment, () -> mapper.convertValue(newValue, JsonNode.class));
 		if (nodeInfo.replacementLocation() instanceof Root) {
 			contents = switch (contents) {
-				case PerTenant.NoTenant<JsonNode> _ -> NoTenant.just(replacement);
-				case PerTenant.MultiTenant<JsonNode> m -> m.with(context.getTenantId(), replacement);
+				case NoTenant<JsonNode> _ -> NoTenant.just(replacement);
+				case MultiTenant<JsonNode> m -> m.with(context.getTenantId(), replacement);
 			};
 		} else {
 			surgeon.replaceNode(nodeInfo, replacement);
@@ -134,9 +143,10 @@ public class JsonNodeDriver implements BoskDriver {
 		return switch (contents) {
 			case NoTenant<JsonNode>(var root) -> root;
 			case MultiTenant<JsonNode>(var roots) -> {
-				JsonNode root = roots.get(context.getTenantId());
+				TenantId tenantId = context.getTenantId();
+				JsonNode root = roots.get(tenantId);
 				if (root == null) {
-					throw new IllegalStateException("No state for tenant " + context.getTenantId());
+					throw new NoSuchTenantException(tenantId, "No state for tenant");
 				}
 				yield root;
 			}
