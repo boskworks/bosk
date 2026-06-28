@@ -24,6 +24,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.drivers.ContextScopeDriver;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.exceptions.NotYetImplementedException;
 import works.bosk.testing.drivers.operations.DriverOperation;
 import works.bosk.testing.drivers.operations.FlushOperation;
@@ -123,56 +124,68 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 		if (!(op.boskContext().tenant() instanceof Tenant.Established tenant)) {
 			throw new AssertionError("Missing tenant on update: " + op);
 		}
+		Object before;
+		Object after;
 		try (var _ = stateTrackingBosk.context().withTenant(tenant)) {
-			Object before = currentStateBefore(op);
-			Object after = hypotheticalStateAfter(op);
-			LOGGER.trace("\t\tbefore: {}", before);
-			LOGGER.trace("\t\t after: {}", after);
+			before = currentStateBefore(op);
+			after = hypotheticalStateAfter(op);
+		} catch (IOException | InterruptedException e) {
+			throw new NotYetImplementedException(e);
+		}
+		LOGGER.trace("\t\tbefore: {}", before);
+		LOGGER.trace("\t\t after: {}", after);
 
-			String threadID = threadId(op);
-			if (threadID == null) {
-				LOGGER.debug("\tMissing " + THREAD_ID + " diagnostic attribute");
+		String threadID = threadId(op);
+		if (threadID == null) {
+			LOGGER.debug("\tMissing " + THREAD_ID + " diagnostic attribute");
+		} else {
+			Deque<UpdateOperation> q = pendingOperationsByThreadID.get(threadID);
+			if (q == null) {
+				LOGGER.debug("\tNo queued events for thread \"{}\"", threadID);
 			} else {
-				Deque<UpdateOperation> q = pendingOperationsByThreadID.get(threadID);
-				if (q == null) {
-					LOGGER.debug("\tNo queued events for thread \"{}\"", threadID);
-				} else {
-					LOGGER.trace("\tThread \"{}\" has {} queued operations", threadID, q.size());
-					for (UpdateOperation expected : q) {
-						Object expectedBefore = currentStateBefore(expected); // May not equal `before` if the two operations have different targets
-						Object expectedAfter = hypotheticalStateAfter(expected);
-						LOGGER.trace("\t\texpectedAfter: {}", expectedAfter);
-						if (op.matchesIfApplied(expected) && Objects.equals(after, expectedAfter)) {
-							LOGGER.debug("\tConclusion: found match: {}", expected);
-							var expectedTenant = expected.boskContext().tenant();
-							if (!(expectedTenant.equals(tenant))) {
-								throw new AssertionError(
-									"Operation has incorrect tenant " + tenant
-									+ "; expected " + expectedTenant);
-							}
-							UpdateOperation discarded;
-							while ((discarded = q.removeFirst()) != expected) {
-								LOGGER.trace("\t\tdiscard preceding no-op: {}", discarded);
-							}
-							expected.submitTo(stateTrackingDriver);
-							return;
-						} else if (Objects.equals(expectedBefore, expectedAfter)) {
-							LOGGER.trace("\t\tSkip queued no-op: {}", expected);
-						} else {
-							LOGGER.trace("\t\tNo match for: {}", expected);
-							break;
+				LOGGER.trace("\tThread \"{}\" has {} queued operations", threadID, q.size());
+				for (UpdateOperation expected : q) {
+					Object expectedBefore;
+					Object expectedAfter;
+					try {
+						expectedBefore = currentStateBefore(expected); // May not equal `before` if the two operations have different targets
+						expectedAfter = hypotheticalStateAfter(expected);
+					} catch (IOException | InterruptedException e) {
+						throw new NotYetImplementedException(e);
+					}
+					LOGGER.trace("\t\texpectedAfter: {}", expectedAfter);
+					if (op.matchesIfApplied(expected) && Objects.equals(after, expectedAfter)) {
+						LOGGER.debug("\tConclusion: found match: {}", expected);
+						var expectedTenant = expected.boskContext().tenant();
+						if (!(expectedTenant.equals(tenant))) {
+							throw new AssertionError(
+								"Operation has incorrect tenant " + tenant
+								+ "; expected " + expectedTenant);
 						}
+						UpdateOperation discarded;
+						while ((discarded = q.removeFirst()) != expected) {
+							LOGGER.trace("\t\tdiscard preceding no-op: {}", discarded);
+						}
+						try (var _ = stateTrackingBosk.context().withTenant(tenant)) {
+							expected.submitTo(stateTrackingDriver);
+						}
+						return;
+					} else if (Objects.equals(expectedBefore, expectedAfter)) {
+						LOGGER.trace("\t\tSkip queued no-op: {}", expected);
+					} else {
+						LOGGER.trace("\t\tNo match for: {}", expected);
+						break;
 					}
 				}
 			}
+		}
 
+		try (var _ = stateTrackingBosk.context().withTenant(tenant)) {
 			if (Objects.equals(before, after)) {
 				LOGGER.debug("\tConclusion: spontaneous no-op: {}", op);
 			} else {
 				throw new AssertionError("No matching operation\n\t" + op);
 			}
-		} catch (IOException | InterruptedException e) {
-			throw new NotYetImplementedException(e);
 		}
 	}
 
@@ -231,7 +244,11 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 			Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 			stateTrackingBosk.driver().flush();
 			try (var _ = stateTrackingBosk.readSession()) {
-				return stateTrackingRef.valueIfExists();
+				try {
+					return stateTrackingRef.valueIfExists();
+				} catch (NoSuchTenantException e) {
+					return null;
+				}
 			}
 		}
 	}
@@ -239,18 +256,24 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	@SuppressWarnings("unchecked")
 	private <T> T hypotheticalStateAfter(UpdateOperation op) throws IOException, InterruptedException {
 		try (var _ = stateTrackingBosk.context().withMaybeTenant(op.boskContext().tenant())) {
-			R originalState;
+			@Nullable R originalRoot;
 			Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 			stateTrackingBosk.driver().flush();
 			try (var _ = stateTrackingBosk.readSession()) {
-				originalState = stateTrackingBosk.rootReference().value();
+				try {
+					originalRoot = stateTrackingBosk.rootReference().value();
+				} catch (NoSuchTenantException e) {
+					originalRoot = null;
+				}
 			}
 			op.submitTo(stateTrackingDriver);
 			stateTrackingBosk.driver().flush();
 			try (var _ = stateTrackingBosk.readSession()) {
 				return stateTrackingRef.valueIfExists();
 			} finally {
-				stateTrackingBosk.driver().submitReplacement(stateTrackingBosk.rootReference(), originalState);
+				if (originalRoot != null) {
+					stateTrackingBosk.driver().submitReplacement(stateTrackingBosk.rootReference(), originalRoot);
+				}
 			}
 		}
 	}
