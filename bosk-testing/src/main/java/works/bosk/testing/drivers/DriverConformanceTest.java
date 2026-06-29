@@ -623,17 +623,17 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		closeTenantScope();
 		switch (scenario.tenancyModel) {
 			case Implicit _ -> // Can't switch tenants in these models
-				assertThrows(IllegalArgumentException.class, this::makeNewTenant);
-			default -> makeNewTenant();
+				assertThrows(IllegalArgumentException.class, this::makeNewTenants);
+			default -> makeNewTenants();
 		}
 		assertCorrectBoskContents();
 	}
 
-	private void makeNewTenant() throws InvalidTypeException {
-		TestEntity root = initialRoot(bosk).withString("newcomer!");
-		TenantId newTenant = Tenant.setTo(Identifier.from("newcomer"));
+	private void makeNewTenants() throws InvalidTypeException {
+		TestEntity root = initialRoot(bosk).withString("newcomer 1");
+		TenantId newTenant = Tenant.setTo(Identifier.from("newcomer 1"));
 		try (var _ = bosk.context().withTenant(newTenant)) {
-			driver.submitReplacement(bosk.rootReference(), root);
+			driver.submitConditionalCreation(bosk.rootReference(), root);
 		}
 	}
 

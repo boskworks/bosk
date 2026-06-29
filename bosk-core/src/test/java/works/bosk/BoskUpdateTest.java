@@ -14,6 +14,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  *
  * @see BoskConstructorTest
  * @see BoskLocalReferenceTest
+ * @see BoskTenantTest
  * @see HooksTest
  * @see ReferenceTest
  */

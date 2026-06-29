@@ -2,6 +2,7 @@ package works.bosk;
 
 import java.io.IOException;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.SortedMap;
 import java.util.function.Function;
@@ -91,6 +92,8 @@ public interface BoskDriver {
 		record MultiTree<R extends StateTreeNode>(SortedMap<TenantId, R> tenantRoots) implements EntireState<R> {
 			public MultiTree {
 				requireNonNull(tenantRoots);
+				tenantRoots.keySet().forEach(Objects::requireNonNull);
+				tenantRoots.values().forEach(Objects::requireNonNull);
 				if (!(tenantRoots instanceof TreePMap<TenantId,R>)) {
 					tenantRoots = TreePMap.from(tenantRoots);
 				}
