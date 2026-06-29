@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -256,6 +257,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	}
 
 	@SuppressWarnings("unchecked")
+	@Nullable
 	private <T> T newStateAfter(UpdateOperation op) throws IOException, InterruptedException {
 		try (var _ = stateTrackingBosk.context().withMaybeTenant(op.boskContext().tenant())) {
 			Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
@@ -263,6 +265,8 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 			stateTrackingBosk.driver().flush();
 			try (var _ = stateTrackingBosk.readSession()) {
 				return stateTrackingRef.valueIfExists();
+			} catch (NoSuchTenantException e) {
+				return null;
 			}
 		}
 	}

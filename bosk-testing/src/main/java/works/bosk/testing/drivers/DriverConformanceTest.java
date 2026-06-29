@@ -618,7 +618,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	}
 
 	@Test
-	void newTenant() throws InvalidTypeException {
+	void addTenant() throws InvalidTypeException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		closeTenantScope();
 		switch (scenario.tenancyModel) {
@@ -635,6 +635,21 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		try (var _ = bosk.context().withTenant(newTenant)) {
 			driver.submitReplacement(bosk.rootReference(), root);
 		}
+	}
+
+	@Test
+	void removeTenant() throws InvalidTypeException {
+		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
+		switch (scenario.tenancyModel) {
+			case Implicit _ -> // Can't delete tenants in these models
+				assertThrows(IllegalArgumentException.class, this::deleteTenant);
+			default -> deleteTenant();
+		}
+		assertCorrectBoskContents();
+	}
+
+	private void deleteTenant() {
+		driver.submitDeletion(bosk.rootReference());
 	}
 
 	@Test

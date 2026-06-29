@@ -1,7 +1,8 @@
 package works.bosk;
 
 import java.io.IOException;
-import java.lang.invoke.MethodHandles;
+import java.lang.Thread.Builder;
+import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.Deque;
@@ -26,9 +27,11 @@ import org.slf4j.LoggerFactory;
 import works.bosk.BoskConfig.TenancyModel;
 import works.bosk.BoskConfig.TenancyModel.Explicit;
 import works.bosk.BoskConfig.TenancyModel.Fixed;
+import works.bosk.BoskConfig.TenancyModel.Implicit;
 import works.bosk.BoskConfig.TenancyModel.None;
 import works.bosk.BoskConfig.TenancyModel.Persistent;
 import works.bosk.BoskContext.Context;
+import works.bosk.BoskContext.ContextScope;
 import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskContext.Tenant.Established;
 import works.bosk.BoskContext.Tenant.TenantId;
@@ -106,7 +109,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final Queue<HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
 	private final PathCompiler pathCompiler;
 
-	private final Thread.Builder hookThreadBuilder = Thread
+	private final Builder hookThreadBuilder = Thread
 		.ofVirtual()
 		.name("bosk-hook-", 1);
 	private final ExecutorService hookExecutor = Executors.newThreadPerTaskExecutor(hookThreadBuilder::unstarted);
@@ -318,7 +321,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
 			try (var _ = setupMDC(name(), instanceID())) {
-				if (target.path().isEmpty()) {
+				if (target.path().isEmpty() && tenancyModel instanceof Implicit) {
 					// TODO: Augment dereferencer so it can tell us this for all references, not just the root
 					throw new IllegalArgumentException("Cannot delete root object");
 				}
@@ -436,6 +439,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 							);
 							case null -> throw new IllegalStateException("Bosk initialization is not yet finished", e);
 						};
+						queueHooks(target, null); // TODO: test!
 					} else {
 						throw e;
 					}
@@ -466,10 +470,19 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		public <T> void submitDeletion(Reference<T> target) {
 			synchronized (this) {
 				R priorRoot = currentRoot();
-				if (!tryGraftDeletion(target)) {
-					return;
+				if (target.isRoot()) {
+					// TODO: What to do about hooks at tenant deletion?
+					currentState = switch (currentState) {
+						case MultiTree<R> m -> m.without(context.getTenantId());
+						case null -> throw new IllegalStateException("Bosk state is not yet initialized");
+						default -> throw new IllegalStateException("Cannot delete root object");
+					};
+				} else {
+					if (!tryGraftDeletion(target)) {
+						return;
+					}
+					queueHooks(target, priorRoot);
 				}
-				queueHooks(target, priorRoot);
 			}
 			drainQueueIfAllowed();
 		}
@@ -528,7 +541,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		/**
-		 * Runs {@code action} in a {@link works.bosk.BoskContext.ContextScope}
+		 * Runs {@code action} in a {@link ContextScope}
 		 * with the appropriate tenant information established.
 		 */
 		private void forEachRoot(Consumer<R> action) {
@@ -822,11 +835,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * Such methods interfere with our ability to validate that the hook methods are well-formed.
 	 *
 	 * @param receiver the object whose {@link Hook @Hook}-annotated methods should be registered
-	 * @param lookup a {@link MethodHandles.Lookup} object with access to {@code receiver}'s methods
+	 * @param lookup a {@link Lookup} object with access to {@code receiver}'s methods
 	 * @throws InvalidTypeException if any hook method is invalid (static, private, has unsupported parameters, etc.)
 	 * @see Hook
 	 */
-	public void registerHooks(Object receiver, MethodHandles.Lookup lookup) throws InvalidTypeException {
+	public void registerHooks(Object receiver, Lookup lookup) throws InvalidTypeException {
 		HookScanner.registerHooks(receiver, this.rootReference(), this.hookRegistrar(), lookup);
 	}
 
