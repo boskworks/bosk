@@ -156,7 +156,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		doDelete(target);
+		if (target.isRoot()) {
+			doUpdate(deletionDoc(target, target), standardPreconditions(target, target, documentFilter(target)));
+		} else {
+			doDelete(target);
+		}
 	}
 
 	@Override
