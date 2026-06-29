@@ -100,7 +100,14 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitDeletion(Reference<T> target) {
 		traceCurrentState("Before submitDeletion");
-		surgeon.deleteNode(surgeon.nodeInfo(currentRoot(), target));
+		if (target.isRoot()) {
+			contents = switch (contents) {
+				case NoTenant<JsonNode> _ -> throw new IllegalStateException("Cannot delete the root node");
+				case MultiTenant<JsonNode> m -> m.without(context.getTenantId());
+			};
+		} else {
+			surgeon.deleteNode(surgeon.nodeInfo(currentRoot(), target));
+		}
 		downstream.submitDeletion(target);
 		traceCurrentState("After submitDeletion");
 	}

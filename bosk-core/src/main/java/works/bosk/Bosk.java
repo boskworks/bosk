@@ -469,7 +469,6 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
 			synchronized (this) {
-				R priorRoot = currentRoot();
 				if (target.isRoot()) {
 					// TODO: What to do about hooks at tenant deletion?
 					currentState = switch (currentState) {
@@ -478,6 +477,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 						default -> throw new IllegalStateException("Cannot delete root object");
 					};
 				} else {
+					R priorRoot = currentRoot();
 					if (!tryGraftDeletion(target)) {
 						return;
 					}
