@@ -75,6 +75,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 */
 	final AtomicReference<PerTenant<FlushLock>> flushLocks = new AtomicReference<>(null);
 
+	final FlushLock contentsFlushLock;
+
 	public AbstractFormatDriver(
 		RootReference<R> rootRef,
 		BoskContext context,
@@ -93,6 +95,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		this.downstream = downstream;
 		this.flushTimeoutMS = flushTimeoutMS;
 		this.entireStateSupplier = entireStateSupplier;
+		this.contentsFlushLock = new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS);
 	}
 
 	@Override
@@ -261,7 +264,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected boolean shouldSkip(Established tenant, BsonInt64 revision) {
 		FlushLock lock = flushLocks.get().get(tenant);
 		// When lock is null, we don't have a lock for this tenant, so this revision is always interesting.
-		return lock == null || lock.alreadySeen(revision);
+		return lock != null && lock.alreadySeen(revision);
 	}
 
 	/**
@@ -300,6 +303,25 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 			});
 		} else {
 			lock.finishedRevision(revision);
+		}
+	}
+
+	protected void finishedContentsRevision(BsonInt64 revision) {
+		if (revision != null) {
+			contentsFlushLock.finishedRevision(revision);
+		}
+	}
+
+	protected BsonInt64 readContentsRevision() {
+		try (MongoCursor<BsonDocument> cursor = collection
+			.withReadConcern(LOCAL)
+			.find(new BsonDocument("_id", CONTENTS_ID))
+			.projection(fields(include("_id", DocumentFields.revision.name())))
+			.cursor()) {
+			if (cursor.hasNext()) {
+				return cursor.next().getInt64(DocumentFields.revision.name(), REVISION_ZERO);
+			}
+			return REVISION_ZERO;
 		}
 	}
 
@@ -360,14 +382,23 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 				throw e;
 			}
 		}
+		additionalFlushWaits();
 		LOGGER.debug("| Flush downstream");
 		downstream.flush();
+	}
+
+	/**
+	 * Override in subclasses to add additional waits during {@link #flush()}.
+	 */
+	protected void additionalFlushWaits() throws IOException, InterruptedException {
+		// Default: no additional waits
 	}
 
 	@Override
 	public void close() {
 		LOGGER.debug("+ close()");
 		flushLocks.get().forEach((_, flushLock) -> flushLock.close());
+		contentsFlushLock.close();
 	}
 
 	protected void writeManifest(Manifest manifest) {
@@ -396,6 +427,10 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		return MANIFEST_ID.equals(documentId);
 	}
 
+	protected boolean isContentsID(BsonValue documentId) {
+		return CONTENTS_ID.equals(documentId);
+	}
+
 	/**
 	 * Low-level version of {@link StateAndMetadata}.
 	 */
@@ -406,6 +441,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	){}
 
 	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
+	static final BsonString CONTENTS_ID = new BsonString("!contents");
 	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractFormatDriver.class);
 
 }
