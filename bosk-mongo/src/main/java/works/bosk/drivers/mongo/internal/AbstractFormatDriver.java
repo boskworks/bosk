@@ -342,7 +342,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 				BsonInt64 revision = revisions.get(tenant);
 				try {
 					if (revision == null) {
-						throw new RevisionFieldDisruptedException("No revision number for tenant: " + tenant);
+						// Tenant has been deleted from the database; nothing to flush
+						return;
 					} else {
 						lock.awaitRevision(revision);
 					}

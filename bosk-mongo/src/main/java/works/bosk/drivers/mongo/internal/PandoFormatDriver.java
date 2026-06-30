@@ -58,6 +58,7 @@ import works.bosk.util.PerTenant.NoTenant;
 
 import static com.mongodb.ReadConcern.LOCAL;
 import static com.mongodb.client.model.Filters.regex;
+import static com.mongodb.client.model.changestream.OperationType.DELETE;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static java.util.Collections.singletonList;
 import static java.util.Comparator.comparing;
@@ -194,6 +195,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					BsonInt64 revision = lastPart.getInt64(DocumentFields.revision.name(), null);
 					BsonDocument diagnosticAttributes = Formatter.getDiagnosticAttributesIfAny(lastPart);
 					Established documentTenant = getTenantFromDocumentId(lastPart.getString("_id"));
+
+					// If the root document has no state field, the tenant was deleted.
+					// Skip it so it won't appear in the initial state tree.
+					if (lastPart.getDocument(DocumentFields.state.name(), null) == null) {
+						LOGGER.debug("Skipping tenant with no state: {}", documentTenant);
+						partsBuffer.clear();
+						continue;
+					}
 
 					BsonDocument state = gather(partsBuffer); // mutates partsBuffer!
 
@@ -448,6 +457,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private boolean isFinalEventOfTree(ChangeStreamDocument<BsonDocument> event) {
 		// Only the root document has a bson path ending with "|" because every other document
 		// has a bson path ending with the last path segment.
+		if (event.getOperationType() == DELETE) {
+			return event.getDocumentKey().get("_id").asString().getValue().endsWith("|");
+		}
 		return
 			event.getDocumentKey().get("_id").asString().getValue().endsWith("|")
 				&& updateEventHasField(event, DocumentFields.revision);
@@ -521,8 +533,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				finishedRevision(tenant, revision);
 			} break;
 			case DELETE: {
-				// No other events in the transaction matter if the root document is gone
-				LOGGER.debug("Document containing revision field has been deleted; assuming revision=0");
 				finishedRevision(tenant, REVISION_ZERO);
 			} break;
 			default: {
@@ -772,8 +782,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		collection.ensureTransactionStarted();
 		deletePartsUnder(target);
 		if (target.isRoot()) {
+			LOGGER.debug("| Delete root {}", target);
 			try {
-				doUpdate(deletionDoc(target, target), standardPreconditions(target, target, documentFilter(target)));
+				doUpdate(deletionDoc(target, rootRef), standardRootPreconditions(target));
 			} catch (NoSuchTenantException e) {
 				LOGGER.debug("Tenant is already nonexistent: {}", e.tenant);
 			}
