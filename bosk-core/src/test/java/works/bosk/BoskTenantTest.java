@@ -9,12 +9,15 @@ import works.bosk.BoskDriver.EntireState.MultiTree;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NoSuchTenantException;
+import works.bosk.junit.Ante;
+import works.bosk.junit.RunAnteTestsFirst;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.BoskConfig.TenancyModel.PERSISTENT;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
+@RunAnteTestsFirst
 public class BoskTenantTest extends AbstractBoskTest {
 	Bosk<TestRoot> bosk;
 	TestRoot initialTenant1Root;
@@ -59,6 +62,7 @@ public class BoskTenantTest extends AbstractBoskTest {
 		);
 	}
 
+	@Ante
 	@Test
 	void startingState() {
 		try (var _ = bosk.readSession()) {
