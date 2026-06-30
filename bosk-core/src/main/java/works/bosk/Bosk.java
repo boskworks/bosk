@@ -1,7 +1,8 @@
 package works.bosk;
 
 import java.io.IOException;
-import java.lang.invoke.MethodHandles;
+import java.lang.Thread.Builder;
+import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.Deque;
@@ -26,9 +27,11 @@ import org.slf4j.LoggerFactory;
 import works.bosk.BoskConfig.TenancyModel;
 import works.bosk.BoskConfig.TenancyModel.Explicit;
 import works.bosk.BoskConfig.TenancyModel.Fixed;
+import works.bosk.BoskConfig.TenancyModel.Implicit;
 import works.bosk.BoskConfig.TenancyModel.None;
 import works.bosk.BoskConfig.TenancyModel.Persistent;
 import works.bosk.BoskContext.Context;
+import works.bosk.BoskContext.ContextScope;
 import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskContext.Tenant.Established;
 import works.bosk.BoskContext.Tenant.TenantId;
@@ -44,6 +47,7 @@ import works.bosk.dereferencers.Dereferencer;
 import works.bosk.dereferencers.PathCompiler;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NoReadSessionException;
+import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.exceptions.NotYetImplementedException;
 import works.bosk.exceptions.ReferenceBindingException;
@@ -105,7 +109,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final Queue<HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
 	private final PathCompiler pathCompiler;
 
-	private final Thread.Builder hookThreadBuilder = Thread
+	private final Builder hookThreadBuilder = Thread
 		.ofVirtual()
 		.name("bosk-hook-", 1);
 	private final ExecutorService hookExecutor = Executors.newThreadPerTaskExecutor(hookThreadBuilder::unstarted);
@@ -317,7 +321,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
 			try (var _ = setupMDC(name(), instanceID())) {
-				if (target.path().isEmpty()) {
+				if (target.path().isEmpty() && tenancyModel instanceof Implicit) {
 					// TODO: Augment dereferencer so it can tell us this for all references, not just the root
 					throw new IllegalArgumentException("Cannot delete root object");
 				}
@@ -416,86 +420,126 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 
 		@Override
 		public <T> void submitReplacement(Reference<T> target, T newValue) {
-			synchronized (this) {
-				R priorRoot = currentRoot();
-				if (!tryGraftReplacement(target, newValue)) {
-					return;
-				}
-				queueHooks(target, priorRoot);
+			if (doReplacement(target, newValue)) {
+				drainQueueIfAllowed();
 			}
-			drainQueueIfAllowed();
+		}
+
+		@Override
+		public <T> void submitDeletion(Reference<T> target) {
+			if (doDeletion(target)) {
+				drainQueueIfAllowed();
+			}
 		}
 
 		@Override
 		public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
+			boolean somethingHappened;
 			synchronized (this) {
 				boolean preconditionsSatisfied;
 				try (ReadSession _ = supersedingReadSession()) {
 					preconditionsSatisfied = !target.exists();
 				}
-				if (preconditionsSatisfied) {
-					R priorRoot = currentRoot();
-					if (!tryGraftReplacement(target, newValue)) {
-						return;
-					}
-					queueHooks(target, priorRoot);
-				}
+				somethingHappened = preconditionsSatisfied && doReplacement(target, newValue);
 			}
-			drainQueueIfAllowed();
+			if (somethingHappened) {
+				drainQueueIfAllowed();
+			}
 		}
 
 		@Override
-		public <T> void submitDeletion(Reference<T> target) {
+		public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+			boolean somethingHappened;
 			synchronized (this) {
-				R priorRoot = currentRoot();
-				if (!tryGraftDeletion(target)) {
-					return;
+				boolean preconditionsSatisfied;
+				try (ReadSession _ = supersedingReadSession()) {
+					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
 				}
-				queueHooks(target, priorRoot);
+				somethingHappened = preconditionsSatisfied && doReplacement(target, newValue);
 			}
-			drainQueueIfAllowed();
+			if (somethingHappened) {
+				drainQueueIfAllowed();
+			}
+		}
+
+		@Override
+		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+			boolean somethingHappened;
+			synchronized (this) {
+				boolean preconditionsSatisfied;
+				try (ReadSession _ = supersedingReadSession()) {
+					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
+				}
+				somethingHappened = preconditionsSatisfied && doDeletion(target);
+			}
+			if (somethingHappened) {
+				drainQueueIfAllowed();
+			}
+		}
+
+		/**
+		 * @return true if the replacement did anything (and therefore hooks were queued)
+		 */
+		private synchronized <T> boolean doReplacement(Reference<T> target, T newValue) {
+			try {
+				@Nullable R priorRoot = currentRoot();
+				if (tryGraftReplacement(target, newValue)) {
+					queueHooks(target, priorRoot);
+					return true;
+				} else {
+					return false;
+				}
+			} catch (NoSuchTenantException e) {
+				if (target.isRoot()) {
+					// A replacement of the root on a nonexistent tenant is special:
+					// it creates the tenant.
+					currentState = switch (currentState) {
+						case SingleTree<R> _ -> throw new IllegalStateException("Cannot create a new tenant", e);
+						case MultiTree<R> m -> m.with(
+							e.tenant,
+							rootRef.targetClass().cast(requireNonNull(newValue))
+						);
+						case null -> throw new IllegalStateException("Bosk initialization is not yet finished", e);
+					};
+					queueHooks(target, null); // TODO: test!
+					return true;
+				} else {
+					LOGGER.info("Ignoring update to nonexistent tenant {}", e.tenant);
+					return false;
+				}
+			}
+		}
+
+		/**
+		 * @return true if the deletion did anything (and therefore hooks were queued)
+		 */
+		private synchronized <T> boolean doDeletion(Reference<T> target) {
+			if (target.isRoot()) {
+				// TODO: What to do about hooks at tenant deletion?
+				currentState = switch (currentState) {
+					case MultiTree<R> m -> m.without(context().getTenantId());
+					case null -> throw new IllegalStateException("Bosk state is not yet initialized");
+					default -> throw new IllegalStateException("Cannot delete root object");
+				};
+				return true;
+			} else try {
+				R priorRoot = currentRoot();
+				if (tryGraftDeletion(target)) {
+					queueHooks(target, priorRoot);
+					return true;
+				} else {
+					return false;
+				}
+			} catch (NoSuchTenantException e) {
+				LOGGER.info("Ignoring deletion on nonexistent tenant {}", e.tenant);
+				return true;
+			}
 		}
 
 		@Override
 		public void flush() {
 			// Nothing to do here. Updates are applied to the current state immediately as they arrive.
-			// No need to drain the hook queue because `flush` makes no guarantees about hooks.
-		}
-
-		@Override
-		public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-			synchronized (this) {
-				boolean preconditionsSatisfied;
-				try (ReadSession _ = supersedingReadSession()) {
-					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
-				}
-				if (preconditionsSatisfied) {
-					R priorRoot = currentRoot();
-					if (!tryGraftReplacement(target, newValue)) {
-						return;
-					}
-					queueHooks(target, priorRoot);
-				}
-			}
-			drainQueueIfAllowed();
-		}
-
-		@Override
-		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-			synchronized (this) {
-				boolean preconditionsSatisfied;
-				try (ReadSession _ = supersedingReadSession()) {
-					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
-				}
-				if (preconditionsSatisfied) {
-					R priorRoot = currentRoot();
-					if (!tryGraftDeletion(target)) {
-						return;
-					}
-					queueHooks(target, priorRoot);
-				}
-			}
-			drainQueueIfAllowed();
+			// No need to drain the hook queue because `flush` makes no guarantees about hook execution.
 		}
 
 		/**
@@ -510,7 +554,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		/**
-		 * Runs {@code action} in a {@link works.bosk.BoskContext.ContextScope}
+		 * Runs {@code action} in a {@link ContextScope}
 		 * with the appropriate tenant information established.
 		 */
 		private void forEachRoot(Consumer<R> action) {
@@ -540,7 +584,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		/**
 		 * @return false if the update was ignored
 		 */
-		private <T> boolean tryGraftReplacement(Reference<T> target, T newValue) {
+		private <T> boolean tryGraftReplacement(Reference<T> target, T newValue) throws NoSuchTenantException {
 			assert holdsLock(this);
 			Dereferencer dereferencer = dereferencerFor(target);
 			try {
@@ -569,7 +613,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		/**
 		 * @return false if the update was ignored
 		 */
-		private <T> boolean tryGraftDeletion(Reference<T> target) {
+		private <T> boolean tryGraftDeletion(Reference<T> target) throws NoSuchTenantException {
 			assert holdsLock(this);
 			Path targetPath = target.path();
 			assert !targetPath.isEmpty();
@@ -603,7 +647,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		}
 
 		private <T> void queueHooks(Reference<T> target, @Nullable R priorRoot) {
-			R rootForHook = currentRoot();
+			R rootForHook;
+			try {
+				rootForHook = currentRoot();
+			} catch (NoSuchTenantException e) {
+				rootForHook = null;
+			}
 			for (HookRegistration<?> reg : hooks) {
 				triggerQueueingOfHooks(target, priorRoot, rootForHook, reg);
 			}
@@ -804,11 +853,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * Such methods interfere with our ability to validate that the hook methods are well-formed.
 	 *
 	 * @param receiver the object whose {@link Hook @Hook}-annotated methods should be registered
-	 * @param lookup a {@link MethodHandles.Lookup} object with access to {@code receiver}'s methods
+	 * @param lookup a {@link Lookup} object with access to {@code receiver}'s methods
 	 * @throws InvalidTypeException if any hook method is invalid (static, private, has unsupported parameters, etc.)
 	 * @see Hook
 	 */
-	public void registerHooks(Object receiver, MethodHandles.Lookup lookup) throws InvalidTypeException {
+	public void registerHooks(Object receiver, Lookup lookup) throws InvalidTypeException {
 		HookScanner.registerHooks(receiver, this.rootReference(), this.hookRegistrar(), lookup);
 	}
 
@@ -904,11 +953,11 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 * @param priorRoot      The root before the change that triggered the hook; or null during initialization when running
 	 *                       hooks on the {@link BoskDriver#initialState initial state}.
 	 * @param newRoot        The root after the change that triggered the hook. This will be the root in the {@link ReadSession}
-	 *                       during hook execution.
+	 *                       during hook execution. For deleted tenants, this is null.
 	 * @param action         The operation to perform for each matching object that is different between the two roots
 	 * @param <S>            The type of the hook scope object
 	 */
-	private <S> void triggerCascade(Reference<S> effectiveScope, @Nullable R priorRoot, R newRoot, Consumer<Reference<S>> action) {
+	private <S> void triggerCascade(Reference<S> effectiveScope, @Nullable R priorRoot, @Nullable R newRoot, Consumer<Reference<S>> action) {
 		if (effectiveScope.path().numParameters() == 0) {
 			// effectiveScope points at a single node that may have changed
 			//
@@ -1400,7 +1449,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		@SuppressWarnings("unchecked")
 		public T valueIfExists() {
 			assertTenantEstablished();
-			R snapshot = getRoot(rootSnapshot.get());
+			R snapshot;
+			try {
+				snapshot = getRoot(rootSnapshot.get());
+			} catch (NoSuchTenantException e) {
+				return null;
+			}
 			if (snapshot == null) {
 				throw new NoReadSessionException("No active read session for " + name + " in " + Thread.currentThread());
 			}
@@ -1524,12 +1578,19 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		return instanceID() + " \"" + name + "\"::" + rootRef.targetClass().getSimpleName();
 	}
 
+	/**
+	 * @return null if {@code currentState} is not yet established, during the Bosk constructor.
+	 * @throws NoSuchTenantException if the tenant currently does not exist
+	 */
 	@Nullable
-	final R currentRoot() {
+	final R currentRoot() throws NoSuchTenantException {
 		return getRoot(currentState);
 	}
 
-	private <RR extends StateTreeNode> @Nullable RR getRoot(EntireState<RR> state) {
+	/**
+	 * @return null if still initializing
+	 */
+	private <RR extends StateTreeNode> @Nullable RR getRoot(EntireState<RR> state) throws NoSuchTenantException {
 		return switch (state) {
 			case null -> null; // Bosk is still initializing
 			case SingleTree<RR>(var r) -> r;
@@ -1537,7 +1598,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				if (context().getTenant() instanceof TenantId s) {
 					RR result = r.get(s);
 					if (result == null) {
-						throw new IllegalStateException("Tenant " + s + " does not exist");
+						throw new NoSuchTenantException(s);
 					}
 					yield result;
 				} else {

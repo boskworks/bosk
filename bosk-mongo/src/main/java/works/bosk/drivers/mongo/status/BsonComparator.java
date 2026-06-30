@@ -4,11 +4,16 @@ import java.util.ArrayList;
 import java.util.Map;
 import org.bson.BsonDocument;
 import org.bson.BsonValue;
+import org.jspecify.annotations.Nullable;
 
 public class BsonComparator {
 
-	public Difference difference(BsonValue expected, BsonValue actual) {
-		if (expected.getBsonType() != actual.getBsonType()) {
+	public Difference difference(@Nullable BsonValue expected, @Nullable BsonValue actual) {
+		if (expected == actual) {
+			return new NoDifference();
+		}
+
+		if (expected == null || actual == null || expected.getBsonType() != actual.getBsonType()) {
 			return new PrimitiveDifference("");
 		}
 

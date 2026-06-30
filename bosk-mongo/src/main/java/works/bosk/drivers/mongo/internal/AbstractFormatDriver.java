@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.ReadConcern;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
@@ -74,6 +75,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 */
 	final AtomicReference<PerTenant<FlushLock>> flushLocks = new AtomicReference<>(null);
 
+	final FlushLock contentsFlushLock;
+
 	public AbstractFormatDriver(
 		RootReference<R> rootRef,
 		BoskContext context,
@@ -92,6 +95,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		this.downstream = downstream;
 		this.flushTimeoutMS = flushTimeoutMS;
 		this.entireStateSupplier = entireStateSupplier;
+		this.contentsFlushLock = new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS);
 	}
 
 	@Override
@@ -159,9 +163,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	@Override
 	public void hasBeenApplied(PerTenant<StateAndMetadata<R>> contents) {
-		contents.forEach((tenant, stateAndMetadata) -> {
-			finishedRevision(tenant, stateAndMetadata.revision());
-		});
+		contents.forEach((tenant, stateAndMetadata) ->
+			finishedRevision(tenant, stateAndMetadata.revision()));
 	}
 
 	/**
@@ -188,22 +191,24 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected void ensureFlushLocksInitialized(PerTenant<?> contents) {
 		flushLocks.compareAndSet(null, switch (contents) {
 			case NoTenant<?> _ -> switch (tenancyModel) {
-				case None _ -> NoTenant.just(new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS));
-				case Fixed(var id) -> MultiTenant.singleton(Tenant.setTo(id),
-					new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS));
+				case None _ -> NoTenant.just(newFlushLock());
+				case Fixed(var id) -> MultiTenant.singleton(Tenant.setTo(id), newFlushLock());
 				case Persistent _ -> throw new AssertionError(
 					"Should not have NoTenant contents with Persistent tenancy");
 			};
 			case MultiTenant<?> m -> {
 				SortedMap<TenantId, FlushLock> locks = new TreeMap<>();
 				for (var tenantId : m.values().keySet()) {
-					locks.put(tenantId, new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS));
+					locks.put(tenantId, newFlushLock());
 				}
 				yield new MultiTenant<>(locks);
 			}
 		});
 	}
 
+	private @NonNull FlushLock newFlushLock() {
+		return new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS);
+	}
 
 	/**
 	 * Low-level read of the database contents, with only the minimum interpretation
@@ -258,7 +263,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	protected boolean shouldSkip(Established tenant, BsonInt64 revision) {
 		FlushLock lock = flushLocks.get().get(tenant);
-		return lock == null || lock.alreadySeen(revision);
+		// When lock is null, we don't have a lock for this tenant, so this revision is always interesting.
+		return lock != null && lock.alreadySeen(revision);
 	}
 
 	/**
@@ -288,14 +294,42 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	protected void finishedRevision(Established tenant, BsonInt64 revision) {
-		flushLocks.get().get(tenant).finishedRevision(revision);
+		PerTenant<FlushLock> f = flushLocks.get();
+		FlushLock lock = f.get(tenant);
+		if (lock == null) {
+			flushLocks.compareAndSet(f, switch (f) {
+				case MultiTenant<FlushLock> m when tenant instanceof TenantId t -> m.with(t, new FlushLock(revision.longValue(), flushTimeoutMS));
+				default -> throw new IllegalStateException("Cannot add tenant " + tenant);
+			});
+		} else {
+			lock.finishedRevision(revision);
+		}
+	}
+
+	protected void finishedContentsRevision(BsonInt64 revision) {
+		if (revision != null) {
+			contentsFlushLock.finishedRevision(revision);
+		}
+	}
+
+	protected BsonInt64 readContentsRevision() {
+		try (MongoCursor<BsonDocument> cursor = collection
+			.withReadConcern(LOCAL)
+			.find(new BsonDocument("_id", CONTENTS_ID))
+			.projection(fields(include("_id", DocumentFields.revision.name())))
+			.cursor()) {
+			if (cursor.hasNext()) {
+				return cursor.next().getInt64(DocumentFields.revision.name(), REVISION_ZERO);
+			}
+			return REVISION_ZERO;
+		}
 	}
 
 	/**
 	 * @return the {@link Tenant} that should be established before processing
 	 * a document with the given {@code id}
 	 */
-	protected BoskContext.Tenant.@NonNull Established tenantFor(BsonString id) {
+	protected @NonNull Established tenantFor(BsonString id) {
 		return switch (tenancyModel) {
 			case None _ -> Tenant.NONE;
 			case Fixed(var fixedId) -> Tenant.setTo(fixedId);
@@ -306,7 +340,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	/**
 	 * @return cursor giving the {@code _id} and {@code revision}
 	 * for all documents that have a revision field,
-	 * read using read concern {@link com.mongodb.ReadConcern#LOCAL LOCAL}.
+	 * read using read concern {@link ReadConcern#LOCAL LOCAL}.
 	 */
 	protected MongoCursor<BsonDocument> revisionDocumentCursor() {
 		return collection
@@ -330,7 +364,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 				BsonInt64 revision = revisions.get(tenant);
 				try {
 					if (revision == null) {
-						throw new RevisionFieldDisruptedException("No revision number for tenant: " + tenant);
+						// Tenant has been deleted from the database; nothing to flush
+						return;
 					} else {
 						lock.awaitRevision(revision);
 					}
@@ -347,14 +382,23 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 				throw e;
 			}
 		}
+		additionalFlushWaits();
 		LOGGER.debug("| Flush downstream");
 		downstream.flush();
+	}
+
+	/**
+	 * Override in subclasses to add additional waits during {@link #flush()}.
+	 */
+	protected void additionalFlushWaits() throws IOException, InterruptedException {
+		// Default: no additional waits
 	}
 
 	@Override
 	public void close() {
 		LOGGER.debug("+ close()");
 		flushLocks.get().forEach((_, flushLock) -> flushLock.close());
+		contentsFlushLock.close();
 	}
 
 	protected void writeManifest(Manifest manifest) {
@@ -383,6 +427,10 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		return MANIFEST_ID.equals(documentId);
 	}
 
+	protected boolean isContentsID(BsonValue documentId) {
+		return CONTENTS_ID.equals(documentId);
+	}
+
 	/**
 	 * Low-level version of {@link StateAndMetadata}.
 	 */
@@ -393,6 +441,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	){}
 
 	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
+	static final BsonString CONTENTS_ID = new BsonString("!contents");
 	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractFormatDriver.class);
 
 }

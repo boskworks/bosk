@@ -17,6 +17,7 @@ module works.bosk.mongo {
 
 	requires static lombok;
 	requires org.jspecify;
+	requires jdk.incubator.vector;
 
 	exports works.bosk.drivers.mongo;
 	exports works.bosk.drivers.mongo.exceptions;

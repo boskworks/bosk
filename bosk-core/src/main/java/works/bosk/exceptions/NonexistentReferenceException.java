@@ -7,7 +7,6 @@ import works.bosk.Reference;
  * Thrown when {@link Reference#value()} is called and the referenced object does not exist.
  * Also thrown by analogous methods like {@link Listing#getValue}.
  */
-@SuppressWarnings("serial")
 public class NonexistentReferenceException extends RuntimeException {
 	public NonexistentReferenceException(Reference<?> reference) {
 		super(message(reference));

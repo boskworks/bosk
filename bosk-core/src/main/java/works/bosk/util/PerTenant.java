@@ -118,14 +118,10 @@ public sealed interface PerTenant<T> {
 		@Override
 		public T get(Established tenant) {
 			if (tenant instanceof TenantId tenantId) {
-				T value = values.get(tenantId);
-				if (value == null) {
-					throw new IllegalStateException("No such tenant: " + tenant);
-				} else {
-					return value;
-				}
+				return values.get(tenantId);
+			} else {
+				throw new IllegalStateException("Invalid tenant: " + tenant);
 			}
-			throw new IllegalStateException("Invalid tenant: " + tenant);
 		}
 
 		@Override

@@ -42,6 +42,9 @@ public final class BoskContext {
 		if (oldTenant.equals(newTenant)) {
 			LOGGER.trace("Reestablishing same tenant: {}", newTenant);
 		} else if (oldTenant instanceof Tenant.NotEstablished) {
+			if (TENANT_LOGGER.isDebugEnabled()) {
+				TENANT_LOGGER.debug("Establishing tenant: {}", newTenant, new Exception("Stack trace"));
+			}
 			LOGGER.debug("Establishing tenant: {}", newTenant);
 		} else {
 			throw new IllegalArgumentException(
@@ -287,4 +290,5 @@ public final class BoskContext {
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(BoskContext.class);
+	private static final Logger TENANT_LOGGER = LoggerFactory.getLogger(LOGGER.getName() + ".tenant");
 }

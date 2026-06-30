@@ -63,6 +63,7 @@ The usual Gradle commands, plus:
 - Tabs for indentation, except in formats like Markdown and YAML where tabs and spaces are not equivalent.
 - No wildcard imports.
 - Always use curly braces for conditionals and loops.
+  - Conditional guarded statements should be on their own line to facilitate breakpoints
 - Prefer if-then-else over early returns (to make subsequent refactoring easier) except in specific situations:
   - If there's an especially simple case, like errors or "already computed" one-liner cases, those can return early to avoid mixing with complex logic
 

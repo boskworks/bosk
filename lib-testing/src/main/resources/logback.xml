@@ -21,6 +21,7 @@
 	<logger name="works.bosk.drivers.mongo.MongoDriver.uninitializedCollection" level="ERROR"/>
 
 	<!-- How to add more tracing during unit tests
+	<logger name="works.bosk.BoskContext.tenant" level="DEBUG"/>
 	<logger name="works.bosk" level="INFO"/>
 	<logger name="works.bosk.boson" level="DEBUG"/>
 	<logger name="works.bosk.bosonSerializer" level="DEBUG"/>

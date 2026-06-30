@@ -16,7 +16,10 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskConfig;
+import works.bosk.BoskConfig.TenancyModel.Implicit;
 import works.bosk.BoskContext;
+import works.bosk.BoskContext.Tenant;
+import works.bosk.BoskContext.Tenant.TenantId;
 import works.bosk.BoskDriver;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -42,6 +45,7 @@ import works.bosk.junit.RunAnteTestsFirst;
 import works.bosk.testing.drivers.state.Primitives;
 import works.bosk.testing.drivers.state.SelfValue;
 import works.bosk.testing.drivers.state.TestEntity;
+import works.bosk.testing.drivers.state.TestEntity.Fields;
 import works.bosk.testing.drivers.state.TestEntity.IdentifierCase;
 import works.bosk.testing.drivers.state.TestEntity.StringCase;
 import works.bosk.testing.drivers.state.TestEntity.Variant;
@@ -610,6 +614,56 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 		assertTrue(contextVerified.tryAcquire(5, SECONDS));
 		hookEnabled.set(false); // Deactivate the hook
+	}
+
+	@Test
+	void addTenant() throws InvalidTypeException {
+		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
+		closeTenantScope();
+		switch (scenario.tenancyModel) {
+			case Implicit _ -> // Can't switch tenants in these models
+				assertThrows(IllegalArgumentException.class, this::makeNewTenants);
+			default -> makeNewTenants();
+		}
+		assertCorrectBoskContents();
+	}
+
+	private void makeNewTenants() throws InvalidTypeException {
+		TestEntity root = initialRoot(bosk).withString("newcomer 1");
+		TenantId newTenant = Tenant.setTo(Identifier.from("newcomer 1"));
+		try (var _ = bosk.context().withTenant(newTenant)) {
+			driver.submitConditionalCreation(bosk.rootReference(), root);
+		}
+	}
+
+	@Test
+	void removeTenant() throws InvalidTypeException {
+		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
+		switch (scenario.tenancyModel) {
+			case Implicit _ -> // Can't delete tenants in these models
+				assertThrows(IllegalArgumentException.class, this::deleteTenant);
+			default -> deleteTenant();
+		}
+		assertCorrectBoskContents();
+	}
+
+	private void deleteTenant() {
+		driver.submitDeletion(bosk.rootReference());
+	}
+
+	@Test
+	void nonexistentTenant() throws InvalidTypeException {
+		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
+		if ((scenario.tenancyModel instanceof Implicit)) {
+			// Can't set a nonexistent tenant in these models anyway
+			return;
+		}
+		closeTenantScope();
+		try (var _ = bosk.context().withTenant(Tenant.setTo(Identifier.from("newcomer")))) {
+			// This should have no effect on a nonexistent tenant
+			driver.submitReplacement(bosk.rootReference().then(String.class, Fields.string), "new value");
+		}
+		assertCorrectBoskContents();
 	}
 
 	private Reference<TestValues> initializeBoskWithBlankValues(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
@@ -190,13 +191,17 @@ public abstract class AbstractDriverTest {
 	}
 
 	public EntireState<TestEntity> initialState(Bosk<TestEntity> b) throws InvalidTypeException {
-		TestEntity root = TestEntity.empty(Identifier.from("root"), b.rootReference().thenCatalog(TestEntity.class, Path.just(Fields.catalog)));
+		TestEntity root = initialRoot(b);
 		return switch (scenario.tenancyModel) {
 			case Persistent _ -> MultiTree.<TestEntity>empty()
 				.with((TenantId) scenario.startingTenant, root)
 				.with(Tenant.setTo(TENANT2), root.withId(Identifier.from(TENANT2 + " root")));
 			case None _, Fixed _ -> EntireState.just(root);
 		};
+	}
+
+	protected @NonNull TestEntity initialRoot(Bosk<TestEntity> b) throws InvalidTypeException {
+		return TestEntity.empty(Identifier.from("root"), b.rootReference().thenCatalog(TestEntity.class, Path.just(Fields.catalog)));
 	}
 
 	protected TestEntity autoInitialize(Reference<TestEntity> ref) {
@@ -259,13 +264,13 @@ public abstract class AbstractDriverTest {
 			var _ = canonicalBosk.context().withMaybeTenant(scenario.startingTenant);
 			var _ = canonicalBosk.readSession()
 		) {
-			expected = canonicalBosk.rootReference().value();
+			expected = canonicalBosk.rootReference().valueIfExists();
 		}
 		try (
 			var _ = bosk.context().withMaybeTenant(scenario.startingTenant);
 			var _ = bosk.readSession()
 		) {
-			actual = bosk.rootReference().value();
+			actual = bosk.rootReference().valueIfExists();
 		}
 		assertEquals(expected, actual);
 	}

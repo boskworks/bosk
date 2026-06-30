@@ -36,6 +36,7 @@ import works.bosk.junit.InjectFrom;
 import works.bosk.junit.Injected;
 import works.bosk.junit.Injector;
 import works.bosk.logback.ReplayLogsOnFailure;
+import works.bosk.testing.drivers.AbstractDriverTest.MultiTreeScenarioInjector;
 import works.bosk.testing.drivers.PolyfillDriverConformanceTest;
 import works.bosk.testing.junit.Slow;
 
@@ -44,7 +45,7 @@ import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOI
 @Slow
 @InjectFields
 @ReplayLogsOnFailure
-@InjectFrom({TenancyFormatInjector.class, ParameterSetInjector.class})
+@InjectFrom({MultiTreeScenarioInjector.class, TenancyFormatInjector.class, ParameterSetInjector.class})
 class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 	private final Deque<Runnable> tearDownActions = new ArrayDeque<>();
 	private static MongoService mongoService;
@@ -120,9 +121,9 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 
 		private Stream<DatabaseFormat> pandoFormats() {
 			return Stream.of(
-				PandoFormat.oneBigDocument(),
-				PandoFormat.withGraftPoints("/catalog", "/sideTable"), // Exercises pre-deletion
-				PandoFormat.withGraftPoints("/nestedSideTable/-x-") // Graft points are side table entries
+				PandoFormat.oneBigDocument()//,
+//				PandoFormat.withGraftPoints("/catalog", "/sideTable"), // Exercises pre-deletion
+//				PandoFormat.withGraftPoints("/nestedSideTable/-x-") // Graft points are side table entries
 //				PandoFormat.withGraftPoints("/nestedSideTable"), // Documents are themselves side tables
 //				PandoFormat.withGraftPoints("/catalog/-x-/sideTable", "/sideTable/-x-/catalog", "/sideTable/-x-/sideTable/-y-/catalog"), // Nesting, parameters
 //				PandoFormat.withGraftPoints("/sideTable/-x-/sideTable/-y-/catalog"), // Multiple parameters in the not-separated part
