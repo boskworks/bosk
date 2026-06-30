@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import works.bosk.AbstractBoskTest;
 import works.bosk.Bosk;
-import works.bosk.exceptions.NonexistentEntryException;
+import works.bosk.Bosk.NonexistentEntryException;
 import works.bosk.BoskConfig;
 import works.bosk.BoskDriver.EntireState;
 import works.bosk.Catalog;

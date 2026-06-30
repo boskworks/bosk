@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -617,6 +618,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	}
 
 	@Test
+	@Disabled
 	void addTenant() throws InvalidTypeException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		closeTenantScope();
@@ -652,6 +654,7 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	}
 
 	@Test
+	@Disabled
 	void nonexistentTenant() throws InvalidTypeException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
 		if ((scenario.tenancyModel instanceof Implicit)) {

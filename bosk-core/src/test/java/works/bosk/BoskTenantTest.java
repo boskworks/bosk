@@ -8,7 +8,7 @@ import works.bosk.BoskContext.Tenant.TenantId;
 import works.bosk.BoskDriver.EntireState.MultiTree;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.exceptions.NoSuchTenantException;
+import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.junit.Ante;
 import works.bosk.junit.RunAnteTestsFirst;
 
@@ -74,7 +74,7 @@ public class BoskTenantTest extends AbstractBoskTest {
 				assertEquals(initialTenant2Root, bosk.rootReference().value());
 			}
 			try (var _ = bosk.context().withTenant(TENANT_3)) {
-				assertThrows(NoSuchTenantException.class, () -> bosk.rootReference().value());
+				assertThrows(NonexistentReferenceException.class, () -> bosk.rootReference().value());
 			}
 		}
 	}
@@ -130,7 +130,7 @@ public class BoskTenantTest extends AbstractBoskTest {
 			bosk.driver().flush();
 			try (var _ = bosk.readSession()) {
 				assertEquals(MultiTree.singleton(TENANT_2, initialTenant2Root), bosk.entireState());
-				assertThrows(NoSuchTenantException.class, () -> bosk.rootReference().value(),
+				assertThrows(NonexistentReferenceException.class, () -> bosk.rootReference().value(),
 					"Root deletion deletes tenant");
 			}
 		}
