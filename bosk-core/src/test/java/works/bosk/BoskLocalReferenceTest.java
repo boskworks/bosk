@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import works.bosk.BoskDriver.EntireState;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.util.Classes;
 
@@ -59,7 +60,7 @@ class BoskLocalReferenceTest {
 	}
 
 	@BeforeEach
-	void initializeBosk() throws InvalidTypeException {
+	void initializeBosk() throws InvalidTypeException, NoSuchTenantException {
 		boskName = boskName();
 		Root initialRoot = new Root(1, Catalog.empty());
 		bosk = new Bosk<>(boskName, Root.class, _ -> EntireState.just(initialRoot), BoskConfig.simple());

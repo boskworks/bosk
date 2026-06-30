@@ -26,8 +26,7 @@ import works.bosk.util.PerTenant.MultiTenant;
 import works.bosk.util.PerTenant.NoTenant;
 
 /**
- * Maintains an in-memory representation of the bosk state
- * in the form of a tree of {@link JsonNode} objects.
+ * Maintains an in-memory representation of the bosk state in the form of a tree of {@link JsonNode} objects.
  */
 public class JsonNodeDriver implements BoskDriver {
 	final BoskDriver downstream;
@@ -68,10 +67,7 @@ public class JsonNodeDriver implements BoskDriver {
 		try {
 			doReplacement(surgeon.nodeInfo(currentRoot(), target), target.path().lastSegment(), newValue);
 		} catch (NoSuchTenantException e) {
-			contents = switch (contents) {
-				case MultiTenant<JsonNode> m -> m.with(context.getTenantId(), mapper.convertValue(newValue, JsonNode.class));
-				case NoTenant<JsonNode> _ -> throw new IllegalStateException("Cannot add a new tenant");
-			};
+			maybeMakeNewTenant(target, newValue);
 		}
 		downstream.submitReplacement(target, newValue);
 		traceCurrentState("After submitReplacement");
@@ -80,8 +76,13 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		traceCurrentState("Before submitConditionalReplacement");
-		if (requiredValue.toString().equals(surgeon.valueNode(currentRoot(), precondition).asString())) {
-			doReplacement(surgeon.nodeInfo(currentRoot(), target), target.path().lastSegment(), newValue);
+		try {
+			JsonNode root = currentRoot();
+			if (requiredValue.toString().equals(surgeon.valueNode(root, precondition).asString())) {
+				doReplacement(surgeon.nodeInfo(root, target), target.path().lastSegment(), newValue);
+			}
+		} catch (NoSuchTenantException _) {
+			// Precondition automatically fails
 		}
 		downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		traceCurrentState("After submitConditionalReplacement");
@@ -90,8 +91,13 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 		traceCurrentState("Before submitConditionalCreation");
-		if (surgeon.valueNode(currentRoot(), target) == null) {
-			doReplacement(surgeon.nodeInfo(currentRoot(), target), target.path().lastSegment(), newValue);
+		try {
+			JsonNode doc = currentRoot();
+			if (surgeon.valueNode(doc, target) == null) {
+				doReplacement(surgeon.nodeInfo(doc, target), target.path().lastSegment(), newValue);
+			}
+		} catch (NoSuchTenantException e) {
+			maybeMakeNewTenant(target, newValue);
 		}
 		downstream.submitConditionalCreation(target, newValue);
 		traceCurrentState("After submitConditionalCreation");
@@ -100,14 +106,7 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitDeletion(Reference<T> target) {
 		traceCurrentState("Before submitDeletion");
-		if (target.isRoot()) {
-			contents = switch (contents) {
-				case NoTenant<JsonNode> _ -> throw new IllegalStateException("Cannot delete the root node");
-				case MultiTenant<JsonNode> m -> m.without(context.getTenantId());
-			};
-		} else {
-			surgeon.deleteNode(surgeon.nodeInfo(currentRoot(), target));
-		}
+		doDeletion(target);
 		downstream.submitDeletion(target);
 		traceCurrentState("After submitDeletion");
 	}
@@ -115,8 +114,12 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		traceCurrentState("Before submitConditionalDeletion");
-		if (requiredValue.toString().equals(surgeon.valueNode(currentRoot(), precondition).asString())) {
-			surgeon.deleteNode(surgeon.nodeInfo(currentRoot(), target));
+		try {
+			if (requiredValue.toString().equals(surgeon.valueNode(currentRoot(), precondition).asString())) {
+				doDeletion(target);
+			}
+		} catch (NoSuchTenantException e) {
+			// Precondition automatically fails
 		}
 		downstream.submitConditionalDeletion(target, precondition, requiredValue);
 		traceCurrentState("After submitConditionalDeletion");
@@ -128,7 +131,7 @@ public class JsonNodeDriver implements BoskDriver {
 		downstream.flush();
 	}
 
-	private <T> void doReplacement(NodeInfo nodeInfo, String lastSegment, T newValue) {
+	private synchronized <T> void doReplacement(NodeInfo nodeInfo, String lastSegment, T newValue) {
 		JsonNode replacement = surgeon.replacementNode(nodeInfo, lastSegment, () -> mapper.convertValue(newValue, JsonNode.class));
 		if (nodeInfo.replacementLocation() instanceof Root) {
 			contents = switch (contents) {
@@ -140,13 +143,35 @@ public class JsonNodeDriver implements BoskDriver {
 		}
 	}
 
+	private synchronized <T> void doDeletion(Reference<T> target) {
+		if (target.isRoot()) {
+			contents = switch (contents) {
+				case NoTenant<JsonNode> _ -> throw new IllegalStateException("Cannot delete the root node");
+				case MultiTenant<JsonNode> m -> m.without(context.getTenantId());
+			};
+		} else try {
+			surgeon.deleteNode(surgeon.nodeInfo(currentRoot(), target));
+		} catch (NoSuchTenantException _) {
+			// Nothing to delete
+		}
+	}
+
 	void traceCurrentState(String description) {
 		if (LOGGER.isTraceEnabled()) {
 			LOGGER.trace("State {} {}:\n{}", ++updateNumber, description, contentsPrettyString());
 		}
 	}
 
-	@NonNull JsonNode currentRoot() {
+	private <T> void maybeMakeNewTenant(Reference<T> target, T newValue) {
+		if (target.isRoot()) {
+			contents = switch (contents) {
+				case MultiTenant<JsonNode> m -> m.with(context.getTenantId(), mapper.convertValue(newValue, JsonNode.class));
+				case NoTenant<JsonNode> _ -> throw new IllegalStateException("Cannot add a new tenant");
+			};
+		}
+	}
+
+	@NonNull JsonNode currentRoot() throws NoSuchTenantException {
 		return switch (contents) {
 			case NoTenant<JsonNode>(var root) -> root;
 			case MultiTenant<JsonNode>(var roots) -> {

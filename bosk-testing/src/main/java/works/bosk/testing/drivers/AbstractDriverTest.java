@@ -32,7 +32,6 @@ import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.Injected;
@@ -265,17 +264,13 @@ public abstract class AbstractDriverTest {
 			var _ = canonicalBosk.context().withMaybeTenant(scenario.startingTenant);
 			var _ = canonicalBosk.readSession()
 		) {
-			expected = canonicalBosk.rootReference().value();
-		} catch (NoSuchTenantException e) {
-			expected = null;
+			expected = canonicalBosk.rootReference().valueIfExists();
 		}
 		try (
 			var _ = bosk.context().withMaybeTenant(scenario.startingTenant);
 			var _ = bosk.readSession()
 		) {
-			actual = bosk.rootReference().value();
-		} catch (NoSuchTenantException e) {
-			actual = null;
+			actual = bosk.rootReference().valueIfExists();
 		}
 		assertEquals(expected, actual);
 	}

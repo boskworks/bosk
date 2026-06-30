@@ -125,19 +125,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		collection.ensureTransactionStarted();
-		try {
-			doReplacement(target, newValue);
-		} catch (NoSuchTenantException e) {
-			var tid = context.getTenantId();
-			initializeTenant(tid, formatter.object2bsonValue(newValue, target.targetType()), nextRevision(REVISION_ZERO));
-
-			// For newly created tenants, we use the change stream event to
-			// update the downstream driver. We could manually stuff it downstream,
-			// but the change stream path needs to work for remote bosks anyway,
-			// so we might as well reduce variety and make that the only way.
-			finishedRevision(tid, REVISION_BEFORE_ANY);
-		}
+		doReplacement(target, newValue);
 	}
 
 	@Override
@@ -149,18 +137,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (documentExists(filter)) {
 			LOGGER.debug("Already exists: {}", filter);
 			collection.abortTransaction();
-			return;
+		} else {
+			doReplacement(target, newValue);
 		}
-		doReplacement(target, newValue);
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		if (target.isRoot()) {
-			doUpdate(deletionDoc(target, target), standardPreconditions(target, target, documentFilter(target)));
-		} else {
-			doDelete(target);
-		}
+		doDelete(target);
 	}
 
 	@Override
@@ -727,13 +711,24 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			LOGGER.debug("| Root ref is main ref");
 			LOGGER.debug("| Pre-delete on root document");
 			String key = BsonFormatter.dottedFieldNameOf(target, rootRef);
-			LOGGER.debug("| Pre-delete field {}", key);
-			doUpdate( // Important: don't bump the revision field because that's how we identify the last event in a transaction
-				new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)),
-				standardRootPreconditions(target));
-			LOGGER.debug("| Update root document");
-			doUpdate(replacementDoc(target, value, rootRef), standardRootPreconditions(target));
-		} else {
+			try {
+				LOGGER.debug("| Pre-delete field {}", key);
+				doUpdate( // Important: don't bump the revision field because that's how we identify the last event in a transaction
+					new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)),
+					standardRootPreconditions(target));
+				LOGGER.debug("| Update root document");
+				doUpdate(replacementDoc(target, value, rootRef), standardRootPreconditions(target));
+			} catch (NoSuchTenantException e) {
+				var tid = context.getTenantId();
+				initializeTenant(tid, formatter.object2bsonValue(newValue, target.targetType()), nextRevision(REVISION_ZERO));
+
+				// For newly created tenants, we use the change stream event to
+				// update the downstream driver. We could manually stuff it downstream,
+				// but the change stream path needs to work for remote bosks anyway,
+				// so we might as well reduce variety and make that the only way.
+				finishedRevision(tid, REVISION_BEFORE_ANY);
+			}
+		} else try {
 			// Note: don't use mainPart's ID. TODO: Is this ok? Why is the ID wrong?
 			BsonDocument filter = documentFilter(mainRef);
 			if (target.equals(mainRef)) {
@@ -768,12 +763,22 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 			LOGGER.debug("| Bump revision on root document");
 			doUpdate(blankUpdateDoc(), documentFilter(rootRef));
+		} catch (NoSuchTenantException e) {
+			throw new IllegalStateException(e);
 		}
 	}
 
 	private <T> void doDelete(Reference<T> target) {
 		collection.ensureTransactionStarted();
 		deletePartsUnder(target);
+		if (target.isRoot()) {
+			try {
+				doUpdate(deletionDoc(target, target), standardPreconditions(target, target, documentFilter(target)));
+			} catch (NoSuchTenantException e) {
+				LOGGER.debug("Tenant is already nonexistent: {}", e.tenant);
+			}
+			return;
+		}
 		Reference<?> mainRef = mainRef(target);
 		if (mainRef.equals(target)) {
 			// Delete the whole document
@@ -787,15 +792,18 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			// Move up to the parent document to delete the "true" stub
 			mainRef = mainRef(mainRef.enclosingReference(Object.class));
 			LOGGER.debug("Move up to enclosing main reference {}", mainRef);
-		}
-		if (doUpdate(deletionDoc(target, mainRef), standardPreconditions(target, mainRef, documentFilter(mainRef)))) {
-			if (!rootRef.equals(mainRef)) {
-				LOGGER.debug("Deletion succeeded; bumping revision number in root document");
-				doUpdate(blankUpdateDoc(), documentFilter(rootRef));
+		} else try {
+			if (doUpdate(deletionDoc(target, mainRef), standardPreconditions(target, mainRef, documentFilter(mainRef)))) {
+				if (!rootRef.equals(mainRef)) {
+					LOGGER.debug("Deletion succeeded; bumping revision number in root document");
+					doUpdate(blankUpdateDoc(), documentFilter(rootRef));
+				}
+			} else {
+				LOGGER.debug("Deletion had no effect; aborting transaction");
+				collection.abortTransaction();
 			}
-		} else {
-			LOGGER.debug("Deletion had no effect; aborting transaction");
-			collection.abortTransaction();
+		} catch (NoSuchTenantException e) {
+			LOGGER.debug("Tenant is already nonexistent: {}", e.tenant);
 		}
 	}
 
@@ -881,7 +889,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	/**
 	 * @return true if something changed
 	 */
-	private boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
+	private boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) throws NoSuchTenantException {
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);

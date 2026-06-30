@@ -25,7 +25,6 @@ import works.bosk.StateTreeNode;
 import works.bosk.drivers.ContextScopeDriver;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.exceptions.NotYetImplementedException;
 import works.bosk.testing.drivers.operations.DriverOperation;
 import works.bosk.testing.drivers.operations.FlushOperation;
@@ -247,11 +246,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 			Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
 			stateTrackingBosk.driver().flush();
 			try (var _ = stateTrackingBosk.readSession()) {
-				try {
-					return stateTrackingRef.valueIfExists();
-				} catch (NoSuchTenantException e) {
-					return null;
-				}
+				return stateTrackingRef.valueIfExists();
 			}
 		}
 	}
@@ -265,8 +260,6 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 			stateTrackingBosk.driver().flush();
 			try (var _ = stateTrackingBosk.readSession()) {
 				return stateTrackingRef.valueIfExists();
-			} catch (NoSuchTenantException e) {
-				return null;
 			}
 		}
 	}

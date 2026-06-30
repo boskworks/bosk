@@ -37,7 +37,6 @@ import works.bosk.SideTableReference;
 import works.bosk.TaggedUnion;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.junit.Ante;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
@@ -660,12 +659,11 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 			return;
 		}
 		closeTenantScope();
-		assertThrows(NoSuchTenantException.class, () -> {
-			try (var _ = bosk.context().withTenant(Tenant.setTo(Identifier.from("nonexistent")))) {
-				// Anything but the root reference should throw
-				driver.submitReplacement(bosk.rootReference().then(String.class, Fields.string), "new value");
-			}
-		});
+		try (var _ = bosk.context().withTenant(Tenant.setTo(Identifier.from("newcomer")))) {
+			// This should have no effect on a nonexistent tenant
+			driver.submitReplacement(bosk.rootReference().then(String.class, Fields.string), "new value");
+		}
+		assertCorrectBoskContents();
 	}
 
 	private Reference<TestValues> initializeBoskWithBlankValues(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {

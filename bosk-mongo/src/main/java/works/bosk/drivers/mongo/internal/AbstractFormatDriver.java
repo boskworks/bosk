@@ -39,7 +39,6 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.drivers.mongo.status.StateStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.exceptions.NoSuchTenantException;
 import works.bosk.util.PerTenant;
 import works.bosk.util.PerTenant.MultiTenant;
 import works.bosk.util.PerTenant.NoTenant;
@@ -161,9 +160,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	@Override
 	public void hasBeenApplied(PerTenant<StateAndMetadata<R>> contents) {
-		contents.forEach((tenant, stateAndMetadata) -> {
-			finishedRevision(tenant, stateAndMetadata.revision());
-		});
+		contents.forEach((tenant, stateAndMetadata) ->
+			finishedRevision(tenant, stateAndMetadata.revision()));
 	}
 
 	/**
@@ -261,13 +259,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	protected boolean shouldSkip(Established tenant, BsonInt64 revision) {
-		try {
-			FlushLock lock = flushLocks.get().get(tenant);
-			return lock == null || lock.alreadySeen(revision);
-		} catch (NoSuchTenantException e) {
-			LOGGER.debug("Unknown tenant {}; processing revision {}", tenant, revision);
-			return false;
-		}
+		FlushLock lock = flushLocks.get().get(tenant);
+		// When lock is null, we don't have a lock for this tenant, so this revision is always interesting.
+		return lock == null || lock.alreadySeen(revision);
 	}
 
 	/**
@@ -298,13 +292,14 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	protected void finishedRevision(Established tenant, BsonInt64 revision) {
 		PerTenant<FlushLock> f = flushLocks.get();
-		try {
-			f.get(tenant).finishedRevision(revision);
-		} catch (NoSuchTenantException e) {
+		FlushLock lock = f.get(tenant);
+		if (lock == null) {
 			flushLocks.compareAndSet(f, switch (f) {
-				case MultiTenant<FlushLock> m -> m.with(e.tenant, new FlushLock(revision.longValue(), flushTimeoutMS));
-				case NoTenant<FlushLock> _ -> throw new IllegalStateException("Cannot add tenant " + e.tenant);
+				case MultiTenant<FlushLock> m when tenant instanceof TenantId t -> m.with(t, new FlushLock(revision.longValue(), flushTimeoutMS));
+				default -> throw new IllegalStateException("Cannot add tenant " + tenant);
 			});
+		} else {
+			lock.finishedRevision(revision);
 		}
 	}
 
