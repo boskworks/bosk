@@ -15,4 +15,6 @@ module works.bosk.libtesting {
 	requires static lombok;
 
 	exports works.bosk.libtesting;
+
+	provides org.junit.jupiter.api.extension.Extension with works.bosk.libtesting.TimeoutHintWatcher;
 }
