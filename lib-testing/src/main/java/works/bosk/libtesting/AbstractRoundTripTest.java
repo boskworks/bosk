@@ -37,6 +37,7 @@ import works.bosk.DriverFactory;
 import works.bosk.Entity;
 import works.bosk.Identifier;
 import works.bosk.Reference;
+import works.bosk.ReferenceUtils;
 import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
@@ -56,8 +57,6 @@ import works.bosk.jackson.JacksonSerializerConfiguration;
 
 import static java.lang.System.identityHashCode;
 import static java.util.Collections.newSetFromMap;
-import works.bosk.ReferenceUtils;
-
 import static tools.jackson.databind.SerializationFeature.INDENT_OUTPUT;
 
 public abstract class AbstractRoundTripTest extends AbstractBoskTest {
