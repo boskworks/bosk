@@ -1,4 +1,4 @@
-package works.bosk;
+package works.bosk.libtesting;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -30,6 +30,17 @@ import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.type.TypeFactory;
+import works.bosk.BoskConfig;
+import works.bosk.BoskDriver;
+import works.bosk.BoskInfo;
+import works.bosk.DriverFactory;
+import works.bosk.Entity;
+import works.bosk.Identifier;
+import works.bosk.Reference;
+import works.bosk.ReferenceUtils;
+import works.bosk.StateTreeNode;
+import works.bosk.StateTreeSerializer;
+import works.bosk.TaggedUnion;
 import works.bosk.boson.codec.CodecBuilder;
 import works.bosk.boson.codec.Generator;
 import works.bosk.boson.codec.JsonReader;
