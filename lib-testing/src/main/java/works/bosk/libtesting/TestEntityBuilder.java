@@ -1,5 +1,13 @@
-package works.bosk;
+package works.bosk.libtesting;
 
+import works.bosk.Bosk;
+import works.bosk.Catalog;
+import works.bosk.CatalogReference;
+import works.bosk.Identifier;
+import works.bosk.Listing;
+import works.bosk.Reference;
+import works.bosk.SideTable;
+import works.bosk.TaggedUnion;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 
