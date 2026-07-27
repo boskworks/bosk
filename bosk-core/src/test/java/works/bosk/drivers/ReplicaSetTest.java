@@ -69,8 +69,6 @@ public class ReplicaSetTest extends AbstractDriverTest {
 	}
 
 	private @NonNull Bosk<TestEntity> createBosk(String name, ReplicaSet<TestEntity> replicaSet) {
-		var bosk1 = new Bosk<>(name, TestEntity.class, this::initialState, BoskConfig.<TestEntity>builder().tenancyModel(scenario.tenancyModel).driverFactory(replicaSet.driverFactory()).build());
-		closeables.add(bosk1.context().withMaybeTenant(scenario.startingTenant));
-		return bosk1;
+		return new Bosk<>(name, TestEntity.class, this::initialState, BoskConfig.<TestEntity>builder().driverFactory(replicaSet.driverFactory()).build());
 	}
 }

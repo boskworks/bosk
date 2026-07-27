@@ -12,8 +12,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver.EntireState;
-import works.bosk.BoskDriver.EntireState.SingleTree;
 import works.bosk.BoskInfo;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -351,12 +349,12 @@ class BoskGraphQLTest {
 	@Test
 	void mapValueField() {
 		var mvBosk = new Bosk<RootWithMapValue>("test", RootWithMapValue.class,
-			_ -> EntireState.just(new RootWithMapValue("app",
+			_ -> new RootWithMapValue("app",
 				MapValue.fromFunction(List.of("env", "region"), k -> switch (k) {
 					case "env" -> "prod";
 					case "region" -> "us-east-1";
 					default -> throw new IllegalArgumentException(k);
-				}))), BoskConfig.simple());
+				})), BoskConfig.simple());
 		GraphQLSchema schema = BoskGraphQL.schemaFor(mvBosk);
 		var graphQL = GraphQL.newGraphQL(schema).build();
 		try (var _ = mvBosk.readSession()) {
@@ -468,7 +466,7 @@ class BoskGraphQLTest {
 		MapValue<String> tags
 	) implements StateTreeNode {}
 
-	private static SingleTree<RootType> initialRoot(BoskInfo<RootType> bosk) throws InvalidTypeException {
+	private static RootType initialRoot(BoskInfo<RootType> bosk) throws InvalidTypeException {
 		var refs = bosk.rootReference().buildReferences(Refs.class);
 		// Widget w1 — full, with parts
 		var w1Parts = Catalog.of(
@@ -492,7 +490,7 @@ class BoskGraphQLTest {
 		var widget2 = new Widget(w2, "Beta", "deferred", w2Parts, w2Configs, w2Ordering);
 
 		RootType result = new RootType(Catalog.of(widget1, widget2), "testApp", 1, TaggedUnion.of(new SimpleVariant()));
-		return EntireState.just(result);
+		return result;
 	}
 
 	GraphQL buildGraphQL() {

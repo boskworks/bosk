@@ -4,14 +4,12 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver;
 import works.bosk.DriverStack;
 import works.bosk.drivers.sql.SqlTestService.Database;
 import works.bosk.drivers.sql.schema.Schema;
@@ -23,7 +21,6 @@ import works.bosk.junit.Injected;
 import works.bosk.junit.InjectedTest;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.AbstractDriverTest;
-import works.bosk.testing.drivers.AbstractDriverTest.SingleTreeScenarioInjector;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;
@@ -35,7 +32,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 
 @Testcontainers
 @InjectFields
-@InjectFrom({DatabaseInjector.class, SingleTreeScenarioInjector.class})
+@InjectFrom({DatabaseInjector.class})
 public class SqlDriverDurabilityTest extends AbstractDriverTest {
 	@Injected Database database;
 
@@ -106,9 +103,8 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	private BoskDriver.@NonNull EntireState<TestEntity> differentInitialState(Bosk<TestEntity> b) throws InvalidTypeException, IOException, InterruptedException {
-		return initialState(b)
-			.map(r -> r.withString("Different"));
+	private TestEntity differentInitialState(Bosk<TestEntity> b) throws InvalidTypeException, IOException, InterruptedException {
+		return initialState(b).withString("Different");
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SqlDriverDurabilityTest.class);

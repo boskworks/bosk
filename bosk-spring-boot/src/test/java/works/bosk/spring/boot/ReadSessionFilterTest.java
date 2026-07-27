@@ -15,7 +15,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.StateTreeNode;
 import works.bosk.exceptions.NoReadSessionException;
 import works.bosk.testing.drivers.ReportingDriver;
@@ -38,7 +37,7 @@ class ReadSessionFilterTest {
 		bosk = new Bosk<>(
 			ReadSessionFilterTest.class.getSimpleName(),
 			State.class,
-			_-> EntireState.just(new State()),
+			_-> new State(),
 			BoskConfig.<State>builder()
 				.driverFactory(ReportingDriver.factory(op -> events.add(op.getClass().getSimpleName())))
 				.build()

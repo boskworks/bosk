@@ -13,7 +13,6 @@ import lombok.With;
 import lombok.experimental.FieldNameConstants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NonexistentReferenceException;
@@ -62,7 +61,7 @@ class BoskLocalReferenceTest {
 	void initializeBosk() throws InvalidTypeException {
 		boskName = boskName();
 		Root initialRoot = new Root(1, Catalog.empty());
-		bosk = new Bosk<>(boskName, Root.class, _ -> EntireState.just(initialRoot), BoskConfig.simple());
+		bosk = new Bosk<>(boskName, Root.class, _ -> initialRoot, BoskConfig.simple());
 		refs = bosk.rootReference().buildReferences(Refs.class);
 		Identifier ernieID = Identifier.from("ernie");
 		Identifier bertID = Identifier.from("bert");

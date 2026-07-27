@@ -46,7 +46,7 @@ public class BufferingDriver implements BoskDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		return downstream.initialState(rootType);
 	}
 
@@ -86,11 +86,9 @@ public class BufferingDriver implements BoskDriver {
 	private void enqueue(Consumer<BoskDriver> action) {
 		long changeID = this.changeID.incrementAndGet();
 		LOGGER.debug("Buffering action {} {}", changeID, context.getAttributes());
-		BoskContext.Tenant.Established capturedTenant = context.getEstablishedTenant();
 		MapValue<String> capturedAttributes = context.getAttributes();
 		updateQueue.add(d -> {
 			try (
-				var _ = context.withTenant(capturedTenant);
 				var _ = context.withOnly(capturedAttributes)
 			) {
 				LOGGER.debug("Running action {} {}", changeID, context.getAttributes());

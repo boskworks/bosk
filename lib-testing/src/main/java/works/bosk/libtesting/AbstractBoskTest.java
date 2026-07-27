@@ -6,7 +6,6 @@ import lombok.With;
 import lombok.experimental.FieldNameConstants;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
@@ -162,8 +161,8 @@ public abstract class AbstractBoskTest {
 		);
 	}
 
-	public static EntireState<TestRoot> initialState(Bosk<TestRoot> bosk) {
-		return EntireState.just(initialRoot(bosk));
+	public static TestRoot initialState(Bosk<TestRoot> bosk) {
+		return initialRoot(bosk);
 	}
 
 	public static TestRoot initialRoot(Bosk<TestRoot> bosk) {

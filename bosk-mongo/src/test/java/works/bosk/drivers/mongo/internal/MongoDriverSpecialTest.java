@@ -31,7 +31,6 @@ import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -602,7 +601,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		Bosk<OptionalEntity> setupBosk = new Bosk<>(
 			boskName("Setup"),
 			OptionalEntity.class,
-			b -> EntireState.just(OptionalEntity.withString(Optional.empty(), b)),
+			b -> OptionalEntity.withString(Optional.empty(), b),
 			BoskConfig.<OptionalEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
 
 		LOGGER.debug("Connect another bosk where the string field is mandatory");
@@ -666,7 +665,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			BoskConfig.<TestEntity>builder().driverFactory((b, d) -> {
 				BoskDriver failingDownstream = new ForwardingDriver(d) {
 					@Override
-					public <R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws IOException {
+					public <R extends StateTreeNode> R initialState(Class<R> rootType) throws IOException {
 						throw thrown;
 					}
 				};

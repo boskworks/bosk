@@ -20,7 +20,7 @@ public class NoOpDriver implements BoskDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		throw new UnsupportedOperationException();
 	}
 

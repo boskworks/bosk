@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.annotations.Hook;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
@@ -26,7 +25,7 @@ class HookScannerTest {
 
 	@BeforeEach
 	void init() throws InvalidTypeException {
-		bosk = new Bosk<>(boskName(), State.class, _ -> EntireState.just(new State("test", 123)), BoskConfig.simple());
+		bosk = new Bosk<>(boskName(), State.class, _ -> new State("test", 123), BoskConfig.simple());
 		refs = bosk.buildReferences(Refs.class);
 	}
 

@@ -8,12 +8,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.bson.BsonBinaryWriter;
-import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
-import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.bson.codecs.BsonValueCodec;
@@ -21,13 +19,7 @@ import org.bson.codecs.Codec;
 import org.bson.codecs.DecoderContext;
 import org.bson.codecs.EncoderContext;
 import org.bson.io.BasicOutputBuffer;
-import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import works.bosk.BoskContext.Tenant;
-import works.bosk.BoskContext.Tenant.TenantId;
 import works.bosk.BoskInfo;
-import works.bosk.Identifier;
 import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.StateTreeSerializer;
@@ -142,35 +134,6 @@ final class Formatter extends BsonFormatter {
 				DecoderContext.builder().build());
 	}
 
-	BsonValue encodeMaybeTenant(Tenant tenant) {
-		return switch(tenant) {
-			case Tenant.NotEstablished _ -> BsonNull.VALUE;
-			case Tenant.Established t -> encodeTenant(t);
-		};
-	}
-
-	BsonValue encodeTenant(Tenant.Established tenant) {
-		return switch(tenant) {
-			case Tenant.None _ -> new BsonBoolean(false);
-			case TenantId(var id) -> new BsonString(id.toString());
-		};
-	}
-
-	Tenant.Established decodeTenant(BsonValue tenant) {
-		return switch (tenant) {
-			case BsonNull _ -> Tenant.NONE;
-			case BsonBoolean b -> {
-				if (b.getValue()) {
-					throw new IllegalArgumentException("Unexpected tenant value: " + tenant);
-				} else {
-					yield Tenant.NONE;
-				}
-			}
-			case BsonString s -> new TenantId(Identifier.from(s.getValue()));
-			default -> throw new IllegalArgumentException("Unexpected tenant value: " + tenant);
-		};
-	}
-
 	BsonDocument encodeDiagnostics(MapValue<String> attributes) {
 		BsonDocument result = new BsonDocument();
 		attributes.forEach((name, value) -> result.put(name, new BsonString(value)));
@@ -235,22 +198,6 @@ final class Formatter extends BsonFormatter {
 		return updateDescription.getUpdatedFields();
 	}
 
-	/**
-	 * @return the tenant info extracted from the given {@code id}.
-	 * This does not necessarily correspond to the tenant that should be established
-	 * in the bosk context! If the {@code id} has no tenant info, this will return {@link Tenant#NONE}.
-	 */
-	static Tenant.@NonNull Established getTenantFromDocumentId(BsonString id) {
-		int pathStartIndex = id.getValue().indexOf('|');
-		if (pathStartIndex < 0) {
-			throw new IllegalArgumentException("Document _id has no path separator: " + id.getValue());
-		}
-		String tenantPart = id.getValue().substring(0, pathStartIndex);
-		return tenantPart.isEmpty()
-			? Tenant.NONE
-			: new TenantId(Identifier.from(tenantPart.substring(1, tenantPart.length() - 1)));
-	}
-
 	static BsonDocument getDiagnosticAttributesIfAny(BsonDocument fullDocument) {
 		if (fullDocument == null) {
 			return null;
@@ -258,5 +205,4 @@ final class Formatter extends BsonFormatter {
 		return fullDocument.getDocument(DocumentFields.diagnostics.name(), null);
 	}
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(Formatter.class);
 }

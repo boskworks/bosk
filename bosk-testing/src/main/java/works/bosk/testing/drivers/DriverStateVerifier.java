@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
@@ -75,9 +74,7 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 				boskName(),
 				rootType,
 				defaultStateFunction,
-				BoskConfig.<RR>builder()
-					.tenancyModel(b.tenancyModel())
-					.build()
+				BoskConfig.simple()
 			);
 			DriverStateVerifier<RR> verifier = new DriverStateVerifier<>(
 				b.name(),
@@ -122,11 +119,8 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	private synchronized void outgoingUpdate(UpdateOperation op) {
 		LOGGER.debug("---> OUT: {}", op);
 		checkMDC();
-		if (!(op.boskContext().tenant() instanceof Tenant.Established tenant)) {
-			throw new AssertionError("Missing tenant on update: " + op);
-		}
 
-		try (var _ = stateTrackingBosk.context().withTenant(tenant)) {
+		try {
 			// Capture the state before speculatively applying operations
 			// to see if they're no-ops
 			Object before = currentStateBefore(op);
@@ -145,12 +139,6 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 
 					if (op.matchesIfApplied(expected)) {
 						LOGGER.debug("\tConclusion: found match: {}", expected);
-						var expectedTenant = expected.boskContext().tenant();
-						if (!(expectedTenant.equals(tenant))) {
-							throw new AssertionError(
-								"Operation has incorrect tenant " + tenant
-									+ "; expected " + expectedTenant);
-						}
 						// expected is already the first element — preceding no-ops
 						// were removed via it.remove() below
 						q.removeFirst();
@@ -249,25 +237,21 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 
 	@SuppressWarnings("unchecked")
 	private <T> T currentStateBefore(UpdateOperation op) throws IOException, InterruptedException {
-		try (var _ = stateTrackingBosk.context().withMaybeTenant(op.boskContext().tenant())) {
-			Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
-			stateTrackingBosk.driver().flush();
-			try (var _ = stateTrackingBosk.readSession()) {
-				return stateTrackingRef.valueIfExists();
-			}
+		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
+		stateTrackingBosk.driver().flush();
+		try (var _ = stateTrackingBosk.readSession()) {
+			return stateTrackingRef.valueIfExists();
 		}
 	}
 
 	@SuppressWarnings("unchecked")
 	@Nullable
 	private <T> T newStateAfter(UpdateOperation op) throws IOException, InterruptedException {
-		try (var _ = stateTrackingBosk.context().withMaybeTenant(op.boskContext().tenant())) {
-			Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
-			op.submitTo(stateTrackingDriver);
-			stateTrackingBosk.driver().flush();
-			try (var _ = stateTrackingBosk.readSession()) {
-				return stateTrackingRef.valueIfExists();
-			}
+		Reference<T> stateTrackingRef = (Reference<T>) stateTrackingRef(op.target());
+		op.submitTo(stateTrackingDriver);
+		stateTrackingBosk.driver().flush();
+		try (var _ = stateTrackingBosk.readSession()) {
+			return stateTrackingRef.valueIfExists();
 		}
 	}
 

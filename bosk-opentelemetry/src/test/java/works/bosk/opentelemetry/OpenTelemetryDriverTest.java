@@ -15,7 +15,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
 import works.bosk.StateTreeNode;
@@ -55,7 +54,7 @@ class OpenTelemetryDriverTest {
 		var bosk = new Bosk<>(
 			"test-bosk",
 			Root.class,
-			_ -> EntireState.just(new Root(0)),
+			_ -> new Root(0),
 			BoskConfig.<Root>builder()
 				.driverFactory(driverFactory)
 				.registrarFactory(OpenTelemetryRegistrar.factory())

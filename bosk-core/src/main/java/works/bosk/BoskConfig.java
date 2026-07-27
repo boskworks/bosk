@@ -1,14 +1,10 @@
 package works.bosk;
 
-import works.bosk.BoskContext.Tenant;
-import works.bosk.BoskContext.Tenant.TenantId;
-
 import static java.util.Objects.requireNonNull;
 
 public record BoskConfig<R extends StateTreeNode> (
 	DriverFactory<R> driverFactory,
-	RegistrarFactory registrarFactory,
-	TenancyModel tenancyModel
+	RegistrarFactory registrarFactory
 ) {
 
 	/**
@@ -42,12 +38,10 @@ public record BoskConfig<R extends StateTreeNode> (
 	public static class Builder<R extends StateTreeNode> {
 		private DriverFactory<R> driverFactory;
 		private RegistrarFactory registrarFactory;
-		private TenancyModel tenancyModel;
 
 		Builder() {
 			driverFactory = simpleDriver();
 			registrarFactory = simpleRegistrar();
-			tenancyModel = TenancyModel.NONE;
 		}
 
 		public Builder<R> driverFactory(DriverFactory<R> driverFactory) {
@@ -60,16 +54,10 @@ public record BoskConfig<R extends StateTreeNode> (
 			return this;
 		}
 
-		public Builder<R> tenancyModel(TenancyModel tenancyModel) {
-			this.tenancyModel = requireNonNull(tenancyModel);
-			return this;
-		}
-
 		public BoskConfig<R> build() {
 			return new BoskConfig<>(
 				this.driverFactory,
-				this.registrarFactory,
-				this.tenancyModel
+				this.registrarFactory
 			);
 		}
 
@@ -77,47 +65,6 @@ public record BoskConfig<R extends StateTreeNode> (
 		public String toString() {
 			return "BoskConfig.Builder(driverFactory=" + this.driverFactory + ", registrarFactory=" + this.registrarFactory + ")";
 		}
-	}
-
-	public sealed interface TenancyModel {
-		/**
-		 * All threads are automatically {@link Tenant.Established},
-		 * so driver updates can be called without first establishing a tenant on the thread.
-		 */
-		sealed interface Implicit extends TenancyModel {}
-
-		/**
-		 * {@link Tenant.None} is automatically established on all threads, including in hooks.
-		 * <p>
-		 * This is a good default choice for a bosk that doesn't yet need multitenancy.
-		 */
-		record None() implements Implicit {}
-
-		/**
-		 * {@link TenantId} is automatically established on all threads,
-		 * and the tenant is fixed to the given identifier, including in hooks.
-		 * <p>
-		 * This can be a useful first step during a transition to multitenancy,
-		 * updating databases or other systems to become tenant-aware with a single tenant
-		 * without having to update all application code to establish the tenant context.
-		 */
-		record Fixed(Identifier id) implements Implicit {}
-
-		/**
-		 * {@link TenantId} must be established on a thread before reading or updating the bosk state,
-		 * and each tenant has its own state tree.
-		 */
-		record Explicit() implements TenancyModel {}
-
-		/**
-		 * @see works.bosk.BoskConfig.TenancyModel.None
-		 */
-		None NONE = new None();
-
-		/**
-		 * @see Explicit
-		 */
-		Explicit EXPLICIT = new Explicit();
 	}
 
 	private static final DriverFactory<?> SIMPLE_DRIVER_FACTORY = (_, d) -> d;

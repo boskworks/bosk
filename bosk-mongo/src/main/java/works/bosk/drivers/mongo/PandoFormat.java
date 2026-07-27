@@ -6,15 +6,12 @@ import works.bosk.ListValue;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
-import works.bosk.drivers.mongo.MongoDriverSettings.TenancyFormat;
 
 import static java.util.Arrays.asList;
-import static works.bosk.drivers.mongo.MongoDriverSettings.TenancyFormat.NONE;
 
 /**
  * A scalable format that stores the bosk state in multiple documents,
  * thereby overcoming MongoDB's 16MB document size limit.
- * Also supports {@link works.bosk.BoskConfig.TenancyModel#EXPLICIT multitenancy}.
  * <p>
  * Reconstructing the state tree from the documents is not dependent
  * on the graft point configuration because the documents are self-describing:
@@ -31,8 +28,7 @@ import static works.bosk.drivers.mongo.MongoDriverSettings.TenancyFormat.NONE;
  *                   are to be stored in their own documents.
  */
 public record PandoFormat(
-	ListValue<String> graftPoints,
-	TenancyFormat tenancyFormat
+	ListValue<String> graftPoints
 ) implements StateTreeNode, DatabaseFormat {
 	@Override public String name() { return "Pando"; }
 
@@ -41,18 +37,15 @@ public record PandoFormat(
 	 * and (2) Sequoia is designed not to need multi-document transactions.
 	 */
 	public static PandoFormat oneBigDocument() {
-		return new PandoFormat(ListValue.empty(), NONE);
+		return new PandoFormat(ListValue.empty());
 	}
 
 	public static PandoFormat withGraftPoints(Collection<String> pathStrings) {
-		return new PandoFormat(ListValue.from(pathStrings), NONE);
+		return new PandoFormat(ListValue.from(pathStrings));
 	}
 
 	public static PandoFormat withGraftPoints(String... pathStrings) {
 		return withGraftPoints(asList(pathStrings));
 	}
 
-	public PandoFormat withTenancyFormat(TenancyFormat tenancyFormat) {
-		return new PandoFormat(graftPoints, tenancyFormat);
-	}
 }

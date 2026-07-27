@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.Bosk.DefaultStateFunction;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -249,7 +248,7 @@ class BoskGraphQLEdgeCasesTest {
 			var refs = b.buildReferences(DanglingRefs.class);
 			var domain = Catalog.of(new SimplePart(Identifier.from("p"), "exists"));
 			var listing = Listing.empty(refs.catalog()).withID(Identifier.from("ghost"));
-			return EntireState.just(new DanglingRoot(domain, listing));
+			return new DanglingRoot(domain, listing);
 		});
 		var graphQL = buildGraphQL(bosk);
 		try (var _ = bosk.readSession()) {
@@ -709,10 +708,10 @@ class BoskGraphQLEdgeCasesTest {
 	void sameFieldNameAcrossMapAndSideTable() {
 		var bosk = createBoskFromFn(ConfigCollisionRoot.class, b -> {
 			var refs = b.buildReferences(EntryCollisionRefs.class);
-			return EntireState.just(new ConfigCollisionRoot(
+			return new ConfigCollisionRoot(
 				Catalog.empty(),
 				new MapConfigHolder(MapValue.empty()),
-				new SideConfigHolder(SideTable.empty(refs.items()))));
+				new SideConfigHolder(SideTable.empty(refs.items())));
 		});
 		var graphQL = buildGraphQL(bosk);
 		try (var _ = bosk.readSession()) {
@@ -729,10 +728,10 @@ class BoskGraphQLEdgeCasesTest {
 	void sameFieldNameAcrossListingAndSideTable() {
 		var bosk = createBoskFromFn(PropsCollisionRoot.class, b -> {
 			var refs = b.buildReferences(EntryCollisionRefs.class);
-			return EntireState.just(new PropsCollisionRoot(
+			return new PropsCollisionRoot(
 				Catalog.empty(),
 				new SidePropsHolder(SideTable.empty(refs.items())),
-				new ListingPropsHolder(Listing.empty(refs.items()))));
+				new ListingPropsHolder(Listing.empty(refs.items())));
 		});
 		var graphQL = buildGraphQL(bosk);
 		try (var _ = bosk.readSession()) {
@@ -1030,7 +1029,7 @@ class BoskGraphQLEdgeCasesTest {
 	@Test
 	void selfReferenceField() {
 		var bosk = createBoskFromFn(SelfRefRoot.class,
-			b -> EntireState.just(new SelfRefRoot("hello", b.rootReference())));
+			b -> new SelfRefRoot("hello", b.rootReference()));
 		var graphQL = buildGraphQL(bosk);
 		try (var _ = bosk.readSession()) {
 			var root = bosk.rootReference().valueIfExists();
@@ -1052,7 +1051,7 @@ class BoskGraphQLEdgeCasesTest {
 	@Test
 	void optionalReferenceField_filled() {
 		var bosk = createBoskFromFn(OptionalRefRoot.class,
-			b -> EntireState.just(new OptionalRefRoot("hello", Optional.of(b.rootReference()))));
+			b -> new OptionalRefRoot("hello", Optional.of(b.rootReference())));
 		var graphQL = buildGraphQL(bosk);
 		try (var _ = bosk.readSession()) {
 			assertQueryReturns(
@@ -1066,7 +1065,7 @@ class BoskGraphQLEdgeCasesTest {
 	@Test
 	void optionalReferenceField_empty() {
 		var bosk = createBoskFromFn(OptionalRefRoot.class,
-			b -> EntireState.just(new OptionalRefRoot("hello", Optional.empty())));
+			b -> new OptionalRefRoot("hello", Optional.empty()));
 		var graphQL = buildGraphQL(bosk);
 		try (var _ = bosk.readSession()) {
 			var expected = new HashMap<String, Object>();
@@ -1100,9 +1099,9 @@ class BoskGraphQLEdgeCasesTest {
 	void sideTableRecursiveEntryType() {
 		var bosk = createBoskFromFn(SideTableRecursiveRoot.class, b -> {
 			var refs = b.buildReferences(SideTableRecursiveRefs.class);
-			return EntireState.just(new SideTableRecursiveRoot(
+			return new SideTableRecursiveRoot(
 				Catalog.empty(),
-				new SideTableRecursiveNode("root", SideTable.empty(refs.parts()))));
+				new SideTableRecursiveNode("root", SideTable.empty(refs.parts())));
 		});
 		var graphQL = buildGraphQL(bosk);
 		try (var _ = bosk.readSession()) {
@@ -1134,7 +1133,7 @@ class BoskGraphQLEdgeCasesTest {
 	}
 
 	<Root extends StateTreeNode> Bosk<Root> createBosk(Class<Root> rootClass, Root initialState) {
-		return new Bosk<>("test", rootClass, _ -> EntireState.just(initialState), BoskConfig.simple());
+		return new Bosk<>("test", rootClass, _ -> initialState, BoskConfig.simple());
 	}
 
 	<Root extends StateTreeNode> Bosk<Root> createBoskFromFn(Class<Root> rootClass, DefaultStateFunction<Root> fn) {
@@ -1144,10 +1143,10 @@ class BoskGraphQLEdgeCasesTest {
 	Bosk<EmptyBags> createEmptyBagsBosk() {
 		return createBoskFromFn(EmptyBags.class, b -> {
 			var refs = b.buildReferences(EmptyBagsRefs.class);
-			return EntireState.just(new EmptyBags(
+			return new EmptyBags(
 				Catalog.empty(),
 				SideTable.empty(refs.catalog()),
-				Listing.empty(refs.catalog())));
+				Listing.empty(refs.catalog()));
 		});
 	}
 
