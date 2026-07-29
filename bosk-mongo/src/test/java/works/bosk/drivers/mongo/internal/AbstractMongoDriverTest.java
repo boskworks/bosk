@@ -12,7 +12,6 @@ import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
@@ -102,8 +101,8 @@ abstract class AbstractMongoDriverTest {
 	}
 
 
-	public static EntireState<TestEntity> initialState(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
-		return EntireState.just(initialRoot(testEntityBosk));
+	public static TestEntity initialState(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
+		return initialRoot(testEntityBosk);
 	}
 
 	public static TestEntity initialRoot(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
@@ -115,8 +114,8 @@ abstract class AbstractMongoDriverTest {
 			));
 	}
 
-	public static EntireState<TestEntity> initialStateWithValues(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
-		return EntireState.just(initialRootWithValues(testEntityBosk));
+	public static TestEntity initialStateWithValues(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
+		return initialRootWithValues(testEntityBosk);
 	}
 
 	public static TestEntity initialRootWithValues(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
@@ -124,8 +123,8 @@ abstract class AbstractMongoDriverTest {
 			.withValues(Optional.of(TestValues.blank()));
 	}
 
-	public static EntireState<TestEntity> initialStateWithEmptyCatalog(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
-		return EntireState.just(initialRootWithEmptyCatalog(testEntityBosk));
+	public static TestEntity initialStateWithEmptyCatalog(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
+		return initialRootWithEmptyCatalog(testEntityBosk);
 	}
 
 	public static TestEntity initialRootWithEmptyCatalog(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {

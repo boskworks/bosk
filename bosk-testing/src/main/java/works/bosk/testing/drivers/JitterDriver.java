@@ -17,7 +17,7 @@ public final class JitterDriver implements BoskDriver {
 	private final DoubleSupplier jitter;
 
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory(double meanMillis, double limitMillis, long seed) {
-		return (b,d) -> new JitterDriver(d, meanMillis, limitMillis, seed);
+		return (_, d) -> new JitterDriver(d, meanMillis, limitMillis, seed);
 	}
 
 	private JitterDriver(BoskDriver downstream, double meanMillis, double limitMillis, long seed) {
@@ -44,7 +44,7 @@ public final class JitterDriver implements BoskDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		sleep();
 		return downstream.initialState(rootType);
 	}

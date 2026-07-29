@@ -1,9 +1,7 @@
 package works.bosk.testing.drivers;
 
 import java.io.IOException;
-import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,16 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskConfig.TenancyModel;
-import works.bosk.BoskConfig.TenancyModel.Explicit;
-import works.bosk.BoskConfig.TenancyModel.Fixed;
-import works.bosk.BoskConfig.TenancyModel.None;
-import works.bosk.BoskContext.ContextScope;
-import works.bosk.BoskContext.Tenant;
-import works.bosk.BoskContext.Tenant.TenantId;
 import works.bosk.BoskDriver;
-import works.bosk.BoskDriver.EntireState;
-import works.bosk.BoskDriver.EntireState.MultiTree;
 import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
@@ -31,11 +20,6 @@ import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.drivers.ReplicaSet;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.junit.InjectFields;
-import works.bosk.junit.InjectFrom;
-import works.bosk.junit.Injected;
-import works.bosk.junit.Injector;
-import works.bosk.testing.drivers.AbstractDriverTest.Scenario;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestEntity.Fields;
 import works.bosk.util.Classes;
@@ -44,99 +28,14 @@ import static java.lang.Thread.currentThread;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
-@InjectFields
-@InjectFrom(Scenario.class)
 public abstract class AbstractDriverTest {
-	public static final Identifier TENANT1 = Identifier.from("tenant1");
-	public static final Identifier TENANT2 = Identifier.from("tenant2");
 	protected final Identifier child1ID = Identifier.from("child1");
 	protected final Identifier child2ID = Identifier.from("child2");
 	protected TestInfo testInfo;
-	@Injected protected Scenario scenario;
 	protected Bosk<TestEntity> canonicalBosk;
 	protected Bosk<TestEntity> bosk;
-	protected ContextScope tenantScope;
 	protected BoskDriver driver;
 	private volatile String oldThreadName;
-
-	public enum Scenario {
-		NO_TENANTS(TenancyModel.NONE, Tenant.NONE),
-		FIXED_TENANT(new Fixed(TENANT1), Tenant.setTo(TENANT1)),
-		EXPLICIT_TENANT(TenancyModel.EXPLICIT, Tenant.setTo(TENANT1))
-		;
-
-		public final TenancyModel tenancyModel;
-
-		/**
-		 * The tenant to establish at the start of tests.
-		 * This is intended as a convenience to allow the bulk of tests
-		 * to run without worrying about establishing a tenant,
-		 * not to describe the tenant state automatically established by the tenancy model.
-		 *
-		 * @see #automaticallyEstablishedTenant()
-		 */
-		public final Tenant startingTenant;
-
-		/**
-		 * @return the tenant state automatically established by the tenancy model
-		 */
-		public Tenant automaticallyEstablishedTenant() {
-			return switch (tenancyModel) {
-				case None _ -> Tenant.NONE;
-				case Explicit _ -> Tenant.NOT_ESTABLISHED;
-				case Fixed(var id) -> Tenant.setTo(id);
-			};
-		}
-
-		Scenario(TenancyModel tenancyModel, Tenant startingTenant) {
-			this.tenancyModel = tenancyModel;
-			this.startingTenant = startingTenant;
-		}
-
-	}
-
-	/**
-	 * For drivers that don't yet support the tree-per-tenant model.
-	 */
-	public record SingleTreeScenarioInjector() implements Injector {
-		@Override
-		public boolean supports(AnnotatedElement element, Class<?> elementType) {
-			return elementType.equals(Scenario.class);
-		}
-
-		@Override
-		public List<?> values() {
-			return List.of(Scenario.NO_TENANTS, Scenario.FIXED_TENANT);
-		}
-	}
-
-	/**
-	 * For specifically testing multi-tree behaviour
-	 */
-	public record MultiTreeScenarioInjector() implements Injector {
-		@Override
-		public boolean supports(AnnotatedElement element, Class<?> elementType) {
-			return elementType.equals(Scenario.class);
-		}
-
-		@Override
-		public List<?> values() {
-			return List.of(Scenario.EXPLICIT_TENANT);
-		}
-	}
-
-	@BeforeEach
-	void clearTenantScope() {
-		tenantScope = null;
-	}
-
-	@AfterEach
-	void closeTenantScope() {
-		if (tenantScope != null) {
-			tenantScope.close();
-			tenantScope = null;
-		}
-	}
 
 	@BeforeEach
 	void logStart(TestInfo testInfo) {
@@ -169,7 +68,6 @@ public abstract class AbstractDriverTest {
 			TestEntity.class,
 			this::initialState,
 			BoskConfig.<TestEntity>builder()
-				.tenancyModel(scenario.tenancyModel)
 				.build()
 		);
 
@@ -183,20 +81,12 @@ public abstract class AbstractDriverTest {
 					ReplicaSet.mirroringTo(canonicalBosk),
 					DriverStateVerifier.wrap(driverFactory, TestEntity.class, this::initialState)
 				))
-				.tenancyModel(scenario.tenancyModel)
 				.build());
 		driver = bosk.driver();
-		tenantScope = bosk.context().withMaybeTenant(scenario.startingTenant);
 	}
 
-	public EntireState<TestEntity> initialState(Bosk<TestEntity> b) throws InvalidTypeException {
-		TestEntity root = initialRoot(b);
-		return switch (scenario.tenancyModel) {
-			case Explicit _ -> MultiTree.<TestEntity>empty()
-				.with((TenantId) scenario.startingTenant, root)
-				.with(Tenant.setTo(TENANT2), root.withId(Identifier.from(TENANT2 + " root")));
-			case None _, Fixed _ -> EntireState.just(root);
-		};
+	public TestEntity initialState(Bosk<TestEntity> b) throws InvalidTypeException {
+		return initialRoot(b);
 	}
 
 	protected @NonNull TestEntity initialRoot(Bosk<TestEntity> b) throws InvalidTypeException {
@@ -260,13 +150,11 @@ public abstract class AbstractDriverTest {
 		}
 		TestEntity expected, actual;
 		try (
-			var _ = canonicalBosk.context().withMaybeTenant(scenario.startingTenant);
 			var _ = canonicalBosk.readSession()
 		) {
 			expected = canonicalBosk.rootReference().valueIfExists();
 		}
 		try (
-			var _ = bosk.context().withMaybeTenant(scenario.startingTenant);
 			var _ = bosk.readSession()
 		) {
 			actual = bosk.rootReference().valueIfExists();

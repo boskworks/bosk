@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jooq.Record;
 import org.jooq.TableField;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
@@ -22,8 +21,6 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.StringNode;
 import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BoskContext;
-import works.bosk.BoskContext.Tenant;
-import works.bosk.BoskContext.Tenant.TenantId;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.Identifier;
@@ -72,7 +69,6 @@ class SqlDriverImpl implements SqlDriver {
 
 	// jOOQ references
 	private final TableField<Record, String> DIAGNOSTICS;
-	private final TableField<Record, String> TENANT;
 	private final ChangesTable CHANGES;
 	private final TableField<Record, Long> REVISION;
 	private final TableField<Record, String> REF;
@@ -117,7 +113,6 @@ class SqlDriverImpl implements SqlDriver {
 		REVISION = schema.REVISION;
 		CHANGES = schema.CHANGES;
 		DIAGNOSTICS = schema.DIAGNOSTICS;
-		TENANT = schema.TENANT;
 		STATE = schema.STATE;
 		BOSK = schema.BOSK;
 		ID = schema.ID;
@@ -141,7 +136,7 @@ class SqlDriverImpl implements SqlDriver {
 			try {
 				try (var c = connectionSource.get()) {
 					var rs = using(c)
-						.select(REF, NEW_STATE, DIAGNOSTICS, TENANT, CHANGES.EPOCH, REVISION)
+						.select(REF, NEW_STATE, DIAGNOSTICS, CHANGES.EPOCH, REVISION)
 						.from(CHANGES)
 						.where(REVISION.gt(lastChangeSubmittedDownstream.get()))
 						.fetch();
@@ -149,7 +144,6 @@ class SqlDriverImpl implements SqlDriver {
 						var ref = r.get(REF);
 						var newState = r.get(NEW_STATE);
 						var diagnostics = r.get(DIAGNOSTICS);
-						var tenantString = r.get(TENANT);
 						String epoch = r.get(CHANGES.EPOCH);
 						long changeID = r.get(REVISION);
 
@@ -176,10 +170,7 @@ class SqlDriverImpl implements SqlDriver {
 							}
 						}
 
-						Tenant tenant = decodeTenant(tenantString);
-
 						try (
-							var _ = context.withMaybeTenant(tenant);
 							var _ = context.withOnly(diagnosticAttributes)
 						) {
 							Reference<Object> target = rootRef.then(Object.class, Path.parse(ref));
@@ -254,7 +245,7 @@ class SqlDriverImpl implements SqlDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		// TODO: Consider a disconnected mode where we delegate downstream if something goes wrong
 		LOGGER.debug("initialState({})", rootType);
 		try (
@@ -262,17 +253,13 @@ class SqlDriverImpl implements SqlDriver {
 		){
 			// TODO: It seems wrong to schedule the listener loop here. It should be in the constructor.
 			ensureTablesExist(connection);
-			EntireState<R> result;
+			R result;
 			var stateAndEpoch = loadStateAndEpoch(connection);
 			if (stateAndEpoch == null) {
 				LOGGER.debug("No current state; initializing {} table from downstream", BOSK);
 				this.epoch = UUID.randomUUID().toString();
 				result = downstream.initialState(rootType);
-				var root = switch (result) {
-					case EntireState.SingleTree(var r) -> r;
-					case EntireState.MultiTree<R> _ -> throw new NotYetImplementedException();
-				};
-				String stateJson = mapper.writeValueAsString(root);
+				String stateJson = mapper.writeValueAsString(result);
 
 				using(connection)
 					.insertInto(BOSK).columns(ID, STATE, BOSK.EPOCH)
@@ -303,7 +290,7 @@ class SqlDriverImpl implements SqlDriver {
 			.fetchOneInto(StateAndEpoch.class);
 	}
 
-	private synchronized <R extends StateTreeNode> EntireState<R> resetBoskState(Type rootType, StateAndEpoch stateAndEpoch, Connection connection) throws SQLException {
+	private synchronized <R extends StateTreeNode> R resetBoskState(Type rootType, StateAndEpoch stateAndEpoch, Connection connection) throws SQLException {
 		R root;
 		this.epoch = stateAndEpoch.epoch;
 		long currentChangeID;
@@ -319,13 +306,13 @@ class SqlDriverImpl implements SqlDriver {
 		this.lastChangeSubmittedDownstream.set(-1);
 		connection.commit();
 		submitDownstream(rootRef, root, currentChangeID);
-		return EntireState.just(root);
+		return root;
 	}
 
 	private void ensureTablesExist(Connection connection) throws SQLException {
 		using(connection)
 			.createTableIfNotExists(CHANGES)
-			.columns(CHANGES.EPOCH, REVISION, REF, NEW_STATE, DIAGNOSTICS, TENANT)
+			.columns(CHANGES.EPOCH, REVISION, REF, NEW_STATE, DIAGNOSTICS)
 			.constraints(primaryKey(REVISION))
 			.execute();
 
@@ -504,13 +491,12 @@ class SqlDriverImpl implements SqlDriver {
 	private long insertChange(Connection c, Reference<?> ref, String newValue) {
 		try {
 			return using(c)
-				.insertInto(CHANGES).columns(CHANGES.EPOCH, REF, NEW_STATE, DIAGNOSTICS, TENANT)
+				.insertInto(CHANGES).columns(CHANGES.EPOCH, REF, NEW_STATE, DIAGNOSTICS)
 				.values(
 					epoch,
 					ref.pathString(),
 					newValue,
-					mapper.writeValueAsString(context.getAttributes()),
-					encodeTenant(context.getTenant())
+					mapper.writeValueAsString(context.getAttributes())
 				)
 				.returning(REVISION)
 				.fetchOptional(REVISION)
@@ -558,26 +544,6 @@ class SqlDriverImpl implements SqlDriver {
 
 	private static JavaType mapValueType(Class<?> entryType) {
 		return typeFactory.constructParametricType(MapValue.class, entryType);
-	}
-
-	private @Nullable String encodeTenant(Tenant tenant) {
-		return switch (tenant) {
-			case Tenant.NotEstablished _ -> null;
-			case Tenant.None _ -> "none";
-			case TenantId(var id) -> "t:" + id;
-		};
-	}
-
-	private Tenant decodeTenant(@Nullable String tenantString) {
-		if (tenantString == null) {
-			return Tenant.NOT_ESTABLISHED;
-		} else if (tenantString.equals("none")) {
-			return Tenant.NONE;
-		} else if (tenantString.startsWith("t:")) {
-			return Tenant.setTo(Identifier.from(tenantString.substring(2)));
-		} else {
-			throw new IllegalArgumentException("Unrecognized tenant string: " + tenantString);
-		}
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SqlDriverImpl.class);

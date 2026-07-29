@@ -17,7 +17,6 @@ import org.junit.jupiter.api.TestFactory;
 import works.bosk.Bosk;
 import works.bosk.Bosk.NonexistentEntryException;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.Catalog;
 import works.bosk.Entity;
 import works.bosk.Identifier;
@@ -273,7 +272,7 @@ public class PathCompilerTest extends AbstractBoskTest {
 		Bosk<StateTreeNode> differentBosk = new Bosk<>(
 			boskName("Different"),
 			differentRootClass,
-			_ -> EntireState.just(initialRoot),
+			_ -> initialRoot,
 			BoskConfig.simple());
 		Reference<Identifier> idRef = differentBosk.rootReference().then(Identifier.class, Path.parse(
 			"/id" ));

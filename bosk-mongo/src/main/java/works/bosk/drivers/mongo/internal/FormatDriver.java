@@ -8,7 +8,6 @@ import org.bson.BsonDocument;
 import works.bosk.BoskContext;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriver;
-import works.bosk.util.PerTenantValue;
 
 /**
  * Additional {@link MongoDriver} functionality that the format-specific drivers must implement.
@@ -62,7 +61,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 *
 	 * @throws InvalidCollectionContentsException if the collection contents don't match the declared format
 	 */
-	AllState<R> loadAllState() throws IOException, InvalidCollectionContentsException;
+	StateAndMetadata<R> loadAllState() throws IOException, InvalidCollectionContentsException;
 
 	/**
 	 * Initializes the collection to the given state.
@@ -78,22 +77,22 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * "prior" state of the database; in particular, the revision number should be incremented
 	 * so that a {@link #flush} after a {@link #refurbish} succeeds in waiting for the new state.
 	 */
-	void initializeCollection(PerTenantValue<StateAndMetadata<R>> priorContents);
+	void initializeCollection(StateAndMetadata<R> priorContents);
 
 	/**
-	 * @return a query filter that returns documents corresponding to the roots of the state tree,
-	 * one per tenant. In a non-multitenant situation, this returns the single root document.
+	 * @return a query filter that returns documents corresponding to the roots of the state tree.
+	 * Returns a single document.
 	 */
 	BsonDocument rootDocumentsFilter();
 
 	/**
-	 * Indicates that the given allState have been {@link #flush() flushed} to the downstream driver already,
+	 * Indicates that the given state has been {@link #flush() flushed} to the downstream driver already,
 	 * or are otherwise known to have been applied to the bosk state.
 	 */
-	void onHasBeenApplied(AllState<R> allState);
+	void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata);
 
 	@Override
-	default <RR extends StateTreeNode> EntireState<RR> initialState(Class<RR> rootType) {
+	default <RR extends StateTreeNode> RR initialState(Class<RR> rootType) {
 		throw new UnsupportedOperationException(
 			"FormatDriver doesn't need to implement initialState: MainDriver derives it from loadAllState");
 	}

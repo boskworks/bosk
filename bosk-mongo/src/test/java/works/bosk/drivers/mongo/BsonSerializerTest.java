@@ -13,7 +13,6 @@ import org.bson.codecs.configuration.CodecRegistry;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -43,12 +42,12 @@ class BsonSerializerTest {
 		}
 	}
 
-	private EntireState<Root> initialState(Bosk<Root> bosk) throws InvalidTypeException {
+	private Root initialState(Bosk<Root> bosk) throws InvalidTypeException {
 		CatalogReference<Item> catalogRef = bosk.rootReference().thenCatalog(Item.class, Path.just(Root.Fields.items));
-		return EntireState.just(new Root(
+		return new Root(
 			Catalog.empty(),
 			SideTable.empty(catalogRef)
-		));
+		);
 	}
 
 	@FieldNameConstants

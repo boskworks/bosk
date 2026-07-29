@@ -8,8 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
-import works.bosk.BoskDriver;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
@@ -76,8 +74,8 @@ public class BosonSerializerTest {
 		codec = CodecBuilder.using(typeMap).buildInterpreter();
 	}
 
-	private static BoskDriver.EntireState.SingleTree<Root> emptyState(Bosk<Root> b) throws InvalidTypeException {
-		return EntireState.just(emptyRoot(b));
+	private static Root emptyState(Bosk<Root> b) throws InvalidTypeException {
+		return emptyRoot(b);
 	}
 
 	private static @NonNull Root emptyRoot(Bosk<Root> b) throws InvalidTypeException {

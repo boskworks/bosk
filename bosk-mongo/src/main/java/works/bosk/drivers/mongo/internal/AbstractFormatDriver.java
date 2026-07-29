@@ -7,23 +7,16 @@ import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
+import java.util.concurrent.atomic.AtomicReference;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.BoskConfig.TenancyModel;
-import works.bosk.BoskConfig.TenancyModel.Explicit;
-import works.bosk.BoskConfig.TenancyModel.Fixed;
-import works.bosk.BoskConfig.TenancyModel.None;
 import works.bosk.BoskContext;
-import works.bosk.BoskContext.Tenant;
-import works.bosk.BoskContext.Tenant.Established;
 import works.bosk.BoskDriver;
 import works.bosk.MapValue;
 import works.bosk.Reference;
@@ -35,86 +28,59 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.drivers.mongo.status.StateStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.util.PerTenantValue;
-import works.bosk.util.PerTenantValue.MultiTenant;
-import works.bosk.util.PerTenantValue.NoTenant;
-import works.bosk.util.TenantLocal;
-import works.bosk.util.TunneledCheckedException;
 
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
-import static java.lang.Thread.currentThread;
 import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
-import static works.bosk.drivers.mongo.internal.Formatter.REVISION_BEFORE_ANY;
-import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
-import static works.bosk.drivers.mongo.internal.Formatter.getTenantFromDocumentId;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 
 abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implements FormatDriver<R> {
 	final RootReference<R> rootRef;
 	final BoskContext context;
-	final TenancyModel tenancyModel;
 	final Formatter formatter;
 	final TransactionalCollection collection;
 	final BoskDriver downstream;
 	final long flushTimeoutMS;
-	final Supplier<EntireState<R>> entireStateSupplier;
 
-	final TenantLocal<FlushLock> flushLocks;
+	final AtomicReference<FlushLock> flushLock = new AtomicReference<>(null);
 
 	final DocumentFieldTracker fieldTracker = new DocumentFieldTracker();
-	final FlushLock contentsFlushLock;
 
 	public AbstractFormatDriver(
 		RootReference<R> rootRef,
 		BoskContext context,
-		TenancyModel tenancyModel,
 		Formatter formatter,
 		TransactionalCollection collection,
 		BoskDriver downstream,
-		long flushTimeoutMS,
-		Supplier<EntireState<R>> entireStateSupplier
+		long flushTimeoutMS
 	) {
 		this.rootRef = rootRef;
 		this.context = context;
-		this.tenancyModel = tenancyModel;
 		this.formatter = formatter;
 		this.collection = collection;
 		this.downstream = downstream;
 		this.flushTimeoutMS = flushTimeoutMS;
-		this.entireStateSupplier = entireStateSupplier;
-		this.contentsFlushLock = new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS);
-		this.flushLocks = TenantLocal.in(context);
 	}
 
 	@Override
 	public MongoStatus readStatus() {
 		try {
-			PerTenantValue<BsonStateAndMetadata> dbStates = readBsonStateAndMetadata().contents();
-			var entireState = entireStateSupplier.get();
-			var inMemoryBsonValues = PerTenantValue.from(entireState,
-				r -> formatter.object2bsonValue(r, rootRef.targetType()));
-			BsonComparator comp = new BsonComparator();
-			var stateStatuses = dbStates.map((Established tenant, BsonStateAndMetadata dbState) -> {
-				BsonValue inMemory = switch (inMemoryBsonValues) {
-					case NoTenant<BsonValue>(var v) -> v;
-					case MultiTenant<BsonValue> m -> m.get(tenant);
-				};
-				BsonDocument loadedBsonState = dbState.state();
-				return new StateStatus(
-					dbState.revision().longValue(),
-					formatter.bsonValueBinarySize(loadedBsonState),
-					comp.difference(inMemory, loadedBsonState)
-				);
-			});
+			BsonStateAndMetadata dbInfo = readBsonStateAndMetadata();
+			BsonDocument dbState = dbInfo.state();
+			var inMemoryState = formatter.object2bsonValue(rootRef.valueIfExists(), rootRef.targetType());
+			var stateStatus = new StateStatus(
+				dbInfo.revision().longValue(),
+				formatter.bsonValueBinarySize(dbState),
+				new BsonComparator().difference(inMemoryState, dbState)
+			);
 			return new MongoStatus(
 				null,
 				null, // MainDriver should fill this in
-				stateStatuses
+				stateStatus
 			);
 		} catch (InvalidCollectionContentsException e) {
 			return new MongoStatus(
@@ -126,81 +92,35 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	@Override
-	public AllState<R> loadAllState() throws IOException, InvalidCollectionContentsException {
-		try {
-			BsonAllState bsonAllState = readBsonStateAndMetadata();
-			replaceFlushLocks(bsonAllState.contents().map(BsonStateAndMetadata::revision));
-			PerTenantValue<StateAndMetadata<R>> contents = bsonAllState.contents().map((Established _, BsonStateAndMetadata bsm) -> {
-				if (bsm.state() == null) {
-					throw new TunneledCheckedException(new IOException("No existing state in document"));
-				}
-
-				fieldTracker.process(bsm);
-
-				R root = formatter.document2object(bsm.state(), rootRef);
-				BsonInt64 revision = bsm.revision() == null ? REVISION_ZERO : bsm.revision();
-				MapValue<String> diagnosticAttributes = bsm.diagnosticAttributes() == null
-					? MapValue.empty() // It's not clear what missing attributes mean, but using null here would have the effect of leaving the old attributes in place, which seems flaky
-					: formatter.decodeDiagnosticAttributes(bsm.diagnosticAttributes());
-
-				return new StateAndMetadata<>(root, revision, diagnosticAttributes);
-			});
-			return new AllState<>(contents, bsonAllState.contentsRevision());
-		} catch (TunneledCheckedException e) {
-			try {
-				throw e.getCause();
-			} catch (IOException | RuntimeException | Error cause) {
-				throw cause;
-			} catch (Throwable t) {
-				throw e;
-			}
+	public StateAndMetadata<R> loadAllState() throws IOException, InvalidCollectionContentsException {
+		BsonStateAndMetadata bsm = readBsonStateAndMetadata();
+		if (bsm.state() == null) {
+			throw new IOException("No existing state in document");
 		}
+		replaceFlushLock(bsm.revision());
+		fieldTracker.process(bsm);
+
+		R root = formatter.document2object(bsm.state(), rootRef);
+		MapValue<String> diagnosticAttributes = bsm.diagnosticAttributes() == null
+			? MapValue.empty() // It's not clear what missing attributes mean, but using null here would have the effect of leaving the old attributes in place, which seems flaky
+			: formatter.decodeDiagnosticAttributes(bsm.diagnosticAttributes());
+
+		return new StateAndMetadata<>(root, bsm.revision(), diagnosticAttributes);
 	}
 
 	@Override
-	public void onHasBeenApplied(AllState<R> allState) {
-		allState.contents().forEach((tenant, stateAndMetadata) ->
-			finishedRevision(tenant, stateAndMetadata.revision()));
+	public void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata) {
+		flushLock.get().finishedRevision(stateAndMetadata.revision());
 	}
 
 	/**
-	 * Converts a {@link PerTenantValue} to the variant appropriate for the {@link #tenancyModel}.
-	 * For {@code None} tenancy, {@code NoTenant} is returned as-is.
-	 * For {@code Fixed} tenancy, {@code NoTenant} is converted to
-	 * {@link MultiTenant} with the fixed tenant ID.
+	 * Must be called before {@link FormatDriver#onHasBeenApplied} or any event processing.
 	 */
-	protected <T> PerTenantValue<T> normalizePerTenant(PerTenantValue<T> contents) {
-		return switch (contents) {
-			case NoTenant<T>(var value) -> switch (tenancyModel) {
-				case None _ -> contents;
-				case Fixed(var id) -> MultiTenant.singleton(Tenant.setTo(id), value);
-				case Explicit _ -> throw new AssertionError(
-					"Should not have NoTenant contents with Explicit tenancy");
-			};
-			case MultiTenant<T> _ -> contents;
-		};
+	protected void replaceFlushLock(BsonInt64 revisionNumber) {
+		flushLock.set(new FlushLock(revisionNumber.longValue(), flushTimeoutMS));
 	}
 
-	/**
-	 * Must be called before {@link #onHasBeenApplied} or any event processing.
-	 */
-	protected void replaceFlushLocks(PerTenantValue<BsonInt64> revisionNumbers) {
-		flushLocks.replaceWith(revisionNumbers.map(n -> new FlushLock(n.longValue(), flushTimeoutMS)));
-	}
-
-	/**
-	 * Low-level read of the database contents, with only the minimum interpretation
-	 * necessary to determine what the various parts correspond to.
-	 *
-	 * @return the contents of the database; fields of the returned
-	 * record can be null if they don't exist in the database.
-	 */
-	static record BsonAllState(
-		PerTenantValue<BsonStateAndMetadata> contents,
-		@Nullable BsonInt64 contentsRevision
-	) {}
-
-	abstract BsonAllState readBsonStateAndMetadata() throws InvalidCollectionContentsException;
+	abstract BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException;
 
 	protected BsonDocument blankUpdateDoc() {
 		return new BsonDocument()
@@ -241,9 +161,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	protected boolean shouldSkip(BsonInt64 revision) {
-		FlushLock lock = flushLocks.get();
-		// When lock is null, we don't have a lock for this tenant, so this revision is always interesting.
-		return lock != null && lock.alreadySeen(revision);
+		return flushLock.get().alreadySeen(revision);
 	}
 
 	/**
@@ -273,28 +191,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	protected void finishedRevision(BsonInt64 revision) {
-		flushLocks.computeIfAbsent(
-			_ -> new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS)
-		).finishedRevision(revision);
-	}
-
-	protected void finishedRevision(Established tenant, BsonInt64 revision) {
-		flushLocks.computeIfAbsentFor(
-			tenant,
-			_ -> new FlushLock(REVISION_BEFORE_ANY.longValue(), flushTimeoutMS)
-		).finishedRevision(revision);
-	}
-
-	/**
-	 * @return the {@link Tenant} that should be established before processing
-	 * a document with the given {@code id}
-	 */
-	protected @NonNull Established tenantFor(BsonString id) {
-		return switch (tenancyModel) {
-			case None _ -> Tenant.NONE;
-			case Fixed(var fixedId) -> Tenant.setTo(fixedId);
-			case Explicit _ -> getTenantFromDocumentId(id);
-		};
+		flushLock.get().finishedRevision(revision);
 	}
 
 	/**
@@ -309,51 +206,23 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * If there's any other waiting to be done besides the per-tenant revision number waiting,
+	 * If there's any other waiting to be done besides the revision number waiting,
 	 * this method must do that before returning.
-	 * @return all potentially relevant revision numbers found in the database
+	 * @return revision number found in the database
 	 * @throws RevisionFieldDisruptedException if unexpected database contents make it impossible to determine the revision number
 	 */
-	abstract @NonNull PerTenantValue<BsonInt64> readRevisionNumbersToFlush() throws FlushFailureException, InterruptedException;
+	abstract @NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException, InterruptedException;
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		var revisions = readRevisionNumbersToFlush();
+		var revision = readRevisionNumberToFlush();
 
-		// Don't hold a database transaction while waiting for the flush locks
+		// Don't hold a database transaction while waiting for the flush lock
 		// or flushing downstream.
 		collection.commitTransactionIfAny();
 
-		LOGGER.debug("Revisions to flush: {}", revisions);
-
-		// Wait for tenants that are present in flushLocks.
-		// Any tenant missing from flushLocks must have been deleted after
-		// the flush point, so we have no obligation to wait for it.
-		try {
-			LOGGER.debug("flushLocks: {}", flushLocks);
-			flushLocks.forEach((tenant, lock) -> {
-				BsonInt64 revision = revisions.getOrDefault(tenant, null);
-				if (revision == null) {
-					// Tenant is not present at the flush point so it must have been created after.
-					// No obligation to wait.
-					LOGGER.debug("Skipping {} for {}", revision, tenant);
-					return;
-				}
-				try {
-					lock.awaitRevision(revision);
-				} catch (InterruptedException | FlushFailureException e) {
-					throw new TunneledCheckedException(e);
-				}
-			});
-		} catch (TunneledCheckedException e) {
-			try {
-				throw e.getCause();
-			} catch (IOException | InterruptedException cause) {
-				throw cause;
-			} catch (Throwable ex) {
-				throw e;
-			}
-		}
+		LOGGER.debug("Revisions to flush: {}", revision);
+		flushLock.get().awaitRevision(revision);
 		LOGGER.debug("| Flush downstream");
 		downstream.flush();
 	}
@@ -361,17 +230,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	@Override
 	public void close() {
 		LOGGER.debug("+ close()");
-		contentsFlushLock.close();
-		try {
-			// Jailbreak! Disconnection affects all tenants, but it can be triggered by
-			// an operation with an established tenant context.
-			// Close the flush locks on a thread without the tenant restriction.
-			Thread.startVirtualThread(()->
-				flushLocks.forEach((_, flushLock) -> flushLock.close())
-			).join();
-		} catch (InterruptedException e) {
-			currentThread().interrupt();
-		}
+		flushLock.get().close();
 	}
 
 	protected void writeManifest(Manifest manifest) {

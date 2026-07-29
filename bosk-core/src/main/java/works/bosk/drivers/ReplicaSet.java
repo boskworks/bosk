@@ -140,7 +140,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 		 * as obtained by {@link Bosk#supersedingReadSession()}.
 		 */
 		@Override
-		public <RR extends StateTreeNode> EntireState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
+		public <RR extends StateTreeNode> RR initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
 			assert !replicas.isEmpty(): "Replicas must be added during by the driver factory before the drivers are used";
 			var seed = requireNonNull(ReplicaSet.this.seed.get());
 			if (isInitialized.getAndSet(true)) {
@@ -152,7 +152,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 				// to violate this--but unfortunately we have no way to verify it here,
 				// because at this point in the code, we cannot tell which replica we're initializing.
 				try (var _ = seedReadSession(seed)) {
-					return seed.boskInfo().bosk().entireState().cast(rootType);
+					return rootType.cast(seed.boskInfo().bosk().rootReference().value());
 				}
 			} else {
 				// The first time this is called, we assume it's for the seed replica.
@@ -219,11 +219,9 @@ public class ReplicaSet<R extends StateTreeNode> {
 		}
 
 		private void broadcast(Consumer<Replica<R>> action) {
-			var tenant = originContext.getEstablishedTenant();
 			var diagnosticContext = originContext.getAttributes();
 			replicas.forEach(replica -> {
 				try (
-					var _ = replica.boskInfo.context().withTenant(tenant);
 					var _ = replica.boskInfo.context().withOnly(diagnosticContext)
 				) {
 					action.accept(replica);

@@ -98,7 +98,6 @@ public class MongoDriverSettings {
 		 * Simple format that stores the entire bosk state in a single document,
 		 * and (except for {@link MongoDriver#refurbish() refirbish})
 		 * doesn't require any multi-document transactions.
-		 * Does not support multitenancy.
 		 *
 		 * <p>
 		 * This limits the entire bosk state to 16MB when converted to BSON.
@@ -144,19 +143,6 @@ public class MongoDriverSettings {
 		 * Unused documents may be left behind, to be cleaned up later.
 		 */
 		HASTY,
-	}
-
-	public enum TenancyFormat {
-		/**
-		 * There is no concept of tenants in the collection, and there is only one
-		 * copy of the bosk state tree.
-		 */
-		NONE,
-
-		/**
-		 * The tenant ID is prefixed onto the {@code _id} field, enclosed in angle brackets.
-		 */
-		ID_PREFIX,
 	}
 
 	public void validate() {

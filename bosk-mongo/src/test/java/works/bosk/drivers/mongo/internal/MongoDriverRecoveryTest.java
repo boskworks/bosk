@@ -347,7 +347,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			Bosk<TestEntity> prepBosk = new Bosk<>(
 				boskName("Prep " + getClass().getSimpleName()),
 				TestEntity.class,
-				bosk -> initialState(bosk).map(r -> r.withString(distinctiveString)),
+				bosk -> initialState(bosk).withString(distinctiveString),
 				BoskConfig.<TestEntity>builder().driverFactory((b, d) -> {
 					var mongoDriver = (MongoDriver) driverFactory.build(b, d);
 					driverRef.set(mongoDriver);

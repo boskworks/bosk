@@ -18,10 +18,6 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.BoskConfig.TenancyModel.Explicit;
-import works.bosk.BoskConfig.TenancyModel.Fixed;
-import works.bosk.BoskConfig.TenancyModel.None;
-import works.bosk.BoskContext.Tenant;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.Identifier;
@@ -32,9 +28,6 @@ import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.util.PerTenantValue;
-import works.bosk.util.PerTenantValue.MultiTenant;
-import works.bosk.util.PerTenantValue.NoTenant;
 
 import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
@@ -61,17 +54,11 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		super(
 			boskInfo.rootReference(),
 			boskInfo.context(),
-			boskInfo.tenancyModel(),
 			new Formatter(boskInfo, bsonSerializer),
 			collection,
 			downstream,
-			flushTimeoutMS,
-			() -> boskInfo.bosk().entireState()
+			flushTimeoutMS
 		);
-		if (boskInfo.tenancyModel() instanceof Explicit) {
-			throw new IllegalArgumentException(
-				"SequoiaFormat does not support " + boskInfo.tenancyModel());
-		}
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 	}
 
@@ -111,24 +98,19 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	BsonAllState readBsonStateAndMetadata() throws InvalidCollectionContentsException {
+	BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException {
 		try (MongoCursor<BsonDocument> cursor = collection
 			.findLatest(documentFilter()) // The revision field needs to be the latest
 			.limit(1)
 			.cursor()
 		) {
 			BsonDocument document = cursor.next();
-			var bsm = new BsonStateAndMetadata(
+			return new BsonStateAndMetadata(
 				document.getString("_id"),
 				document.getInt64(DocumentFields.revision.name()),
 				Formatter.getDiagnosticAttributesIfAny(document),
 				document.getDocument(DocumentFields.state.name())
 			);
-			return new BsonAllState(switch (tenancyModel) {
-				case None _ -> NoTenant.just(bsm);
-				case Fixed(var tenantId) -> MultiTenant.singleton(Tenant.setTo(tenantId), bsm);
-				case Explicit _ -> throw new AssertionError("Sequoia does not support explicit tenancy");
-			}, null);
 		} catch (NoSuchElementException e) {
 			throw new InvalidCollectionContentsException(SEQUOIA, "State document not found: " + DOCUMENT_ID, e);
 		} catch (BsonInvalidOperationException e) {
@@ -138,17 +120,12 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	@NonNull PerTenantValue<BsonInt64> readRevisionNumbersToFlush() throws RevisionFieldDisruptedException {
-		LOGGER.debug("readRevisionNumbersToFlush");
+	@NonNull BsonInt64 readRevisionNumberToFlush() throws RevisionFieldDisruptedException {
+		LOGGER.debug("readRevisionNumberToFlush");
 		try {
 			try (MongoCursor<BsonDocument> cursor = revisionDocumentCursor()) {
 				// Our revisionDocumentCursor matches only one document
-				BsonInt64 revision = cursor.next().getInt64(DocumentFields.revision.name(), REVISION_ZERO);
-				return switch (tenancyModel) {
-					case None _ -> NoTenant.just(revision);
-					case Fixed(var id) -> MultiTenant.singleton(Tenant.setTo(id), revision);
-					case Explicit _ -> throw new AssertionError("Sequoia does not support explicit tenancy");
-				};
+				return cursor.next().getInt64(DocumentFields.revision.name(), REVISION_ZERO);
 			}
 		} catch (NoSuchElementException e) {
 			throw new RevisionFieldDisruptedException("No root documents found", e);
@@ -158,34 +135,32 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	public void initializeCollection(PerTenantValue<StateAndMetadata<R>> priorContentsArg) {
-		var normalized = normalizePerTenant(priorContentsArg);
-		replaceFlushLocks(normalized.map(StateAndMetadata::revision));
-		normalized.forEach((tenant, priorContents) -> {
-			// Sequoia has only one document regardless of tenancy
-			BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
-			BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
-			try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
-				BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, DOCUMENT_ID));
-				BsonDocument filter = documentFilter();
-				UpdateOptions options = new UpdateOptions().upsert(true);
-				LOGGER.debug("** Initial upsert for {}", DOCUMENT_ID);
-				LOGGER.trace("| Filter: {}", filter);
-				LOGGER.trace("| Update: {}", update);
-				LOGGER.trace("| Options: {}", options);
-				UpdateResult result = collection.updateOne(filter, update, options);
-				LOGGER.debug("| Result: {}", result);
-			}
+	public void initializeCollection(StateAndMetadata<R> priorContents) {
+		replaceFlushLock(priorContents.revision());
 
-			// This is the only time Sequoia changes two documents for the same operation.
-			// Aside from refurbish, it's the only reason we'd want multi-document transactions,
-			// and it's not even a strong reason, because this still works correctly
-			// if interpreted as two separate events.
-			writeManifest(Manifest.forSequoia());
+		// Sequoia has only one document
+		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
+		BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
+		try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
+			BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, DOCUMENT_ID));
+			BsonDocument filter = documentFilter();
+			UpdateOptions options = new UpdateOptions().upsert(true);
+			LOGGER.debug("** Initial upsert for {}", DOCUMENT_ID);
+			LOGGER.trace("| Filter: {}", filter);
+			LOGGER.trace("| Update: {}", update);
+			LOGGER.trace("| Options: {}", options);
+			UpdateResult result = collection.updateOne(filter, update, options);
+			LOGGER.debug("| Result: {}", result);
+		}
 
-			// Update the state that we "know about"
-			finishedRevision(tenant, newRevision);
-		});
+		// This is the only time Sequoia changes two documents for the same operation.
+		// Aside from refurbish, it's the only reason we'd want multi-document transactions,
+		// and it's not even a strong reason, because this still works correctly
+		// if interpreted as two separate events.
+		writeManifest(Manifest.forSequoia());
+
+		// Update the state that we "know about"
+		finishedRevision(newRevision);
 	}
 
 	/**
@@ -207,7 +182,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			LOGGER.debug("Ignoring event for unrecognized document key: {}", event.getDocumentKey());
 			return;
 		}
-		Tenant.Established tenant = tenantFor(event.getDocumentKey().getString("_id"));
 		switch (event.getOperationType()) {
 			case INSERT: case REPLACE: {
 				// Note: an INSERT could be coming from this very bosk initializing the collection,
@@ -226,7 +200,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				BsonDocument attrsBson = fieldTracker.getFieldAsDocument(docId, DocumentFieldTracker.TrackedField.DIAGNOSTICS);
 				MapValue<String> diagnosticAttributes = attrsBson == null ? MapValue.empty() : formatter.decodeDiagnosticAttributes(attrsBson);
 				try (
-					var _ = context.withTenant(tenant);
 					var _ = context.withOnly(diagnosticAttributes)
 				) {
 					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
@@ -240,7 +213,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					// disappears, we don't null out revisionToSkip. TODO: Rethink what's the right way to handle this.
 					LOGGER.debug("| Replace {}", rootRef);
 					downstream.submitReplacement(rootRef, newRoot);
-					finishedRevision(tenant, revision);
+					finishedRevision(revision);
 				}
 			} break;
 			case UPDATE: {
@@ -251,7 +224,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					BsonDocument updateAttrsBson = fieldTracker.getFieldAsDocument(updateDocId, DocumentFieldTracker.TrackedField.DIAGNOSTICS);
 					MapValue<String> diagnosticAttributes = updateAttrsBson == null ? MapValue.empty() : formatter.decodeDiagnosticAttributes(updateAttrsBson);
 					try (
-						var _ = context.withTenant(tenant);
 						var _ = context.withOnly(diagnosticAttributes)
 					) {
 						if (shouldSkip(revision)) {
@@ -262,12 +234,13 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 						replaceUpdatedFields(updateDescription.getUpdatedFields());
 						deleteRemovedFields(updateDescription.getRemovedFields(), event.getOperationType());
 					}
-					finishedRevision(tenant, revision);
+					finishedRevision(revision);
 				}
 			} break;
 			case DELETE: {
+				// TODO: Is this safe? Does this open up a timing hole where updates could be dropped?
 				LOGGER.debug("Document containing revision field has been deleted; assuming revision=0");
-				finishedRevision(tenant, REVISION_ZERO);
+				finishedRevision(REVISION_ZERO);
 			} break;
 			default: {
 				throw new UnprocessableEventException("Cannot process event", event.getOperationType());

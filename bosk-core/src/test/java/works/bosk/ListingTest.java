@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import works.bosk.BoskDriver.EntireState;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NonexistentReferenceException;
 
@@ -46,7 +45,7 @@ class ListingTest {
 				.collect(toList()))
 			.map(children -> {
 				TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
-				Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> EntireState.just(root), BoskConfig.simple());
+				Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, BoskConfig.simple());
 				CatalogReference<TestEntity> catalog;
 				try {
 					catalog = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
@@ -62,7 +61,7 @@ class ListingTest {
 		TestEntity child = new TestEntity(Identifier.unique("child"), Catalog.empty());
 		List<TestEntity> children = singletonList(child);
 		TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> EntireState.just(root), BoskConfig.simple());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, BoskConfig.simple());
 		CatalogReference<TestEntity> childrenRef = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
 		return idStreams().map(list -> Arguments.of(list.map(Identifier::from).collect(toList()), childrenRef, bosk));
 	}
@@ -233,7 +232,7 @@ class ListingTest {
 		TestEntity child = new TestEntity(Identifier.unique("child"), Catalog.empty());
 		List<TestEntity> children = singletonList(child);
 		TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.of(children));
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> EntireState.just(root), BoskConfig.simple());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, BoskConfig.simple());
 		CatalogReference<TestEntity> childrenRef = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
 
 		Listing<TestEntity> actual = Listing.empty(childrenRef);
@@ -374,7 +373,7 @@ class ListingTest {
 	@Test
 	void collector_works() throws InvalidTypeException {
 		TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.empty());
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> EntireState.just(root), BoskConfig.simple());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, BoskConfig.simple());
 		CatalogReference<TestEntity> childrenRef = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
 
 		var items = List.of("a", "b", "c", "d", "e");
@@ -388,7 +387,7 @@ class ListingTest {
 	@Test
 	void collector_deduplicatesIdentifiers() throws InvalidTypeException {
 		TestEntity root = new TestEntity(Identifier.unique("parent"), Catalog.empty());
-		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> EntireState.just(root), BoskConfig.simple());
+		Bosk<TestEntity> bosk = new Bosk<>(boskName(), TestEntity.class, _ -> root, BoskConfig.simple());
 		CatalogReference<TestEntity> childrenRef = bosk.rootReference().thenCatalog(TestEntity.class, Path.just(TestEntity.Fields.children));
 
 		var items = List.of("a", "b", "a", "c", "b");

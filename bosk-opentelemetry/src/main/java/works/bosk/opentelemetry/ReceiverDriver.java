@@ -28,7 +28,7 @@ final class ReceiverDriver implements OpenTelemetryDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		try (var _ = Utils.otelContextFromDiagnosticAttributes(context).makeCurrent()) {
 			return downstream.initialState(rootType);
 		}

@@ -27,7 +27,6 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskDriver;
-import works.bosk.BoskDriver.EntireState.MultiTree;
 import works.bosk.BoskInfo;
 import works.bosk.Identifier;
 import works.bosk.MapValue;
@@ -46,8 +45,6 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.logging.MappedDiagnosticContext.MDCScope;
-import works.bosk.util.PerTenantValue;
-import works.bosk.util.PerTenantValue.NoTenant;
 
 import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static com.mongodb.client.model.Sorts.ascending;
@@ -259,7 +256,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	@Override
-	public <RR extends StateTreeNode> EntireState<RR> initialState(Class<RR> rootType) throws InvalidTypeException, InterruptedException, IOException {
+	public <RR extends StateTreeNode> RR initialState(Class<RR> rootType) throws InvalidTypeException, InterruptedException, IOException {
 		try (var _ = beginDriverOperation("initialState({})", rootType)) {
 			// The actual loading of the initial state happens on the ChangeReceiver thread.
 			// Here, we just wait for that to finish and deal with the consequences.
@@ -268,7 +265,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				throw new IllegalStateException("initialState has already run");
 			}
 			try {
-				return task.call(boskInfo.context().getAttributes()).cast(rootType);
+				return rootType.cast(task.call(boskInfo.context().getAttributes()));
 			} catch (ExecutionException e) {
 				switch (e.getCause()) {
 					case InitialStateFailureException i -> {
@@ -302,7 +299,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * @throws DownstreamInitialStateException if we attempt to delegate {@link #initialState} to
 	 * the {@link #downstream} driver and it throws an exception
 	 */
-	private EntireState<R> doInitialState(Class<R> rootType, MapValue<String> diagnosticAttributes) throws InitialStateException {
+	private R doInitialState(Class<R> rootType, MapValue<String> diagnosticAttributes) throws InitialStateException {
 		// This establishes a safe fallback in case things go wrong. It also causes any
 		// calls to driver update methods to wait until we're finished here. (There shouldn't
 		// be any such calls while initialState is still running, but this ensures that if any
@@ -313,14 +310,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// of this method. Our only concurrency concerns now involve database operations performed
 		// by other processes.
 
-		EntireState<R> entireState;
+		R entireState;
 		try (var _ = queryCollection.newReadOnlySession()){
 			FormatDriver<R> detectedDriver = detectFormat();
-			AllState<R> loadedState = detectedDriver.loadAllState();
-			entireState = switch (loadedState.contents().map(StateAndMetadata::state)) {
-				case NoTenant<R>(R root) -> EntireState.just(root);
-				case PerTenantValue.MultiTenant<R> v -> v.values().entrySet().stream().collect(MultiTree.collector());
-			};
+			StateAndMetadata<R> loadedState = detectedDriver.loadAllState();
+			entireState = loadedState.state();
 
 			// Hasn't technically been applied, but we're still initializing the Bosk, and its constructor won't return until the state has been applied
 			detectedDriver.onHasBeenApplied(loadedState);
@@ -335,8 +329,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				var session = queryCollection.newSession()
 			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
-				PerTenantValue<StateAndMetadata<R>> priorContents = PerTenantValue.from(entireState, root ->
-					new StateAndMetadata<>(root, REVISION_ZERO, diagnosticAttributes));
+				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, REVISION_ZERO, diagnosticAttributes);
 				preferredDriver.initializeCollection(priorContents);
 				session.commitTransactionIfAny();
 				// We can now publish the driver knowing that the transaction, if there is one, has committed
@@ -354,7 +347,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	/**
 	 * @throws DownstreamInitialStateException only
 	 */
-	private EntireState<R> callDownstreamInitialState(Class<R> rootType) throws DownstreamInitialStateException {
+	private R callDownstreamInitialState(Class<R> rootType) throws DownstreamInitialStateException {
 		try {
 			return downstream.initialState(rootType);
 		} catch (RuntimeException | Error | InvalidTypeException | IOException | InterruptedException e) {
@@ -382,7 +375,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// with respect to event processing, because both of them have side effects
 			// that affect event processing (field tracking and flush locks, respectively).
 			synchronized (receiver) {
-				AllState<R> allState = formatDriver.loadAllState();
+				StateAndMetadata<R> allState = formatDriver.loadAllState();
 				newFormatDriver = newPreferredFormatDriver();
 
 				// initializeCollection is required to replace the manifest anyway,
@@ -394,7 +387,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				LOGGER.trace("Deleting state documents: {}", deletionFilter);
 				queryCollection.deleteMany(deletionFilter);
 
-				newFormatDriver.initializeCollection(allState.contents());
+				newFormatDriver.initializeCollection(allState);
 			}
 
 			// We must rudely commit the transaction here, since correctness requires that
@@ -510,9 +503,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * to update {@link MainDriver}'s state in response to various occurrences.
 	 */
 	private class Listener implements ChangeListener {
-		final RemoteCallable<MapValue<String>, EntireState<R>, InitialStateException> initialStateTask;
+		final RemoteCallable<MapValue<String>, R, InitialStateException> initialStateTask;
 
-		private Listener(RemoteCallable<MapValue<String>, EntireState<R>, InitialStateException> initialStateTask) {
+		private Listener(RemoteCallable<MapValue<String>, R, InitialStateException> initialStateTask) {
 			this.initialStateTask = initialStateTask;
 		}
 
@@ -528,7 +521,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			LOGGER.debug("onConnectionSucceeded");
 			if (initialStateTask.isDone()) {
 				FormatDriver<R> newDriver;
-				AllState<R> allState;
+				StateAndMetadata<R> allState;
 				try (var _ = queryCollection.newReadOnlySession()) {
 					LOGGER.debug("Loading database state to submit to downstream driver");
 					newDriver = detectFormat();
@@ -551,24 +544,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 				publishFormatDriver(newDriver);
 
-				PerTenantValue<StateAndMetadata<R>> contents = allState.contents();
-				if (contents instanceof PerTenantValue.NoTenant<StateAndMetadata<R>>(var soleContents)) {
-					downstream.submitReplacement(boskInfo.rootReference(), soleContents.state());
+				// TODO: It's not clear we actually want loadedState.diagnosticAttributes here.
+				// This causes downstream.submitReplacement to be associated with the last update to the state,
+				// which is of dubious relevance. We might just want to use the context from the current thread,
+				// which is probably empty because this runs on the ChangeReceiver thread.
+				try (
+					var _ = boskInfo.context().withOnly(allState.diagnosticAttributes())
+				) {
+					downstream.submitReplacement(boskInfo.rootReference(), allState.state());
 					LOGGER.debug("Done submitting downstream");
-				} else {
-					// TODO: It's not clear we actually want loadedState.diagnosticAttributes here.
-					// This causes downstream.submitReplacement to be associated with the last update to the state,
-					// which is of dubious relevance. We might just want to use the context from the current thread,
-					// which is probably empty because this runs on the ChangeReceiver thread.
-					contents.forEach((tenant, s) -> {
-						try (
-							var _ = boskInfo.context().withOnly(s.diagnosticAttributes());
-							var _ = boskInfo.context().withTenant(tenant)
-						) {
-							downstream.submitReplacement(boskInfo.rootReference(), s.state());
-							LOGGER.debug("Done submitting downstream");
-						}
-					});
 				}
 
 				downstream.flush();
@@ -747,7 +731,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			Object[] argsWithContext = new Object[args.length + 2];
 			System.arraycopy(args, 0, argsWithContext, 0, args.length);
 			argsWithContext[args.length] = boskInfo.name();
-			argsWithContext[args.length + 1] = boskInfo.context().getTenant();
 			LOGGER.debug(description + " w/{}@{}", argsWithContext);
 		}
 		if (driverSettings.testing().eventDelayMS() < 0) {

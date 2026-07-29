@@ -1,21 +1,11 @@
 package works.bosk;
 
 import java.io.IOException;
-import java.util.Map.Entry;
 import java.util.Optional;
-import java.util.SortedMap;
-import java.util.function.Function;
-import java.util.stream.Collector;
-import org.jspecify.annotations.NullMarked;
-import org.pcollections.TreePMap;
 import works.bosk.Bosk.ReadSession;
-import works.bosk.BoskContext.Tenant.TenantId;
 import works.bosk.drivers.ForwardingDriver;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.util.TunneledCheckedException;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Receives update requests for some {@link Bosk}.
@@ -44,7 +34,6 @@ public interface BoskDriver {
 	 *
 	 * @param rootType The class of the root state tree node.
 	 * Enables a lot of type inference.
-	 * @return an {@link EntireState}
 	 * @throws InvalidTypeException as a convenience to support initialization logic
 	 * that creates {@link Reference References} (which is very common) so that implementations
 	 * do not need to catch that exception and wrap it or otherwise deal with it:
@@ -54,7 +43,7 @@ public interface BoskDriver {
 	 * but it can be used downstream of a {@link ForwardingDriver} provided there is
 	 * another downstream driver that can provide the initial state instead.
 	 */
-	<R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException;
+	<R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException;
 
 	/**
 	 * Requests that the object referenced by <code>target</code> be changed to <code>newValue</code>.
@@ -93,7 +82,7 @@ public interface BoskDriver {
 	 * was called. If <code>target.exists()</code> is false at the time this update
 	 * is to be applied, it is silently ignored.
 	 *
-	 * @throws IllegalArgumentException if the targeted object is not deletable,
+	 * @throws IllegalArgumentException if the targeted object is not deletable
 	 * regardless of whether it exists.
 	 */
 	<T> void submitDeletion(Reference<T> target);
@@ -162,129 +151,5 @@ public interface BoskDriver {
 	 * @see FlushFailureException
 	 */
 	void flush() throws IOException, InterruptedException;
-
-	/**
-	 * Describes the state tree (or trees) at a moment in time.
-	 * @param <R> the root node of the state tree
-	 */
-	sealed interface EntireState<R extends StateTreeNode> {
-		<T extends StateTreeNode> EntireState<T> map(InitialStateFunction<R,T> function) throws InvalidTypeException, IOException, InterruptedException;
-
-		<T extends StateTreeNode> EntireState<T> cast(Class<T> newRootType);
-
-		static <R extends StateTreeNode> SingleTree<R> just(R root) {
-			return new SingleTree<>(root);
-		}
-
-		/**
-		 * This bosk has zero or more tenants,
-		 * but they all share the same state tree whose node is {@code rootNode}.
-		 */
-		@NullMarked
-		record SingleTree<R extends StateTreeNode>(R rootNode) implements EntireState<R> {
-			public SingleTree {
-				requireNonNull(rootNode);
-			}
-
-			@Override
-			public <T extends StateTreeNode> SingleTree<T> cast(Class<T> newRootType) {
-				return new SingleTree<>(newRootType.cast(rootNode()));
-			}
-
-			@Override
-			public <T extends StateTreeNode> SingleTree<T> map(InitialStateFunction<R, T> function) throws InvalidTypeException, IOException, InterruptedException {
-				return new SingleTree<>(function.apply(rootNode()));
-			}
-		}
-
-		@NullMarked
-		record MultiTree<R extends StateTreeNode>(SortedMap<TenantId, R> tenantRoots) implements EntireState<R> {
-			public MultiTree {
-				requireNonNull(tenantRoots);
-				if (!(tenantRoots instanceof TreePMap<TenantId,R>)) {
-					tenantRoots = TreePMap.from(tenantRoots);
-				}
-			}
-
-			public static <R extends StateTreeNode> MultiTree<R> empty() {
-				return new MultiTree<>(TreePMap.empty());
-			}
-
-			public static <R extends StateTreeNode> MultiTree<R> singleton(TenantId tenant, R root) {
-				return new MultiTree<>(TreePMap.singleton(tenant, root));
-			}
-
-			public MultiTree<R> with(TenantId tenant, R root) {
-				if (tenantRoots instanceof TreePMap<TenantId,R> t) {
-					return new MultiTree<>(t.plus(tenant, root));
-				} else {
-					throw new AssertionError("tenantRoots is always a TreePMap");
-				}
-			}
-
-			public MultiTree<R> without(TenantId tenant) {
-				if (tenantRoots instanceof TreePMap<TenantId,R> t) {
-					return new MultiTree<>(t.minus(tenant));
-				} else {
-					throw new AssertionError("tenantRoots is always a TreePMap");
-				}
-			}
-
-			@Override
-			public <T extends StateTreeNode> MultiTree<T> cast(Class<T> newRootType) {
-				return tenantRoots.entrySet().stream().collect(withValues(newRootType::cast));
-			}
-
-			@Override
-			public <T extends StateTreeNode> MultiTree<T> map(InitialStateFunction<R, T> function) throws InvalidTypeException, IOException, InterruptedException {
-				try {
-					return tenantRoots.entrySet().stream().collect(withValues(v -> {
-						try {
-							return function.apply(v);
-						} catch (InvalidTypeException | IOException | InterruptedException e) {
-							throw new TunneledCheckedException(e);
-						}
-					}));
-				} catch (TunneledCheckedException e) {
-					try {
-						throw e.getCause();
-					} catch (InvalidTypeException | IOException | InterruptedException ex) {
-						throw ex;
-					} catch (Throwable ex) {
-						throw new AssertionError("Should be impossible", ex);
-					}
-				}
-			}
-
-			public static <IN, OUT extends StateTreeNode> Collector<Entry<TenantId, IN>, ?, MultiTree<OUT>> withValues(Function<IN, OUT> valueMapper) {
-				// TODO: Common with PerTenantValue?
-				class Accumulator {
-					TreePMap<TenantId, OUT> map = org.pcollections.TreePMap.empty();
-					void accumulate(Entry<TenantId, IN> e) { map = map.plus(e.getKey(), valueMapper.apply(e.getValue())); }
-					Accumulator combine(Accumulator other) { map = map.plusAll(other.map); return this; }
-					MultiTree<OUT> finish() { return new MultiTree<>(map); }
-				}
-				return Collector.of(
-					Accumulator::new,
-					Accumulator::accumulate,
-					Accumulator::combine,
-					Accumulator::finish
-				);
-			}
-
-			public static <R extends StateTreeNode> Collector<Entry<TenantId, R>, ?, MultiTree<R>> collector() {
-				return withValues(Function.identity());
-			}
-
-		}
-
-		/**
-		 * A version of {@link Function} that, for convenience,
-		 * is allowed to throw exceptions permitted by {@link BoskDriver#initialState(Class) initialState}.
-		 */
-		interface InitialStateFunction<FROM extends StateTreeNode, TO extends StateTreeNode> {
-			TO apply(FROM root) throws InvalidTypeException, IOException, InterruptedException;
-		}
-	}
 
 }

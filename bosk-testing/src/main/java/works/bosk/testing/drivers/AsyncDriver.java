@@ -29,7 +29,7 @@ public class AsyncDriver implements BoskDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 		return downstream.initialState(rootType);
 	}
 
@@ -78,12 +78,10 @@ public class AsyncDriver implements BoskDriver {
 
 	private void submitAsyncTask(String description, Runnable task) {
 		LOGGER.debug("Submit {}", description);
-		var tenant = bosk.context().getTenant();
 		var diagnosticAttributes = bosk.context().getAttributes();
 		executor.submit(()->{
 			try (
 				var _ = setupMDC(bosk.name(), bosk.instanceID());
-				var _ = bosk.context().withMaybeTenant(tenant);
 				var _ = bosk.context().withOnly(diagnosticAttributes)
 			) {
 				task.run();

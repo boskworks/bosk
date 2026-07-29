@@ -52,7 +52,7 @@ class ReportingDriverTest extends AbstractDriverTest {
 		bosk.driver().submitReplacement(refs.entity(id1), emptyEntityAt(refs.entity(id1)));
 		ops.clear();
 		contextScope = bosk.context().withAttribute(ReportingDriverTest.class.getSimpleName(), "expectedValue");
-		expectedContext = new BoskContext.Context(bosk.context().getTenant(), bosk.context().getAttributes());
+		expectedContext = new BoskContext.Context(bosk.context().getAttributes());
 	}
 
 	@AfterEach

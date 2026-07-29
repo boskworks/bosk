@@ -28,13 +28,10 @@ public class ForgottenFlushTest extends AbstractDriverTest {
 			this::initialState,
 			BoskConfig.<TestEntity>builder()
 				.driverFactory(driverFactory)
-				.tenancyModel(scenario.tenancyModel)
 				.build());
 		var refs = bosk.buildReferences(Refs.class);
 		var driver = bosk.driver();
-		try (var _ = bosk.context().withMaybeTenant(scenario.startingTenant)) {
-			driver.submitReplacement(refs.string(), "new value");
-		}
+		driver.submitReplacement(refs.string(), "new value");
 		assertThrows(AssertionError.class, driver::flush,
 			"DriverStateVerifier must detect forgotten flush()");
 	}

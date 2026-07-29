@@ -19,7 +19,7 @@ public class RepeatingDriverConformanceTest extends DriverConformanceTest {
 	void setupDriverFactory() {
 		driverFactory = (_,downstream) -> new BoskDriver() {
 			@Override
-			public <R extends StateTreeNode> EntireState<R> initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+			public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
 				return downstream.initialState(rootType);
 			}
 
