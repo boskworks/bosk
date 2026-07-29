@@ -7,7 +7,7 @@ jetbrains-annotations = "26.1.0"
 jspecify = "1.0.0"
 jmh = "1.37"
 junit = "6.1.2"
-logback = "1.5.38"
+logback = "1.6.0"
 lombok = "1.18.46"
 pcollections = "5.0.0"
 slf4j = "2.0.18"
@@ -36,7 +36,7 @@ junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 junit-params = { module = "org.junit.jupiter:junit-jupiter-params" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
-mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.9.0" }
+mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.9.1" }
 mysql = { module = "com.mysql:mysql-connector-j", version = "9.7.0" }
 opentelemetry = { module="io.opentelemetry:opentelemetry-sdk", version="1.64.0" }
 pcollections = { module = "org.pcollections:pcollections", version.ref="pcollections" }
@@ -47,7 +47,7 @@ spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter
 spring-boot-starter-webmvc = { module="org.springframework.boot:spring-boot-starter-webmvc", version.ref="spring-boot" }
 spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
 spring-boot-starter-webmvc-test = { module="org.springframework.boot:spring-boot-starter-webmvc-test", version.ref="spring-boot" }
-sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.53.2.0" }
+sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.53.2.1" }
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 testcontainers-mongodb = { module = "org.testcontainers:testcontainers-mongodb", version.ref = "testcontainers" }
