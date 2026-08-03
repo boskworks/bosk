@@ -74,8 +74,9 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * but should tolerate documents already existing,
 	 * by using upsert or replace operations, for example.
 	 * @param priorContents the desired state, with metadata representing a (possibly hypothetical)
-	 * "prior" state of the database; in particular, the revision number should be incremented
-	 * so that a {@link #flush} after a {@link #refurbish} succeeds in waiting for the new state.
+	 * "prior" state of the database; in particular, the epoch should be preserved if it exists,
+	 * and the revision number should be incremented so that a {@link #flush} after
+	 * a {@link #refurbish} succeeds in waiting for the new state.
 	 */
 	void initializeCollection(StateAndMetadata<R> priorContents);
 

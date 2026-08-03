@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -845,6 +846,76 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			assertNull(doc.get(bogusField));
 		}
 
+	}
+
+	@Test
+	void refurbish_preservesExistingEpoch(TestInfo testInfo) throws IOException, InterruptedException {
+		// Make the bosk whose refurbish operation we want to test
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Main"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
+
+		// Get the new bosk connected, which initializes the collection with an epoch
+		bosk.driver().flush();
+
+		MongoCollection<BsonDocument> collection = mongoService.client()
+			.getDatabase(driverSettings.database())
+			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+		BsonDocument filterDoc = rootDocumentsFilter();
+		BsonString epochBefore;
+		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
+			epochBefore = cursor.next().getString(Formatter.DocumentFields.epoch.name());
+		}
+
+		// Refurbish
+		bosk.getDriver(MongoDriver.class).refurbish();
+
+		// The existing epoch must be preserved exactly
+		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
+			BsonString epochAfter = cursor.next().getString(Formatter.DocumentFields.epoch.name());
+			assertEquals(epochBefore, epochAfter);
+		}
+
+	}
+
+	@Test
+	void refurbish_addsMissingEpoch(TestInfo testInfo) throws IOException, InterruptedException {
+		// Set up the database so it looks basically right
+		Bosk<TestEntity> initialBosk = new Bosk<>(
+			boskName("Initial"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
+		initialBosk.getDriver(MongoDriver.class).close();
+
+		// Simulate a legacy collection by removing the epoch field
+		MongoCollection<BsonDocument> collection = mongoService.client()
+			.getDatabase(driverSettings.database())
+			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+		deleteFields(collection, Formatter.DocumentFields.epoch);
+
+		// Make the bosk whose refurbish operation we want to test
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Main"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
+
+		// Get the new bosk connected
+		bosk.driver().flush();
+
+		// Refurbish
+		bosk.getDriver(MongoDriver.class).refurbish();
+
+		// The missing epoch must now be present, and must be a plausible UUID
+		BsonDocument filterDoc = rootDocumentsFilter();
+		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
+			BsonString epoch = cursor.next().getString(Formatter.DocumentFields.epoch.name());
+			assertNotNull(epoch);
+			UUID.fromString(epoch.getValue());
+		}
 	}
 
 	@Test

@@ -307,6 +307,18 @@ public class BsonFormatter {
 		state,
 
 		/**
+		 * A {@link java.util.UUID} identifying this collection's current initialization.
+		 * It is generated when the collection is first initialized, and preserved
+		 * when the collection is reinitialized with the same state (eg. by a refurbish).
+		 * It is NOT preserved when a different process deletes the collection and starts over,
+		 * because the start-over is a genuinely new initialization.
+		 *
+		 * <p>
+		 * A missing value indicates a legacy database that predates the epoch mechanism.
+		 */
+		epoch,
+
+		/**
 		 * An ever-increasing 64-bit long that is incremented every time the document changes.
 		 */
 		revision,

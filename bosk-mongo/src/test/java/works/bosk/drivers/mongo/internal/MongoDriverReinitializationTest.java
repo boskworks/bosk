@@ -29,8 +29,8 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 /**
  * Tests the behaviour of a bosk whose database collection is deleted and re-initialized
  * with different content by a different process while the bosk is still running.
- * The deleted-and-recreated collection begins a <em>new life</em> that the bosk must
- * detect, even if the new life's revision numbers happen to coincide with old ones.
+ * The bosk must detect that the collection has been deleted and recreated,
+ * even if the new collection's revision numbers happen to coincide with old ones.
  */
 @Slow
 @ParameterizedClass
@@ -91,7 +91,7 @@ public class MongoDriverReinitializationTest extends AbstractMongoDriverTest {
 		bosk.driver().flush();
 		try (var _ = bosk.readSession()) {
 			assertEquals(afterState, bosk.rootReference().value(),
-				"flush must load the state of the collection's new life");
+				"flush must load the state of the reinitialized collection");
 		}
 	}
 
