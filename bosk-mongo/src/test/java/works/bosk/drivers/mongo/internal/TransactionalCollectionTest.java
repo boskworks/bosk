@@ -85,6 +85,22 @@ class TransactionalCollectionTest {
 	}
 
 	@Test
+	void readOnlySession_rejectsWrites() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newReadOnlySession()) {
+			BsonDocument filter = new BsonDocument("_id", new BsonString("doc1"));
+			BsonDocument update = new BsonDocument("$set", new BsonDocument("x", new BsonInt32(1)));
+			assertThrows(IllegalStateException.class,
+				() -> collection.insertOne(new BsonDocument("_id", new BsonString("new"))));
+			assertThrows(IllegalStateException.class, () -> collection.updateOne(filter, update));
+			assertThrows(IllegalStateException.class, () -> collection.updateOne(filter, update, new UpdateOptions()));
+			assertThrows(IllegalStateException.class, () -> collection.deleteOne(filter));
+			assertThrows(IllegalStateException.class, () -> collection.deleteMany(filter));
+			assertThrows(IllegalStateException.class,
+				() -> collection.replaceOne(filter, new BsonDocument("_id", new BsonString("doc1")), new ReplaceOptions()));
+		}
+	}
+
+	@Test
 	void nestedSession_throws() throws FailedMongoClientSessionException {
 		try (Session _ = collection.newSession()) {
 			assertThrows(IllegalStateException.class, () -> collection.newSession());
@@ -325,10 +341,9 @@ class TransactionalCollectionTest {
 	}
 
 	@Test
-	void readOnlySession_cannotStartTransaction() throws FailedMongoClientSessionException {
+	void readOnlySession_canStartTransaction() throws FailedMongoClientSessionException {
 		try (Session _ = collection.newReadOnlySession()) {
-			assertThrows(IllegalStateException.class,
-				() -> collection.ensureTransactionStarted());
+			assertDoesNotThrow(() -> collection.ensureTransactionStarted());
 		}
 	}
 
