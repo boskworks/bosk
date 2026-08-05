@@ -23,9 +23,13 @@ import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
+import works.bosk.Catalog;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
+import works.bosk.Identifier;
 import works.bosk.Listing;
+import works.bosk.Reference;
+import works.bosk.SideTable;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
@@ -84,7 +88,8 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			Stream.of(
 				MongoDriverSettings.DatabaseFormat.SEQUOIA,
 				PandoFormat.oneBigDocument(),
-				PandoFormat.withGraftPoints("/catalog", "/sideTable")
+				PandoFormat.withGraftPoints("/catalog", "/sideTable"),
+				PandoFormat.withGraftPoints("/catalog/-x-/sideTable")
 			),
 			Stream.of(TestParameters.EventTiming.NORMAL)
 		).map(b -> b.applyDriverSettings(s -> s
@@ -154,8 +159,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 		LOGGER.debug("Make a change to the bosk and verify that it gets through");
 		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
-		TestEntity expected = defaultRoot
-			.withString("distinctive string")
+		TestEntity expected = initialState
 			.withListing(Listing.of(refs.catalog(), entity123));
 
 		waitFor(driver);
@@ -341,13 +345,34 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			);
 	}
 
+	/**
+	 * The recovery scenarios scatter and gather the whole state tree, so give the
+	 * initial state content at the nested graft points; otherwise a recovery bug
+	 * in the deep scatter would go unexercised.
+	 */
+	private static TestEntity initialRootWithNestedSideTable(Bosk<TestEntity> bosk) throws InvalidTypeException {
+		Refs refs = bosk.buildReferences(Refs.class);
+		Reference<Catalog<TestEntity>> entry123Catalog = refs.childCatalog(entity123);
+		Identifier s1ID = Identifier.from("s1");
+		TestEntity entry123 = TestEntity.empty(entity123, entry123Catalog)
+			.withSideTable(SideTable.of(
+				entry123Catalog,
+				s1ID,
+				TestEntity.empty(s1ID, entry123Catalog)
+					.withString("nested")));
+		return initialRoot(bosk).withCatalog(Catalog.of(
+			entry123,
+			TestEntity.empty(entity124, refs.childCatalog(entity124))
+		));
+	}
+
 	private TestEntity initializeDatabase(String distinctiveString) {
 		try {
 			AtomicReference<MongoDriver> driverRef = new AtomicReference<>();
 			Bosk<TestEntity> prepBosk = new Bosk<>(
 				boskName("Prep " + getClass().getSimpleName()),
 				TestEntity.class,
-				bosk -> initialState(bosk).withString(distinctiveString),
+				bosk -> initialRootWithNestedSideTable(bosk).withString(distinctiveString),
 				BoskConfig.<TestEntity>builder().driverFactory((b, d) -> {
 					var mongoDriver = (MongoDriver) driverFactory.build(b, d);
 					driverRef.set(mongoDriver);
@@ -357,7 +382,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 			waitFor(driver);
 			driver.close();
 
-			return initialRoot(prepBosk).withString(distinctiveString);
+			return initialRootWithNestedSideTable(prepBosk).withString(distinctiveString);
 		} catch (Exception e) {
 			throw new AssertionError(e);
 		}
