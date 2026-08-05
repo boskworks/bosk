@@ -588,7 +588,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)),
 				standardRootPreconditions(target));
 			LOGGER.debug("| Update root document");
-			doUpdate(replacementDoc(target, value, rootRef), standardRootPreconditions(target));
+			boolean applied = doUpdate(replacementDoc(target, value, rootRef), standardRootPreconditions(target));
+			if (!applied) {
+				LOGGER.debug("| Replacement had no effect; aborting transaction");
+				collection.abortTransaction();
+			}
 		} else {
 // Note: don't use mainPart's ID. TODO: Is this ok? Why is the ID wrong?
 			BsonDocument filter = documentFilter(mainRef);
@@ -620,10 +624,19 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			doUpdate(preDelete, standardPreconditions(target, mainRef, filter));
 			LOGGER.debug("| Set field {} in {}: {}", key, mainRef, value);
 			BsonDocument mainUpdate = new BsonDocument("$set", new BsonDocument(key, value));
-			doUpdate(mainUpdate, standardPreconditions(target, mainRef, filter));
+			// If the main document doesn't exist (or its structure doesn't match), the
+			// write is silently ignored, just as the local driver ignores writes to
+			// nonexistent nodes. Such a no-op must not bump the revision or emit a
+			// spurious change-stream event.
+			boolean applied = doUpdate(mainUpdate, standardPreconditions(target, mainRef, filter));
 
-			LOGGER.debug("| Bump revision on root document");
-			doUpdate(blankUpdateDoc(), documentFilter(rootRef));
+			if (applied) {
+				LOGGER.debug("| Bump revision on root document");
+				doUpdate(blankUpdateDoc(), documentFilter(rootRef));
+			} else {
+				LOGGER.debug("| Replacement had no effect; aborting transaction");
+				collection.abortTransaction();
+			}
 		}
 	}
 
@@ -642,16 +655,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			assert !mainRef.path().isEmpty(): "Can't delete the root reference";
 			// Move up to the parent document to delete the "true" stub
 			mainRef = mainRef(mainRef.enclosingReference(Object.class));
-			LOGGER.debug("Move up to enclosing main reference {}", mainRef);
+			LOGGER.debug("| Move up to enclosing main reference {}", mainRef);
 		}
 
 		if (doUpdate(deletionDoc(target, mainRef), standardPreconditions(target, mainRef, documentFilter(mainRef)))) {
 			if (!rootRef.equals(mainRef)) {
-				LOGGER.debug("Deletion succeeded; bumping revision number in root document");
+				LOGGER.debug("| Deletion succeeded; bumping revision number in root document");
 				doUpdate(blankUpdateDoc(), documentFilter(rootRef));
 			}
 		} else {
-			LOGGER.debug("Deletion had no effect; aborting transaction");
+			LOGGER.debug("| Deletion had no effect; aborting transaction");
 			collection.abortTransaction();
 		}
 	}
