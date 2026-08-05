@@ -643,16 +643,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			// Move up to the parent document to delete the "true" stub
 			mainRef = mainRef(mainRef.enclosingReference(Object.class));
 			LOGGER.debug("Move up to enclosing main reference {}", mainRef);
-		} else {
-			if (doUpdate(deletionDoc(target, mainRef), standardPreconditions(target, mainRef, documentFilter(mainRef)))) {
-				if (!rootRef.equals(mainRef)) {
-					LOGGER.debug("Deletion succeeded; bumping revision number in root document");
-					doUpdate(blankUpdateDoc(), documentFilter(rootRef));
-				}
-			} else {
-				LOGGER.debug("Deletion had no effect; aborting transaction");
-				collection.abortTransaction();
+		}
+
+		if (doUpdate(deletionDoc(target, mainRef), standardPreconditions(target, mainRef, documentFilter(mainRef)))) {
+			if (!rootRef.equals(mainRef)) {
+				LOGGER.debug("Deletion succeeded; bumping revision number in root document");
+				doUpdate(blankUpdateDoc(), documentFilter(rootRef));
 			}
+		} else {
+			LOGGER.debug("Deletion had no effect; aborting transaction");
+			collection.abortTransaction();
 		}
 	}
 
