@@ -130,6 +130,7 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 - Avoid merging a bug and its fix in the same PR. Prefer squashing the fix into the commit with the bug so it looks like the bug was never there.
 - Each commit should have correct spotless formatting.
 - Each commit should pass all tests unless it's marked as WIP or is explicitly doing test-driven development.
+- For multi-line commit messages, the first line (the summary) should end with a period.
 
 ## Test Coding Patterns
 
