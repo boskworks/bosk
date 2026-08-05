@@ -160,7 +160,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		BsonStateAndMetadata bsm = null;
 		List<BsonDocument> partsBuffer = new ArrayList<>();
 		try (MongoCursor<BsonDocument> cursor = collection
-			.findLatest(regex("_id", "^[|]")) // The revision field needs to be the latest
+			.find(regex("_id", "^[|]"))
 			.sort(new BsonDocument("_id", new BsonInt32(-1))) // Root doc last
 			.cursor()
 		) {

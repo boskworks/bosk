@@ -313,6 +313,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 		R entireState;
 		try (var _ = queryCollection.newReadOnlySession()){
+			// The load must read a consistent snapshot, so run it inside a
+			// read-only transaction. (Refurbish runs its load inside its own
+			// transaction, so the load is always transactional.)
+			queryCollection.ensureTransactionStarted();
 			FormatDriver<R> detectedDriver = detectFormat();
 			StateAndMetadata<R> loadedState = detectedDriver.loadAllState();
 			entireState = loadedState.state();
@@ -523,6 +527,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				StateAndMetadata<R> allState;
 				try (var _ = queryCollection.newReadOnlySession()) {
 					LOGGER.debug("Loading database state to submit to downstream driver");
+					// The load must read a consistent snapshot, so run it inside a
+					// read-only transaction. (Refurbish runs its load inside its own
+					// transaction, so the load is always transactional.)
+					queryCollection.ensureTransactionStarted();
 					newDriver = detectFormat();
 					allState = newDriver.loadAllState();
 					LOGGER.trace("Loaded state: {}", allState);

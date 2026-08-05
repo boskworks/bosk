@@ -142,13 +142,14 @@ class TransactionalCollection {
 	 * insisting on a particular transaction boundary location. If method A
 	 * calls method B, and both call this method, then both will occur in the
 	 * same transaction.
+	 * <p>
+	 * In a read-only session this starts a read-only transaction, which gives
+	 * the reads a consistent snapshot (used to load the state).
 	 */
 	public void ensureTransactionStarted() {
 		Session session = currentSession.get();
 		if (session == null) {
 			throw new IllegalStateException("No active session");
-		} else if (session.isReadOnly) {
-			throw new IllegalStateException("Cannot execute a transaction in a read-only session");
 		} else if (!session.clientSession.hasActiveTransaction()) {
 			session.clientSession.startTransaction();
 			LOGGER.debug("Start transaction");
@@ -195,9 +196,14 @@ class TransactionalCollection {
 	 * Analogous to {@link Bosk#supersedingReadSession()} in that it bypasses the usual
 	 * determinism features and gives direct access to the very latest data.
 	 * <p>
-	 * This is appropriate for initializing state and implementing {@link FormatDriver#flush()}.
-	 * It's probably not appropriate for ordinary updates, which benefit from the determinism
-	 * and reproducibility of sessions and transactions.
+	 * This is appropriate for reading a single document, like a root document's
+	 * revision for {@link FormatDriver#flush()}. A {@code findLatest} cursor reads
+	 * each document at its own instant, so it is <em>not</em> appropriate for a
+	 * multi-document read: use {@link #find} within a transaction, which reads the
+	 * transaction's snapshot.
+	 * <p>
+	 * It's probably not appropriate for ordinary updates, which benefit from the
+	 * determinism and reproducibility of sessions and transactions.
 	 */
 	public FindIterable<BsonDocument> findLatest(Bson filter) {
 		return this.downstream.withReadConcern(LOCAL).find(filter);
@@ -212,27 +218,42 @@ class TransactionalCollection {
 	}
 
 	public InsertOneResult insertOne(BsonDocument document) {
+		requireWritable();
 		return this.downstream.insertOne(currentSession(), document);
 	}
 
 	public DeleteResult deleteOne(Bson filter) {
+		requireWritable();
 		return this.downstream.deleteOne(currentSession(), filter);
 	}
 
 	public DeleteResult deleteMany(Bson filter) {
+		requireWritable();
 		return this.downstream.deleteMany(currentSession(), filter);
 	}
 
 	public UpdateResult replaceOne(Bson filter, BsonDocument replacement, ReplaceOptions replaceOptions) {
+		requireWritable();
 		return this.downstream.replaceOne(currentSession(), filter, replacement, replaceOptions);
 	}
 
 	public UpdateResult updateOne(Bson filter, Bson update) {
+		requireWritable();
 		return this.downstream.updateOne(currentSession(), filter, update);
 	}
 
 	public UpdateResult updateOne(Bson filter, Bson update, UpdateOptions updateOptions) {
+		requireWritable();
 		return this.downstream.updateOne(currentSession(), filter, update, updateOptions);
+	}
+
+	private void requireWritable() {
+		Session session = currentSession.get();
+		if (session == null) {
+			throw new IllegalStateException("No active session");
+		} else if (session.isReadOnly) {
+			throw new IllegalStateException("Cannot write in a read-only session");
+		}
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(TransactionalCollection.class);

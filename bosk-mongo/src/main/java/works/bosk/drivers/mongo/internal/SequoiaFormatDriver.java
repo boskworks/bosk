@@ -100,7 +100,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException {
 		try (MongoCursor<BsonDocument> cursor = collection
-			.findLatest(documentFilter()) // The revision field needs to be the latest
+			.find(documentFilter())
 			.limit(1)
 			.cursor()
 		) {
