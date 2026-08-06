@@ -27,8 +27,4 @@ class RevisionFieldDisruptedException extends FlushFailureException {
 	public RevisionFieldDisruptedException(String message, Throwable cause) {
 		super(message, cause);
 	}
-
-	public RevisionFieldDisruptedException(Throwable cause) {
-		super(cause);
-	}
 }

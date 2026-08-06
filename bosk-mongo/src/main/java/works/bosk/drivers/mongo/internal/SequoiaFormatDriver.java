@@ -16,7 +16,6 @@ import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonString;
 import org.bson.BsonValue;
-import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +28,6 @@ import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
-import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.bson.BsonBoolean.FALSE;
@@ -120,22 +118,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			throw new InvalidCollectionContentsException(SEQUOIA, "State document is missing required fields: " + DOCUMENT_ID, e);
 		}
 
-	}
-
-	@Override
-	@NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException {
-		LOGGER.debug("readRevisionNumberToFlush");
-		try {
-			try (MongoCursor<BsonDocument> cursor = revisionDocumentCursor()) {
-				// Our revisionDocumentCursor matches only one document
-				BsonDocument document = cursor.next();
-				return revisionVerifiedAgainstEpoch(document);
-			}
-		} catch (NoSuchElementException e) {
-			throw new RevisionFieldDisruptedException("No root documents found", e);
-		} catch (RuntimeException e) {
-			throw new RevisionFieldDisruptedException(e);
-		}
 	}
 
 	@Override

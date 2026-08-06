@@ -14,6 +14,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 import lombok.With;
+import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
@@ -73,6 +74,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
+import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -647,6 +649,36 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals(0, errorRecorder.failureCount, "No connection failures");
 		assertEquals(1, errorRecorder.disconnections.size(),
 			"Expected 1 disconnection: DatabaseLoadException from DISCONNECT fallback");
+	}
+
+	@Test
+	@Slow
+	void revisionFieldWrongType_flushThrowsFlushFailureException() throws InvalidTypeException, IOException, InterruptedException {
+		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("revisionWrongType"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		try (var _ = bosk.readSession()) {
+			assertEquals(initialRoot(bosk), bosk.rootReference().value());
+		}
+
+		// Corrupt the revision field by giving it the wrong BSON type.
+		// The $exists filter targets only the document(s) that have a revision field,
+		// which is the root document in both formats.
+		mongoService.client()
+			.getDatabase(driverSettings.database())
+			.getCollection(COLLECTION_NAME, BsonDocument.class)
+			.updateMany(
+				new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonDocument("$exists", BsonBoolean.TRUE)),
+				new BsonDocument("$set", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonString("oops")))
+			);
+
+		// A malformed revision must surface as a checked FlushFailureException at the driver
+		// boundary, never as a raw RuntimeException like BsonInvalidOperationException.
+		assertThrows(FlushFailureException.class, () -> bosk.driver().flush());
 	}
 
 	@Test

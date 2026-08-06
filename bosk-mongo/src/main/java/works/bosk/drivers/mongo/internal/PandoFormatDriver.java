@@ -42,7 +42,6 @@ import works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
-import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
 
@@ -205,18 +204,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			throw new NotYetImplementedException("Nothing there!");
 		}
 		return bsm;
-	}
-
-	@Override
-	@NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException {
-		LOGGER.debug("readRevisionNumberToFlush");
-		try {
-			try (MongoCursor<BsonDocument> cursor = revisionDocumentCursor()) {
-				return revisionVerifiedAgainstEpoch(cursor.next());
-			}
-		} catch (RuntimeException e) {
-			throw new RevisionFieldDisruptedException(e);
-		}
 	}
 
 	/**

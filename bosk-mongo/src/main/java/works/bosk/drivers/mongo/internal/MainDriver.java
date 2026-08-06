@@ -452,9 +452,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.<InterruptedException, IOException>doRetryableDriverOperation(() -> {
 				formatDriver.flush();
 			}, "flush");
-		} catch (DisconnectedException | IOException e) {
-			// Callers are expecting a FlushFailureException in these cases
-			// TODO: Is this true for IOException? Why is flush() declared to throw IOException then?
+		} catch (RuntimeException e) {
 			throw new FlushFailureException(e);
 		}
 	}

@@ -1,10 +1,13 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoException;
+import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -214,32 +217,42 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * The revision number to flush, whose epoch has been verified to match
-	 * the collection's current epoch.
+	 * Reads the {@link DocumentFields#revision revision} number of the current root document,
+	 * after verifying its {@link DocumentFields#epoch epoch} matches the one we loaded.
+	 * <p>
+	 * If the format requires any other waiting before flushing, subclasses may override this.
 	 *
-	 * @param document a root document, as read by {@link #revisionDocumentCursor()}
-	 * @throws EpochMismatchException if {@code document} is from a different epoch
-	 * than the one we loaded
-	 */
-	protected @NonNull BsonInt64 revisionVerifiedAgainstEpoch(BsonDocument document) throws EpochMismatchException {
-		Optional<BsonString> epoch = formatter.epochOf(document);
-		if (!flushLock.get().epochMatches(epoch)) {
-			// The collection has been reinitialized since we loaded it.
-			// We must not wait on our stale revision numbers; instead, throw
-			// so the driver disconnects, reloads the new state, and retries.
-			throw new EpochMismatchException("Collection epoch has changed from "
-				+ flushLock.get().epoch() + " to " + epoch);
-		}
-		return document.getInt64(DocumentFields.revision.name(), Formatter.REVISION_ZERO);
-	}
-
-	/**
-	 * If there's any other waiting to be done besides the revision number waiting,
-	 * this method must do that before returning.
 	 * @return the revision number found in the database
-	 * @throws FlushFailureException if unexpected database contents make it impossible to determine the revision number
+	 * @throws EpochMismatchException if the epoch has changed, rendering revisions uncomparable
+	 * @throws FlushFailureException if unable to determine the revision number
+	 * @throws InterruptedException if interrupted while reading
 	 */
-	abstract @NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException, InterruptedException;
+	@NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException, InterruptedException {
+		LOGGER.debug("readRevisionNumberToFlush");
+		try (MongoCursor<BsonDocument> cursor = revisionDocumentCursor()) {
+			// Our revisionDocumentCursor matches only one document
+			BsonDocument document = cursor.next();
+			Optional<BsonString> epoch = formatter.epochOf(document);
+            if (flushLock.get().epochMatches(epoch)) {
+                return document.getInt64(DocumentFields.revision.name(), Formatter.REVISION_ZERO);
+            } else {
+                // The collection has been reinitialized since we loaded it.
+                // We must not wait on our stale revision numbers; instead, throw
+                // so the driver disconnects, reloads the new state, and retries.
+                throw new EpochMismatchException("Collection epoch has changed from "
+                    + flushLock.get().epoch() + " to " + epoch);
+            }
+        } catch (NoSuchElementException e) {
+			throw new RevisionFieldDisruptedException("No root documents found", e);
+		} catch (MongoInterruptedException e) {
+			Thread.interrupted();
+			InterruptedException exception = new InterruptedException("Interrupted while reading the revision number");
+			exception.initCause(e);
+			throw exception;
+		} catch (MongoException e) {
+			throw new FlushFailureException("Failed to read the revision number", e);
+		}
+	}
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
