@@ -278,6 +278,45 @@ and since they are runtime exceptions, we get no help from the Java compiler.)
 We have developed a few of our own JUnit 5 extensions to make this testing more convenient,
 such as `@InjectedTest` and `@DisruptsMongoProxy`.
 
+#### Test hooks
+
+Tests that need to coordinate with the driver's internals -- usually to induce a race
+condition deterministically -- do so through `MainDriver.TEST_HOOKS`, a `ThreadLocal<TestHooks>`
+that `MainDriver` reads when it is constructed and captures into a final field.
+Because of this, a test must install its hooks on the same thread that constructs the `Bosk`
+(and hence the `MainDriver`); from then on the hooks apply on every thread that later
+does database work. All hooks are no-ops by default; a test starts from `TestHooks.noop()`
+and uses the `with` methods to set the ones it needs. The hooks are:
+
+- `clientFactory` -- controls creation of `MongoClient`s. Among other things, this lets
+  tests reuse a single client across many test bosks: tests create clients at a furious
+  rate and can overwhelm the operating system's management of ephemeral ports.
+- `listenerFactory` -- interposes on the `ChangeListener`, so tests can observe, alter,
+  or inject change stream events.
+- `prePublicationWaitAction` -- runs before the driver acquires the lock to wait for
+  publication of a new `FormatDriver`, allowing a race to be induced where the driver is
+  published and the waiting thread misses it.
+- `beforeRefurbishDelete` -- runs before the refurbish transaction deletes the collection
+  contents, allowing a race to be induced between a refurbish and a concurrent write.
+- `findInterceptor` -- sees every database read (the `filter`, the `ReadOptions`, and the
+  `DocCursor`), and may return a wrapped cursor. This is how a test pauses a read
+  mid-stream: for example, `MongoDriverLoadRaceTest` wraps the load's cursor in a
+  `PausingCursor` that signals a `BlockingGate` after the first document and blocks until
+  the test lets it proceed.
+
+The coordinating primitive is `BlockingGate` (in `lib-testing`): the background operation
+calls `signal()` when it reaches the blocking point and blocks on `awaitRelease(...)`,
+and the test waits for the signal, does whatever it needs to do while the operation is
+paused, and then calls `release()`.
+
+These hooks cover the interleavings we care about without wrapping the `MongoClient`.
+Fault injection is a separate concern: for errors that arise in our own code (such as
+transient transaction errors, which the driver retries based on error labels), a hook
+that throws is indistinguishable from a real failure; for network-level faults
+(connection drops, partitions) we use Toxiproxy, as described above. Write conflicts
+need no injection at all -- the race tests induce them with two genuine concurrent
+transactions.
+
 #### Logging guidelines
 
 Log `warn` and `error` levels are likely to be logged by applications in production,
