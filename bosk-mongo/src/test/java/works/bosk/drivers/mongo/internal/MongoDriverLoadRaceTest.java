@@ -1,7 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoClientSettings;
-import com.mongodb.client.MongoClients;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 import org.bson.BsonDocument;
@@ -14,7 +13,6 @@ import works.bosk.BoskConfig;
 import works.bosk.Catalog;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
-import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.libtesting.BlockingGate;
 import works.bosk.logback.ReplayLogsOnFailure;
@@ -75,11 +73,9 @@ public class MongoDriverLoadRaceTest extends AbstractMongoDriverTest {
 		AtomicReference<Bosk<TestEntity>> testBoskRef = new AtomicReference<>();
 		AtomicReference<Throwable> constructionError = new AtomicReference<>();
 		Thread loadThread = new Thread(() -> {
-			MainDriver.TEST_HOOKS.set(TestHooks.noop().withClientFactory(new MongoClientFactory(
-				settings -> InterceptingMongoClient.wrapping(MongoClients.create(settings))
-					.pauseFindCursor(MongoDriverLoadRaceTest::isPandoLoadFind, 1, loadGate)
-					.client(),
-				true)));
+			MainDriver.TEST_HOOKS.set(TestHooks.noop()
+				.withFindInterceptor((filter, options, cursor) ->
+					isPandoLoadFind(filter) ? new PausingCursor(cursor, 1, loadGate) : cursor));
 			try {
 				testBoskRef.set(new Bosk<>(
 					boskName("loadRaceTest"),

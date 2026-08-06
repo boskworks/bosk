@@ -1,12 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.MongoClientSettings;
-import com.mongodb.client.MongoClients;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
-import org.bson.BsonDocument;
-import org.bson.BsonValue;
-import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
@@ -14,7 +9,6 @@ import works.bosk.Catalog;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
-import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.libtesting.BlockingGate;
 import works.bosk.logback.ReplayLogsOnFailure;
@@ -34,10 +28,10 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * aborts the refurbish) yet absent from the state that gets re-scattered -- so the
  * write is silently lost.
  * <p>
- * The test blocks the refurbish's deleteMany, commits a concurrent write while it
- * is paused, then releases it. A correct driver must either include the write in
- * the re-scattered state or be aborted by the write-conflict and retried; either
- * way, after the refurbish the write must still be present.
+ * The test blocks the refurbish just before its deleteMany, commits a concurrent
+ * write while it is paused, then releases it. A correct driver must either
+ * include the write in the re-scattered state or be aborted by the write-conflict
+ * and retried; either way, after the refurbish the write must still be present.
  */
 @ReplayLogsOnFailure
 public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
@@ -65,17 +59,17 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 			TestEntity.empty(entity123, refs.childCatalog(entity123))
 				.withString("changed by the writer"));
 
-		// Run refurbish on a background thread whose client blocks the refurbish's
-		// deleteMany (the transaction's first write, and so the point where the
-		// transaction's snapshot is taken).
+		// Run refurbish on a background thread. The beforeRefurbishDelete hook
+		// blocks the refurbish just before its deleteMany (the transaction's
+		// first write, and so the point where the transaction's snapshot is taken).
 		AtomicReference<Bosk<TestEntity>> refurbisherRef = new AtomicReference<>();
 		AtomicReference<Throwable> refurbishError = new AtomicReference<>();
 		Thread refurbishThread = new Thread(() -> {
-			MainDriver.TEST_HOOKS.set(TestHooks.noop().withClientFactory(new MongoClientFactory(
-				settings -> InterceptingMongoClient.wrapping(MongoClients.create(settings))
-					.blockCollectionMethod("deleteMany", MongoDriverRefurbishRaceTest::isRefurbishDeleteFilter, refurbishGate)
-					.client(),
-				true)));
+			MainDriver.TEST_HOOKS.set(TestHooks.noop()
+				.withBeforeRefurbishDelete(() -> {
+					refurbishGate.signal();
+					refurbishGate.awaitRelease(Duration.ofSeconds(60));
+				}));
 			try {
 				Bosk<TestEntity> refurbisher = new Bosk<>(
 					boskName("refurbishRaceRefurbisher"),
@@ -128,20 +122,5 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 		Refs refs = bosk.buildReferences(Refs.class);
 		return initialRootWithEmptyCatalog(bosk)
 			.withCatalog(Catalog.of(TestEntity.empty(entity123, refs.childCatalog(entity123))));
-	}
-
-	/**
-	 * True for the {@code deleteMany} in
-	 * {@link MainDriver#refurbishTransaction}, whose filter deletes every document
-	 * except the manifest.
-	 */
-	private static boolean isRefurbishDeleteFilter(Bson filter) {
-		if (filter == null) {
-			return false;
-		}
-		BsonDocument asDoc = filter.toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
-		BsonValue idValue = asDoc.get("_id");
-		return idValue instanceof BsonDocument idDoc
-			&& MainDriver.MANIFEST_ID.equals(idDoc.get("$ne"));
 	}
 }
