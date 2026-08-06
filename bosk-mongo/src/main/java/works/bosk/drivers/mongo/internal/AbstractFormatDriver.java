@@ -2,7 +2,6 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoException;
 import com.mongodb.MongoInterruptedException;
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
@@ -209,7 +208,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * @return cursor giving the {@code _id}, {@code epoch}, and {@code revision}
 	 * for all root documents that have a revision field.
 	 */
-	protected MongoCursor<BsonDocument> revisionDocumentCursor() {
+	protected DocCursor revisionDocumentCursor() {
 		return collection
 			.findLatest(rootDocumentsFilter())
 			.projection(fields(include("_id", DocumentFields.epoch.name(), DocumentFields.revision.name())))
@@ -229,20 +228,20 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 */
 	@NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException, InterruptedException {
 		LOGGER.debug("readRevisionNumberToFlush");
-		try (MongoCursor<BsonDocument> cursor = revisionDocumentCursor()) {
+		try (DocCursor cursor = revisionDocumentCursor()) {
 			// Our revisionDocumentCursor matches only one document
 			BsonDocument document = cursor.next();
 			Optional<BsonString> epoch = formatter.epochOf(document);
-            if (flushLock.get().epochMatches(epoch)) {
-                return document.getInt64(DocumentFields.revision.name(), Formatter.REVISION_ZERO);
-            } else {
-                // The collection has been reinitialized since we loaded it.
-                // We must not wait on our stale revision numbers; instead, throw
-                // so the driver disconnects, reloads the new state, and retries.
-                throw new EpochMismatchException("Collection epoch has changed from "
-                    + flushLock.get().epoch() + " to " + epoch);
-            }
-        } catch (NoSuchElementException e) {
+			if (flushLock.get().epochMatches(epoch)) {
+				return document.getInt64(DocumentFields.revision.name(), Formatter.REVISION_ZERO);
+			} else {
+				// The collection has been reinitialized since we loaded it.
+				// We must not wait on our stale revision numbers; instead, throw
+				// so the driver disconnects, reloads the new state, and retries.
+				throw new EpochMismatchException("Collection epoch has changed from "
+					+ flushLock.get().epoch() + " to " + epoch);
+			}
+		} catch (NoSuchElementException e) {
 			throw new RevisionFieldDisruptedException("No root documents found", e);
 		} catch (MongoInterruptedException e) {
 			Thread.interrupted();

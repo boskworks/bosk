@@ -10,6 +10,7 @@ import com.mongodb.client.ClientSession;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
@@ -205,12 +206,12 @@ class TransactionalCollection {
 	 * It's probably not appropriate for ordinary updates, which benefit from the
 	 * determinism and reproducibility of sessions and transactions.
 	 */
-	public FindIterable<BsonDocument> findLatest(Bson filter) {
-		return this.downstream.withReadConcern(LOCAL).find(filter);
+	public FindBuilder findLatest(Bson filter) {
+		return new FindBuilder(this.downstream.withReadConcern(LOCAL).find(filter));
 	}
 
-	public FindIterable<BsonDocument> find(Bson filter) {
-		return this.downstream.find(currentSession(), filter);
+	public FindBuilder find(Bson filter) {
+		return new FindBuilder(this.downstream.find(currentSession(), filter));
 	}
 
 	public long countDocuments(Bson filter, CountOptions options) {
@@ -253,6 +254,62 @@ class TransactionalCollection {
 			throw new IllegalStateException("No active session");
 		} else if (session.isReadOnly) {
 			throw new IllegalStateException("Cannot write in a read-only session");
+		}
+	}
+
+	/**
+	 * A fluent read query over the collection, mirroring the subset of
+	 * {@link FindIterable}'s API that the driver uses. Like
+	 * {@link FindIterable}, the query executes lazily: the database is not
+	 * contacted until {@link #cursor()} is called.
+	 */
+	public static final class FindBuilder {
+		private FindIterable<BsonDocument> downstream;
+
+		FindBuilder(FindIterable<BsonDocument> downstream) {
+			this.downstream = downstream;
+		}
+
+		public FindBuilder sort(Bson sort) {
+			this.downstream = downstream.sort(sort);
+			return this;
+		}
+
+		public FindBuilder limit(int limit) {
+			this.downstream = downstream.limit(limit);
+			return this;
+		}
+
+		public FindBuilder projection(Bson projection) {
+			this.downstream = downstream.projection(projection);
+			return this;
+		}
+
+		public DocCursor cursor() {
+			return new MongoCursorAdapter(downstream.cursor());
+		}
+	}
+
+	private static final class MongoCursorAdapter implements DocCursor {
+		private final MongoCursor<BsonDocument> downstream;
+
+		MongoCursorAdapter(MongoCursor<BsonDocument> downstream) {
+			this.downstream = downstream;
+		}
+
+		@Override
+		public boolean hasNext() {
+			return downstream.hasNext();
+		}
+
+		@Override
+		public BsonDocument next() {
+			return downstream.next();
+		}
+
+		@Override
+		public void close() {
+			downstream.close();
 		}
 	}
 

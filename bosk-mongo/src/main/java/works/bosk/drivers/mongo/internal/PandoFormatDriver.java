@@ -1,6 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
@@ -159,7 +158,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	BsonStateAndMetadata readBsonStateAndMetadata() {
 		BsonStateAndMetadata bsm = null;
 		List<BsonDocument> partsBuffer = new ArrayList<>();
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.find(regex("_id", "^[|]"))
 			.sort(new BsonDocument("_id", new BsonInt32(-1))) // Root doc last
 			.cursor()

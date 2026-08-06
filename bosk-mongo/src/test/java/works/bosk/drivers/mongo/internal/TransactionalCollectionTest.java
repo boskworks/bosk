@@ -2,7 +2,6 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
@@ -48,7 +47,7 @@ class TransactionalCollectionTest {
 	@Test
 	void findLatest_worksWithoutSession() throws FailedMongoClientSessionException {
 		makeData("test");
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("test")))
 			.cursor()
 		) {
@@ -60,7 +59,7 @@ class TransactionalCollectionTest {
 	@Test
 	void findLatest_returnsData() throws FailedMongoClientSessionException {
 		makeData("doc1");
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("doc1")))
 			.cursor()
 		) {
@@ -197,7 +196,7 @@ class TransactionalCollectionTest {
 			collection.insertOne(new BsonDocument("_id", new BsonString("sdoc")));
 			collection.commitTransactionIfAny();
 		}
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("sdoc"))).cursor()
 		) {
 			assertTrue(cursor.hasNext());
@@ -213,7 +212,7 @@ class TransactionalCollectionTest {
 			assertEquals(1, result.getDeletedCount());
 			collection.commitTransactionIfAny();
 		}
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("delme"))).cursor()
 		) {
 			assertFalse(cursor.hasNext());
@@ -246,7 +245,7 @@ class TransactionalCollectionTest {
 			assertEquals(1, result.getMatchedCount());
 			collection.commitTransactionIfAny();
 		}
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("rpl"))).cursor()
 		) {
 			assertTrue(cursor.hasNext());
@@ -265,7 +264,7 @@ class TransactionalCollectionTest {
 			assertEquals(1, result.getMatchedCount());
 			collection.commitTransactionIfAny();
 		}
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("upd"))).cursor()
 		) {
 			assertTrue(cursor.hasNext());
@@ -306,7 +305,7 @@ class TransactionalCollectionTest {
 			collection.insertOne(new BsonDocument("_id", new BsonString("commitDoc")));
 			collection.commitTransactionIfAny();
 		}
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("commitDoc"))).cursor()
 		) {
 			assertTrue(cursor.hasNext(), "Committed data must be visible");
@@ -319,7 +318,7 @@ class TransactionalCollectionTest {
 			collection.ensureTransactionStarted();
 			collection.insertOne(new BsonDocument("_id", new BsonString("rollbackDoc")));
 		}
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("rollbackDoc"))).cursor()
 		) {
 			assertFalse(cursor.hasNext(), "Uncommitted data must not be visible after abort");
@@ -333,7 +332,7 @@ class TransactionalCollectionTest {
 			collection.insertOne(new BsonDocument("_id", new BsonString("abortDoc")));
 			collection.abortTransaction();
 		}
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("abortDoc"))).cursor()
 		) {
 			assertFalse(cursor.hasNext(), "Aborted data must not be visible");
@@ -361,7 +360,7 @@ class TransactionalCollectionTest {
 		try (Session _ = collection.newSession()) {
 			collection.ensureTransactionStarted();
 			collection.insertOne(new BsonDocument("_id", new BsonString("txDoc")));
-			try (MongoCursor<BsonDocument> cursor = collection
+			try (DocCursor cursor = collection
 				.find(new BsonDocument("_id", new BsonString("txDoc")))
 				.cursor()
 			) {
@@ -376,7 +375,7 @@ class TransactionalCollectionTest {
 		try (Session _ = collection.newSession()) {
 			collection.ensureTransactionStarted();
 			collection.insertOne(new BsonDocument("_id", new BsonString("uncommittedDoc")));
-			try (MongoCursor<BsonDocument> cursor = collection
+			try (DocCursor cursor = collection
 				.findLatest(new BsonDocument("_id", new BsonString("uncommittedDoc")))
 				.cursor()
 			) {
@@ -452,13 +451,13 @@ class TransactionalCollectionTest {
 
 			collection.insertOne(new BsonDocument("_id", new BsonString("s1Doc")));
 
-			try (MongoCursor<BsonDocument> cursor = collection
+			try (DocCursor cursor = collection
 				.find(new BsonDocument("_id", new BsonString("s1Doc"))).cursor()
 			) {
 				assertTrue(cursor.hasNext(), "Session should see its own write");
 			}
 
-			try (MongoCursor<BsonDocument> cursor = collection2
+			try (DocCursor cursor = collection2
 				.find(new BsonDocument("_id", new BsonString("s1Doc"))).cursor()
 			) {
 				assertFalse(cursor.hasNext(), "Session must not see other session's uncommitted write");
@@ -466,7 +465,7 @@ class TransactionalCollectionTest {
 
 			collection.commitTransactionIfAny();
 
-			try (MongoCursor<BsonDocument> cursor = collection2
+			try (DocCursor cursor = collection2
 				.find(new BsonDocument("_id", new BsonString("s1Doc"))).cursor()
 			) {
 				assertFalse(cursor.hasNext(), "Snapshot isolation: still should not see s1Doc after s1 committed");
@@ -475,12 +474,12 @@ class TransactionalCollectionTest {
 			collection2.commitTransactionIfAny();
 		}
 
-		try (MongoCursor<BsonDocument> cursor = collection
+		try (DocCursor cursor = collection
 			.findLatest(new BsonDocument("_id", new BsonString("s1Doc"))).cursor()
 		) {
 			assertTrue(cursor.hasNext(), "s1Doc should be visible after s1 commit");
 		}
-		try (MongoCursor<BsonDocument> cursor = collection2
+		try (DocCursor cursor = collection2
 			.findLatest(new BsonDocument("_id", new BsonString("s1Doc"))).cursor()
 		) {
 			assertTrue(cursor.hasNext(), "s1Doc should be visible to collection2 after s1 commit");

@@ -7,7 +7,6 @@ import com.mongodb.ReadConcern;
 import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.Closeable;
 import java.io.IOException;
@@ -672,7 +671,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// 1) No documents at all: the collection is uninitialized.
 		// 2) A manifest document exists: the collection is initialized and we can proceed.
 		// 3) No manifest document, but another document exists: the collection contents are invalid.
-		try (MongoCursor<BsonDocument> cursor = queryCollection
+		try (DocCursor cursor = queryCollection
 			.find(new BsonDocument())
 			.sort(ascending("_id"))
 			.limit(1)
