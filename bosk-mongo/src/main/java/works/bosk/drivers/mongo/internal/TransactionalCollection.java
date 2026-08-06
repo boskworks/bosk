@@ -39,7 +39,15 @@ import static com.mongodb.ReadConcern.LOCAL;
 class TransactionalCollection {
 	private final MongoCollection<BsonDocument> downstream;
 	private final MongoClient mongoClient;
+	private final FindInterceptor findInterceptor;
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
+
+	/**
+	 * A {@code TransactionalCollection} with no read interposition.
+	 */
+	static TransactionalCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient) {
+		return of(downstream, mongoClient, FindInterceptor.identity());
+	}
 
 	public Session newSession() throws FailedMongoClientSessionException {
 		return new Session(false);
@@ -207,11 +215,11 @@ class TransactionalCollection {
 	 * determinism and reproducibility of sessions and transactions.
 	 */
 	public FindBuilder findLatest(Bson filter) {
-		return new FindBuilder(this.downstream.withReadConcern(LOCAL).find(filter));
+		return new FindBuilder(this.downstream.withReadConcern(LOCAL).find(filter), filter, findInterceptor);
 	}
 
 	public FindBuilder find(Bson filter) {
-		return new FindBuilder(this.downstream.find(currentSession(), filter));
+		return new FindBuilder(this.downstream.find(currentSession(), filter), filter, findInterceptor);
 	}
 
 	public long countDocuments(Bson filter, CountOptions options) {
@@ -264,29 +272,37 @@ class TransactionalCollection {
 	 * contacted until {@link #cursor()} is called.
 	 */
 	public static final class FindBuilder {
+		private final Bson filter;
+		private final FindInterceptor findInterceptor;
 		private FindIterable<BsonDocument> downstream;
+		private ReadOptions options = ReadOptions.none();
 
-		FindBuilder(FindIterable<BsonDocument> downstream) {
+		FindBuilder(FindIterable<BsonDocument> downstream, Bson filter, FindInterceptor findInterceptor) {
 			this.downstream = downstream;
+			this.filter = filter;
+			this.findInterceptor = findInterceptor;
 		}
 
 		public FindBuilder sort(Bson sort) {
 			this.downstream = downstream.sort(sort);
+			this.options = options.withSort(sort);
 			return this;
 		}
 
 		public FindBuilder limit(int limit) {
 			this.downstream = downstream.limit(limit);
+			this.options = options.withLimit(limit);
 			return this;
 		}
 
 		public FindBuilder projection(Bson projection) {
 			this.downstream = downstream.projection(projection);
+			this.options = options.withProjection(projection);
 			return this;
 		}
 
 		public DocCursor cursor() {
-			return new MongoCursorAdapter(downstream.cursor());
+			return findInterceptor.intercept(filter, options, new MongoCursorAdapter(downstream.cursor()));
 		}
 	}
 

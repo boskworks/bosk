@@ -70,12 +70,13 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 	@BeforeEach
 	void setupErrorRecording() {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
-		MainDriver.LISTENER_FACTORY.set(d -> new ErrorRecordingChangeListener(errorRecorder, d));
+		MainDriver.TEST_HOOKS.set(TestHooks.noop()
+			.withListenerFactory(d -> new ErrorRecordingChangeListener(errorRecorder, d)));
 	}
 
 	@AfterEach
 	void resetErrorRecording() {
-		MainDriver.LISTENER_FACTORY.remove();
+		MainDriver.TEST_HOOKS.remove();
 	}
 
 	MongoDriverRecoveryTest(FlushOrWait flushOrWait, TestParameters.ParameterSet parameters) {

@@ -71,11 +71,11 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 		AtomicReference<Bosk<TestEntity>> refurbisherRef = new AtomicReference<>();
 		AtomicReference<Throwable> refurbishError = new AtomicReference<>();
 		Thread refurbishThread = new Thread(() -> {
-			MainDriver.MONGO_CLIENT_FACTORY.set(new MongoClientFactory(
+			MainDriver.TEST_HOOKS.set(TestHooks.noop().withClientFactory(new MongoClientFactory(
 				settings -> InterceptingMongoClient.wrapping(MongoClients.create(settings))
 					.blockCollectionMethod("deleteMany", MongoDriverRefurbishRaceTest::isRefurbishDeleteFilter, refurbishGate)
 					.client(),
-				true));
+				true)));
 			try {
 				Bosk<TestEntity> refurbisher = new Bosk<>(
 					boskName("refurbishRaceRefurbisher"),
@@ -87,7 +87,7 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 			} catch (Throwable e) {
 				refurbishError.set(e);
 			} finally {
-				MainDriver.MONGO_CLIENT_FACTORY.remove();
+				MainDriver.TEST_HOOKS.remove();
 			}
 		});
 		refurbishThread.start();
@@ -106,7 +106,7 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 				refurbishThread.interrupt();
 				refurbishThread.join();
 			}
-			MainDriver.MONGO_CLIENT_FACTORY.remove();
+			MainDriver.TEST_HOOKS.remove();
 		}
 
 		assertNull(refurbishError.get(), "Refurbish should not throw");

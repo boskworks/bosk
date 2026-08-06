@@ -75,11 +75,11 @@ public class MongoDriverLoadRaceTest extends AbstractMongoDriverTest {
 		AtomicReference<Bosk<TestEntity>> testBoskRef = new AtomicReference<>();
 		AtomicReference<Throwable> constructionError = new AtomicReference<>();
 		Thread loadThread = new Thread(() -> {
-			MainDriver.MONGO_CLIENT_FACTORY.set(new MongoClientFactory(
+			MainDriver.TEST_HOOKS.set(TestHooks.noop().withClientFactory(new MongoClientFactory(
 				settings -> InterceptingMongoClient.wrapping(MongoClients.create(settings))
 					.pauseFindCursor(MongoDriverLoadRaceTest::isPandoLoadFind, 1, loadGate)
 					.client(),
-				true));
+				true)));
 			try {
 				testBoskRef.set(new Bosk<>(
 					boskName("loadRaceTest"),
@@ -89,7 +89,7 @@ public class MongoDriverLoadRaceTest extends AbstractMongoDriverTest {
 			} catch (Throwable e) {
 				constructionError.set(e);
 			} finally {
-				MainDriver.MONGO_CLIENT_FACTORY.remove();
+				MainDriver.TEST_HOOKS.remove();
 			}
 		});
 		loadThread.start();
@@ -109,7 +109,7 @@ public class MongoDriverLoadRaceTest extends AbstractMongoDriverTest {
 				loadThread.interrupt();
 				loadThread.join();
 			}
-			MainDriver.MONGO_CLIENT_FACTORY.remove();
+			MainDriver.TEST_HOOKS.remove();
 		}
 
 		assertNull(constructionError.get(), "Test bosk construction should not throw");
