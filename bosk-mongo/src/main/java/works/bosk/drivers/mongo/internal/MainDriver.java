@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
@@ -329,7 +330,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				var session = queryCollection.newSession()
 			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
-				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, REVISION_ZERO, diagnosticAttributes);
+				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), REVISION_ZERO, diagnosticAttributes);
 				preferredDriver.initializeCollection(priorContents);
 				session.commitTransactionIfAny();
 				// We can now publish the driver knowing that the transaction, if there is one, has committed
@@ -360,8 +361,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * Refurbish is the one operation that always <em>must</em> happen in a transaction,
 	 * or else we could fail after deleting the existing contents but before rewriting them,
 	 * which would be catastrophic.
-	 *
-	 * <em<>Design note:</em> This operation shouldn't do any special coordination with
+	 * <p>
+	 * <em>Design note:</em> This operation shouldn't do any special coordination with
 	 * the receiver/listener system, because other replicas won't.
 	 * That system needs to cope with refurbish operations without any help.
 	 */
@@ -451,9 +452,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.<InterruptedException, IOException>doRetryableDriverOperation(() -> {
 				formatDriver.flush();
 			}, "flush");
-		} catch (DisconnectedException | IOException e) {
-			// Callers are expecting a FlushFailureException in these cases
-			// TODO: Is this true for IOException? Why is flush() declared to throw IOException then?
+		} catch (RuntimeException e) {
 			throw new FlushFailureException(e);
 		}
 	}

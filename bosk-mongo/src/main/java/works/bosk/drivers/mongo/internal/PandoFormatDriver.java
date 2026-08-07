@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -40,7 +42,6 @@ import works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
-import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
 
@@ -55,7 +56,6 @@ import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 import static works.bosk.drivers.mongo.internal.DocumentFieldTracker.TrackedField.DIAGNOSTICS;
-import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
 import static works.bosk.util.Classes.enumerableByIdentifier;
 
 /**
@@ -181,6 +181,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 					bsm = new BsonStateAndMetadata(
 						id,
+						formatter.epochOf(lastPart),
 						revision, diagnosticAttributes, state
 					);
 
@@ -205,18 +206,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return bsm;
 	}
 
-	@Override
-	@NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException, InterruptedException {
-		LOGGER.debug("readRevisionNumberToFlush");
-		try {
-			try (MongoCursor<BsonDocument> cursor = revisionDocumentCursor()) {
-				return cursor.next().getInt64(DocumentFields.revision.name(), REVISION_ZERO);
-			}
-		} catch (RuntimeException e) {
-			throw new RevisionFieldDisruptedException(e);
-		}
-	}
-
 	/**
 	 * For efficiency, this modifies <code>partsList</code> in-place.
 	 */
@@ -230,13 +219,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public void initializeCollection(StateAndMetadata<R> priorContents) {
-		replaceFlushLock(priorContents.revision());
+		BsonString epoch = priorContents.epoch().orElseGet(() -> new BsonString(UUID.randomUUID().toString()));
+		replaceFlushLock(Optional.of(epoch), priorContents.revision());
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		BsonInt64 revision = nextRevision(priorContents.revision());
 		try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
 
 			LOGGER.debug("** Initial upsert");
-			initializeCollection(initialState, revision);
+			initializeCollection(initialState, epoch, revision);
 
 			// When initializing the collection, whether for initialState() or
 			// for refurbish(), the local state will be up to date with no need
@@ -246,14 +236,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		writeManifest(Manifest.forPando(format));
 	}
 
-	private void initializeCollection(BsonValue initialState, BsonInt64 newRevision) {
+	private void initializeCollection(BsonValue initialState, BsonString epoch, BsonInt64 newRevision) {
 		// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
 		collection.ensureTransactionStarted();
 		if (initialState instanceof BsonDocument) {
 			upsertAndRemoveSubParts(rootRef, initialState.asDocument()); // Mutates initialState!
 		}
 		BsonString documentId = new BsonString("|");
-		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, newRevision, documentId));
+		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, documentId));
 		BsonDocument filter = rootDocumentsFilter();
 		filter.put("_id", documentId);
 		UpdateOptions options = new UpdateOptions().upsert(true);
@@ -337,11 +327,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					BsonDocument attrsBson = fieldTracker.getFieldAsDocument(docId, DIAGNOSTICS);
 					MapValue<String> diagnosticAttributes = attrsBson == null ? MapValue.empty() : formatter.decodeDiagnosticAttributes(attrsBson);
 
+					Optional<BsonString> epoch = formatter.epochOf(fullDocument);
 					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
 					try (
 						var _ = context.withOnly(diagnosticAttributes)
 					) {
-						if (shouldSkip(revision)) {
+						if (shouldSkip(epoch, revision)) {
 							LOGGER.debug("Skipping revision {}", revision.longValue());
 							return;
 						}
@@ -361,6 +352,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 						}
 					}
 
+					if (!flushLock.get().epochMatches(epoch)) {
+						// Adopt the new epoch so future flushes don't needlessly reconnect
+						replaceFlushLock(epoch, revision);
+					}
 					finishedRevision(revision);
 				} break;
 				case UPDATE: {
@@ -373,7 +368,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 						var _ = context.withOnly(attributes)
 					) {
 						revision = formatter.getRevisionFromUpdateEvent(finalEvent);
-						if (shouldSkip(revision)) {
+						if (shouldSkip(flushLock.get().epoch(), revision)) {
 							LOGGER.debug("Skipping revision {}", revision.longValue());
 							return;
 						}
@@ -395,9 +390,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					// No other events in the transaction matter if the root document is gone.
 					// This can happen during a refurbish, so we don't want to throw UnprocessableEventException
 					// even though it's highly disruptive.
-					// TODO: Is this safe? Does this open up a timing hole where updates could be dropped?
-					LOGGER.debug("Document containing revision field has been deleted; assuming revision=0");
-					flushLock.get().finishedRevision(Formatter.REVISION_ZERO);
+					// We deliberately do not reset alreadySeen: the never-backward semantics
+					// in FlushLock ensure that a deleted-and-reinitialized document still causes
+					// flushes to wait, and the epoch mechanism detects that the collection
+					// has been reinitialized.
+					LOGGER.debug("Document containing revision field has been deleted");
 				} break;
 				default: {
 					throw new UnprocessableEventException("Cannot process event", finalEvent.getOperationType());

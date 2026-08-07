@@ -144,6 +144,15 @@ public interface BoskDriver {
 	 * to implement their own <code>flush</code> method.
 	 *
 	 * <p>
+	 * This usually should not throw runtime exceptions: those can be wrapped as {@link FlushFailureException}.
+	 *
+	 * <p>
+	 * (We say "usually" above because the stackable driver architecture allows all kinds of
+	 * customizations, and in some cases, users might <em>want</em> drivers to break conventions
+	 * to achieve a certain effect. The "usually" rules are guidelines intended to reduce
+	 * surprises, but are not strictly required for conformance.)
+	 *
+	 * <p>
 	 * <strong>Evolution note</strong>: This method currently acts as a full barrier, while
 	 * ultimately we may want a more efficient release-acquire pair that allows writes
 	 * to be reliably visible to subsequent reads.

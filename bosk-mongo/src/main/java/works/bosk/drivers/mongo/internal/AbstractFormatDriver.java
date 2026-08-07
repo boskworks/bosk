@@ -1,10 +1,14 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoException;
+import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -97,7 +101,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		if (bsm.state() == null) {
 			throw new IOException("No existing state in document");
 		}
-		replaceFlushLock(bsm.revision());
+		replaceFlushLock(bsm.epoch(), bsm.revision());
 		fieldTracker.process(bsm);
 
 		R root = formatter.document2object(bsm.state(), rootRef);
@@ -105,7 +109,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 			? MapValue.empty() // It's not clear what missing attributes mean, but using null here would have the effect of leaving the old attributes in place, which seems flaky
 			: formatter.decodeDiagnosticAttributes(bsm.diagnosticAttributes());
 
-		return new StateAndMetadata<>(root, bsm.revision(), diagnosticAttributes);
+		return new StateAndMetadata<>(root, bsm.epoch(), bsm.revision(), diagnosticAttributes);
 	}
 
 	@Override
@@ -116,8 +120,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	/**
 	 * Must be called before {@link FormatDriver#onHasBeenApplied} or any event processing.
 	 */
-	protected void replaceFlushLock(BsonInt64 revisionNumber) {
-		flushLock.set(new FlushLock(revisionNumber.longValue(), flushTimeoutMS));
+	protected void replaceFlushLock(Optional<BsonString> epoch, BsonInt64 revisionNumber) {
+		flushLock.set(new FlushLock(epoch, revisionNumber.longValue(), flushTimeoutMS));
 	}
 
 	abstract BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException;
@@ -160,8 +164,15 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE));
 	}
 
-	protected boolean shouldSkip(BsonInt64 revision) {
-		return flushLock.get().alreadySeen(revision);
+	/**
+	 * An event from a different epoch indicates the collection has been reinitialized,
+	 * so we must not skip it based on the previous initialization's revision numbers.
+	 *
+	 * @param epoch the collection epoch at the time of the event; {@link Optional#empty()}
+	 * for legacy databases, in which case only the revision is considered
+	 */
+	protected boolean shouldSkip(Optional<BsonString> epoch, BsonInt64 revision) {
+		return flushLock.get().epochMatches(epoch) && flushLock.get().alreadySeen(revision);
 	}
 
 	/**
@@ -195,33 +206,63 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * @return cursor giving the {@code _id} and {@code revision}
+	 * @return cursor giving the {@code _id}, {@code epoch}, and {@code revision}
 	 * for all root documents that have a revision field.
 	 */
 	protected MongoCursor<BsonDocument> revisionDocumentCursor() {
 		return collection
 			.findLatest(rootDocumentsFilter())
-			.projection(fields(include("_id", DocumentFields.revision.name())))
+			.projection(fields(include("_id", DocumentFields.epoch.name(), DocumentFields.revision.name())))
 			.cursor();
 	}
 
 	/**
-	 * If there's any other waiting to be done besides the revision number waiting,
-	 * this method must do that before returning.
-	 * @return revision number found in the database
-	 * @throws RevisionFieldDisruptedException if unexpected database contents make it impossible to determine the revision number
+	 * Reads the {@link DocumentFields#revision revision} number of the current root document,
+	 * after verifying its {@link DocumentFields#epoch epoch} matches the one we loaded.
+	 * <p>
+	 * If the format requires any other waiting before flushing, subclasses may override this.
+	 *
+	 * @return the revision number found in the database
+	 * @throws EpochMismatchException if the epoch has changed, rendering revisions uncomparable
+	 * @throws FlushFailureException if unable to determine the revision number
+	 * @throws InterruptedException if interrupted while reading
 	 */
-	abstract @NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException, InterruptedException;
+	@NonNull BsonInt64 readRevisionNumberToFlush() throws FlushFailureException, InterruptedException {
+		LOGGER.debug("readRevisionNumberToFlush");
+		try (MongoCursor<BsonDocument> cursor = revisionDocumentCursor()) {
+			// Our revisionDocumentCursor matches only one document
+			BsonDocument document = cursor.next();
+			Optional<BsonString> epoch = formatter.epochOf(document);
+            if (flushLock.get().epochMatches(epoch)) {
+                return document.getInt64(DocumentFields.revision.name(), Formatter.REVISION_ZERO);
+            } else {
+                // The collection has been reinitialized since we loaded it.
+                // We must not wait on our stale revision numbers; instead, throw
+                // so the driver disconnects, reloads the new state, and retries.
+                throw new EpochMismatchException("Collection epoch has changed from "
+                    + flushLock.get().epoch() + " to " + epoch);
+            }
+        } catch (NoSuchElementException e) {
+			throw new RevisionFieldDisruptedException("No root documents found", e);
+		} catch (MongoInterruptedException e) {
+			Thread.interrupted();
+			InterruptedException exception = new InterruptedException("Interrupted while reading the revision number");
+			exception.initCause(e);
+			throw exception;
+		} catch (MongoException e) {
+			throw new FlushFailureException("Failed to read the revision number", e);
+		}
+	}
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		var revision = readRevisionNumberToFlush();
+		BsonInt64 revision = readRevisionNumberToFlush();
 
 		// Don't hold a database transaction while waiting for the flush lock
 		// or flushing downstream.
 		collection.commitTransactionIfAny();
 
-		LOGGER.debug("Revisions to flush: {}", revision);
+		LOGGER.debug("Revision to flush: {}", revision);
 		flushLock.get().awaitRevision(revision);
 		LOGGER.debug("| Flush downstream");
 		downstream.flush();
@@ -243,11 +284,12 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		LOGGER.debug("| Manifest result: {}", result);
 	}
 
-	protected BsonDocument initialDocument(BsonValue initialState, BsonInt64 revision, BsonString documentId) {
+	protected BsonDocument initialDocument(BsonValue initialState, BsonString epoch, BsonInt64 revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
 		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
 		fieldValues.put(DocumentFields.state.name(), initialState);
+		fieldValues.put(DocumentFields.epoch.name(), epoch);
 		fieldValues.put(DocumentFields.revision.name(), revision);
 		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 
@@ -263,6 +305,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 */
 	record BsonStateAndMetadata(
 		BsonString _id,
+		Optional<BsonString> epoch,
 		BsonInt64 revision,
 		BsonDocument diagnosticAttributes,
 		BsonDocument state

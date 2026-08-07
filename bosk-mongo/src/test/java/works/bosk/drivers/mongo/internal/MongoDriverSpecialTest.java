@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -13,6 +14,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 import lombok.With;
+import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
@@ -72,6 +74,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
+import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -649,6 +652,36 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
+	@Slow
+	void revisionFieldWrongType_flushThrowsFlushFailureException() throws InvalidTypeException, IOException, InterruptedException {
+		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("revisionWrongType"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		try (var _ = bosk.readSession()) {
+			assertEquals(initialRoot(bosk), bosk.rootReference().value());
+		}
+
+		// Corrupt the revision field by giving it the wrong BSON type.
+		// The $exists filter targets only the document(s) that have a revision field,
+		// which is the root document in both formats.
+		mongoService.client()
+			.getDatabase(driverSettings.database())
+			.getCollection(COLLECTION_NAME, BsonDocument.class)
+			.updateMany(
+				new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonDocument("$exists", BsonBoolean.TRUE)),
+				new BsonDocument("$set", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonString("oops")))
+			);
+
+		// A malformed revision must surface as a checked FlushFailureException at the driver
+		// boundary, never as a raw RuntimeException like BsonInvalidOperationException.
+		assertThrows(FlushFailureException.class, () -> bosk.driver().flush());
+	}
+
+	@Test
 	@DisruptsMongoProxy
 	void downstreamInitialStateThrows_wrappedInIllegalArgumentException() {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
@@ -845,6 +878,76 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			assertNull(doc.get(bogusField));
 		}
 
+	}
+
+	@Test
+	void refurbish_preservesExistingEpoch(TestInfo testInfo) throws IOException, InterruptedException {
+		// Make the bosk whose refurbish operation we want to test
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Main"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
+
+		// Get the new bosk connected, which initializes the collection with an epoch
+		bosk.driver().flush();
+
+		MongoCollection<BsonDocument> collection = mongoService.client()
+			.getDatabase(driverSettings.database())
+			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+		BsonDocument filterDoc = rootDocumentsFilter();
+		BsonString epochBefore;
+		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
+			epochBefore = cursor.next().getString(Formatter.DocumentFields.epoch.name());
+		}
+
+		// Refurbish
+		bosk.getDriver(MongoDriver.class).refurbish();
+
+		// The existing epoch must be preserved exactly
+		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
+			BsonString epochAfter = cursor.next().getString(Formatter.DocumentFields.epoch.name());
+			assertEquals(epochBefore, epochAfter);
+		}
+
+	}
+
+	@Test
+	void refurbish_addsMissingEpoch(TestInfo testInfo) throws IOException, InterruptedException {
+		// Set up the database so it looks basically right
+		Bosk<TestEntity> initialBosk = new Bosk<>(
+			boskName("Initial"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
+		initialBosk.getDriver(MongoDriver.class).close();
+
+		// Simulate a legacy collection by removing the epoch field
+		MongoCollection<BsonDocument> collection = mongoService.client()
+			.getDatabase(driverSettings.database())
+			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+		deleteFields(collection, Formatter.DocumentFields.epoch);
+
+		// Make the bosk whose refurbish operation we want to test
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName("Main"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
+
+		// Get the new bosk connected
+		bosk.driver().flush();
+
+		// Refurbish
+		bosk.getDriver(MongoDriver.class).refurbish();
+
+		// The missing epoch must now be present, and must be a plausible UUID
+		BsonDocument filterDoc = rootDocumentsFilter();
+		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
+			BsonString epoch = cursor.next().getString(Formatter.DocumentFields.epoch.name());
+			assertNotNull(epoch);
+			UUID.fromString(epoch.getValue());
+		}
 	}
 
 	@Test

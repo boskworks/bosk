@@ -1,10 +1,12 @@
 package works.bosk.drivers.mongo.internal;
 
+import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.bson.BsonInt64;
+import org.bson.BsonString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
@@ -14,56 +16,59 @@ import static java.lang.System.identityHashCode;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
- * Implements waiting mechanism for revision numbers
- *
- * <h3>Evolution note</h3>
- * There is an important scenario that we ought to support:
- * <ol><li>
- *     Document/collection/database gets deleted
- * </li><li>
- *     A new bosk gets created (say, by restarting a server)
- * </li><li>
- *     The new bosk reinitializes the database
- * </li></ol>
- *
- * This situation is covered in <code>MongoDriverResiliencyTest</code>,
- * but actually we don't handle this perfectly because flush logic looks
- * at the revision number only. In the case where the database
- * is reinitialized with a different bosk state but the same revision number,
- * checking the revision number only is insufficient to determine that the
- * in-memory state is out of date. The test presently passes, presumably
- * because it's rescued by the change stream event describing the disruption,
- * but if that event were sufficiently delayed, the flush could incorrectly
- * conclude that it does not need to wait.
+ * Implements waiting mechanism for revision numbers.
  *
  * <p>
- * One reasonable solution would be to include a UUID <code>epoch</code>
- * field alongside the revision number, and to have the flush logic check
- * both. It would conclude that there's no need to wait only if both the
- * <code>epoch</code> and <code>revision</code> fields match expectations.
+ * The <code>epoch</code> identifies a particular initialization of the database collection.
+ * It is generated when the collection is first initialized, and preserved
+ * when the collection is reinitialized with the same state (eg. by a refurbish operation).
+ * It is NOT preserved when a different process deletes the collection and starts over,
+ * because the start-over is a genuinely new initialization.
  *
  * <p>
- * We have not yet implemented this logic because, at the time of writing,
- * the revision logic seems quite widespread, and we're hoping to encapsulate
- * it within the {@link FormatDriver}. Once that happens, we can easily evolve
- * that logic to include an epoch concept without touching other components.
+ * The reason for the epoch is to detect the scenario where a document/collection/database
+ * is deleted, and then a new bosk reinitializes the database with a * different state.
+ * The revision number alone is an insufficient signal in this case: the reinitialized
+ * collection may very well have the same revision number as what we've already seen,
+ * in which case the flush would wrongly conclude that there is no need to wait.
+ * Hence, we also track the epoch: a flush needs to wait unless it has already seen
+ * both the current <code>epoch</code> and the current <code>revision</code> number.
  */
 class FlushLock {
 	private final long flushTimeoutMS;
 	private final Lock queueLock = new ReentrantLock();
 	private final PriorityBlockingQueue<Waiter> queue = new PriorityBlockingQueue<>();
+	private final Optional<BsonString> epoch;
 	private volatile long alreadySeen;
 	private boolean isClosed;
 
 	/**
-	 * @param revisionAlreadySeen needs to be the exact revision from the database:
+	 * @param epoch the exact epoch from the database; {@link Optional#empty()} indicates a
+	 * legacy database that predates the epoch mechanism, and matches only another empty epoch.
+	 * @param revisionAlreadySeen the exact revision from the database:
 	 * too old, and we'll wait forever for intervening revisions that have already happened;
 	 * too new, and we'll proceed immediately without waiting for revisions that haven't happened yet.
 	 */
-	public FlushLock(long revisionAlreadySeen, long flushTimeoutMS) {
-		LOGGER.debug("New flush lock at revision {} [{}]", revisionAlreadySeen, identityHashCode(this));
+	public FlushLock(Optional<BsonString> epoch, long revisionAlreadySeen, long flushTimeoutMS) {
+		LOGGER.debug("New flush lock at epoch {} revision {} [{}]", epoch, revisionAlreadySeen, identityHashCode(this));
 		this.flushTimeoutMS = flushTimeoutMS;
+		this.epoch = epoch;
 		this.alreadySeen = revisionAlreadySeen;
+	}
+
+	/**
+	 * @return true if the lock and the database agree on the collection's epoch:
+	 * either both have the same epoch, or both are legacy databases with no epoch
+	 */
+	boolean epochMatches(Optional<BsonString> databaseEpoch) {
+		return epoch.equals(databaseEpoch);
+	}
+
+	/**
+	 * @return the epoch this lock was created for
+	 */
+	Optional<BsonString> epoch() {
+		return epoch;
 	}
 
 	private record Waiter(
@@ -140,7 +145,9 @@ class FlushLock {
 				}
 			} while (true);
 
-			alreadySeen = revisionValue;
+			if (revisionValue > alreadySeen) {
+				alreadySeen = revisionValue;
+			}
 			LOGGER.debug("Finished {} [{}]", revisionValue, identityHashCode(this));
 		} finally {
 			queueLock.unlock();

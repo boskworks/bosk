@@ -8,13 +8,18 @@ import works.bosk.BoskDriver;
  * that all prior updates have been applied.
  *
  * <p>
- * Useful as a wrapper for other kinds of checked exceptions that could be thrown
- * from {@link BoskDriver} implementations.
+ * This is the vehicle by which a {@link BoskDriver} reports flush failures that
+ * are not already {@link IOException}s, such as unexpected database contents,
+ * database timeouts, disconnections, or {@code SQLException}s. Because it extends
+ * {@link IOException}, any code that already handles the failures of a method that
+ * performs IO will also handle this (eg. by aborting, retrying, or logging);
+ * the same is not necessarily true for {@link RuntimeException}.
  *
  * <p>
- * Extends {@link IOException} because we expect that any code that already
- * handles that will do the right thing for this (eg. aborting, retrying, logging).
- * The same is not necessarily true for {@link RuntimeException}.
+ * A driver that encounters a genuine {@link IOException} while flushing (for example,
+ * from its own downstream driver) should let it propagate as-is rather than wrapping
+ * it in a {@code FlushFailureException}: the caller is already expected to handle
+ * {@link IOException}.
  */
 public class FlushFailureException extends IOException {
 	public FlushFailureException(String message) { super(message); }

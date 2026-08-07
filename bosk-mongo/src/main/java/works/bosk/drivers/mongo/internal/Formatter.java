@@ -6,6 +6,7 @@ import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.bson.BsonBinaryWriter;
 import org.bson.BsonDocument;
@@ -166,6 +167,13 @@ final class Formatter extends BsonFormatter {
 			return null;
 		}
 		return fullDocument.getInt64(DocumentFields.revision.name(), null);
+	}
+
+	Optional<BsonString> epochOf(BsonDocument fullDocument) {
+		if (fullDocument == null) {
+			return Optional.empty();
+		}
+		return Optional.ofNullable(fullDocument.getString(DocumentFields.epoch.name(), null));
 	}
 
 	MapValue<String> getDiagnosticAttributesFromFullDocument(BsonDocument fullDocument) {

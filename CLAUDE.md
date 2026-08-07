@@ -74,7 +74,8 @@ The module names follow the same conventions as package names.
 
 ### Exceptions
 
-Consider `RuntimeException` to be abstract and throw the appropriate subtype: often `IllegalStateException` but consider whether others are more appropriate.
+Consider `RuntimeException` to be abstract and throw the appropriate subtype:
+often `IllegalStateException` but consider whether others are more appropriate.
 
 We use checked exceptions to help avoid bugs, except where they'd place undue burden on the user.
 Our internal exceptions are usually checked so the compiler can ensure we handle them.
@@ -85,7 +86,13 @@ where `throws` clauses have no real downside.
 We put exceptions for a module into a sub-package that ends with `.exceptions`
 so they don't clutter up other packages.
 
-When declaring `throws` on a method, use the specific exception type(s), not a superclass like `Exception`. This applies to test methods too — declaring `throws Exception` is not a good habit and we don't want examples of that in the code.
+When declaring `throws` on a method, use the specific exception type(s), not a superclass like `Exception`.
+This applies to test methods too: declaring `throws Exception` is not a good habit
+and we don't want examples of that in the code.
+
+Don't delete unused constructors of Exception subclasses.
+We typically provide a suite of constructors so future maintainers won't need to wonder if they're
+breaking some implicit design rule by adding a new exception that wasn't there before.
 
 ### Javadocs
 
