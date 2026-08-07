@@ -3,6 +3,8 @@
 build/
 */build/
 
+worktrees
+
 # OpenCode nonsense
 .project
 .classpath
