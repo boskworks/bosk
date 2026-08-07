@@ -7,7 +7,6 @@ import com.mongodb.ReadConcern;
 import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.Closeable;
 import java.io.IOException;
@@ -20,7 +19,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
-import java.util.function.UnaryOperator;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
 import org.bson.BsonValue;
@@ -100,45 +98,27 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private volatile FormatDriver<R> formatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
 
 	/**
-	 * Allows tests to interpose on the {@link ChangeListener}
-	 * to observe, alter, or inject events.
+	 * Allows tests to install test-only hooks controlling the driver's internals.
 	 * <p>
 	 * This works because {@code MainDriver} is instantiated
-	 * on the same thread as the {@code Bosk}.
+	 * on the same thread as the {@code Bosk}: the hooks are read here and
+	 * captured at construction, so they apply to every thread that later
+	 * does database work. See {@link TestHooks}.
 	 */
-	static final ThreadLocal<UnaryOperator<ChangeListener>> LISTENER_FACTORY = new ThreadLocal<>();
-
-	/**
-	 * Allows tests to control creation of {@link MongoClient}s.
-	 * Tests create clients at a furious rate and can overwhelm
-	 * the operating system's management of ephemeral ports.
-	 * This provides a way that they can use the same client across tests.
-	 */
-	static final ThreadLocal<MongoClientFactory> MONGO_CLIENT_FACTORY = ThreadLocal.withInitial(()-> MongoClientFactory.ALWAYS_CREATE);
+	static final ThreadLocal<TestHooks> TEST_HOOKS = ThreadLocal.withInitial(TestHooks::noop);
 
 	record MongoClientFactory(
 		Function<MongoClientSettings, MongoClient> function,
 		boolean shouldClose
 	) {
-		private static final MongoClientFactory ALWAYS_CREATE = new MongoClientFactory(MongoClients::create, true);
+		static final MongoClientFactory ALWAYS_CREATE = new MongoClientFactory(MongoClients::create, true);
 	}
 
 	/**
-	 * Allows tests to perform an action before acquiring the lock to wait
-	 * for publication of a new {@link #formatDriver}.
-	 * Allows a race condition to be induced where the driver is published
-	 * and the waiting thread misses it.
-	 * <p>
-	 * Note that, like the other interposition ThreadLocals, this must be used
-	 * on the thread that calls the Bosk constructor and hence the driver constructor.
-	 */
-	static final ThreadLocal<Runnable> DRIVER_PUBLICATION_PRE_WAIT_ACTION = ThreadLocal.withInitial(()-> () -> {});
-
-	/**
-	 * Records the value of {@link #DRIVER_PUBLICATION_PRE_WAIT_ACTION} as it was
+	 * Records the value of {@link #TEST_HOOKS} as it was
 	 * at the time of the constructor call.
 	 */
-	final Runnable driverPublicationPreWaitAction = DRIVER_PUBLICATION_PRE_WAIT_ACTION.get();
+	final TestHooks testHooks = TEST_HOOKS.get();
 
 	public MainDriver(
 		BoskInfo<R> boskInfo,
@@ -210,7 +190,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						.readTimeout(0, MILLISECONDS))
 				;
 
-			var clientFactory = MONGO_CLIENT_FACTORY.get();
+			var clientFactory = testHooks.clientFactory();
 
 			var changeStreamClient = clientFactory.function.apply(changeStreamSettingsBuilder.build());
 			if (clientFactory.shouldClose) {
@@ -229,7 +209,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient);
+				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient, testHooks.findInterceptor());
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -239,7 +219,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			Class<R> rootType = boskInfo.rootReference().targetClass();
 			ChangeListener listener = this.listener = new Listener(new RemoteCallable<>(
 				attrs -> doInitialState(rootType, attrs)));
-			var factory = LISTENER_FACTORY.get();
+			var factory = testHooks.listenerFactory();
 			if (factory != null) {
 				listener = factory.apply(listener);
 			}
@@ -313,6 +293,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 		R entireState;
 		try (var _ = queryCollection.newReadOnlySession()){
+			// The load must read a consistent snapshot, so run it inside a
+			// read-only transaction. (Refurbish runs its load inside its own
+			// transaction, so the load is always transactional.)
+			queryCollection.ensureTransactionStarted();
 			FormatDriver<R> detectedDriver = detectFormat();
 			StateAndMetadata<R> loadedState = detectedDriver.loadAllState();
 			entireState = loadedState.state();
@@ -386,6 +370,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// which is a burden. Let's just not.
 				BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
 				LOGGER.trace("Deleting state documents: {}", deletionFilter);
+				testHooks.beforeRefurbishDelete().run();
 				queryCollection.deleteMany(deletionFilter);
 
 				newFormatDriver.initializeCollection(allState);
@@ -523,6 +508,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				StateAndMetadata<R> allState;
 				try (var _ = queryCollection.newReadOnlySession()) {
 					LOGGER.debug("Loading database state to submit to downstream driver");
+					// The load must read a consistent snapshot, so run it inside a
+					// read-only transaction. (Refurbish runs its load inside its own
+					// transaction, so the load is always transactional.)
+					queryCollection.ensureTransactionStarted();
 					newDriver = detectFormat();
 					allState = newDriver.loadAllState();
 					LOGGER.trace("Loaded state: {}", allState);
@@ -664,7 +653,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// 1) No documents at all: the collection is uninitialized.
 		// 2) A manifest document exists: the collection is initialized and we can proceed.
 		// 3) No manifest document, but another document exists: the collection contents are invalid.
-		try (MongoCursor<BsonDocument> cursor = queryCollection
+		try (DocCursor cursor = queryCollection
 			.find(new BsonDocument())
 			.sort(ascending("_id"))
 			.limit(1)
@@ -790,7 +779,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private <X extends Exception, Y extends Exception> void waitAndRetry(RetryableOperation<X, Y> operation, String description, Object... args) throws X, Y {
-		driverPublicationPreWaitAction.run();
+		testHooks.prePublicationWaitAction().run();
 		formatDriverLock.lock();
 		try {
 			// There's a race here: the formatDriver could have recovered after we tried to use it

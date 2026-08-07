@@ -1,6 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
@@ -99,8 +98,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	@Override
 	BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException {
-		try (MongoCursor<BsonDocument> cursor = collection
-			.findLatest(documentFilter()) // The revision field needs to be the latest
+		try (DocCursor cursor = collection
+			.find(documentFilter())
 			.limit(1)
 			.cursor()
 		) {

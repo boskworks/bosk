@@ -10,6 +10,7 @@ import com.mongodb.client.ClientSession;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
@@ -38,7 +39,15 @@ import static com.mongodb.ReadConcern.LOCAL;
 class TransactionalCollection {
 	private final MongoCollection<BsonDocument> downstream;
 	private final MongoClient mongoClient;
+	private final FindInterceptor findInterceptor;
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
+
+	/**
+	 * A {@code TransactionalCollection} with no read interposition.
+	 */
+	static TransactionalCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient) {
+		return of(downstream, mongoClient, FindInterceptor.identity());
+	}
 
 	public Session newSession() throws FailedMongoClientSessionException {
 		return new Session(false);
@@ -142,13 +151,14 @@ class TransactionalCollection {
 	 * insisting on a particular transaction boundary location. If method A
 	 * calls method B, and both call this method, then both will occur in the
 	 * same transaction.
+	 * <p>
+	 * In a read-only session this starts a read-only transaction, which gives
+	 * the reads a consistent snapshot (used to load the state).
 	 */
 	public void ensureTransactionStarted() {
 		Session session = currentSession.get();
 		if (session == null) {
 			throw new IllegalStateException("No active session");
-		} else if (session.isReadOnly) {
-			throw new IllegalStateException("Cannot execute a transaction in a read-only session");
 		} else if (!session.clientSession.hasActiveTransaction()) {
 			session.clientSession.startTransaction();
 			LOGGER.debug("Start transaction");
@@ -195,16 +205,21 @@ class TransactionalCollection {
 	 * Analogous to {@link Bosk#supersedingReadSession()} in that it bypasses the usual
 	 * determinism features and gives direct access to the very latest data.
 	 * <p>
-	 * This is appropriate for initializing state and implementing {@link FormatDriver#flush()}.
-	 * It's probably not appropriate for ordinary updates, which benefit from the determinism
-	 * and reproducibility of sessions and transactions.
+	 * This is appropriate for reading a single document, like a root document's
+	 * revision for {@link FormatDriver#flush()}. A {@code findLatest} cursor reads
+	 * each document at its own instant, so it is <em>not</em> appropriate for a
+	 * multi-document read: use {@link #find} within a transaction, which reads the
+	 * transaction's snapshot.
+	 * <p>
+	 * It's probably not appropriate for ordinary updates, which benefit from the
+	 * determinism and reproducibility of sessions and transactions.
 	 */
-	public FindIterable<BsonDocument> findLatest(Bson filter) {
-		return this.downstream.withReadConcern(LOCAL).find(filter);
+	public FindBuilder findLatest(Bson filter) {
+		return new FindBuilder(this.downstream.withReadConcern(LOCAL).find(filter), filter, findInterceptor);
 	}
 
-	public FindIterable<BsonDocument> find(Bson filter) {
-		return this.downstream.find(currentSession(), filter);
+	public FindBuilder find(Bson filter) {
+		return new FindBuilder(this.downstream.find(currentSession(), filter), filter, findInterceptor);
 	}
 
 	public long countDocuments(Bson filter, CountOptions options) {
@@ -212,27 +227,106 @@ class TransactionalCollection {
 	}
 
 	public InsertOneResult insertOne(BsonDocument document) {
+		requireWritable();
 		return this.downstream.insertOne(currentSession(), document);
 	}
 
 	public DeleteResult deleteOne(Bson filter) {
+		requireWritable();
 		return this.downstream.deleteOne(currentSession(), filter);
 	}
 
 	public DeleteResult deleteMany(Bson filter) {
+		requireWritable();
 		return this.downstream.deleteMany(currentSession(), filter);
 	}
 
 	public UpdateResult replaceOne(Bson filter, BsonDocument replacement, ReplaceOptions replaceOptions) {
+		requireWritable();
 		return this.downstream.replaceOne(currentSession(), filter, replacement, replaceOptions);
 	}
 
 	public UpdateResult updateOne(Bson filter, Bson update) {
+		requireWritable();
 		return this.downstream.updateOne(currentSession(), filter, update);
 	}
 
 	public UpdateResult updateOne(Bson filter, Bson update, UpdateOptions updateOptions) {
+		requireWritable();
 		return this.downstream.updateOne(currentSession(), filter, update, updateOptions);
+	}
+
+	private void requireWritable() {
+		Session session = currentSession.get();
+		if (session == null) {
+			throw new IllegalStateException("No active session");
+		} else if (session.isReadOnly) {
+			throw new IllegalStateException("Cannot write in a read-only session");
+		}
+	}
+
+	/**
+	 * A fluent read query over the collection, mirroring the subset of
+	 * {@link FindIterable}'s API that the driver uses. Like
+	 * {@link FindIterable}, the query executes lazily: the database is not
+	 * contacted until {@link #cursor()} is called.
+	 */
+	public static final class FindBuilder {
+		private final Bson filter;
+		private final FindInterceptor findInterceptor;
+		private FindIterable<BsonDocument> downstream;
+		private ReadOptions options = ReadOptions.none();
+
+		FindBuilder(FindIterable<BsonDocument> downstream, Bson filter, FindInterceptor findInterceptor) {
+			this.downstream = downstream;
+			this.filter = filter;
+			this.findInterceptor = findInterceptor;
+		}
+
+		public FindBuilder sort(Bson sort) {
+			this.downstream = downstream.sort(sort);
+			this.options = options.withSort(sort);
+			return this;
+		}
+
+		public FindBuilder limit(int limit) {
+			this.downstream = downstream.limit(limit);
+			this.options = options.withLimit(limit);
+			return this;
+		}
+
+		public FindBuilder projection(Bson projection) {
+			this.downstream = downstream.projection(projection);
+			this.options = options.withProjection(projection);
+			return this;
+		}
+
+		public DocCursor cursor() {
+			return findInterceptor.intercept(filter, options, new MongoCursorAdapter(downstream.cursor()));
+		}
+	}
+
+	private static final class MongoCursorAdapter implements DocCursor {
+		private final MongoCursor<BsonDocument> downstream;
+
+		MongoCursorAdapter(MongoCursor<BsonDocument> downstream) {
+			this.downstream = downstream;
+		}
+
+		@Override
+		public boolean hasNext() {
+			return downstream.hasNext();
+		}
+
+		@Override
+		public BsonDocument next() {
+			return downstream.next();
+		}
+
+		@Override
+		public void close() {
+			downstream.close();
+		}
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(TransactionalCollection.class);

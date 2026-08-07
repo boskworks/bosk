@@ -97,12 +97,13 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	@BeforeEach
 	void setupErrorRecording() {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
-		MainDriver.LISTENER_FACTORY.set(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream));
+		MainDriver.TEST_HOOKS.set(TestHooks.noop()
+			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream)));
 	}
 
 	@AfterEach
 	void resetErrorRecording() {
-		MainDriver.LISTENER_FACTORY.remove();
+		MainDriver.TEST_HOOKS.remove();
 	}
 
 	public MongoDriverSpecialTest(ParameterSet parameters) {
@@ -398,7 +399,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		// Make the ChangeReceiver wait when it sees an error.
 		// We want the flush operation to encounter the outage first.
 		var lock = new Object(){};
-		MainDriver.LISTENER_FACTORY.set(d -> new ForwardingChangeListener(d) {
+		MainDriver.TEST_HOOKS.set(TestHooks.noop()
+			.withListenerFactory(d -> new ForwardingChangeListener(d) {
 			@Override
 			public void onConnectionFailed(Exception cause) throws DownstreamInitialStateException {
 				waitUp();
@@ -422,7 +424,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 					LOGGER.debug("Done waiting for lock");
 				}
 			}
-		});
+		}));
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("Main"),
@@ -964,7 +966,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		//   await(disconnected)
 		//   submitReplacement
 		//     -> DisconnectedException
-		//     -> DRIVER_PUBLICATION_PRE_WAIT_ACTION
+		//     -> prePublicationWaitAction
 		//          countDown(appAtPreWait)
 		//          await(published)     onConnectionSucceeded
 		//                                 await(appAtPreWait)
@@ -984,7 +986,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		CountDownLatch appAtPreWait = new CountDownLatch(1);
 		CountDownLatch published = new CountDownLatch(1);
 
-		MainDriver.LISTENER_FACTORY.set(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
+		MainDriver.TEST_HOOKS.set(TestHooks.noop()
+			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 			@Override
 			public void onDisconnect(Throwable e) {
 				super.onDisconnect(e); // calls setDisconnectedDriver
@@ -1008,19 +1011,18 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 					super.onConnectionSucceeded();
 				}
 			}
-		});
-
-		MainDriver.DRIVER_PUBLICATION_PRE_WAIT_ACTION.set(() -> {
-			LOGGER.debug("pre-wait action: counting down appAtPreWait");
-			appAtPreWait.countDown();
-			try {
-				LOGGER.debug("pre-wait action: waiting for published");
-				published.await();
-				LOGGER.debug("pre-wait action: published; proceeding to waitAndRetry");
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			}
-		});
+		})
+			.withPrePublicationWaitAction(() -> {
+				LOGGER.debug("pre-wait action: counting down appAtPreWait");
+				appAtPreWait.countDown();
+				try {
+					LOGGER.debug("pre-wait action: waiting for published");
+					published.await();
+					LOGGER.debug("pre-wait action: published; proceeding to waitAndRetry");
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+			}));
 
 		try {
 			LOGGER.debug("Create bosk");
@@ -1055,8 +1057,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			Thread.currentThread().interrupt();
 			throw new AssertionError("Interrupted", e);
 		} finally {
-			MainDriver.LISTENER_FACTORY.remove();
-			MainDriver.DRIVER_PUBLICATION_PRE_WAIT_ACTION.remove();
+			MainDriver.TEST_HOOKS.remove();
 		}
 	}
 
