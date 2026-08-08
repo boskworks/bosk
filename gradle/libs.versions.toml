@@ -27,7 +27,7 @@ jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref="jet
 jmh-apt = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
-jooq = { module = "org.jooq:jooq", version = "3.21.6" }
+jooq = { module = "org.jooq:jooq", version = "3.21.7" }
 jsr305 = { module = "com.google.code.findbugs:jsr305", version = "3.0.2" }
 junit-api = { module = "org.junit.jupiter:junit-jupiter-api" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
@@ -57,4 +57,4 @@ testcontainers-toxiproxy = { module = "org.testcontainers:testcontainers-toxipro
 
 [plugins]
 nexus = { id = "io.github.gradle-nexus.publish-plugin", version="2.0.0" }
-spotbugs = { id = "com.github.spotbugs", version = "6.5.9" }
+spotbugs = { id = "com.github.spotbugs", version = "6.5.10" }
