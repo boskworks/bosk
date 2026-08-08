@@ -25,6 +25,22 @@ import static works.bosk.boson.codec.Token.WHITESPACE;
 @InjectFrom(JsonReaderInjector.class)
 class JsonReaderHappyTest extends AbstractJsonReaderTest {
 
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"\"héllo\"",   // 2-byte UTF-8
+		"\"日本語\"",   // 3-byte UTF-8
+		"\"AéZ\"",
+		"\"caf\u00E9\"",
+		"\"emoji 😎 here\"",
+	})
+	void stringWithNonAscii_roundTrips(String json) {
+		try (JsonReader reader = readerFor(json)) {
+			assertEquals(STRING, peekValueToken(reader));
+			String expected = json.substring(1, json.length() - 1);
+			assertEquals(expected, reader.consumeString());
+		}
+	}
+
 	@Test
 	void simpleString() {
 		try (JsonReader reader = readerFor("\"hello\"")) {

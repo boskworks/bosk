@@ -178,6 +178,23 @@ class PathTest {
 			Path.parse(urlEncoded));
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"/a%zz", "/a%", "/a%2", "/%", "/%0", "/a%GG", "/%2G", "/a%2Z",
+		// A percent-encoded slash is a literal slash segment, not a path separator
+		"/a%2Fb"
+	})
+	void parse_malformedPercentEscape_throwsMalformedPathException(String urlEncoded) {
+		// Bad percent-escapes must produce the documented exception type,
+		// not leak IllegalArgumentException from URLDecoder.
+		if (urlEncoded.contains("%2F")) {
+			assertEquals(Path.just("a/b"), Path.parse(urlEncoded));
+		} else {
+			assertThrows(MalformedPathException.class, () ->
+				Path.parse(urlEncoded));
+		}
+	}
+
 	@Test
 	void twoSegments_urlEncoded() {
 		assertEquals("/a/b", Path.of("a","b").urlEncoded());

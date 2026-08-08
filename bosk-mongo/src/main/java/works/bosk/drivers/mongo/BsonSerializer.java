@@ -69,6 +69,7 @@ import static works.bosk.ReferenceUtils.getterMethod;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameSegment;
+import static works.bosk.drivers.mongo.internal.BsonFormatter.encodeMapKey;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.undottedFieldNameSegment;
 import static works.bosk.util.ReflectionHelpers.boxedClass;
 
@@ -325,7 +326,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 			public void encode(BsonWriter writer, MapValue<V> mapValue, EncoderContext encoderContext) {
 				writer.writeStartDocument();
 				mapValue.forEach((key, value) ->{
-					writer.writeName(key);
+					writer.writeName(encodeMapKey(key));
 					valueCodec.encode(writer, value, encoderContext);
 				});
 				writer.writeEndDocument();
@@ -336,7 +337,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 				Map<String, V> entries = new LinkedHashMap<>();
 				reader.readStartDocument();
 				while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
-					String key = reader.readName();
+					String key = undottedFieldNameSegment(reader.readName());
 					V value = valueCodec.decode(reader, decoderContext);
 					Object old = entries.put(key, value);
 					if (old != null) {

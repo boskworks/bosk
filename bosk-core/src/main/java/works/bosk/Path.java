@@ -82,7 +82,7 @@ public abstract class Path implements Iterable<String> {
 		} else if (urlEncoded.startsWith("/")) {
 			String afterFirstSlash = urlEncoded.substring(1);
 			return Path.of(Stream.of(afterFirstSlash.split("/", Integer.MAX_VALUE))
-				.map(DECODER)
+				.map(Path::decodeSegment)
 				.map(validityChecker)
 				.collect(toList()));
 		} else {
@@ -330,7 +330,7 @@ public abstract class Path implements Iterable<String> {
 	 * Eclipse has an annoying bug: if I put these lambdas right in the declarations of ENCODER and DECODER, Eclipse keeps deleting the semicolons.
 	 */
 	static {
-		DECODER = s-> URLDecoder.decode(s, StandardCharsets.UTF_8);
+		DECODER = s -> URLDecoder.decode(s, StandardCharsets.UTF_8);
 
 		ENCODER = s->{
 			// Wow, this code sucks.
@@ -342,6 +342,19 @@ public abstract class Path implements Iterable<String> {
 			String formEncoded = URLEncoder.encode(s, StandardCharsets.UTF_8);
 			return formEncoded.replace("+", "%20");
 		};
+	}
+
+	/**
+	 * Decodes a percent-encoded path segment, translating the generic
+	 * {@link IllegalArgumentException} from {@link URLDecoder} into a
+	 * {@link MalformedPathException}.
+	 */
+	private static String decodeSegment(String s) {
+		try {
+			return DECODER.apply(s);
+		} catch (IllegalArgumentException e) {
+			throw new MalformedPathException("Invalid percent-encoding in path segment \"" + s + "\"", e);
+		}
 	}
 
 	/**

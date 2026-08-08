@@ -58,6 +58,16 @@ public class BsonFormatter {
 		return ENCODER.apply(validSegment(segment));
 	}
 
+	/**
+	 * Encodes an arbitrary string for use as a MongoDB field name.
+	 * Unlike {@link #dottedFieldNameSegment}, the string need not be a valid path segment,
+	 * so this can encode {@link works.bosk.MapValue} keys, which may be any string at all,
+	 * including the empty string.
+	 */
+	public static String encodeMapKey(String key) {
+		return ENCODER.apply(key);
+	}
+
 	public static String undottedFieldNameSegment(String dottedSegment) {
 		return DECODER.apply(dottedSegment);
 	}
