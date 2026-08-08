@@ -233,16 +233,16 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 			// Our revisionDocumentCursor matches only one document
 			BsonDocument document = cursor.next();
 			Optional<BsonString> epoch = formatter.epochOf(document);
-            if (flushLock.get().epochMatches(epoch)) {
-                return document.getInt64(DocumentFields.revision.name(), Formatter.REVISION_ZERO);
-            } else {
-                // The collection has been reinitialized since we loaded it.
-                // We must not wait on our stale revision numbers; instead, throw
-                // so the driver disconnects, reloads the new state, and retries.
-                throw new EpochMismatchException("Collection epoch has changed from "
-                    + flushLock.get().epoch() + " to " + epoch);
-            }
-        } catch (NoSuchElementException e) {
+			if (flushLock.get().epochMatches(epoch)) {
+				return document.getInt64(DocumentFields.revision.name(), Formatter.REVISION_ZERO);
+			} else {
+				// The collection has been reinitialized since we loaded it.
+				// We must not wait on our stale revision numbers; instead, throw
+				// so the driver disconnects, reloads the new state, and retries.
+				throw new EpochMismatchException("Collection epoch has changed from "
+					+ flushLock.get().epoch() + " to " + epoch);
+			}
+		} catch (NoSuchElementException e) {
 			throw new RevisionFieldDisruptedException("No root documents found", e);
 		} catch (MongoInterruptedException e) {
 			Thread.interrupted();
