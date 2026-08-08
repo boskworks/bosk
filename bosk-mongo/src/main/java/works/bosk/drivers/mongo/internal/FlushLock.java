@@ -37,7 +37,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 class FlushLock {
 	private final long flushTimeoutMS;
 	private final Lock queueLock = new ReentrantLock();
-	private final PriorityBlockingQueue<Waiter> queue = new PriorityBlockingQueue<>();
+	final PriorityBlockingQueue<Waiter> queue = new PriorityBlockingQueue<>();
 	private final Optional<BsonString> epoch;
 	private volatile long alreadySeen;
 	private boolean isClosed;
@@ -89,17 +89,21 @@ class FlushLock {
 		long revisionValue = revision.longValue();
 		Semaphore semaphore = new Semaphore(0);
 		long past;
+		boolean mustWait;
 		try {
 			queueLock.lock();
 			if (isClosed) {
 				throw new DisconnectedException("FlushLock is closed");
 			}
-			queue.add(new Waiter(revisionValue, semaphore));
 			past = alreadySeen;
+			mustWait = revisionValue > past;
+			if (mustWait) {
+				queue.add(new Waiter(revisionValue, semaphore));
+			}
 		} finally {
 			queueLock.unlock();
 		}
-		if (revisionValue > past) {
+		if (mustWait) {
 			LOGGER.debug("Awaiting revision {} > {} [{}]", revisionValue, past, identityHashCode(this));
 			if (!semaphore.tryAcquire(flushTimeoutMS, MILLISECONDS)) {
 				throw new FlushFailureException("Timed out waiting for revision " + revisionValue + " > " + alreadySeen);
