@@ -98,14 +98,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private volatile FormatDriver<R> formatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
 
 	/**
-	 * Allows tests to install test-only hooks controlling the driver's internals.
+	 * Allows tests to install test probes controlling the driver's internals.
 	 * <p>
 	 * This works because {@code MainDriver} is instantiated
-	 * on the same thread as the {@code Bosk}: the hooks are read here and
+	 * on the same thread as the {@code Bosk}: the probes are read here and
 	 * captured at construction, so they apply to every thread that later
-	 * does database work. See {@link TestHooks}.
+	 * does database work. See {@link TestProbes}.
 	 */
-	static final ThreadLocal<TestHooks> TEST_HOOKS = ThreadLocal.withInitial(TestHooks::noop);
+	static final ThreadLocal<TestProbes> TEST_PROBES = ThreadLocal.withInitial(TestProbes::noop);
 
 	record MongoClientFactory(
 		Function<MongoClientSettings, MongoClient> function,
@@ -115,10 +115,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Records the value of {@link #TEST_HOOKS} as it was
+	 * Records the value of {@link #TEST_PROBES} as it was
 	 * at the time of the constructor call.
 	 */
-	final TestHooks testHooks = TEST_HOOKS.get();
+	final TestProbes testProbes = TEST_PROBES.get();
 
 	public MainDriver(
 		BoskInfo<R> boskInfo,
@@ -190,7 +190,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						.readTimeout(0, MILLISECONDS))
 				;
 
-			var clientFactory = testHooks.clientFactory();
+			var clientFactory = testProbes.clientFactory();
 
 			var changeStreamClient = clientFactory.function.apply(changeStreamSettingsBuilder.build());
 			if (clientFactory.shouldClose) {
@@ -209,7 +209,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient, testHooks.findInterceptor());
+				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient, testProbes.findInterceptor());
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -219,7 +219,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			Class<R> rootType = boskInfo.rootReference().targetClass();
 			ChangeListener listener = this.listener = new Listener(new RemoteCallable<>(
 				attrs -> doInitialState(rootType, attrs)));
-			var factory = testHooks.listenerFactory();
+			var factory = testProbes.listenerFactory();
 			if (factory != null) {
 				listener = factory.apply(listener);
 			}
@@ -370,7 +370,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// which is a burden. Let's just not.
 				BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
 				LOGGER.trace("Deleting state documents: {}", deletionFilter);
-				testHooks.beforeRefurbishDelete().run();
+				testProbes.beforeRefurbishDelete().run();
 				queryCollection.deleteMany(deletionFilter);
 
 				newFormatDriver.initializeCollection(allState);
@@ -779,7 +779,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private <X extends Exception, Y extends Exception> void waitAndRetry(RetryableOperation<X, Y> operation, String description, Object... args) throws X, Y {
-		testHooks.prePublicationWaitAction().run();
+		testProbes.prePublicationWaitAction().run();
 		formatDriverLock.lock();
 		try {
 			// There's a race here: the formatDriver could have recovered after we tried to use it

@@ -65,7 +65,7 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 		AtomicReference<Bosk<TestEntity>> refurbisherRef = new AtomicReference<>();
 		AtomicReference<Throwable> refurbishError = new AtomicReference<>();
 		Thread refurbishThread = new Thread(() -> {
-			MainDriver.TEST_HOOKS.set(TestHooks.noop()
+			MainDriver.TEST_PROBES.set(TestProbes.noop()
 				.withBeforeRefurbishDelete(() -> {
 					refurbishGate.signal();
 					refurbishGate.awaitRelease(Duration.ofSeconds(60));
@@ -81,7 +81,7 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 			} catch (Throwable e) {
 				refurbishError.set(e);
 			} finally {
-				MainDriver.TEST_HOOKS.remove();
+				MainDriver.TEST_PROBES.remove();
 			}
 		});
 		refurbishThread.start();
@@ -100,7 +100,7 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 				refurbishThread.interrupt();
 				refurbishThread.join();
 			}
-			MainDriver.TEST_HOOKS.remove();
+			MainDriver.TEST_PROBES.remove();
 		}
 
 		assertNull(refurbishError.get(), "Refurbish should not throw");

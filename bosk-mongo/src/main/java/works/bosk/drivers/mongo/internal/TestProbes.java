@@ -5,17 +5,18 @@ import works.bosk.Bosk;
 import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
 
 /**
- * Test-only hooks that {@link MainDriver} consults at well-defined points, so
- * tests can deterministically coordinate with the driver's internals.
+ * Test probes: the test-only facilities that {@link MainDriver} consults at
+ * well-defined points, so tests can deterministically coordinate with the
+ * driver's internals.
  * <p>
- * All hooks are no-ops by default; tests install the hooks they need by
- * starting from {@link #noop()} and using the {@code with} methods. The hooks
- * are read from {@link MainDriver#TEST_HOOKS} on the thread that constructs
+ * All probes are no-ops by default; tests install the probes they need by
+ * starting from {@link #noop()} and using the {@code with} methods. The probes
+ * are read from {@link MainDriver#TEST_PROBES} on the thread that constructs
  * the {@link MainDriver} (and hence the {@link Bosk}), and are captured at
  * construction time, so they apply to every thread that later does database
  * work.
  * <p>
- * The hooks are:
+ * The probes are:
  * <ul>
  * <li>{@code clientFactory}: controls creation of {@code MongoClient}s. Among
  * other things, this lets tests reuse one client across many test bosks, since
@@ -33,35 +34,35 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * {@link FindInterceptor}.</li>
  * </ul>
  */
-record TestHooks(
+record TestProbes(
 	MongoClientFactory clientFactory,
 	UnaryOperator<ChangeListener> listenerFactory,
 	Runnable prePublicationWaitAction,
 	Runnable beforeRefurbishDelete,
 	FindInterceptor findInterceptor
 ) {
-	static TestHooks noop() {
-		return new TestHooks(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, FindInterceptor.identity());
+	static TestProbes noop() {
+		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, FindInterceptor.identity());
 	}
 
-	TestHooks withClientFactory(MongoClientFactory value) {
-		return new TestHooks(value, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor);
+	TestProbes withClientFactory(MongoClientFactory value) {
+		return new TestProbes(value, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor);
 	}
 
-	TestHooks withListenerFactory(UnaryOperator<ChangeListener> value) {
-		return new TestHooks(clientFactory, value, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor);
+	TestProbes withListenerFactory(UnaryOperator<ChangeListener> value) {
+		return new TestProbes(clientFactory, value, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor);
 	}
 
-	TestHooks withPrePublicationWaitAction(Runnable value) {
-		return new TestHooks(clientFactory, listenerFactory, value, beforeRefurbishDelete, findInterceptor);
+	TestProbes withPrePublicationWaitAction(Runnable value) {
+		return new TestProbes(clientFactory, listenerFactory, value, beforeRefurbishDelete, findInterceptor);
 	}
 
-	TestHooks withBeforeRefurbishDelete(Runnable value) {
-		return new TestHooks(clientFactory, listenerFactory, prePublicationWaitAction, value, findInterceptor);
+	TestProbes withBeforeRefurbishDelete(Runnable value) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, value, findInterceptor);
 	}
 
-	TestHooks withFindInterceptor(FindInterceptor value) {
-		return new TestHooks(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, value);
+	TestProbes withFindInterceptor(FindInterceptor value) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, value);
 	}
 
 	private static final Runnable NOOP = () -> {};
