@@ -209,7 +209,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient, testProbes.findInterceptor());
+				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor());
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);

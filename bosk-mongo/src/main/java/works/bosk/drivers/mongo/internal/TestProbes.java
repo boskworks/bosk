@@ -32,6 +32,8 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * refurbish and a concurrent write.</li>
  * <li>{@code findInterceptor}: interposes on database reads; see
  * {@link FindInterceptor}.</li>
+ * <li>{@code writeInterceptor}: interposes on database writes; see
+ * {@link WriteInterceptor}.</li>
  * </ul>
  */
 record TestProbes(
@@ -39,30 +41,35 @@ record TestProbes(
 	UnaryOperator<ChangeListener> listenerFactory,
 	Runnable prePublicationWaitAction,
 	Runnable beforeRefurbishDelete,
-	FindInterceptor findInterceptor
+	FindInterceptor findInterceptor,
+	WriteInterceptor writeInterceptor
 ) {
 	static TestProbes noop() {
-		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, FindInterceptor.identity());
+		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity());
 	}
 
 	TestProbes withClientFactory(MongoClientFactory value) {
-		return new TestProbes(value, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor);
+		return new TestProbes(value, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, writeInterceptor);
 	}
 
 	TestProbes withListenerFactory(UnaryOperator<ChangeListener> value) {
-		return new TestProbes(clientFactory, value, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor);
+		return new TestProbes(clientFactory, value, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, writeInterceptor);
 	}
 
 	TestProbes withPrePublicationWaitAction(Runnable value) {
-		return new TestProbes(clientFactory, listenerFactory, value, beforeRefurbishDelete, findInterceptor);
+		return new TestProbes(clientFactory, listenerFactory, value, beforeRefurbishDelete, findInterceptor, writeInterceptor);
 	}
 
 	TestProbes withBeforeRefurbishDelete(Runnable value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, value, findInterceptor);
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, value, findInterceptor, writeInterceptor);
 	}
 
 	TestProbes withFindInterceptor(FindInterceptor value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, value);
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, value, writeInterceptor);
+	}
+
+	TestProbes withWriteInterceptor(WriteInterceptor value) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, value);
 	}
 
 	private static final Runnable NOOP = () -> {};

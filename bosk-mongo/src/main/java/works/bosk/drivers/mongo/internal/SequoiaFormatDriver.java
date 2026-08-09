@@ -127,6 +127,14 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		// Sequoia has only one document
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
+
+		// Sequoia writes two documents for this operation: the state document and the
+		// manifest. They must be written atomically, or a failure between the two writes
+		// could leave the collection half-initialized and unable to load. ensureTransactionStarted
+		// starts the transaction in the doInitialState path; during refurbish, which calls this
+		// method inside its own transaction, it is a no-op.
+		collection.ensureTransactionStarted();
+
 		try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
 			BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, DOCUMENT_ID));
 			BsonDocument filter = documentFilter();
@@ -139,10 +147,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			LOGGER.debug("| Result: {}", result);
 		}
 
-		// This is the only time Sequoia changes two documents for the same operation.
-		// Aside from refurbish, it's the only reason we'd want multi-document transactions,
-		// and it's not even a strong reason, because this still works correctly
-		// if interpreted as two separate events.
 		writeManifest(Manifest.forSequoia());
 
 		// Update the state that we "know about"
