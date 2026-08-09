@@ -9,6 +9,11 @@ import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.status.MongoStatus;
 
+/**
+ * A {@link FormatDriver} that is installed in place of the live FormatDriver when the
+ * driver is disconnected. Every operation throws {@link DisconnectedException}, so the
+ * driver refuses updates and operations waiting to retry keep waiting for a replacement.
+ */
 @RequiredArgsConstructor
 final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<R> {
 	private final Throwable reason;

@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import java.io.IOException;
@@ -12,6 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import lombok.With;
 import org.bson.BsonBoolean;
@@ -1056,6 +1058,101 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new AssertionError("Interrupted", e);
+		} finally {
+			MainDriver.TEST_PROBES.remove();
+		}
+	}
+
+	@Test
+	void recoveredDriver_survivesStaleDisconnect() throws InterruptedException, InvalidTypeException {
+		// Regression test for a race in doRetryableDriverOperation: when an operation fails
+		// after the ChangeReceiver has already recovered, the stale failure must not tear down
+		// the healthy driver that was just published.
+		//
+		// We use the writeInterceptor to hold the operation's write in flight, force a
+		// disconnect and recovery (by deleting and re-creating the manifest document), and only
+		// then fail the write. With the buggy code, that failure triggers setDisconnectedDriver,
+		// which disconnects the just-recovered driver and forces yet another disconnect/reconnect
+		// cycle. With the fix, the failure is recognized as stale, the recovered driver survives,
+		// and the operation succeeds by retrying right away.
+		//
+		//   Application thread            ChangeReceiver thread
+		//   ------------------            ---------------------
+		//   submitReplacement
+		//     -> writeInterceptor
+		//          delete+reinsert manifest
+		//          await(reconnected)      onDisconnect (manifest gone)
+		//                                  onConnectionSucceeded
+		//                                    publishFormatDriver (recovered)
+		//                                    countDown(reconnected)
+		//          throw MongoException
+		//     -> setDisconnectedDriver
+		//          (must not clobber the recovered driver)
+		//     -> waitAndRetry
+		//          recovered driver is healthy: no wait, retry immediately
+
+		setLogging(ERROR, ChangeReceiver.class, MainDriver.class);
+
+		AtomicBoolean initializationDone = new AtomicBoolean(false);
+		AtomicBoolean armed = new AtomicBoolean(false);
+		AtomicInteger reconnects = new AtomicInteger();
+		CountDownLatch reconnected = new CountDownLatch(1);
+
+		MainDriver.TEST_PROBES.set(TestProbes.noop()
+			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
+				@Override
+				public void onConnectionSucceeded() throws UnrecognizedFormatException, FailedMongoClientSessionException, InterruptedException, IOException, TimeoutException, InvalidCollectionContentsException, InitialStateException {
+					super.onConnectionSucceeded();
+					if (initializationDone.get()) {
+						LOGGER.debug("onConnectionSucceeded after initialization; count = {}", reconnects.incrementAndGet());
+						reconnected.countDown();
+					}
+				}
+			})
+			.withWriteInterceptor(filter -> {
+				if (armed.compareAndSet(true, false)) {
+					LOGGER.debug("Forcing a disconnect and recovery while the write is in flight");
+					MongoCollection<BsonDocument> collection = mongoService.client()
+						.getDatabase(driverSettings.database())
+						.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+					BsonDocument originalManifest = collection.findOneAndDelete(
+						new BsonDocument("_id", new BsonString(MANIFEST_ID)));
+					assertNotNull(originalManifest, "Manifest document must exist");
+					collection.insertOne(originalManifest);
+
+					try {
+						LOGGER.debug("Waiting for the receiver to recover");
+						reconnected.await();
+						LOGGER.debug("Receiver has recovered; failing the write");
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+						throw new AssertionError("Interrupted", e);
+					}
+					throw new MongoException("Forced write failure after recovery");
+				}
+			}));
+
+		try {
+			LOGGER.debug("Create bosk");
+			Bosk<TestEntity> bosk = new Bosk<>(
+				boskName("recoveredDriver"),
+				TestEntity.class,
+				AbstractMongoDriverTest::initialState,
+				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+			Refs refs = bosk.buildReferences(Refs.class);
+			initializationDone.set(true);
+
+			// Fail the operation only after the receiver has recovered from the disconnect
+			// that the interceptor forces. The stale failure must not cause another reconnect.
+			armed.set(true);
+			assertTimeoutPreemptively(
+				Duration.ofMillis(20 * SHORT_TIMESCALE),
+				() -> bosk.driver().submitReplacement(refs.listingEntry(entity124), LISTING_ENTRY),
+				"submitReplacement should succeed by retrying after the recovery"
+			);
+
+			assertEquals(1, reconnects.get(),
+				"The stale disconnect must not have forced another reconnect cycle");
 		} finally {
 			MainDriver.TEST_PROBES.remove();
 		}
