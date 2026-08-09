@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import java.util.function.UnaryOperator;
+import lombok.With;
 import works.bosk.Bosk;
 import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
 
@@ -38,6 +39,7 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * {@link CommitInterceptor}.</li>
  * </ul>
  */
+@With
 record TestProbes(
 	MongoClientFactory clientFactory,
 	UnaryOperator<ChangeListener> listenerFactory,
@@ -49,34 +51,6 @@ record TestProbes(
 ) {
 	static TestProbes noop() {
 		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity());
-	}
-
-	TestProbes withClientFactory(MongoClientFactory value) {
-		return new TestProbes(value, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, writeInterceptor, commitInterceptor);
-	}
-
-	TestProbes withListenerFactory(UnaryOperator<ChangeListener> value) {
-		return new TestProbes(clientFactory, value, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, writeInterceptor, commitInterceptor);
-	}
-
-	TestProbes withPrePublicationWaitAction(Runnable value) {
-		return new TestProbes(clientFactory, listenerFactory, value, beforeRefurbishDelete, findInterceptor, writeInterceptor, commitInterceptor);
-	}
-
-	TestProbes withBeforeRefurbishDelete(Runnable value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, value, findInterceptor, writeInterceptor, commitInterceptor);
-	}
-
-	TestProbes withFindInterceptor(FindInterceptor value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, value, writeInterceptor, commitInterceptor);
-	}
-
-	TestProbes withWriteInterceptor(WriteInterceptor value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, value, commitInterceptor);
-	}
-
-	TestProbes withCommitInterceptor(CommitInterceptor value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, writeInterceptor, value);
 	}
 
 	private static final Runnable NOOP = () -> {};
