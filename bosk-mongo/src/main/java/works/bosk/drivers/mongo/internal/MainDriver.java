@@ -287,7 +287,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// calls to driver update methods to wait until we're finished here. (There shouldn't
 		// be any such calls while initialState is still running, but this ensures that if any
 		// do happen, they won't corrupt our internal state in confusing ways.)
-		setDisconnectedDriver(FAILURE_TO_COMPUTE_INITIAL_STATE);
+		setDisconnectedDriver(FAILURE_TO_COMPUTE_INITIAL_STATE, formatDriver);
 
 		// In effect, at this point, the entire driver is now single-threaded for the remainder
 		// of this method. Our only concurrency concerns now involve database operations performed
@@ -330,7 +330,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				publishFormatDriver(preferredDriver);
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
-				setDisconnectedDriver(e2);
+				setDisconnectedDriver(e2, formatDriver);
 			}
 		} catch (UnrecognizedFormatException | InvalidCollectionContentsException | IOException | FailedMongoClientSessionException e) {
 			throw new DatabaseLoadException("Unable to load initial state from MongoDB", e);
@@ -620,7 +620,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					break;
 				case DISCONNECT:
 					LOGGER.info("Unable to load initial state from database; will proceed with downstream.initialState", cause);
-					setDisconnectedDriver(cause);
+					setDisconnectedDriver(cause, formatDriver);
 					try {
 						initialStateTask.complete(callDownstreamInitialState(boskInfo.rootReference().targetClass()));
 					} catch (DownstreamInitialStateException e) {
@@ -640,7 +640,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		public void onDisconnect(Throwable e) {
 			LOGGER.debug("onDisconnect({})", e.toString());
 			formatDriver.close();
-			setDisconnectedDriver(e);
+			setDisconnectedDriver(e, formatDriver);
 		}
 	}
 
@@ -758,36 +758,40 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private <X extends Exception, Y extends Exception> void doRetryableDriverOperation(RetryableOperation<X,Y> operation, String description, Object... args) throws X,Y {
-		RetryableOperation<X,Y> operationInSession = () -> {
-			int immediateRetriesLeft = 2;
-			while (true) {
-				try (var session = queryCollection.newSession()) {
-					operation.run();
-					session.commitTransactionIfAny();
-				} catch (FailedMongoClientSessionException e) {
-					setDisconnectedDriver(e);
-					throw new DisconnectedException(e);
-				} catch (MongoException e) {
-					if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL)) {
-						if (immediateRetriesLeft >= 1) {
-							immediateRetriesLeft--;
-							LOGGER.debug("Transient transaction error; retrying immediately", e);
-							continue;
+		try (var _ = beginDriverOperation(description, args)) {
+			// The driver the operation is about to use. If it's replaced while the operation
+			// is in flight, then a failure in this operation shouldn't disconnect the replacement,
+			// or else we'd tear down a healthy driver and force an unnecessary reconnect cycle.
+			FormatDriver<R> driverInUse = formatDriver;
+			RetryableOperation<X,Y> operationInSession = () -> {
+				int immediateRetriesLeft = 2;
+				while (true) {
+					try (var session = queryCollection.newSession()) {
+						operation.run();
+						session.commitTransactionIfAny();
+					} catch (FailedMongoClientSessionException e) {
+						setDisconnectedDriver(e, driverInUse);
+						throw new DisconnectedException(e);
+					} catch (MongoException e) {
+						if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL)) {
+							if (immediateRetriesLeft >= 1) {
+								immediateRetriesLeft--;
+								LOGGER.debug("Transient transaction error; retrying immediately", e);
+								continue;
+							} else {
+								LOGGER.warn("Exhausted immediate retry attempts for transient transaction error", e);
+								setDisconnectedDriver(e, driverInUse);
+								throw new DisconnectedException(e);
+							}
 						} else {
-							LOGGER.warn("Exhausted immediate retry attempts for transient transaction error", e);
-							setDisconnectedDriver(e);
+							LOGGER.debug("MongoException is not recoverable; disconnecting", e);
+							setDisconnectedDriver(e, driverInUse);
 							throw new DisconnectedException(e);
 						}
-					} else {
-						LOGGER.debug("MongoException is not recoverable; disconnecting", e);
-						setDisconnectedDriver(e);
-						throw new DisconnectedException(e);
 					}
+					break;
 				}
-				break;
-			}
-		};
-		try (var _ = beginDriverOperation(description, args)) {
+			};
 			try {
 				operationInSession.run();
 			} catch (DisconnectedException e) {
@@ -795,7 +799,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				waitAndRetry(operationInSession, description, args);
 			} catch (Exception e) {
 				LOGGER.debug("Unexpected exception; will disconnect and retry operation", e);
-				setDisconnectedDriver(e);
+				setDisconnectedDriver(e, driverInUse);
 				waitAndRetry(operationInSession, description, args);
 			} finally {
 				LOGGER.debug("Finished operation " + description, args);
@@ -811,10 +815,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// but before we acquired the lock. Let's double-check now to avoid an unnecessary wait
 			// for an event that may already have happened.
 			//
-			// Note that this presupposes that formatDriver is always a DisconnectedDriver
-			// at the time we tried to use it. This is not always true, so this can sometimes
-			// skip the wait in cases where the wait would have prevented a user-visible
-			// error. We should probably find a more meticulous approach here.
+			// Note: this presupposes that, when we tried to use the formatDriver, it was (or soon
+			// became) a DisconnectedDriver. If instead it was a healthy driver that has since been
+			// replaced, then skipping the wait is exactly right: the operation failed for a reason
+			// unrelated to the current driver's health, and retrying with the replacement driver is
+			// the correct course of action.
 
 			if (formatDriver instanceof DisconnectedDriver<R>) {
 				LOGGER.debug("Waiting for new FormatDriver for {} ms", reinitializationTimeout);
@@ -850,17 +855,41 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Sets {@link #formatDriver} but does not signal threads waiting on {@link #formatDriverChanged},
-	 * because there's no point waking them to retry with {@link DisconnectedDriver}
-	 * (which is bound to fail); they might as well keep waiting and hope for another
-	 * better driver to arrive instead.
+	 * Disconnects the current {@link FormatDriver} from the {@link MainDriver}: the
+	 * FormatDriver is closed and discarded, {@link #formatDriver} becomes a
+	 * {@link DisconnectedDriver} that refuses updates, and the {@link ChangeReceiver} is
+	 * poked to reconnect.
+	 * <p>
+	 * Does not signal threads waiting on {@link #formatDriverChanged}: there's no point
+	 * waking them to retry with {@link DisconnectedDriver} (which is bound to fail); they
+	 * might as well keep waiting and hope for another better driver to arrive instead.
+	 * <p>
+	 * This is called by code that is already handling a failure: an operation that failed
+	 * and will be retried, or a change-stream problem the receiver is recovering from. Its
+	 * only job is to keep the driver from submitting updates while its understanding of the
+	 * database is suspect.
+	 * <p>
+	 * If {@link #formatDriver} is no longer the {@code currentDriver} the caller expected,
+	 * nothing happens: the current FormatDriver has already been disconnected, or the
+	 * driver has recovered and published a new one. Either way, the failure in question is
+	 * being dealt with by the caller, so there's nothing more for this method to do.
+	 *
+	 * @param currentDriver the driver the caller believes to be the current
+	 * {@link #formatDriver}; if it is not, this method does nothing
 	 */
-	void setDisconnectedDriver(Throwable reason) {
+	void setDisconnectedDriver(Throwable reason, FormatDriver<R> currentDriver) {
 		LOGGER.debug("setDisconnectedDriver({}) (previously {})", reason.getClass().getSimpleName(), formatDriver.getClass().getSimpleName());
 		FormatDriver<R> oldDriver;
 		try {
 			formatDriverLock.lock();
 			oldDriver = formatDriver;
+			if (oldDriver != currentDriver) {
+				// The current FormatDriver has already been disconnected from us (or the driver
+				// has recovered and published a new one). Either way, the caller handles its own
+				// failure, so there's nothing to do here.
+				LOGGER.debug("Not disconnecting: formatDriver has been replaced");
+				return;
+			}
 			oldDriver.close();
 			formatDriver = new DisconnectedDriver<>(reason);
 		} finally {
