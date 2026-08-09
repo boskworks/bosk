@@ -41,13 +41,14 @@ class TransactionalCollection {
 	private final MongoClient mongoClient;
 	private final FindInterceptor findInterceptor;
 	private final WriteInterceptor writeInterceptor;
+	private final CommitInterceptor commitInterceptor;
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
 
 	/**
-	 * A {@code TransactionalCollection} with no read or write interposition.
+	 * A {@code TransactionalCollection} with no read, write, or commit interposition.
 	 */
 	static TransactionalCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient) {
-		return of(downstream, mongoClient, FindInterceptor.identity(), WriteInterceptor.identity());
+		return of(downstream, mongoClient, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity());
 	}
 
 	public Session newSession() throws FailedMongoClientSessionException {
@@ -111,6 +112,7 @@ class TransactionalCollection {
 				LOGGER.debug("Commit transaction");
 				try {
 					clientSession.commitTransaction();
+					commitInterceptor.afterCommitAttempt();
 				} catch (MongoException e) {
 					if (e.hasErrorLabel(MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL)) {
 						if (retriesRemaining >= 1) {

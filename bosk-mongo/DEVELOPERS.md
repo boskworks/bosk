@@ -314,6 +314,12 @@ and uses the `with` methods to set the ones it needs. The probes are:
   mid-stream: `MongoDriverLoadRaceTest`, for example, wraps the load's cursor in a
   `PausingCursor` that signals a `BlockingGate` after the first document and blocks until
   the test lets it proceed.
+- `commitInterceptor` runs after each transaction commit attempt and may throw to simulate
+  a commit failure. This is how a test exercises the commit-retry logic: throwing a
+  `MongoException` with the `UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL` label causes the
+  commit to be retried. The interceptor runs after the real commit so that the driver's
+  own transaction state machine (which clears `hasActiveTransaction()` even when a commit
+  reports an unknown result) runs first.
 
 The coordinating primitive is `BlockingGate` (in `lib-testing`): the background operation
 calls `signal()` when it reaches the blocking point and blocks on `awaitRelease(...)`,
