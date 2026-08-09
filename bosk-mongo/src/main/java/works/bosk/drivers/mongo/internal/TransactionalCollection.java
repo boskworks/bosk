@@ -105,26 +105,40 @@ class TransactionalCollection {
 		/**
 		 * Ends the active transaction; a subsequent call to {@link #ensureTransactionStarted()}
 		 * would start a new transaction.
+		 * <p>
+		 * If the commit returns an {@link MongoException} with the
+		 * {@link MongoException#UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL} error label,
+		 * the commit is retried, since the transaction may or may not have been committed.
+		 * If the result is still unknown after the retries, the {@link MongoException} is rethrown
+		 * so the caller can resolve the indeterminate outcome.
+		 * <p>
+		 * The retry is driven by the outcome of {@code commitTransaction()}, not by
+		 * {@code hasActiveTransaction()}: the MongoDB driver marks the transaction committed
+		 * even when the commit throws, so {@code hasActiveTransaction()} returns {@code false}
+		 * after a failed commit too, and checking it would make the retry unreachable.
 		 */
 		public void commitTransactionIfAny() {
-			int retriesRemaining = 2;
-			while (clientSession.hasActiveTransaction()) {
-				LOGGER.debug("Commit transaction");
-				try {
-					clientSession.commitTransaction();
-					commitInterceptor.afterCommitAttempt();
-				} catch (MongoException e) {
-					if (e.hasErrorLabel(MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL)) {
-						if (retriesRemaining >= 1) {
-							retriesRemaining--;
-							LOGGER.debug("Unknown transaction commit result; retrying the commit", e);
+			if (clientSession.hasActiveTransaction()) {
+				int retriesRemaining = 2;
+				while (true) {
+					LOGGER.debug("Commit transaction");
+					try {
+						clientSession.commitTransaction();
+						commitInterceptor.afterCommitAttempt();
+						break;
+					} catch (MongoException e) {
+						if (e.hasErrorLabel(MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL)) {
+							if (retriesRemaining >= 1) {
+								retriesRemaining--;
+								LOGGER.debug("Unknown transaction commit result; retrying the commit", e);
+							} else {
+								LOGGER.debug("Exhausted commit retry attempts", e);
+								throw e;
+							}
 						} else {
-							LOGGER.debug("Exhausted commit retry attempts", e);
+							LOGGER.debug("Can't retry commit; rethrowing", e);
 							throw e;
 						}
-					} else {
-						LOGGER.debug("Can't retry commit; rethrowing", e);
-						throw e;
 					}
 				}
 			}
