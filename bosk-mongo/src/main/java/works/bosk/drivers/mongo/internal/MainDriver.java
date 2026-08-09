@@ -7,7 +7,9 @@ import com.mongodb.ReadConcern;
 import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import com.mongodb.client.result.UpdateResult;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -315,9 +317,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
 				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), REVISION_ZERO, diagnosticAttributes);
-				preferredDriver.initializeCollection(priorContents);
+
+				// The state document(s) and the manifest must be written atomically,
+				// so that a failure partway through initialization doesn't leave the
+				// collection half-initialized. This is the one place where MainDriver
+				// starts a transaction itself: refurbish already starts its own.
+				queryCollection.ensureTransactionStarted();
+				preferredDriver.writeAllState(priorContents);
+				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
 				session.commitTransactionIfAny();
-				// We can now publish the driver knowing that the transaction, if there is one, has committed
+				// We can now publish the driver knowing that the transaction has committed
 				publishFormatDriver(preferredDriver);
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
@@ -356,14 +365,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		try {
 			FormatDriver<R> newFormatDriver;
 
-			// The calls to loadAllState and initializeCollection must occur atomically
+			// The calls to loadAllState and writeAllState must occur atomically
 			// with respect to event processing, because both of them have side effects
 			// that affect event processing (field tracking and flush locks, respectively).
 			synchronized (receiver) {
 				StateAndMetadata<R> allState = formatDriver.loadAllState();
 				newFormatDriver = newPreferredFormatDriver();
 
-				// initializeCollection is required to replace the manifest anyway,
+				// The manifest is replaced by writeManifest anyway,
 				// so deleting it has no value; and if we do delete it, then every
 				// FormatDriver must cope with deletions of the manifest document
 				// to avoid disconnection during refurbish operations,
@@ -373,7 +382,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				testProbes.beforeRefurbishDelete().run();
 				queryCollection.deleteMany(deletionFilter);
 
-				newFormatDriver.initializeCollection(allState);
+				newFormatDriver.writeAllState(allState);
+				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
 			}
 
 			// We must rudely commit the transaction here, since correctness requires that
@@ -686,6 +696,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		try (var _ = queryCollection.newReadOnlySession()) {
 			return loadManifest();
 		}
+	}
+
+	/**
+	 * Writes the manifest document declaring the given format. Called as part of
+	 * initializing the collection, so it must occur in the same transaction as the
+	 * {@link FormatDriver#writeAllState} call that writes the state documents.
+	 */
+	private void writeManifest(Manifest manifest) {
+		BsonDocument doc = new BsonDocument("_id", MANIFEST_ID);
+		doc.putAll((BsonDocument) formatter.object2bsonValue(manifest, Manifest.class));
+		BsonDocument filter = new BsonDocument("_id", MANIFEST_ID);
+		LOGGER.debug("| Initial manifest: {}", doc);
+		ReplaceOptions options = new ReplaceOptions().upsert(true);
+		UpdateResult result = queryCollection.replaceOne(filter, doc, options);
+		LOGGER.debug("| Manifest result: {}", result);
 	}
 
 	private FormatDriver<R> newFormatDriver(DatabaseFormat format) {

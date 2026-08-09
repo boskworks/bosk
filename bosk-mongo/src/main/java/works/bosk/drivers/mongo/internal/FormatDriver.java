@@ -64,7 +64,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	StateAndMetadata<R> loadAllState() throws IOException, InvalidCollectionContentsException;
 
 	/**
-	 * Initializes the collection to the given state.
+	 * Writes the state documents for the given state.
 	 * <p>
 	 * Like {@link #loadAllState}, this also has the side effect of establishing
 	 * the state that the driver "knows about".
@@ -73,12 +73,14 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * in the sense that there is no mess to clean up,
 	 * but should tolerate documents already existing,
 	 * by using upsert or replace operations, for example.
+	 * <p>
+	 * The manifest is written by {@link MainDriver}, not here.
 	 * @param priorContents the desired state, with metadata representing a (possibly hypothetical)
 	 * "prior" state of the database; in particular, the epoch should be preserved if it exists,
 	 * and the revision number should be incremented so that a {@link #flush} after
 	 * a {@link #refurbish} succeeds in waiting for the new state.
 	 */
-	void initializeCollection(StateAndMetadata<R> priorContents);
+	void writeAllState(StateAndMetadata<R> priorContents);
 
 	/**
 	 * @return a query filter that returns documents corresponding to the roots of the state tree.
@@ -101,6 +103,6 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	@Override
 	default void refurbish() {
 		throw new UnsupportedOperationException(
-			"FormatDriver doesn't need to implement refurbish: MainDriver derives it from loadAllState and initializeCollection");
+			"FormatDriver doesn't need to implement refurbish: MainDriver derives it from loadAllState and writeAllState");
 	}
 }

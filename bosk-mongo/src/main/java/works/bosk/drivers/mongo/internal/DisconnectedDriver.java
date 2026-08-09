@@ -67,7 +67,7 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 	}
 
 	@Override
-	public void initializeCollection(StateAndMetadata<R> priorContents) {
+	public void writeAllState(StateAndMetadata<R> priorContents) {
 		throw disconnected();
 	}
 

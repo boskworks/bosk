@@ -120,7 +120,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	public void initializeCollection(StateAndMetadata<R> priorContents) {
+	public void writeAllState(StateAndMetadata<R> priorContents) {
 		BsonString epoch = priorContents.epoch().orElseGet(() -> new BsonString(UUID.randomUUID().toString()));
 		replaceFlushLock(Optional.of(epoch), priorContents.revision());
 
@@ -128,13 +128,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
 
-		// Sequoia writes two documents for this operation: the state document and the
-		// manifest. They must be written atomically, or a failure between the two writes
-		// could leave the collection half-initialized and unable to load. ensureTransactionStarted
-		// starts the transaction in the doInitialState path; during refurbish, which calls this
-		// method inside its own transaction, it is a no-op.
-		collection.ensureTransactionStarted();
-
+		// Note: the manifest is written by MainDriver, so the caller must have started
+		// a transaction that makes this state document write and the manifest write atomic.
 		try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
 			BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, DOCUMENT_ID));
 			BsonDocument filter = documentFilter();
@@ -147,21 +142,21 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			LOGGER.debug("| Result: {}", result);
 		}
 
-		writeManifest(Manifest.forSequoia());
-
 		// Update the state that we "know about"
 		finishedRevision(newRevision);
 	}
 
 	/**
-	 * We're required to cope with anything we might ourselves do in {@link FormatDriver#initializeCollection}.
+	 * We're required to cope with anything we might ourselves do during initialization
+	 * (writing the state document in {@link #writeAllState}, and the manifest that
+	 * {@link MainDriver} writes).
 	 */
 	@Override
 	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 		fieldTracker.processEvent(event);
 		assert event.getDocumentKey() != null;
 		if (isManifestID(event.getDocumentKey().get("_id"))) {
-			/* We're required to cope with anything we might ourselves do in {@link #initializeCollection},
+			/* We're required to cope with anything we might ourselves do during initialization,
 			 * but outside that, we want to be as strict as we can
 			 * so incompatible database changes don't go unnoticed.
 			 */
