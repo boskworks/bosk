@@ -40,13 +40,14 @@ class TransactionalCollection {
 	private final MongoCollection<BsonDocument> downstream;
 	private final MongoClient mongoClient;
 	private final FindInterceptor findInterceptor;
+	private final WriteInterceptor writeInterceptor;
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
 
 	/**
-	 * A {@code TransactionalCollection} with no read interposition.
+	 * A {@code TransactionalCollection} with no read or write interposition.
 	 */
 	static TransactionalCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient) {
-		return of(downstream, mongoClient, FindInterceptor.identity());
+		return of(downstream, mongoClient, FindInterceptor.identity(), WriteInterceptor.identity());
 	}
 
 	public Session newSession() throws FailedMongoClientSessionException {
@@ -228,31 +229,37 @@ class TransactionalCollection {
 
 	public InsertOneResult insertOne(BsonDocument document) {
 		requireWritable();
+		writeInterceptor.beforeWrite(new BsonDocument("_id", document.get("_id")));
 		return this.downstream.insertOne(currentSession(), document);
 	}
 
 	public DeleteResult deleteOne(Bson filter) {
 		requireWritable();
+		writeInterceptor.beforeWrite(filter);
 		return this.downstream.deleteOne(currentSession(), filter);
 	}
 
 	public DeleteResult deleteMany(Bson filter) {
 		requireWritable();
+		writeInterceptor.beforeWrite(filter);
 		return this.downstream.deleteMany(currentSession(), filter);
 	}
 
 	public UpdateResult replaceOne(Bson filter, BsonDocument replacement, ReplaceOptions replaceOptions) {
 		requireWritable();
+		writeInterceptor.beforeWrite(filter);
 		return this.downstream.replaceOne(currentSession(), filter, replacement, replaceOptions);
 	}
 
 	public UpdateResult updateOne(Bson filter, Bson update) {
 		requireWritable();
+		writeInterceptor.beforeWrite(filter);
 		return this.downstream.updateOne(currentSession(), filter, update);
 	}
 
 	public UpdateResult updateOne(Bson filter, Bson update, UpdateOptions updateOptions) {
 		requireWritable();
+		writeInterceptor.beforeWrite(filter);
 		return this.downstream.updateOne(currentSession(), filter, update, updateOptions);
 	}
 

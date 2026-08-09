@@ -217,7 +217,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	public void initializeCollection(StateAndMetadata<R> priorContents) {
+	public void writeAllState(StateAndMetadata<R> priorContents) {
 		BsonString epoch = priorContents.epoch().orElseGet(() -> new BsonString(UUID.randomUUID().toString()));
 		replaceFlushLock(Optional.of(epoch), priorContents.revision());
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
@@ -225,19 +225,18 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
 
 			LOGGER.debug("** Initial upsert");
-			initializeCollection(initialState, epoch, revision);
+			writeAllState(initialState, epoch, revision);
 
-			// When initializing the collection, whether for initialState() or
-			// for refurbish(), the local state will be up to date with no need
-			// to process a change stream event.
+			// When writing the state, whether for initialState() or for refurbish(),
+			// the local state will be up to date with no need to process a change stream event.
 			finishedRevision(revision);
 		}
-		writeManifest(Manifest.forPando(format));
 	}
 
-	private void initializeCollection(BsonValue initialState, BsonString epoch, BsonInt64 newRevision) {
+	private void writeAllState(BsonValue initialState, BsonString epoch, BsonInt64 newRevision) {
 		// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
-		collection.ensureTransactionStarted();
+		// Note: the manifest is written by MainDriver, so the caller must have started
+		// a transaction that makes these state document writes and the manifest write atomic.
 		if (initialState instanceof BsonDocument) {
 			upsertAndRemoveSubParts(rootRef, initialState.asDocument()); // Mutates initialState!
 		}
@@ -258,7 +257,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	/**
-	 * We're required to cope with anything we might ourselves do in {@link FormatDriver#initializeCollection}.
+	 * We're required to cope with anything we might ourselves do during initialization
+	 * (writing the state documents in {@link #writeAllState}, and the manifest that
+	 * {@link MainDriver} writes).
 	 */
 	@Override
 	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
@@ -266,7 +267,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		assert event.getDocumentKey() != null;
 		BsonValue bsonDocumentID = event.getDocumentKey().get("_id");
 		if (isManifestID(bsonDocumentID)) {
-			/* We're required to cope with anything we might ourselves do in {@link #initializeCollection},
+			/* We're required to cope with anything we might ourselves do during initialization,
 			 * but outside that, we want to be as strict as we can
 			 * so incompatible database changes don't go unnoticed.
 			 */

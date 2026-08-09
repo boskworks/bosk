@@ -56,8 +56,8 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 		errorRecorder = new ErrorRecorder();
 
 		// This guy uses a literal bazillion TCP ports if we don't share clients
-		var defaultFactory = TestHooks.noop().clientFactory();
-		MainDriver.TEST_HOOKS.set(TestHooks.noop()
+		var defaultFactory = TestProbes.noop().clientFactory();
+		MainDriver.TEST_PROBES.set(TestProbes.noop()
 			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream))
 			.withClientFactory(new MongoClientFactory(
 				settings -> SHARED_CLIENTS.computeIfAbsent(settings, defaultFactory.function()),
@@ -67,7 +67,7 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 
 	@AfterEach
 	void teardownErrorRecording() {
-		MainDriver.TEST_HOOKS.remove();
+		MainDriver.TEST_PROBES.remove();
 		errorRecorder.assertAllClear("after test");
 	}
 

@@ -120,13 +120,16 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	public void initializeCollection(StateAndMetadata<R> priorContents) {
+	public void writeAllState(StateAndMetadata<R> priorContents) {
 		BsonString epoch = priorContents.epoch().orElseGet(() -> new BsonString(UUID.randomUUID().toString()));
 		replaceFlushLock(Optional.of(epoch), priorContents.revision());
 
 		// Sequoia has only one document
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
+
+		// Note: the manifest is written by MainDriver, so the caller must have started
+		// a transaction that makes this state document write and the manifest write atomic.
 		try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
 			BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, DOCUMENT_ID));
 			BsonDocument filter = documentFilter();
@@ -139,25 +142,21 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			LOGGER.debug("| Result: {}", result);
 		}
 
-		// This is the only time Sequoia changes two documents for the same operation.
-		// Aside from refurbish, it's the only reason we'd want multi-document transactions,
-		// and it's not even a strong reason, because this still works correctly
-		// if interpreted as two separate events.
-		writeManifest(Manifest.forSequoia());
-
 		// Update the state that we "know about"
 		finishedRevision(newRevision);
 	}
 
 	/**
-	 * We're required to cope with anything we might ourselves do in {@link FormatDriver#initializeCollection}.
+	 * We're required to cope with anything we might ourselves do during initialization
+	 * (writing the state document in {@link #writeAllState}, and the manifest that
+	 * {@link MainDriver} writes).
 	 */
 	@Override
 	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 		fieldTracker.processEvent(event);
 		assert event.getDocumentKey() != null;
 		if (isManifestID(event.getDocumentKey().get("_id"))) {
-			/* We're required to cope with anything we might ourselves do in {@link #initializeCollection},
+			/* We're required to cope with anything we might ourselves do during initialization,
 			 * but outside that, we want to be as strict as we can
 			 * so incompatible database changes don't go unnoticed.
 			 */

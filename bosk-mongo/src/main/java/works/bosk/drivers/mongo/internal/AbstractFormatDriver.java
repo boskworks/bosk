@@ -2,9 +2,7 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoException;
 import com.mongodb.MongoInterruptedException;
-import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
-import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -175,9 +173,10 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * We're required to cope with anything we might ourselves do in {@link #initializeCollection},
-	 * but outside that, we want to be as strict as possible
-	 * so incompatible database changes don't go unnoticed.
+	 * We're required to cope with anything we might ourselves do during initialization
+	 * (writing the state documents in {@link FormatDriver#writeAllState}, and the
+	 * manifest that {@link MainDriver} writes), but outside that, we want to be as
+	 * strict as possible so incompatible database changes don't go unnoticed.
 	 */
 	protected void validateManifestEvent(ChangeStreamDocument<BsonDocument> event, Manifest effectiveManifest) throws UnprocessableEventException {
 		LOGGER.debug("onManifestEvent({})", event.getOperationType().name());
@@ -271,16 +270,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	public void close() {
 		LOGGER.debug("+ close()");
 		flushLock.get().close();
-	}
-
-	protected void writeManifest(Manifest manifest) {
-		BsonDocument doc = new BsonDocument("_id", requireNonNull(MANIFEST_ID));
-		doc.putAll((BsonDocument) formatter.object2bsonValue(manifest, Manifest.class));
-		BsonDocument filter = new BsonDocument("_id", MANIFEST_ID);
-		LOGGER.debug("| Initial manifest: {}", doc);
-		ReplaceOptions options = new ReplaceOptions().upsert(true);
-		UpdateResult result = collection.replaceOne(filter, doc, options);
-		LOGGER.debug("| Manifest result: {}", result);
 	}
 
 	protected BsonDocument initialDocument(BsonValue initialState, BsonString epoch, BsonInt64 revision, BsonString documentId) {

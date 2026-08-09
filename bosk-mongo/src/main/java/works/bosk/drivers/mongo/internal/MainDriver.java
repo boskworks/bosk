@@ -7,7 +7,9 @@ import com.mongodb.ReadConcern;
 import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import com.mongodb.client.result.UpdateResult;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -98,14 +100,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private volatile FormatDriver<R> formatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
 
 	/**
-	 * Allows tests to install test-only hooks controlling the driver's internals.
+	 * Allows tests to install test probes controlling the driver's internals.
 	 * <p>
 	 * This works because {@code MainDriver} is instantiated
-	 * on the same thread as the {@code Bosk}: the hooks are read here and
+	 * on the same thread as the {@code Bosk}: the probes are read here and
 	 * captured at construction, so they apply to every thread that later
-	 * does database work. See {@link TestHooks}.
+	 * does database work. See {@link TestProbes}.
 	 */
-	static final ThreadLocal<TestHooks> TEST_HOOKS = ThreadLocal.withInitial(TestHooks::noop);
+	static final ThreadLocal<TestProbes> TEST_PROBES = ThreadLocal.withInitial(TestProbes::noop);
 
 	record MongoClientFactory(
 		Function<MongoClientSettings, MongoClient> function,
@@ -115,10 +117,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Records the value of {@link #TEST_HOOKS} as it was
+	 * Records the value of {@link #TEST_PROBES} as it was
 	 * at the time of the constructor call.
 	 */
-	final TestHooks testHooks = TEST_HOOKS.get();
+	final TestProbes testProbes = TEST_PROBES.get();
 
 	public MainDriver(
 		BoskInfo<R> boskInfo,
@@ -190,7 +192,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						.readTimeout(0, MILLISECONDS))
 				;
 
-			var clientFactory = testHooks.clientFactory();
+			var clientFactory = testProbes.clientFactory();
 
 			var changeStreamClient = clientFactory.function.apply(changeStreamSettingsBuilder.build());
 			if (clientFactory.shouldClose) {
@@ -209,7 +211,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient, testHooks.findInterceptor());
+				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor());
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -219,7 +221,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			Class<R> rootType = boskInfo.rootReference().targetClass();
 			ChangeListener listener = this.listener = new Listener(new RemoteCallable<>(
 				attrs -> doInitialState(rootType, attrs)));
-			var factory = testHooks.listenerFactory();
+			var factory = testProbes.listenerFactory();
 			if (factory != null) {
 				listener = factory.apply(listener);
 			}
@@ -315,9 +317,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
 				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), REVISION_ZERO, diagnosticAttributes);
-				preferredDriver.initializeCollection(priorContents);
+
+				// The state document(s) and the manifest must be written atomically,
+				// so that a failure partway through initialization doesn't leave the
+				// collection half-initialized. This is the one place where MainDriver
+				// starts a transaction itself: refurbish already starts its own.
+				queryCollection.ensureTransactionStarted();
+				preferredDriver.writeAllState(priorContents);
+				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
 				session.commitTransactionIfAny();
-				// We can now publish the driver knowing that the transaction, if there is one, has committed
+				// We can now publish the driver knowing that the transaction has committed
 				publishFormatDriver(preferredDriver);
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
@@ -356,24 +365,25 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		try {
 			FormatDriver<R> newFormatDriver;
 
-			// The calls to loadAllState and initializeCollection must occur atomically
+			// The calls to loadAllState and writeAllState must occur atomically
 			// with respect to event processing, because both of them have side effects
 			// that affect event processing (field tracking and flush locks, respectively).
 			synchronized (receiver) {
 				StateAndMetadata<R> allState = formatDriver.loadAllState();
 				newFormatDriver = newPreferredFormatDriver();
 
-				// initializeCollection is required to replace the manifest anyway,
+				// The manifest is replaced by writeManifest anyway,
 				// so deleting it has no value; and if we do delete it, then every
 				// FormatDriver must cope with deletions of the manifest document
 				// to avoid disconnection during refurbish operations,
 				// which is a burden. Let's just not.
 				BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
 				LOGGER.trace("Deleting state documents: {}", deletionFilter);
-				testHooks.beforeRefurbishDelete().run();
+				testProbes.beforeRefurbishDelete().run();
 				queryCollection.deleteMany(deletionFilter);
 
-				newFormatDriver.initializeCollection(allState);
+				newFormatDriver.writeAllState(allState);
+				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
 			}
 
 			// We must rudely commit the transaction here, since correctness requires that
@@ -688,6 +698,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 	}
 
+	/**
+	 * Writes the manifest document declaring the given format. Called as part of
+	 * initializing the collection, so it must occur in the same transaction as the
+	 * {@link FormatDriver#writeAllState} call that writes the state documents.
+	 */
+	private void writeManifest(Manifest manifest) {
+		BsonDocument doc = new BsonDocument("_id", MANIFEST_ID);
+		doc.putAll((BsonDocument) formatter.object2bsonValue(manifest, Manifest.class));
+		BsonDocument filter = new BsonDocument("_id", MANIFEST_ID);
+		LOGGER.debug("| Initial manifest: {}", doc);
+		ReplaceOptions options = new ReplaceOptions().upsert(true);
+		UpdateResult result = queryCollection.replaceOne(filter, doc, options);
+		LOGGER.debug("| Manifest result: {}", result);
+	}
+
 	private FormatDriver<R> newFormatDriver(DatabaseFormat format) {
 		return switch (format) {
 			case SequoiaFormat _ -> new SequoiaFormatDriver<>(
@@ -779,7 +804,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private <X extends Exception, Y extends Exception> void waitAndRetry(RetryableOperation<X, Y> operation, String description, Object... args) throws X, Y {
-		testHooks.prePublicationWaitAction().run();
+		testProbes.prePublicationWaitAction().run();
 		formatDriverLock.lock();
 		try {
 			// There's a race here: the formatDriver could have recovered after we tried to use it

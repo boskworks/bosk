@@ -97,13 +97,13 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	@BeforeEach
 	void setupErrorRecording() {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
-		MainDriver.TEST_HOOKS.set(TestHooks.noop()
+		MainDriver.TEST_PROBES.set(TestProbes.noop()
 			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream)));
 	}
 
 	@AfterEach
 	void resetErrorRecording() {
-		MainDriver.TEST_HOOKS.remove();
+		MainDriver.TEST_PROBES.remove();
 	}
 
 	public MongoDriverSpecialTest(ParameterSet parameters) {
@@ -399,7 +399,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		// Make the ChangeReceiver wait when it sees an error.
 		// We want the flush operation to encounter the outage first.
 		var lock = new Object(){};
-		MainDriver.TEST_HOOKS.set(TestHooks.noop()
+		MainDriver.TEST_PROBES.set(TestProbes.noop()
 			.withListenerFactory(d -> new ForwardingChangeListener(d) {
 			@Override
 			public void onConnectionFailed(Exception cause) throws DownstreamInitialStateException {
@@ -986,7 +986,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		CountDownLatch appAtPreWait = new CountDownLatch(1);
 		CountDownLatch published = new CountDownLatch(1);
 
-		MainDriver.TEST_HOOKS.set(TestHooks.noop()
+		MainDriver.TEST_PROBES.set(TestProbes.noop()
 			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 			@Override
 			public void onDisconnect(Throwable e) {
@@ -1057,7 +1057,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			Thread.currentThread().interrupt();
 			throw new AssertionError("Interrupted", e);
 		} finally {
-			MainDriver.TEST_HOOKS.remove();
+			MainDriver.TEST_PROBES.remove();
 		}
 	}
 

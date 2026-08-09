@@ -9,7 +9,7 @@ import org.bson.conversions.Bson;
  * to the interceptor, which may return a wrapped cursor that pauses, alters,
  * or truncates the read.
  * <p>
- * Installed via {@link TestHooks#withFindInterceptor(FindInterceptor)}.
+ * Installed via {@link TestProbes#withFindInterceptor(FindInterceptor)}.
  */
 @FunctionalInterface
 public interface FindInterceptor {
