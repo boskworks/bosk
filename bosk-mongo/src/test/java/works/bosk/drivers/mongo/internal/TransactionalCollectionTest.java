@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoException;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.CountOptions;
@@ -7,6 +8,7 @@ import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonString;
@@ -313,6 +315,36 @@ class TransactionalCollectionTest {
 	}
 
 	@Test
+	void commitTransactionIfAny_retriesCommit_whenCommitResultUnknown() throws FailedMongoClientSessionException {
+		AtomicInteger commitAttempts = new AtomicInteger();
+		TransactionalCollection coll = withCommitInterceptor(() -> {
+			if (commitAttempts.getAndIncrement() == 0) {
+				throw unknownCommitResult();
+			}
+		});
+		try (Session _ = coll.newSession()) {
+			coll.ensureTransactionStarted();
+			assertDoesNotThrow(coll::commitTransactionIfAny);
+		}
+		assertEquals(2, commitAttempts.get(), "Commit must be retried after an unknown result");
+	}
+
+	@Test
+	void commitTransactionIfAny_rethrows_whenCommitRetriesExhausted() throws FailedMongoClientSessionException {
+		AtomicInteger commitAttempts = new AtomicInteger();
+		TransactionalCollection coll = withCommitInterceptor(() -> {
+			commitAttempts.getAndIncrement();
+			throw unknownCommitResult();
+		});
+		try (Session _ = coll.newSession()) {
+			coll.ensureTransactionStarted();
+			MongoException e = assertThrows(MongoException.class, coll::commitTransactionIfAny);
+			assertTrue(e.hasErrorLabel(MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL));
+		}
+		assertEquals(3, commitAttempts.get(), "All commit attempts must be exhausted before rethrowing");
+	}
+
+	@Test
 	void abortOnClose_rollsBackData() throws FailedMongoClientSessionException {
 		try (Session _ = collection.newSession()) {
 			collection.ensureTransactionStarted();
@@ -496,6 +528,24 @@ class TransactionalCollectionTest {
 
 	private void makeData(String id) throws FailedMongoClientSessionException {
 		insertFresh(collection, new BsonDocument("_id", new BsonString(id)));
+	}
+
+	/**
+	 * A {@link TransactionalCollection} whose session commits consult the given
+	 * {@link CommitInterceptor}, which can throw to simulate a commit failure.
+	 */
+	private TransactionalCollection withCommitInterceptor(CommitInterceptor interceptor) {
+		MongoClient client = mongoService.client();
+		MongoCollection<BsonDocument> raw = client
+			.getDatabase(DB_NAME)
+			.getCollection(COLLECTION_NAME, BsonDocument.class);
+		return TransactionalCollection.of(raw, client, FindInterceptor.identity(), WriteInterceptor.identity(), interceptor);
+	}
+
+	private static MongoException unknownCommitResult() {
+		MongoException e = new MongoException(117, "Simulated unknown commit result");
+		e.addLabel(MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL);
+		return e;
 	}
 
 }

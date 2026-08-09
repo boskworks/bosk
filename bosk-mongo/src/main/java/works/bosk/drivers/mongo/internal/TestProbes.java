@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import java.util.function.UnaryOperator;
+import lombok.With;
 import works.bosk.Bosk;
 import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
 
@@ -34,42 +35,22 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * {@link FindInterceptor}.</li>
  * <li>{@code writeInterceptor}: interposes on database writes; see
  * {@link WriteInterceptor}.</li>
+ * <li>{@code commitInterceptor}: interposes on transaction commits; see
+ * {@link CommitInterceptor}.</li>
  * </ul>
  */
+@With
 record TestProbes(
 	MongoClientFactory clientFactory,
 	UnaryOperator<ChangeListener> listenerFactory,
 	Runnable prePublicationWaitAction,
 	Runnable beforeRefurbishDelete,
 	FindInterceptor findInterceptor,
-	WriteInterceptor writeInterceptor
+	WriteInterceptor writeInterceptor,
+	CommitInterceptor commitInterceptor
 ) {
 	static TestProbes noop() {
-		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity());
-	}
-
-	TestProbes withClientFactory(MongoClientFactory value) {
-		return new TestProbes(value, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, writeInterceptor);
-	}
-
-	TestProbes withListenerFactory(UnaryOperator<ChangeListener> value) {
-		return new TestProbes(clientFactory, value, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, writeInterceptor);
-	}
-
-	TestProbes withPrePublicationWaitAction(Runnable value) {
-		return new TestProbes(clientFactory, listenerFactory, value, beforeRefurbishDelete, findInterceptor, writeInterceptor);
-	}
-
-	TestProbes withBeforeRefurbishDelete(Runnable value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, value, findInterceptor, writeInterceptor);
-	}
-
-	TestProbes withFindInterceptor(FindInterceptor value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, value, writeInterceptor);
-	}
-
-	TestProbes withWriteInterceptor(WriteInterceptor value) {
-		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, findInterceptor, value);
+		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity());
 	}
 
 	private static final Runnable NOOP = () -> {};
