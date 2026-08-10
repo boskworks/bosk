@@ -6,10 +6,12 @@ plugins {
 	alias(libs.plugins.spotbugs) apply false
 }
 
-ext {
-	jdkVersion = 26 // If you bump this, change the CI workflows too
-	minSupportedJavaVersion = 25
-}
+def jdkVersion = providers.gradleProperty("jdkVersion").get().toInteger()
+def minSupportedJavaVersion = providers.gradleProperty("minSupportedJavaVersion").get().toInteger()
+
+// Bind Gradle's injected `libs` accessor to a script-local of the same name.
+def libsShadow = libs
+def libs = libsShadow
 
 java {
 	toolchain {
@@ -261,8 +263,8 @@ configure(subprojects.findAll { it.name.startsWith("bosk-") || it.name == "boson
 				url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
 
 				credentials {
-					username = project.properties['ossrhUsername'] ?: 'bogusUser'
-					password = project.properties['ossrhPassword'] ?: 'bogusPassword'
+					username = providers.gradleProperty("ossrhUsername").getOrElse("bogusUser")
+					password = providers.gradleProperty("ossrhPassword").getOrElse("bogusPassword")
 				}
 			}
 		}
@@ -270,8 +272,8 @@ configure(subprojects.findAll { it.name.startsWith("bosk-") || it.name == "boson
 
 	signing {
 		sign publishing.publications.mavenJava
-		def signingKey = findProperty("signingKey")
-		def signingPassword = findProperty("signingPassword")
+		def signingKey = providers.gradleProperty("signingKey").orNull
+		def signingPassword = providers.gradleProperty("signingPassword").orNull
 		useInMemoryPgpKeys(signingKey, signingPassword)
 	}
 
@@ -288,8 +290,8 @@ nexusPublishing {
 		sonatype {
 			nexusUrl = uri('https://ossrh-staging-api.central.sonatype.com/service/local/')
 			snapshotRepositoryUrl = uri('https://ossrh-staging-api.central.sonatype.com/content/repositories/snapshots/')
-			username = project.properties['ossrhUsername'] ?: 'bogusUser'
-			password = project.properties['ossrhPassword'] ?: 'bogusPassword'
+			username = providers.gradleProperty("ossrhUsername").getOrElse("bogusUser")
+			password = providers.gradleProperty("ossrhPassword").getOrElse("bogusPassword")
 		}
 	}
 }

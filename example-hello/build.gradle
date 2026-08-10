@@ -8,6 +8,9 @@ group = 'works.bosk'
 version = '0.0.1-SNAPSHOT'
 description = 'Bosk example project'
 
+def jdkVersion = providers.gradleProperty("jdkVersion").get().toInteger()
+def minSupportedJavaVersion = providers.gradleProperty("minSupportedJavaVersion").get().toInteger()
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(jdkVersion)
