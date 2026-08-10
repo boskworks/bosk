@@ -548,7 +548,10 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
-					try (var _ = context.withOnly(attributes)) {
+					try (
+						var _ = setupMDC(name(), instanceID());
+						var _ = context.withOnly(attributes)
+					) {
 						try (ReadSession _ = new ReadSession(rootForHook)) {
 							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);

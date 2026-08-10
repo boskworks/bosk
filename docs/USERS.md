@@ -538,6 +538,20 @@ bosk.registerHook("Widget changed", bosk.anyWidget, ref -> {
 The hook call-back occurs inside a read session containing a state snapshot taken immediately after the triggering update occurred.
 This means there are no race conditions between bosk reads in a hook versus other bosk updates happening in parallel.
 
+Hooks run on separate threads from the one that submitted the triggering update,
+and so they do not inherit that thread's MDC.
+The `bosk.name` and `bosk.instanceID` MDC keys are nevertheless established during hook execution,
+just as they are during every driver operation.
+The `BoskContext` diagnostic attributes are propagated into hooks:
+a hook triggered by an update sees the attributes of that update,
+while a hook triggered by registration sees the attributes of the registering thread.
+This is not a bug: diagnostic attributes tell you _how_ something happened, not merely _that_ it happened,
+so the same hook can legitimately observe different attributes depending on what triggered it.
+Hooks must therefore not depend on the presence or values of specific attributes.
+If a hook needs information to be available on every invocation,
+that information belongs in the bosk state tree, which the hook's read session makes accessible,
+rather than in the diagnostic attributes.
+
 If a single update triggers multiple hooks, the hooks will run in the order they were registered.
 
 #### Breadth-first ordering

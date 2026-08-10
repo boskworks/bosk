@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.concurrent.Semaphore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.testing.drivers.AbstractDriverTest;
 import works.bosk.testing.drivers.DriverConformanceTest;
@@ -14,6 +15,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static works.bosk.logging.MdcKeys.BOSK_INSTANCE_ID;
+import static works.bosk.logging.MdcKeys.BOSK_NAME;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -48,6 +51,20 @@ public class BoskContextTest extends AbstractDriverTest {
 		}
 		bosk.driver().flush();
 		assertTrue(diagnosticsVerified.tryAcquire(5, SECONDS));
+	}
+
+	@Test
+	void hook_executionEstablishesBoskMdc() throws IOException, InterruptedException {
+		Semaphore mdcVerified = new Semaphore(0);
+		bosk.driver().flush();
+		bosk.hookRegistrar().registerHook("mdcIsSetInHook", bosk.rootReference(), _ -> {
+			assertEquals(bosk.name(), MDC.get(BOSK_NAME));
+			assertEquals(bosk.instanceID().toString(), MDC.get(BOSK_INSTANCE_ID));
+			mdcVerified.release();
+		});
+		bosk.driver().flush();
+		assertTrue(mdcVerified.tryAcquire(5, SECONDS),
+			"Hook should see the bosk MDC keys established during its execution");
 	}
 
 	@Test
