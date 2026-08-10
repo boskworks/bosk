@@ -14,6 +14,7 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import lombok.With;
 import org.bson.BsonBoolean;
@@ -69,6 +70,7 @@ import static java.lang.System.currentTimeMillis;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -329,6 +331,82 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			latecomerActual = latecomerBosk.rootReference().value();
 		}
 		assertEquals(expected, latecomerActual);
+	}
+
+	@Test
+	@DisruptsMongoProxy
+	void hookInterrupted_whenReceiverDisconnects() throws InvalidTypeException, InterruptedException, IOException {
+		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		Refs refs = bosk.buildReferences(Refs.class);
+		BoskDriver driver = bosk.driver();
+
+		CountDownLatch hookStarted = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CountDownLatch hookInterrupted = new CountDownLatch(1);
+
+		// The hook is registered on a listing entry that doesn't exist yet, so registering
+		// it doesn't fire the hook; the submit that creates the entry triggers it.
+		bosk.hookRegistrar().registerHook("blocking", refs.listingEntry(entity124), ref -> {
+			hookStarted.countDown();
+			try {
+				gate.await();
+			} catch (InterruptedException e) {
+				hookInterrupted.countDown();
+			}
+		});
+
+		LOGGER.debug("Wait till MongoDB is up and running");
+		driver.flush();
+
+		LOGGER.debug("Submit an update that triggers the blocking hook");
+		driver.submitReplacement(refs.listingEntry(entity124), LISTING_ENTRY);
+
+		boolean started = hookStarted.await(30, SECONDS);
+		assertTrue(started, "The hook must start running");
+
+		LOGGER.debug("Cut connection and submit an update that fails, disconnecting the driver");
+		mongoService.cutConnection();
+		tearDownActions.add(() -> mongoService.restoreConnection());
+
+		// The submit runs on a worker thread because, once it triggers the disconnect,
+		// it blocks waiting for the receiver to reconnect.
+		AtomicReference<Throwable> submitFailure = new AtomicReference<>();
+		Thread submitter = new Thread(() -> {
+			try {
+				driver.submitReplacement(refs.listingEntry(entity124), LISTING_ENTRY);
+			} catch (Throwable t) {
+				submitFailure.set(t);
+			}
+		});
+		submitter.start();
+
+		boolean interrupted = hookInterrupted.await(30, SECONDS);
+		assertTrue(interrupted, "The running hook must receive the interrupt when the receiver disconnects");
+
+		LOGGER.debug("Reestablish connection");
+		mongoService.restoreConnection();
+
+		driver.flush();
+		submitter.join(30_000);
+		assertFalse(submitter.isAlive(), "The submit that triggered the disconnect must complete after recovery");
+		Throwable failure = submitFailure.get();
+		if (failure != null) {
+			throw new AssertionError("Submit during outage failed unexpectedly", failure);
+		}
+
+		TestEntity expected = initialRoot(bosk)
+			.withListing(Listing.of(refs.catalog(), entity123, entity124));
+		TestEntity actual;
+		try (var _ = bosk.readSession()) {
+			actual = bosk.rootReference().value();
+		}
+		assertEquals(expected, actual, "The bosk must recover and converge to the expected state");
 	}
 
 	@Test

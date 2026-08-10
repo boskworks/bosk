@@ -20,6 +20,7 @@
 
 	<!-- This emits warnings that matter in production but not in tests -->
 	<logger name="works.bosk.drivers.mongo.MongoDriver.uninitializedCollection" level="ERROR"/>
+	<logger name="works.bosk.Bosk.hooks" level="ERROR"/>
 
 	<!-- How to add more tracing during unit tests
 	<logger name="works.bosk" level="INFO"/>

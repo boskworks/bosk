@@ -12,8 +12,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -95,7 +94,6 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	private final Thread.Builder hookThreadBuilder = Thread
 		.ofVirtual()
 		.name("bosk-hook-", 1);
-	private final ExecutorService hookExecutor = Executors.newThreadPerTaskExecutor(hookThreadBuilder::unstarted);
 
 	/**
 	 * Mutable state.
@@ -545,7 +543,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
 			MapValue<String> attributes = context.getAttributes();
 			reg.triggerAction(priorRoot, rootForHook, target, changedRef -> {
-				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
+				HOOK_LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
 					try (
@@ -553,19 +551,19 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 						var _ = context.withOnly(attributes)
 					) {
 						try (ReadSession _ = new ReadSession(rootForHook)) {
-							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
+							HOOK_LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);
 						} catch (InterruptedException e) {
-							LOGGER.warn("Bosk hook \"{}\" was interrupted; proceeding", reg.name(), e);
+							HOOK_LOGGER.warn("Bosk hook \"{}\" was interrupted; proceeding", reg.name(), e);
 						} catch (RuntimeException e) {
-							LOGGER.error("Bosk hook \"{}\" terminated with an exception, which usually indicates a bug. State updates may have been lost", reg.name(), e);
+							HOOK_LOGGER.error("Bosk hook \"{}\" terminated with an exception, which usually indicates a bug. State updates may have been lost", reg.name(), e);
 
 							// Note that we don't catch Error. The practical reason is to allow users to write
 							// unit tests that throw AssertionError from hooks, but the bigger reason is that
 							// Errors indicate that something has gone dreadfully wrong, and we probably should
 							// not attempt to continue.
 						} finally {
-							LOGGER.debug("Hook: end {}({})", reg.name, changedRef);
+							HOOK_LOGGER.debug("Hook: end {}({})", reg.name, changedRef);
 						}
 					}
 				});
@@ -603,24 +601,46 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 			do {
 				if (hookExecutionPermit.tryAcquire()) {
 					try {
-						for (Runnable ex = hookExecutionQueue.pollFirst(); ex != null; ex = hookExecutionQueue.pollFirst()) {
+						while (true) {
+							// An interrupt means "stop"; quit before starting another hook,
+							// leaving the remaining queued hooks for a later update.
+							if (Thread.currentThread().isInterrupted()) {
+								HOOK_LOGGER.debug("Interrupted; deferring the remaining queued hooks");
+								return;
+							}
+							Runnable ex = hookExecutionQueue.pollFirst();
+							if (ex == null) {
+								break;
+							}
 							// Run the task in a separate virtual thread to prevent ThreadLocals from propagating.
 							// This is slightly tragic, because usually ThreadLocal propagation works just the
 							// way we'd want, but not always. Given the choices "always, sometimes, never", if
 							// we can't achieve "always", then the bosk philosophy prefers "never" over "sometimes".
-							hookExecutor.submit(ex).get();
+							FutureTask<Void> task = new FutureTask<>(ex, null);
+							Thread hookThread = hookThreadBuilder.start(task);
+							try {
+								task.get();
+							} catch (ExecutionException e) {
+								try {
+									throw e.getCause();
+								} catch (RuntimeException | Error cause) {
+									throw cause;
+								} catch (Throwable t) {
+									throw new AssertionError("Hook runnable should catch and wrap checked exceptions", t);
+								}
+							} catch (InterruptedException e) {
+								// The interrupt is intended for the hook work in flight here.
+								// Deliver it to the running hook, per the BoskHook contract,
+								// and await its termination before proceeding. This is intended
+								// to mimic structured concurrency (StructuredTaskScope.close()):
+								// cancel the in-flight subtasks and wait for them to terminate.
+								hookThread.interrupt();
+								awaitTermination(hookThread);
+								Thread.currentThread().interrupt();
+								HOOK_LOGGER.warn("Interrupted while running hooks; the running hook was interrupted and terminated, and the remaining queued hooks are deferred to the next update", e);
+								return;
+							}
 						}
-					} catch (ExecutionException e) {
-						if (e.getCause() instanceof RuntimeException r) {
-							throw r;
-						} else if (e.getCause() instanceof Error error) {
-							throw error;
-						} else {
-							throw new AssertionError("Hook runnable should catch and wrap checked exceptions", e);
-						}
-					} catch (InterruptedException e) {
-						LOGGER.warn("Interrupted while running hooks", e);
-						return;
 					} finally {
 						hookExecutionPermit.release();
 					}
@@ -658,6 +678,22 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 				// succeed in acquiring the permit and will itself drain the queue.
 
 			} while (!hookExecutionQueue.isEmpty());
+		}
+
+		/**
+		 * Wait for the given hook thread to terminate. If this (the draining) thread is
+		 * interrupted while waiting, keep waiting: the interrupt has already been delivered
+		 * to the hook, and proceeding without it would leave the hook running orphaned.
+		 */
+		private void awaitTermination(Thread hookThread) {
+			while (true) {
+				try {
+					hookThread.join();
+					return;
+				} catch (InterruptedException e) {
+					// Keep waiting; the interrupt has been delivered to the hook already.
+				}
+			}
 		}
 
 		@Override
@@ -1460,5 +1496,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		return (Class) EnumerableByIdentifier.class;
 	}
 
+	/**
+	 * Logger name for hook execution specifically, so that hook-execution warnings can be
+	 * selectively suppressed (for example in tests) without affecting other bosk logs.
+	 */
+	public static final String HOOK_LOGGER_NAME = Bosk.class.getName() + ".hooks";
+
 	private static final Logger LOGGER = LoggerFactory.getLogger(Bosk.class);
+	private static final Logger HOOK_LOGGER = LoggerFactory.getLogger(HOOK_LOGGER_NAME);
 }
