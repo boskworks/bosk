@@ -336,7 +336,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	@Test
 	@DisruptsMongoProxy
 	void hookInterrupted_whenReceiverDisconnects() throws InvalidTypeException, InterruptedException, IOException {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class, Bosk.class);
+		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),

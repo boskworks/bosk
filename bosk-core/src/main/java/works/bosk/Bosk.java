@@ -543,7 +543,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
 			MapValue<String> attributes = context.getAttributes();
 			reg.triggerAction(priorRoot, rootForHook, target, changedRef -> {
-				LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
+				HOOK_LOGGER.debug("Hook: queue {}({}) due to {}", reg.name, changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
 					try (
@@ -551,19 +551,19 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 						var _ = context.withOnly(attributes)
 					) {
 						try (ReadSession _ = new ReadSession(rootForHook)) {
-							LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
+							HOOK_LOGGER.debug("Hook: RUN {}({})", reg.name, changedRef);
 							reg.hook.onChanged(changedRef);
 						} catch (InterruptedException e) {
-							LOGGER.warn("Bosk hook \"{}\" was interrupted; proceeding", reg.name(), e);
+							HOOK_LOGGER.warn("Bosk hook \"{}\" was interrupted; proceeding", reg.name(), e);
 						} catch (RuntimeException e) {
-							LOGGER.error("Bosk hook \"{}\" terminated with an exception, which usually indicates a bug. State updates may have been lost", reg.name(), e);
+							HOOK_LOGGER.error("Bosk hook \"{}\" terminated with an exception, which usually indicates a bug. State updates may have been lost", reg.name(), e);
 
 							// Note that we don't catch Error. The practical reason is to allow users to write
 							// unit tests that throw AssertionError from hooks, but the bigger reason is that
 							// Errors indicate that something has gone dreadfully wrong, and we probably should
 							// not attempt to continue.
 						} finally {
-							LOGGER.debug("Hook: end {}({})", reg.name, changedRef);
+							HOOK_LOGGER.debug("Hook: end {}({})", reg.name, changedRef);
 						}
 					}
 				});
@@ -605,7 +605,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 							// An interrupt means "stop"; quit before starting another hook,
 							// leaving the remaining queued hooks for a later update.
 							if (Thread.currentThread().isInterrupted()) {
-								LOGGER.debug("Interrupted; deferring the remaining queued hooks");
+								HOOK_LOGGER.debug("Interrupted; deferring the remaining queued hooks");
 								return;
 							}
 							Runnable ex = hookExecutionQueue.pollFirst();
@@ -637,7 +637,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 								hookThread.interrupt();
 								awaitTermination(hookThread);
 								Thread.currentThread().interrupt();
-								LOGGER.warn("Interrupted while running hooks; the running hook was interrupted and terminated, and the remaining queued hooks are deferred to the next update", e);
+								HOOK_LOGGER.warn("Interrupted while running hooks; the running hook was interrupted and terminated, and the remaining queued hooks are deferred to the next update", e);
 								return;
 							}
 						}
@@ -1496,5 +1496,12 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 		return (Class) EnumerableByIdentifier.class;
 	}
 
+	/**
+	 * Logger name for hook execution specifically, so that hook-execution warnings can be
+	 * selectively suppressed (for example in tests) without affecting other bosk logs.
+	 */
+	public static final String HOOK_LOGGER_NAME = Bosk.class.getName() + ".hooks";
+
 	private static final Logger LOGGER = LoggerFactory.getLogger(Bosk.class);
+	private static final Logger HOOK_LOGGER = LoggerFactory.getLogger(HOOK_LOGGER_NAME);
 }
