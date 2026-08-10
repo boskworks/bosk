@@ -7,30 +7,30 @@ import works.bosk.Reference;
 import works.bosk.RegistrarFactory;
 
 /**
- * {@link HookRegistrar} that propagates OpenTelemetry context from
+ * {@link HookRegistrar} that propagates trace context from
  * the diagnostic attributes in the {@link BoskContext bosk context}
  * into hooks.
  * <p>
  * Thread-locals are not automatically propagated into hooks,
- * and so OpenTelemetry context must be explicitly propagated.
- * This registrar retrieves diagnostic attributes placed there by {@link OpenTelemetryDriver}
- * and propagate them into hooks.
+ * and so trace context must be explicitly propagated.
+ * This registrar retrieves diagnostic attributes placed there by {@link TraceContextDriver}
+ * and propagates them into hooks.
  */
-public final class OpenTelemetryRegistrar implements HookRegistrar {
+public final class TraceContextRegistrar implements HookRegistrar {
 	final BoskContext context;
 	final HookRegistrar downstream;
 
-	OpenTelemetryRegistrar(BoskContext context, HookRegistrar downstream) {
+	TraceContextRegistrar(BoskContext context, HookRegistrar downstream) {
 		this.context = context;
 		this.downstream = downstream;
 	}
 
 	/**
-	 * @return a {@link HookRegistrar} that propagates OpenTelemetry context
+	 * @return a {@link HookRegistrar} that propagates trace context
 	 * from the diagnostic attributes in the {@link BoskContext bosk context} into hooks.
 	 */
 	public static RegistrarFactory factory() {
-		return (b,d) -> new OpenTelemetryRegistrar(b.context(), d);
+		return (b,d) -> new TraceContextRegistrar(b.context(), d);
 	}
 
 	@Override

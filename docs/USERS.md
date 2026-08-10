@@ -538,6 +538,20 @@ bosk.registerHook("Widget changed", bosk.anyWidget, ref -> {
 The hook call-back occurs inside a read session containing a state snapshot taken immediately after the triggering update occurred.
 This means there are no race conditions between bosk reads in a hook versus other bosk updates happening in parallel.
 
+Hooks run on separate threads from the one that submitted the triggering update,
+and so they do not inherit that thread's MDC.
+The `bosk.name` and `bosk.instanceID` MDC keys are nevertheless established during hook execution,
+just as they are during every driver operation.
+The `BoskContext` diagnostic attributes are propagated into hooks:
+a hook triggered by an update sees the attributes of that update,
+while a hook triggered by registration sees the attributes of the registering thread.
+This is not a bug: diagnostic attributes tell you _how_ something happened, not merely _that_ it happened,
+so the same hook can legitimately observe different attributes depending on what triggered it.
+Hooks must therefore not depend on the presence or values of specific attributes.
+If a hook needs information to be available on every invocation,
+that information belongs in the bosk state tree, which the hook's read session makes accessible,
+rather than in the diagnostic attributes.
+
 If a single update triggers multiple hooks, the hooks will run in the order they were registered.
 
 #### Breadth-first ordering
@@ -655,6 +669,45 @@ The `DriverFactory` and `DriverStack` classes make this a one-line change.
 
 All of this might appear a bit abstract, but the upshot is that your drivers can snap together like Lego.
 
+#### Troubleshooting concerns
+
+##### Logging
+
+All bosk drivers set the `bosk.name` and `bosk.instanceID` keys in SLF4J's Mapped Diagnostic Context (MDC)
+for the duration of every driver operation, so that log output can be traced back to the bosk performing the work.
+The keys always reflect the bosk doing the logging, namely the _local_ bosk,
+no matter which thread or process the work happens on.
+
+For most drivers, this happens automatically, with no effort on the part of the driver:
+the bosk's `IngressDriver` establishes the keys on the calling thread,
+and a driver that performs its downstream calls synchronously on the calling thread simply inherits them.
+A driver that performs some of its work on its own background threads, such as `MongoDriver` or `SQLDriver`,
+must re-establish the keys on those threads.
+
+The driver conformance tests verify that these keys are present during every incoming and outgoing driver operation.
+
+You can include these keys in your logging configuration;
+for example, using Logback, you can add `%X{bosk.name}` to your appender's encoder pattern.
+
+MDC is intended for logging, not for propagating context between threads or hosts.
+
+##### Diagnostic attributes
+
+The `BoskContext` diagnostic attributes are for instrumentation and troubleshooting:
+they describe _how_ something happened, and are not guaranteed to be present in every context
+(for example, hooks triggered at registration time have no operation context).
+Do not use them to carry application data that your code depends on, such as tenant or user IDs;
+information that must be reliably available belongs in the bosk state tree.
+
+For most drivers, the diagnostic attributes flow through without any special effort:
+a driver that calls its downstream driver synchronously on the calling thread passes them along automatically.
+A driver needs to make a special effort when it does not perform the update's work
+on the calling thread at the time of submission.
+This includes deferring the work until later, running it on another thread,
+or sending it to another process or host.
+Such a driver must capture the attributes when the update is submitted
+and restore them when the work is performed.
+
 #### Built-in drivers
 
 Some handy drivers ship with the `bosk-core` module.
@@ -753,13 +806,16 @@ Additional detail is available at higher logging levels:
 `DEBUG` is more likely to be useful for the maintainers of the bosk library.
 (`TRACE` can produce a large amount of output and isn't generally recommended for production.)
 
-The logs make use of the Mapped Diagnostic Context (MDC) feature of SLF4J to provide
-several MDC keys with `MongoDriver` as a prefix.
-If you might find this useful, you can configure your logging system to emit this key;
-for example, using Logback, you can add `%X{MongoDriver}` to your appender's encoder pattern.
-When present, the string associated with the `MongoDriver` MDC key always starts with a single space character,
-so you can append it to your existing log strings with no whitespace,
-meaning it takes up no space at all when it's not present.
+The logs make use of the Mapped Diagnostic Context (MDC) feature of SLF4J.
+The `bosk.name` and `bosk.instanceID` MDC keys are set automatically by all bosk drivers
+for the duration of every driver operation (see _Drivers_ above),
+so log output can be traced back to a particular bosk.
+
+`MongoDriver` also provides two driver-specific MDC keys:
+- `bosk.MongoDriver.event`: a unique string for each MongoDB change event the bosk receives.
+- `bosk.MongoDriver.transaction`: a unique string for each MongoDB `ClientSession` the driver uses.
+
+You can include these in your encoder pattern as well, for example `%X{bosk.MongoDriver.event}`.
 
 ##### Database format & layout
 

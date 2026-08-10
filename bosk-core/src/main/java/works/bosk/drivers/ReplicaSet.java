@@ -19,6 +19,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.Objects.requireNonNull;
+import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
  * A pool of bosks arranged such that submitting an update to any of them submits to all of them.
@@ -222,7 +223,8 @@ public class ReplicaSet<R extends StateTreeNode> {
 			var diagnosticContext = originContext.getAttributes();
 			replicas.forEach(replica -> {
 				try (
-					var _ = replica.boskInfo.context().withOnly(diagnosticContext)
+					var _ = replica.boskInfo.context().withOnly(diagnosticContext);
+					var _ = setupMDC(replica.boskInfo.name(), replica.boskInfo.instanceID())
 				) {
 					action.accept(replica);
 				}

@@ -22,7 +22,7 @@ import works.bosk.drivers.BufferingDriver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class OpenTelemetryDriverTest {
+class TraceContextDriverTest {
 
 	private static OpenTelemetrySdk openTelemetry;
 
@@ -44,7 +44,7 @@ class OpenTelemetryDriverTest {
 	@Test
 	void wrapping_propagatesTraceId() throws InterruptedException, IOException {
 		DriverFactory<Root> driverFactory = DriverStack.of(
-			OpenTelemetryDriver.wrapping(
+			TraceContextDriver.wrapping(
 				// Use a driver that does not call its downstream driver synchronously on the same thread
 				// so that the OpenTelemetry thread context is not propagated implicitly.
 				// Otherwise, this isn't much of a test.
@@ -57,7 +57,7 @@ class OpenTelemetryDriverTest {
 			_ -> new Root(0),
 			BoskConfig.<Root>builder()
 				.driverFactory(driverFactory)
-				.registrarFactory(OpenTelemetryRegistrar.factory())
+				.registrarFactory(TraceContextRegistrar.factory())
 				.build());
 		record Observation(int revision, String traceID) { }
 		BlockingQueue<Observation> observations = new LinkedBlockingQueue<>();

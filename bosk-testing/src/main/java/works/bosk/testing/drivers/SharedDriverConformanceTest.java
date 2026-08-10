@@ -26,7 +26,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 			TestEntity.class,
 			this::initialState,
 			BoskConfig.<TestEntity>builder()
-				.driverFactory(driverFactory)
+				.driverFactory(MdcCheckingDriver.wrap(driverFactory))
 				.build());
 	}
 
@@ -40,7 +40,7 @@ public abstract class SharedDriverConformanceTest extends DriverConformanceTest 
 			TestEntity.class,
 			this::initialState,
 			BoskConfig.<TestEntity>builder()
-				.driverFactory(driverFactory)
+				.driverFactory(MdcCheckingDriver.wrap(driverFactory))
 				.build());
 		assertSameBoskContents(latecomer);
 	}

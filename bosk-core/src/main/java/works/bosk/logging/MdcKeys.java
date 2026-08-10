@@ -5,8 +5,14 @@ import works.bosk.Bosk;
 /**
  * Keys to use for SLF4J's Mapped Diagnostic Context.
  * <p>
- * Evolution note: we're going to want to get organized in how we generate MDC.
- * For now, only bosk-mongo uses these.
+ * {@link #BOSK_NAME} and {@link #BOSK_INSTANCE_ID} are established for the duration of every
+ * driver operation and every hook call-back, and re-established by drivers on their own
+ * background threads, so that log output can be attributed to the bosk performing the work.
+ * The keys are always set to the values of the bosk doing the logging,
+ * regardless of which thread or process performs the operation;
+ * MDC is for logging, not for propagating context between threads or hosts.
+ * <p>
+ * The {@code bosk.MongoDriver.*} keys are specific to {@code bosk-mongo}.
  */
 public final class MdcKeys {
 	/**
