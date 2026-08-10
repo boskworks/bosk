@@ -10,19 +10,19 @@ import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
 
 /**
- * Propagates OpenTelemetry context from the diagnostic attributes
+ * Propagates trace context from the diagnostic attributes
  * in the {@link BoskContext bosk context} into the downstream driver.
  */
-final class ReceiverDriver implements OpenTelemetryDriver {
+final class TraceContextReceiverDriver implements TraceContextDriver {
 
 	private final BoskContext context;
 	private final BoskDriver downstream;
 
 	public static <R extends StateTreeNode> DriverFactory<R> factory() {
-		return (b, d) -> new ReceiverDriver(b.context(), d);
+		return (b, d) -> new TraceContextReceiverDriver(b.context(), d);
 	}
 
-	ReceiverDriver(BoskContext diagnosticContext1, BoskDriver downstream) {
+	TraceContextReceiverDriver(BoskContext diagnosticContext1, BoskDriver downstream) {
 		this.context = diagnosticContext1;
 		this.downstream = downstream;
 	}

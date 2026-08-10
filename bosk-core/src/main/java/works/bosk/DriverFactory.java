@@ -11,7 +11,7 @@ package works.bosk;
  * in a predictable and composable way
  * with little or no coordination or even awareness of each other.
  * Concerns like database persistence ({@code MongoDriver}, {@code SqlDriver}),
- * observability ({@code OpenTelemetryDriver}, {@code ReportingDriver}),
+ * observability ({@code TraceContextDriver}, {@code ReportingDriver}),
  * and context propagation ({@code ContextScopeDriver})
  * can each be implemented as orthogonal drivers.
  *

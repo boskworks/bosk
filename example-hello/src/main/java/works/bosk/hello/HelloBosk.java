@@ -15,7 +15,7 @@ import works.bosk.hello.state.BoskState;
 import works.bosk.hello.state.Target;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.logback.BoskLogFilter.LogController;
-import works.bosk.opentelemetry.OpenTelemetryDriver;
+import works.bosk.opentelemetry.TraceContextDriver;
 
 @Component
 public class HelloBosk extends Bosk<BoskState> {
@@ -34,7 +34,7 @@ public class HelloBosk extends Bosk<BoskState> {
 	private static DriverFactory<BoskState> driverFactory(LogController logController) {
 		return DriverStack.of(
 			BoskLogFilter.withController(logController),
-			OpenTelemetryDriver.wrapping(
+			TraceContextDriver.wrapping(
 				ForwardingDriver.factory()
 //				BufferingDriver.factory() // Defer operations to try to mix up the OTel context
 			)

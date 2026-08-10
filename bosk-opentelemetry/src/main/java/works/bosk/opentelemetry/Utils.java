@@ -20,7 +20,6 @@ class Utils {
 	 * Future-proof this putting the attributes under a sub-prefix so we can evolve this later.
 	 */
 	static final String W3C_SUB_PREFIX = "w3c.";
-
 	/**
 	 * On the setter side, we'll be given plain old OTel keys and need to add the prefixes.
 	 * We add {@link #W3C_SUB_PREFIX} to them here, and then the {@link #OTEL_PREFIX} prefix
@@ -59,7 +58,7 @@ class Utils {
 				if (k.startsWith(OTEL_PREFIX + W3C_SUB_PREFIX)) {
 					otelAttributes.put(k.substring(OTEL_PREFIX.length() + W3C_SUB_PREFIX.length()), v);
 				} else {
-					throw new IllegalStateException("Only w3c context propagation is supported; unexpected OpenTelemetry key from diagnostic context: " + k);
+					throw new IllegalStateException("Unexpected OpenTelemetry key from diagnostic context: " + k);
 				}
 			}
 		});
@@ -68,11 +67,11 @@ class Utils {
 	}
 
 	/**
-	 * Stashes OpenTelemetry context into the
+	 * Stashes trace context into the
 	 * diagnostic attributes in the {@link BoskContext bosk context},
 	 * where it can be retrieved by
-	 * {@link ReceiverDriver} to propagate the context downstream,
-	 * and by {@link OpenTelemetryRegistrar} to propagate the context into hooks.
+	 * {@link TraceContextReceiverDriver} to propagate the context downstream,
+	 * and by {@link TraceContextRegistrar} to propagate the context into hooks.
 	 */
 	static BoskContext.ContextScope boskContextScopeWithDiagnosticsFromCurrentSpan(BoskContext boskContext) {
 		return boskContext.withReplacedPrefix(OTEL_PREFIX, w3cContextFromCurrentSpan());

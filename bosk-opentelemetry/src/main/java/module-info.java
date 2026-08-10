@@ -1,15 +1,15 @@
 /**
- * Provides OpenTelemetry context propagation for Bosk.
+ * Provides OpenTelemetry integration for Bosk, including trace context propagation.
  * <p>
  * To use this, configure your bosk instance to do the following two things:
  * <ol>
  *     <li>
- *         Use {@link works.bosk.opentelemetry.OpenTelemetryDriver#wrapping} on any driver
+ *         Use {@link works.bosk.opentelemetry.TraceContextDriver#wrapping} on any driver
  *         that does not implicitly propagate thread context by calling its downstream driver
  *         synchronously on the same thread.
  *     </li>
  *     <li>
- *         Use {@link works.bosk.opentelemetry.OpenTelemetryRegistrar#factory()}.
+ *         Use {@link works.bosk.opentelemetry.TraceContextRegistrar#factory()}.
  *     </li>
  * </ol>
  */
