@@ -6,6 +6,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -25,10 +26,13 @@ import static java.lang.Thread.currentThread;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static works.bosk.BoskConfig.simpleDriver;
 
@@ -117,6 +121,40 @@ public class HooksTest extends AbstractBoskTest {
 		});
 		String observed = queue.take();
 		assertEquals("initial", observed, "Thread locals should not propagate into hooks");
+	}
+
+	@Test
+	void hookInterrupted_whenSubmittingThreadInterrupted() throws InterruptedException {
+		CountDownLatch hookStarted = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CountDownLatch hookInterrupted = new CountDownLatch(1);
+		AtomicBoolean hookTerminated = new AtomicBoolean(false);
+
+		// The hook is registered on a child that doesn't exist yet, so registering it
+		// doesn't fire the hook; the submit that creates the child is what triggers it.
+		Identifier newChildID = Identifier.from("newChild");
+		bosk.hookRegistrar().registerHook("blocking", refs.child(newChildID), ref -> {
+			hookStarted.countDown();
+			try {
+				gate.await();
+			} catch (InterruptedException e) {
+				hookInterrupted.countDown();
+			} finally {
+				hookTerminated.set(true);
+			}
+		});
+
+		Thread submitter = new Thread(() ->
+			bosk.driver().submitReplacement(refs.child(newChildID),
+				new TestChild(newChildID, "newChild", TestEnum.OK, Catalog.empty())));
+		submitter.start();
+
+		assertTrue(hookStarted.await(10, SECONDS), "The hook must start running");
+		submitter.interrupt();
+		assertTrue(hookInterrupted.await(10, SECONDS), "The running hook must receive the interrupt");
+		submitter.join(10_000);
+		assertFalse(submitter.isAlive(), "submitReplacement must return after the hook is interrupted");
+		assertTrue(hookTerminated.get(), "The hook must terminate before submitReplacement returns");
 	}
 
 	@ParameterizedTest

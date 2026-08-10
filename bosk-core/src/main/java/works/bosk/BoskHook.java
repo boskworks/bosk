@@ -2,6 +2,11 @@ package works.bosk;
 
 /**
  * Called to indicate the hook's "scope object" may have been modified.
+ * <p>
+ * Hooks run on their own virtual thread. If the bosk machinery that runs a hook is
+ * interrupted (for example, because a driver is shutting down or disconnecting),
+ * bosk delivers the interrupt to the running hook so it can stop promptly;
+ * implementations should therefore be written to respond to interruption.
  */
 public interface BoskHook<T> {
 	/**
