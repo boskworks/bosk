@@ -1,4 +1,13 @@
 
+configurations {
+	testImplementation {
+		// Spring Boot's test starters bring in Mockito, but we don't use it.
+		// Its mere presence triggers Mockito's self-attach warning and a JVM
+		// class-data-sharing warning, so exclude it to keep test output clean.
+		exclude group: 'org.mockito'
+	}
+}
+
 dependencies {
 	api project(":bosk-jackson")
 	implementation libs.spring.boot.starter.webmvc
