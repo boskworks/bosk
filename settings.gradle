@@ -1,4 +1,8 @@
 
+// Adopt Gradle 10 semantics early: fail fast if build logic relies on implicit lookup
+// of properties or methods in parent projects.
+enableFeaturePreview("NO_IMPLICIT_LOOKUP_IN_PARENT_PROJECTS")
+
 rootProject.name = 'bosk'
 
 include 'bosk-annotations'
