@@ -255,19 +255,6 @@ configure(subprojects.findAll { it.name.startsWith("bosk-") || it.name == "boson
 				}
 			}
 		}
-
-		repositories {
-			maven {
-				def releasesRepoUrl = 'https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/'
-				def snapshotsRepoUrl = 'https://ossrh-staging-api.central.sonatype.com/content/repositories/snapshots/'
-				url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
-
-				credentials {
-					username = providers.gradleProperty("ossrhUsername").getOrElse("bogusUser")
-					password = providers.gradleProperty("ossrhPassword").getOrElse("bogusPassword")
-				}
-			}
-		}
 	}
 
 	signing {
