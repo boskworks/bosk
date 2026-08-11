@@ -119,7 +119,12 @@ public class BosonSerializer extends StateTreeSerializer {
 
 				@Override
 				public Catalog<E> fromRepresentation(Collection<MapEntry<E>> representation) {
-					// TODO: validate ids?
+					for (MapEntry<E> entry: representation) {
+						Identifier valueID = entry.value().id();
+						if (!entry.id().equals(valueID)) {
+							throw new JsonContentException("Catalog entry ID mismatch: " + entry.id() + " vs " + valueID);
+						}
+					}
 					return Catalog.of(representation.stream().map(MapEntry::value));
 				}
 			})

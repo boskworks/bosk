@@ -27,6 +27,7 @@ import works.bosk.annotations.VariantCaseMap;
 import works.bosk.boson.codec.Codec;
 import works.bosk.boson.codec.CodecBuilder;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
+import works.bosk.boson.exceptions.JsonProcessingException;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.types.DataType;
@@ -34,6 +35,7 @@ import works.bosk.boson.types.TypeReference;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class BosonSerializerTest {
 
@@ -174,5 +176,17 @@ public class BosonSerializerTest {
 	}
 
 	public record VariantCase1(@Self Reference<VariantCase1> self, String stringField) implements Variant { }
+
+	@Test
+	void catalogEntryKeyMismatch_throws() throws InvalidTypeException {
+		// The JSON member name is the catalog key, so it must agree with the entry's own id.
+		// Otherwise the entry would be silently re-keyed by its id, discarding the key.
+		var parser = codec.parserFor(typeMap.get(DataType.of(new TypeReference<Catalog<Key>>(){})));
+		assertThrows(JsonProcessingException.class, () -> parser.parse(new CharArrayJsonReader(
+			"""
+			[{"w1": {"id": "w2"}}]
+			""".toCharArray()
+		)));
+	}
 
 }
