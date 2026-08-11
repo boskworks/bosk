@@ -92,6 +92,12 @@ When declaring `throws` on a method, use the specific exception type(s), not a s
 This applies to test methods too: declaring `throws Exception` is not a good habit
 and we don't want examples of that in the code.
 
+When a method's checked exceptions are expressed as generic type parameters (e.g. `throws X, Y`),
+javac won't allow a dedicated `catch` clause for a specific checked exception such as `InterruptedException`,
+because it can't prove the type parameter could be that exception.
+The workaround (catch a broader type and test with `instanceof`) is straightforward;
+just be sure to add a brief comment explaining the situation.
+
 Don't delete unused constructors of Exception subclasses.
 We typically provide a suite of constructors so future maintainers won't need to wonder if they're
 breaking some implicit design rule by adding a new exception that wasn't there before.
@@ -133,6 +139,7 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 - Each commit should have correct spotless formatting.
 - Each commit should pass all tests unless it's marked as WIP or is explicitly doing test-driven development.
 - For multi-line commit messages, the first line (the summary) should end with a period.
+- Single-line commit messages should not end with a period.
 
 ## Test Coding Patterns
 
@@ -182,6 +189,9 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 ### Miscellaneous
 
 - Keep entries in `gradle/libs.versions.toml` alphabetized within each section.
+- Alert the user to leftover branches that may be stale; it's valuable. But first fetch the relevant
+  remote and confirm the branch isn't already merged into `upstream/main` (e.g. `git branch --no-merged upstream/main`).
+  Feel free to `git fetch` any remote.
 
 ## Notes
 
