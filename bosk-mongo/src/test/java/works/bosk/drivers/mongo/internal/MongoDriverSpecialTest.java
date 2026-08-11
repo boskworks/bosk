@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
+import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
@@ -95,6 +96,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	 * and we want this test to fail.
 	 */
 	public static final String MANIFEST_ID = "!Manifest";
+
+	private static final String DISCONNECT_PROBE_ID = "disconnectProbe";
 
 	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
 
@@ -1148,18 +1151,20 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		// the healthy driver that was just published.
 		//
 		// We use the writeInterceptor to hold the operation's write in flight, force a
-		// disconnect and recovery (by deleting and re-creating the manifest document), and only
-		// then fail the write. With the buggy code, that failure triggers setDisconnectedDriver,
-		// which disconnects the just-recovered driver and forces yet another disconnect/reconnect
-		// cycle. With the fix, the failure is recognized as stale, the recovered driver survives,
-		// and the operation succeeds by retrying right away.
+		// disconnect and recovery, and only then fail the write. The disconnect is forced by
+		// arming the listener to reject the next change event (a benign write to a scratch
+		// document), rather than by corrupting the database. With the buggy code, the failure
+		// triggers setDisconnectedDriver, which disconnects the just-recovered driver and forces
+		// yet another disconnect/reconnect cycle. With the fix, the failure is recognized as
+		// stale, the recovered driver survives, and the operation succeeds by retrying right away.
 		//
 		//   Application thread            ChangeReceiver thread
 		//   ------------------            ---------------------
 		//   submitReplacement
 		//     -> writeInterceptor
-		//          delete+reinsert manifest
-		//          await(reconnected)      onDisconnect (manifest gone)
+		//          insert scratch doc
+		//          await(reconnected)      onEvent (armed listener throws)
+		//                                  onDisconnect
 		//                                  onConnectionSucceeded
 		//                                    publishFormatDriver (recovered)
 		//                                    countDown(reconnected)
@@ -1179,6 +1184,16 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		MainDriver.TEST_PROBES.set(TestProbes.noop()
 			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+					if (new BsonString(DISCONNECT_PROBE_ID).equals(event.getDocumentKey().get("_id"))) {
+						LOGGER.debug("Rejecting event to force a disconnect");
+						throw new UnprocessableEventException("Forced disconnect for test", event.getOperationType());
+					} else {
+						super.onEvent(event);
+					}
+				}
+
+				@Override
 				public void onConnectionSucceeded() throws UnrecognizedFormatException, FailedMongoClientSessionException, InterruptedException, IOException, TimeoutException, InvalidCollectionContentsException, InitialStateException {
 					super.onConnectionSucceeded();
 					if (initializationDone.get()) {
@@ -1190,13 +1205,11 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			.withWriteInterceptor(filter -> {
 				if (armed.compareAndSet(true, false)) {
 					LOGGER.debug("Forcing a disconnect and recovery while the write is in flight");
-					MongoCollection<BsonDocument> collection = mongoService.client()
+					// One benign change event: the listener will reject it by its _id, forcing a disconnect.
+					mongoService.client()
 						.getDatabase(driverSettings.database())
-						.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
-					BsonDocument originalManifest = collection.findOneAndDelete(
-						new BsonDocument("_id", new BsonString(MANIFEST_ID)));
-					assertNotNull(originalManifest, "Manifest document must exist");
-					collection.insertOne(originalManifest);
+						.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class)
+						.insertOne(new BsonDocument("_id", new BsonString(DISCONNECT_PROBE_ID)));
 
 					try {
 						LOGGER.debug("Waiting for the receiver to recover");
