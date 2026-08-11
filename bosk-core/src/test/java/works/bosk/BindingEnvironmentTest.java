@@ -107,6 +107,15 @@ class BindingEnvironmentTest extends AbstractBoskTest {
 		assertSame(builder, builder.unbind("p"), "Fluent unbind() should return its receiver object");
 	}
 
+	@Test
+	void failedBind_doesNotCorruptBuilder() {
+		Builder builder = Builder.empty().bind("p", id(1));
+		assertThrows(ParameterAlreadyBoundException.class, () -> builder.bind("p", id(2)));
+		assertEquals(id(1), builder.build().get("p"), "A failed bind must not replace the existing binding");
+		builder.bind("q", id(3));
+		assertEquals(MapMaker.with("p", id(1)).and("q", id(3)).map, builder.build().asMap(), "The builder should remain usable after a failed bind");
+	}
+
 	@TestFactory
 	Stream<DynamicTest> testMapIsEquivalentToEnvironment() {
 		Stream<DynamicTest> happyPaths = allEnvTests()
