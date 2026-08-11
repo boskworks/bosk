@@ -142,6 +142,8 @@ public interface BoskDriver {
 	 * unless its strong semantics are required.
 	 * For "stackable layer" drivers, this usually means they should not call this except
 	 * to implement their own <code>flush</code> method.
+	 * Implementations should try hard to deliver the latest state, and throw
+	 * {@link FlushFailureException} only after those attempts fail, such as when timeouts have elapsed.
 	 *
 	 * <p>
 	 * This usually should not throw runtime exceptions: those can be wrapped as {@link FlushFailureException}.
