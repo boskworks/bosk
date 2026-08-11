@@ -241,6 +241,15 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	public record HasOptionalIdentifier(Optional<Identifier> optionalIdentifier) implements StateTreeNode { }
 
 	@Test
+	void identifier_presentButNull_throws() {
+		// A null is not a valid Identifier value: it must be rejected rather than
+		// silently deserialized as Identifier.from("null").
+		assertJsonException("{ \"id\": null }", HasIdentifier.class);
+	}
+
+	public record HasIdentifier(Identifier id) implements StateTreeNode { }
+
+	@Test
 	void missingRequiredField_throwsWithCause() {
 		// The DeserializationException that parameterValueList throws must not be
 		// discarded when it's reported as a MismatchedInputException.

@@ -402,7 +402,14 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			return new BoskDeserializer<>() {
 				@Override
 				public Identifier deserialize(JsonParser p, DeserializationContext ctxt) {
-					return Identifier.from(p.getString());
+					if (p.currentToken() != JsonToken.VALUE_STRING) {
+						// A null (or any other non-string token) is not a valid Identifier.
+						// Without this check, a null would silently become Identifier.from("null"),
+						// because JsonParser.getString() returns the string "null" for a null token.
+						return (Identifier) ctxt.handleUnexpectedToken(Identifier.class, p);
+					} else {
+						return Identifier.from(p.getString());
+					}
 				}
 			};
 		}
