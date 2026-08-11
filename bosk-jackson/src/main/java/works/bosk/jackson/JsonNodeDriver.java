@@ -1,6 +1,7 @@
 package works.bosk.jackson;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -8,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.StringNode;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
@@ -64,7 +66,7 @@ public class JsonNodeDriver implements BoskDriver {
 	public synchronized <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		traceCurrentState("Before submitConditionalReplacement");
 		JsonNode root = currentRoot();
-		if (root != null && requiredValue.toString().equals(surgeon.valueNode(root, precondition).asString())) {
+		if (preconditionMatches(root, precondition, requiredValue)) {
 			doReplacement(surgeon.nodeInfo(root, target), () -> target.path().lastSegment(), newValue);
 		}
 		downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
@@ -93,7 +95,7 @@ public class JsonNodeDriver implements BoskDriver {
 	public synchronized <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		traceCurrentState("Before submitConditionalDeletion");
 		JsonNode root = currentRoot();
-		if (root != null && requiredValue.toString().equals(surgeon.valueNode(root, precondition).asString())) {
+		if (preconditionMatches(root, precondition, requiredValue)) {
 			surgeon.deleteNode(surgeon.nodeInfo(root, target));
 		}
 		downstream.submitConditionalDeletion(target, precondition, requiredValue);
@@ -104,6 +106,17 @@ public class JsonNodeDriver implements BoskDriver {
 	public synchronized void flush() throws IOException, InterruptedException {
 		traceCurrentState("Before flush");
 		downstream.flush();
+	}
+
+	/**
+	 * @return true if the node referenced by <code>precondition</code> exists in
+	 * <code>root</code> and has the value <code>requiredValue</code>. A nonexistent
+	 * precondition does not match (it does not cause an exception).
+	 */
+	private boolean preconditionMatches(JsonNode root, Reference<Identifier> precondition, Identifier requiredValue) {
+		return root != null
+			&& surgeon.valueNode(root, precondition) instanceof StringNode text
+			&& Objects.equals(text.asString(), requiredValue.toString());
 	}
 
 	private <T> void doReplacement(NodeInfo nodeInfo, Supplier<String> lastSegment, T newValue) {
