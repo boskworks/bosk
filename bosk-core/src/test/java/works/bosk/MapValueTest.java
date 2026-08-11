@@ -105,6 +105,13 @@ class MapValueTest extends AbstractBoskTest {
 
 	@ParameterizedTest
 	@MethodSource("mapArguments")
+	<V> void testEquals_symmetricWithPlainMap(Map<String,V> map, MapValue<V> mapValue, V sampleValue) {
+		assertEquals(map, mapValue);
+		assertEquals(mapValue, map);
+	}
+
+	@ParameterizedTest
+	@MethodSource("mapArguments")
 	<V> void testHashCode(Map<String,V> map, MapValue<V> mapValue, V sampleValue) {
 		try {
 			int expected = MapValue.copyOf(map).hashCode();
