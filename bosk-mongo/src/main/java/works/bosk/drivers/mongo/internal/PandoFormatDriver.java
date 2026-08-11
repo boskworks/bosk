@@ -155,7 +155,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	BsonStateAndMetadata readBsonStateAndMetadata() {
+	BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException {
 		BsonStateAndMetadata bsm = null;
 		List<BsonDocument> partsBuffer = new ArrayList<>();
 		try (DocCursor cursor = collection
@@ -173,6 +173,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 					// Pull what we need from the parts before gather() mutates them
 					BsonInt64 revision = lastPart.getInt64(DocumentFields.revision.name(), null);
+					if (revision == null) {
+						throw new InvalidCollectionContentsException(format,
+							"State document is missing required fields: " + lastPart.getString("_id"));
+					}
 					BsonDocument diagnosticAttributes = Formatter.getDiagnosticAttributesIfAny(lastPart);
 					BsonString id = lastPart.getString("_id");
 
