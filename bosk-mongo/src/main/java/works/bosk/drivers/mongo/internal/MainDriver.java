@@ -798,9 +798,19 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				LOGGER.debug("Driver is disconnected; will wait and retry operation ({})", e.getMessage());
 				waitAndRetry(operationInSession, description, args);
 			} catch (Exception e) {
-				LOGGER.debug("Unexpected exception; will disconnect and retry operation", e);
-				setDisconnectedDriver(e, driverInUse);
-				waitAndRetry(operationInSession, description, args);
+				if (e instanceof InterruptedException) {
+					// We can't catch InterruptedException in its own clause, because the operation's
+					// thrown type is the generic type parameter X, which could be any checked exception.
+					// An interrupt is not a database-health problem, so don't disconnect
+					// a healthy driver. Retry immediately (waitAndRetry skips its wait
+					// because the driver is healthy).
+					LOGGER.debug("Interrupted during driver operation; will retry without disconnecting", e);
+					waitAndRetry(operationInSession, description, args);
+				} else {
+					LOGGER.debug("Unexpected exception; will disconnect and retry operation", e);
+					setDisconnectedDriver(e, driverInUse);
+					waitAndRetry(operationInSession, description, args);
+				}
 			} finally {
 				LOGGER.debug("Finished operation " + description, args);
 			}
