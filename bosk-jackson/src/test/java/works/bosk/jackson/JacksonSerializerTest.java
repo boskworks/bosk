@@ -230,6 +230,17 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	@Test
+	void optional_presentButNull_throws() {
+		// "Present with a value of null" is not the same as "absent":
+		// an Optional field is serialized as absent when empty, so an explicit
+		// null in the input must be rejected rather than silently treated as empty.
+		assertThrows(StreamReadException.class, () ->
+			boskMapper.readerFor(HasOptionalIdentifier.class).readValue("{ \"optionalIdentifier\": null }"));
+	}
+
+	public record HasOptionalIdentifier(Optional<Identifier> optionalIdentifier) implements StateTreeNode { }
+
+	@Test
 	void rootReference_works() {
 		String json = boskMapper.writeValueAsString(bosk.rootReference());
 		assertEquals("\"/\"", json);

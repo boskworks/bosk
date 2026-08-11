@@ -661,6 +661,13 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		if (Optional.class.isAssignableFrom(effectiveClass)) {
 			// Optional field is present in JSON; wrap deserialized value in Optional.of
 			JavaType contentsType = javaParameterType(effectiveType, Optional.class, 0);
+			if (p.currentToken() == JsonToken.VALUE_NULL) {
+				// An Optional field is serialized as absent when empty, so a present null
+				// must be an error rather than silently becoming Optional.empty() or, worse,
+				// being deserialized as a value with the string "null" (as the Identifier
+				// deserializer would do, since JsonParser.getString() returns "null").
+				throw new StreamReadException(p, "Optional field \"" + name + "\" cannot be null; omit the field to deserialize it as Optional.empty()");
+			}
 			Object deserializedValue = readField(name, p, ctxt, contentsType);
 			return Optional.of(deserializedValue);
 		} else if (Phantom.class.isAssignableFrom(effectiveClass)) {
