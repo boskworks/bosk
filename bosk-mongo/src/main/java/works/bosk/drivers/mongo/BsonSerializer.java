@@ -506,7 +506,10 @@ public final class BsonSerializer extends StateTreeSerializer {
 						+ ">; expected one of " + variantCaseMap.keySet());
 				}
 				Class<? extends V> caseDynamicClass = (Class<? extends V>) rawClass(variantCaseMap.get(tag));
-				TaggedUnion<V> result = TaggedUnion.of(caseDynamicClass.cast(caseCodec.decode(reader, decoderContext)));
+				TaggedUnion<V> result;
+				try (DeserializationScope scope = variantCaseDeserializationScope(tag)) {
+					result = TaggedUnion.of(caseDynamicClass.cast(caseCodec.decode(reader, decoderContext)));
+				}
 				if (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
 					throw new IllegalStateException("Input has two tags for the same TaggedUnion: \"" + tag + "\" and \"" + reader.readName() + "\"");
 				}

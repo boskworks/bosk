@@ -495,7 +495,10 @@ public final class JacksonSerializer extends StateTreeSerializer {
 					if (deserializer == null) {
 						return ctxt.reportInputMismatch(Object.class, "TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected variant tag field \"" + tag + "\"; expected one of " + variantCaseMap.keySet());
 					}
-					Object deserialized = deserializer.deserialize(p, ctxt);
+					Object deserialized;
+					try (DeserializationScope scope = variantCaseDeserializationScope(tag)) {
+						deserialized = deserializer.deserialize(p, ctxt);
+					}
 					@SuppressWarnings("unchecked") Class<D> caseDynamicClass = (Class<D>) rawClass(variantCaseMap.get(tag));
 					D value;
 					try {

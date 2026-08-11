@@ -94,6 +94,16 @@ public abstract class StateTreeSerializer {
 		return newScope;
 	}
 
+	public final DeserializationScope variantCaseDeserializationScope(String tag) {
+		DeserializationScope outerScope = currentScope.get();
+		DeserializationScope newScope = new NestedDeserializationScope(
+			outerScope,
+			outerScope.path().then(tag),
+			outerScope.bindingEnvironment());
+		currentScope.set(newScope);
+		return newScope;
+	}
+
 	public final DeserializationScope nodeFieldDeserializationScope(Class<?> nodeClass, String fieldName) {
 		DeserializationPath annotation = infoFor(nodeClass).annotatedParameters_DeserializationPath.get(fieldName);
 		DeserializationScope outerScope = currentScope.get();
