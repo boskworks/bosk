@@ -94,6 +94,44 @@ class HookScannerTest {
 	}
 
 	@Test
+	void overriddenHookMethod_firesOnlyOnce() throws InvalidTypeException {
+		List<String> strings = new ArrayList<>();
+		class ParentHooks {
+			@Hook("/string") void stringChanged(Reference<String> ref) {
+				strings.add("parent");
+			}
+		}
+		class ChildHooks extends ParentHooks {
+			@Override
+			@Hook("/string") void stringChanged(Reference<String> ref) {
+				strings.add("child");
+			}
+		}
+		HookScanner.registerHooks(new ChildHooks(), bosk.rootReference(), bosk.hookRegistrar(), MethodHandles.lookup());
+
+		assertEquals(List.of("child"), strings);
+	}
+
+	@Test
+	void overriddenHookMethodWithoutAnnotation_stillFiresOnlyOnce() throws InvalidTypeException {
+		List<String> strings = new ArrayList<>();
+		class ParentHooks {
+			@Hook("/string") void stringChanged(Reference<String> ref) {
+				strings.add("parent");
+			}
+		}
+		class ChildHooks extends ParentHooks {
+			@Override
+			void stringChanged(Reference<String> ref) {
+				strings.add("child");
+			}
+		}
+		HookScanner.registerHooks(new ChildHooks(), bosk.rootReference(), bosk.hookRegistrar(), MethodHandles.lookup());
+
+		assertEquals(List.of("child"), strings);
+	}
+
+	@Test
 	void objectParameter_throws() {
 		class Hooks {
 			@Hook("/string") void stringChanged(Object o) { }

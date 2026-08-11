@@ -6,7 +6,9 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +21,7 @@ import static java.lang.reflect.Modifier.isStatic;
 
 /**
  * Finds methods annotated with {@link Hook} in the given {@code object} and registers them in the given {@link Bosk}.
+ * If a subclass overrides a hook method, only the most-derived override is registered.
  */
 final class HookScanner {
 	static <T> void registerHooks(T receiverObject, RootReference<?> rootReference, HookRegistrar hookRegistrar, MethodHandles.Lookup lookup) throws InvalidTypeException {
@@ -26,7 +29,9 @@ final class HookScanner {
 		for (Class<?> receiverClass = receiverObject.getClass(); receiverClass != Object.class; receiverClass = receiverClass.getSuperclass()) {
 			bottomUpHierarchy.add(receiverClass);
 		}
-		int hookCounter = 0;
+		// Collect hook methods from all classes in the hierarchy. If a subclass overrides a hook method,
+		// the override replaces the original, so only the most-derived version of each signature is registered.
+		Map<MethodSignature, HookMethod> hookMethodsBySignature = new LinkedHashMap<>();
 		for (Class<?> receiverClass: bottomUpHierarchy.reversed()) {
 			List<Method> methods;
 			try {
@@ -44,13 +49,16 @@ final class HookScanner {
 				} else if (isPrivate(method.getModifiers())) {
 					throw new InvalidTypeException("Hook method cannot be private: " + method);
 				}
-
-				try {
-					registerOneHookMethod(receiverObject, method, Path.parseParameterized(hookAnnotation.value()), rootReference, hookRegistrar, lookup);
-					hookCounter++;
-				} catch (InvalidTypeException e) {
-					throw new InvalidTypeException("Unable to register hook method " + receiverClass.getSimpleName() + "." + method.getName() + ": " + e.getMessage(), e);
-				}
+				hookMethodsBySignature.put(MethodSignature.of(method), new HookMethod(receiverClass, method, hookAnnotation.value()));
+			}
+		}
+		int hookCounter = 0;
+		for (HookMethod hookMethod : hookMethodsBySignature.values()) {
+			try {
+				registerOneHookMethod(receiverObject, hookMethod.method, Path.parseParameterized(hookMethod.scope), rootReference, hookRegistrar, lookup);
+				hookCounter++;
+			} catch (InvalidTypeException e) {
+				throw new InvalidTypeException("Unable to register hook method " + hookMethod.receiverClass.getSimpleName() + "." + hookMethod.method.getName() + ": " + e.getMessage(), e);
 			}
 		}
 		if (hookCounter == 0) {
@@ -116,6 +124,14 @@ final class HookScanner {
 	}
 
 	private HookScanner() {}
+
+	private record HookMethod(Class<?> receiverClass, Method method, String scope) { }
+
+	private record MethodSignature(String name, List<Class<?>> parameterTypes) {
+		static MethodSignature of(Method method) {
+			return new MethodSignature(method.getName(), List.of(method.getParameterTypes()));
+		}
+	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(HookScanner.class);
 }
