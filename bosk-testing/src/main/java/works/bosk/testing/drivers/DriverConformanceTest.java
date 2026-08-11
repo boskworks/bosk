@@ -336,6 +336,26 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 	}
 
 	@InjectedTest
+	void conditionalUpdateNonexistentPrecondition_doesNothing(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
+		CatalogReference<TestEntity> ref = initializeBoskWithCatalog(enclosingCatalogPath);
+		Reference<Identifier> nonexistentPrecondition = ref.then(Identifier.from("nonexistent")).then(Identifier.class, TestEntity.Fields.id);
+
+		LOGGER.debug("Conditional replacement with nonexistent precondition - should have no effect");
+		driver.submitConditionalReplacement(
+			ref.then(child1ID), newEntity(child1ID, ref).withString("replacement"),
+			nonexistentPrecondition, child1ID
+		);
+		assertCorrectBoskContents();
+
+		LOGGER.debug("Conditional deletion with nonexistent precondition - should have no effect");
+		driver.submitConditionalDeletion(
+			ref.then(child2ID),
+			nonexistentPrecondition, child1ID
+		);
+		assertCorrectBoskContents();
+	}
+
+	@InjectedTest
 	void replaceFieldOfNonexistentEntry(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
 		CatalogReference<TestEntity> ref = initializeBoskWithCatalog(enclosingCatalogPath);
 		driver.submitReplacement(
