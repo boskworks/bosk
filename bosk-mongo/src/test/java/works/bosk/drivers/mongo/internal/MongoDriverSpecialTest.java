@@ -39,6 +39,8 @@ import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
+import works.bosk.DriverFactory;
+import works.bosk.DriverStack;
 import works.bosk.Entity;
 import works.bosk.Identifier;
 import works.bosk.Listing;
@@ -51,6 +53,7 @@ import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
 import works.bosk.drivers.BufferingDriver;
 import works.bosk.drivers.ForwardingDriver;
+import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
@@ -58,6 +61,8 @@ import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.libtesting.BlockingGate;
+import works.bosk.logback.BoskLogFilter;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
@@ -1244,6 +1249,107 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 			assertEquals(1, reconnects.get(),
 				"The stale disconnect must not have forced another reconnect cycle");
+		} finally {
+			MainDriver.TEST_PROBES.remove();
+		}
+	}
+
+	@Test
+	void interruptedFlush_doesNotDisconnectHealthyDriver(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
+		// Regression test for a bug in doRetryableDriverOperation: an InterruptedException
+		// thrown by a driver operation (here, a flush interrupted while waiting on a
+		// FlushLock) used to be treated as a general failure, disconnecting a perfectly
+		// healthy driver and forcing a full reconnect cycle. An interrupt is not a
+		// database-health problem, so the driver must stay connected and the operation
+		// should be retried.
+		//
+		// We gate the change event for a submitted update so the flush has to wait for
+		// it, interrupt the flush, then release the event and confirm the driver never
+		// disconnected.
+		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+
+		// Use a longer timescale so the flush has a generous timeout while it's blocked
+		// waiting for the gated event.
+		MongoDriverSettings longTimescaleSettings = driverSettings.toBuilder()
+			.timescaleMS(10 * SHORT_TIMESCALE)
+			.build();
+		DriverFactory<TestEntity> longTimescaleFactory = DriverStack.of(
+			BoskLogFilter.withController(logController),
+			(info, downstream) ->
+				MongoDriver.<TestEntity>factory(
+					mongoService.clientSettings(testInfo),
+					longTimescaleSettings,
+					new BsonSerializer()
+				).build(info, downstream)
+		);
+
+		AtomicBoolean initializationDone = new AtomicBoolean(false);
+		AtomicBoolean armed = new AtomicBoolean(false);
+		AtomicInteger reconnects = new AtomicInteger();
+		BlockingGate eventGate = new BlockingGate("the change event for the interrupted flush");
+
+		MainDriver.TEST_PROBES.set(TestProbes.noop()
+			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
+				@Override
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+					if (armed.compareAndSet(true, false)) {
+						LOGGER.debug("Gating the change event");
+						eventGate.signal();
+						eventGate.awaitRelease(Duration.ofSeconds(30));
+					}
+					super.onEvent(event);
+				}
+
+				@Override
+				public void onConnectionSucceeded() throws UnrecognizedFormatException, FailedMongoClientSessionException, InterruptedException, IOException, TimeoutException, InvalidCollectionContentsException, InitialStateException {
+					super.onConnectionSucceeded();
+					if (initializationDone.get()) {
+						LOGGER.debug("onConnectionSucceeded after initialization; count = {}", reconnects.incrementAndGet());
+					}
+				}
+			}));
+
+		try {
+			LOGGER.debug("Create bosk");
+			Bosk<TestEntity> bosk = new Bosk<>(
+				boskName("interruptedFlush"),
+				TestEntity.class,
+				AbstractMongoDriverTest::initialState,
+				BoskConfig.<TestEntity>builder().driverFactory(longTimescaleFactory).build());
+			BoskDriver driver = bosk.driver();
+			Refs refs = bosk.buildReferences(Refs.class);
+			driver.flush();
+			initializationDone.set(true);
+
+			// Gate the next change event so the flush below has to wait for it
+			armed.set(true);
+			driver.submitReplacement(refs.listingEntry(entity124), LISTING_ENTRY);
+			eventGate.awaitSignal(Duration.ofSeconds(30));
+
+			// Start a flush that will block waiting for the gated event
+			AtomicReference<Throwable> flushFailure = new AtomicReference<>();
+			Thread flusher = new Thread(() -> {
+				try {
+					driver.flush();
+				} catch (Throwable t) {
+					flushFailure.set(t);
+				}
+			});
+			flusher.start();
+
+			// Give the flush a moment to block on the flush lock, then interrupt it
+			Thread.sleep(2 * SHORT_TIMESCALE);
+			flusher.interrupt();
+
+			// Release the gated event so the flush can complete
+			eventGate.release();
+			flusher.join(60_000);
+			assertFalse(flusher.isAlive(), "Flush should complete after the event is released");
+			assertNull(flushFailure.get(), "Interrupting a flush should not fail it; got: " + flushFailure.get());
+
+			assertEquals(0, reconnects.get(),
+				"Interrupting a driver operation must not cause a disconnect/reconnect cycle");
+			errorRecorder.assertAllClear("after interrupting a flush");
 		} finally {
 			MainDriver.TEST_PROBES.remove();
 		}

@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
+import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonNull;
@@ -44,7 +45,9 @@ import works.bosk.testing.junit.Slow;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
@@ -334,6 +337,59 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 				.driverFactory(failFastFactory)
 				.build()
 		));
+	}
+
+	@Test
+	void revisionFieldMissingAtStartup_failsAsInvalidContents(TestInfo testInfo) {
+		// Initialize the database with content so the manifest and root document exist
+		initializeDatabase("revision field missing");
+
+		// Remove the revision field from the root document
+		mongoService.client()
+			.getDatabase(driverSettings.database())
+			.getCollection(COLLECTION_NAME, BsonDocument.class)
+			.updateMany(
+				new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonDocument("$exists", BsonBoolean.TRUE)),
+				new BsonDocument("$unset", new BsonDocument(Formatter.DocumentFields.revision.name(), BsonNull.VALUE)) // Value is ignored
+			);
+
+		// Starting a new Bosk in FAIL_FAST mode should throw because the database
+		// contents are invalid (the root document lacks the revision field),
+		// not because of a NullPointerException.
+		MongoDriverSettings failFastSettings = driverSettings.toBuilder()
+			.initialDatabaseUnavailableMode(InitialDatabaseUnavailableMode.FAIL_FAST)
+			.build();
+		DriverFactory<TestEntity> failFastFactory = DriverStack.of(
+			BoskLogFilter.withController(logController),
+			(info, downstream) ->
+				MongoDriver.<TestEntity>factory(
+					mongoService.clientSettings(testInfo),
+					failFastSettings,
+					new BsonSerializer()
+				).build(info, downstream)
+		);
+
+		InitialStateFailureException e = assertThrows(InitialStateFailureException.class, () -> new Bosk<>(
+			boskName("revisionFieldMissing"),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder()
+				.driverFactory(failFastFactory)
+				.build()
+		));
+		assertTrue(hasCause(e, InvalidCollectionContentsException.class),
+			"Missing revision field should be reported as invalid collection contents, but was: " + e);
+		assertFalse(hasCause(e, NullPointerException.class),
+			"Missing revision field must not cause a NullPointerException");
+	}
+
+	private static boolean hasCause(Throwable throwable, Class<? extends Throwable> causeClass) {
+		for (Throwable t = throwable; t != null; t = t.getCause()) {
+			if (causeClass.isInstance(t)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private void setRevision(long revisionNumber) {
