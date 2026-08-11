@@ -148,11 +148,17 @@ public final class MapValue<V> implements Map<String, V> {
 
 	@Override
 	public boolean equals(Object o) {
-		if (o == null || getClass() != o.getClass()) {
+		if (this == o) {
+			return true;
+		} else if (o instanceof MapValue<?> mapValue) {
+			return contents.equals(mapValue.contents);
+		} else if (o instanceof Map<?, ?> that) {
+			// OrderedPMap inherits AbstractMap.equals, which compares by contents
+			// and is symmetric with any Map implementation, as the Map contract requires.
+			return contents.equals(that);
+		} else {
 			return false;
 		}
-		MapValue<?> mapValue = (MapValue<?>) o;
-		return Objects.equals(contents, mapValue.contents);
 	}
 
 	@Override
