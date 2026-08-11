@@ -275,8 +275,9 @@ public abstract class StateTreeSerializer {
 			Class<?> type = component.getType();
 			Reference<?> implicitReference = findImplicitReferenceIfAny(nodeClass, component, boskInfo);
 
+			boolean present = parameterValuesByName.containsKey(name);
 			Object value = parameterValuesByName.remove(name);
-			if (value == null) {
+			if (!present) {
 				// Field is absent in the input
 				if (implicitReference != null) {
 					parameterValues.add(implicitReference);
@@ -307,6 +308,9 @@ public abstract class StateTreeSerializer {
 						throw new DeserializationException("Missing field \"" + name + "\" at " + path);
 					}
 				}
+			} else if (value == null) {
+				// Field is present in the input, but its value is null
+				throw new DeserializationException("Field \"" + name + "\" must not be null at " + currentScope.get().path());
 			} else if (implicitReference == null) {
 				parameterValues.add(value);
 			} else {

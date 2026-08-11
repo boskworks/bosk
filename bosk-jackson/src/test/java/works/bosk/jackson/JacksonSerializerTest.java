@@ -256,6 +256,40 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	public record HasOptionalIdentifier(Optional<Identifier> optionalIdentifier) implements StateTreeNode { }
 
+	public record HasIdentifier(Identifier id) implements StateTreeNode { }
+
+	@ParameterizedTest
+	@MethodSource("nonStringIdentifierTokens")
+	void identifier_nonStringValue_throws(String json) {
+		// A null or any other non-string value is not a valid Identifier: it must be
+		// rejected rather than silently deserialized as Identifier.from("null").
+		assertJsonException(json, HasIdentifier.class);
+	}
+
+	static Stream<Arguments> nonStringIdentifierTokens() {
+		return Stream.of(
+			Arguments.of("{ \"id\": null }"),
+			Arguments.of("{ \"id\": 123 }")
+		);
+	}
+
+	@ParameterizedTest
+	@MethodSource("nonStringReferenceTokens")
+	void reference_nonStringValue_throws(String json) {
+		// A null or any other non-string value is not a valid Reference: it must be
+		// rejected rather than silently parsed as a path.
+		assertJsonException(json, HasReference.class);
+	}
+
+	static Stream<Arguments> nonStringReferenceTokens() {
+		return Stream.of(
+			Arguments.of("{ \"ref\": null }"),
+			Arguments.of("{ \"ref\": 123 }")
+		);
+	}
+
+	public record HasReference(Reference<TestEntity> ref) implements StateTreeNode { }
+
 	@Test
 	void variantCaseSelfReference_includesTagPath() throws Exception {
 		// A variant case lives at /variant/<tag>, so a @Self reference inside the case

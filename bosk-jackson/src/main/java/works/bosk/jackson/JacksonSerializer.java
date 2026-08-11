@@ -397,7 +397,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				@Override
 				public Reference<?> deserialize(JsonParser p, DeserializationContext ctxt) {
 					try {
-						return boskInfo.rootReference().then(Object.class, Path.parse(p.getString()));
+						return boskInfo.rootReference().then(Object.class, Path.parse(expectString(p, ctxt, Reference.class)));
 					} catch (InvalidTypeException e) {
 						throw new UnexpectedPathException(e);
 					}
@@ -409,7 +409,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			return new BoskDeserializer<>() {
 				@Override
 				public Identifier deserialize(JsonParser p, DeserializationContext ctxt) {
-					return Identifier.from(p.getString());
+					return Identifier.from(expectString(p, ctxt, Identifier.class));
 				}
 			};
 		}
@@ -579,6 +579,20 @@ public final class JacksonSerializer extends StateTreeSerializer {
 	 */
 	private abstract static class BoskDeserializer<T> extends ValueDeserializer<T> {
 		@Override public boolean isCachable() { return true; }
+
+		/**
+		 * @return the string value of the current token, which must be a string.
+		 * A null (or any other non-string token) is not acceptable: for example,
+		 * JsonParser.getString() would return the string "null" for a null token,
+		 * silently corrupting the value.
+		 */
+		protected static String expectString(JsonParser p, DeserializationContext ctxt, Class<?> targetClass) {
+			if (p.currentToken() != JsonToken.VALUE_STRING) {
+				return (String) ctxt.handleUnexpectedToken(targetClass, p);
+			} else {
+				return p.getString();
+			}
+		}
 	}
 
 	private <V> void writeMapEntries(JsonGenerator gen, Set<Entry<Identifier,V>> entries, SerializationContext serializers) {
