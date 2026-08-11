@@ -17,7 +17,6 @@ import java.util.function.Function;
 import tools.jackson.core.JsonGenerator;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
-import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.BeanDescription;
 import tools.jackson.databind.DeserializationConfig;
@@ -29,6 +28,7 @@ import tools.jackson.databind.SerializationContext;
 import tools.jackson.databind.ValueDeserializer;
 import tools.jackson.databind.ValueSerializer;
 import tools.jackson.databind.deser.Deserializers;
+import tools.jackson.databind.exc.MismatchedInputException;
 import tools.jackson.databind.jsontype.TypeDeserializer;
 import tools.jackson.databind.jsontype.TypeSerializer;
 import tools.jackson.databind.ser.Serializers;
@@ -343,13 +343,13 @@ public final class JacksonSerializer extends StateTreeSerializer {
 					Reference<Catalog<Entity>> domain = null;
 					List<Identifier> ids = null;
 
-					expect(START_OBJECT, p);
+					expect(START_OBJECT, p, ctxt);
 					while (p.nextToken() != END_OBJECT) {
 						p.nextValue();
 						switch (p.currentName()) {
 							case "ids":
 								if (ids != null) {
-									throw new StreamReadException(p, "'ids': ids already appeared");
+									return ctxt.reportInputMismatch(Object.class, "'ids': ids already appeared");
 								}
 								ids = (List<Identifier>) ctxt
 									.findContextualValueDeserializer(ID_LIST_TYPE, null)
@@ -357,27 +357,27 @@ public final class JacksonSerializer extends StateTreeSerializer {
 								break;
 							case "entriesById":
 								if (ids != null) {
-									throw new StreamReadException(p, "'entriesById': ids already appeared");
+									return ctxt.reportInputMismatch(Object.class, "'entriesById': ids already appeared");
 								}
 								ids = List.copyOf(readMapEntries(p, typeFactory.constructType(Boolean.class), ctxt).keySet());
 								break;
 							case "domain":
 								if (domain != null) {
-									throw new StreamReadException(p, "'domain' field appears twice");
+									return ctxt.reportInputMismatch(Object.class, "'domain' field appears twice");
 								}
 								domain = (Reference<Catalog<Entity>>) ctxt
 									.findContextualValueDeserializer(CATALOG_REF_TYPE, null)
 									.deserialize(p, ctxt);
 								break;
 							default:
-								throw new StreamReadException(p, "Unrecognized field in Listing: " + p.currentName());
+								return ctxt.reportInputMismatch(Object.class, "Unrecognized field in Listing: " + p.currentName());
 						}
 					}
 
 					if (domain == null) {
-						throw new StreamReadException(p, "Missing 'domain' field");
+						return ctxt.reportInputMismatch(Object.class, "Missing 'domain' field");
 					} else if (ids == null) {
-						throw new StreamReadException(p, "Missing 'ids' field");
+						return ctxt.reportInputMismatch(Object.class, "Missing 'ids' field");
 					} else {
 						return Listing.of(domain, ids);
 					}
@@ -414,7 +414,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 					if (p.getBooleanValue()) {
 						return LISTING_ENTRY;
 					} else {
-						throw new StreamReadException(p, "Unexpected Listing entry value: " + p.getBooleanValue());
+						return ctxt.reportInputMismatch(Object.class, "Unexpected Listing entry value: " + p.getBooleanValue());
 					}
 				}
 			};
@@ -429,7 +429,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 					Reference<Catalog<Entity>> domain = null;
 					LinkedHashMap<Identifier, Object> valuesById = null;
 
-					expect(START_OBJECT, p);
+					expect(START_OBJECT, p, ctxt);
 					while (p.nextToken() != END_OBJECT) {
 						p.nextValue();
 						switch (p.currentName()) {
@@ -437,7 +437,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 								if (valuesById == null) {
 									valuesById = readMapEntries(p, valueType, ctxt);
 								} else {
-									throw new StreamReadException(p, "'valuesById' field appears twice");
+									return ctxt.reportInputMismatch(Object.class, "'valuesById' field appears twice");
 								}
 								break;
 							case "domain":
@@ -446,19 +446,19 @@ public final class JacksonSerializer extends StateTreeSerializer {
 										.findContextualValueDeserializer(CATALOG_REF_TYPE, null)
 										.deserialize(p, ctxt);
 								} else {
-									throw new StreamReadException(p, "'domain' field appears twice");
+									return ctxt.reportInputMismatch(Object.class, "'domain' field appears twice");
 								}
 								break;
 							default:
-								throw new StreamReadException(p, "Unrecognized field in SideTable: " + p.currentName());
+								return ctxt.reportInputMismatch(Object.class, "Unrecognized field in SideTable: " + p.currentName());
 						}
 					}
-					expect(END_OBJECT, p);
+					expect(END_OBJECT, p, ctxt);
 
 					if (domain == null) {
-						throw new StreamReadException(p, "Missing 'domain' field");
+						return ctxt.reportInputMismatch(Object.class, "Missing 'domain' field");
 					} else if (valuesById == null) {
-						throw new StreamReadException(p, "Missing 'valuesById' field");
+						return ctxt.reportInputMismatch(Object.class, "Missing 'valuesById' field");
 					} else {
 						return SideTable.copyOf(domain, valuesById);
 					}
@@ -484,16 +484,16 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			return new ValueDeserializer<>() {
 				@Override
 				public TaggedUnion<V> deserialize(JsonParser p, DeserializationContext ctxt) {
-					expect(START_OBJECT, p);
+					expect(START_OBJECT, p, ctxt);
 					if (p.nextToken() == END_OBJECT) {
-						throw new StreamReadException(p, "Input is missing variant tag field; expected one of " + variantCaseMap.keySet());
+						return ctxt.reportInputMismatch(Object.class, "Input is missing variant tag field; expected one of " + variantCaseMap.keySet());
 					}
 					p.nextValue();
 
 					String tag = p.currentName();
 					ValueDeserializer<?> deserializer = deserializers.get(tag);
 					if (deserializer == null) {
-						throw new StreamReadException(p, "TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected variant tag field \"" + tag + "\"; expected one of " + variantCaseMap.keySet());
+						return ctxt.reportInputMismatch(Object.class, "TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected variant tag field \"" + tag + "\"; expected one of " + variantCaseMap.keySet());
 					}
 					Object deserialized = deserializer.deserialize(p, ctxt);
 					@SuppressWarnings("unchecked") Class<D> caseDynamicClass = (Class<D>) rawClass(variantCaseMap.get(tag));
@@ -501,11 +501,13 @@ public final class JacksonSerializer extends StateTreeSerializer {
 					try {
 						value = caseDynamicClass.cast(deserialized);
 					} catch (ClassCastException e) {
-						throw new StreamReadException(p, "Deserialized " + deserialized.getClass().getSimpleName() + " has incorrect tag \"" + tag + "\" corresponding to incompatible type " + caseDynamicClass.getSimpleName());
+						MismatchedInputException mismatch = MismatchedInputException.from(p, Object.class, "Deserialized " + deserialized.getClass().getSimpleName() + " has incorrect tag \"" + tag + "\" corresponding to incompatible type " + caseDynamicClass.getSimpleName());
+						mismatch.initCause(e);
+						throw mismatch;
 					}
 
 					p.nextToken();
-					expect(END_OBJECT, p);
+					expect(END_OBJECT, p, ctxt);
 					return TaggedUnion.of(value);
 				}
 			};
@@ -532,7 +534,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				@Override
 				public MapValue<Object> deserialize(JsonParser p, DeserializationContext ctxt) {
 					LinkedHashMap<String, Object> result1 = new LinkedHashMap<>();
-					expect(START_OBJECT, p);
+					expect(START_OBJECT, p, ctxt);
 					while (p.nextToken() != END_OBJECT) {
 						p.nextValue();
 						String key = p.currentName();
@@ -540,10 +542,10 @@ public final class JacksonSerializer extends StateTreeSerializer {
 							.deserialize(p, ctxt);
 						Object old = result1.put(key, value);
 						if (old != null) {
-							throw new StreamReadException(p, "MapValue key appears twice: \"" + key + "\"");
+							return ctxt.reportInputMismatch(Object.class, "MapValue key appears twice: \"" + key + "\"");
 						}
 					}
-					expect(END_OBJECT, p);
+					expect(END_OBJECT, p, ctxt);
 					return MapValue.copyOf(result1);
 				}
 			};
@@ -588,9 +590,9 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		@SuppressWarnings("unchecked")
 		ValueDeserializer<V> valueDeserializer = (ValueDeserializer<V>) ctxt.findContextualValueDeserializer(valueType, null);
 		LinkedHashMap<Identifier, V> result = new LinkedHashMap<>();
-		expect(START_ARRAY, p);
+		expect(START_ARRAY, p, ctxt);
 		while (p.nextToken() != END_ARRAY) {
-			expect(START_OBJECT, p);
+			expect(START_OBJECT, p, ctxt);
 			p.nextValue();
 			String fieldName = p.currentName();
 			Identifier entryID = Identifier.from(fieldName);
@@ -599,11 +601,11 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				value = valueDeserializer.deserialize(p, ctxt);
 			}
 			p.nextToken();
-			expect(END_OBJECT, p);
+			expect(END_OBJECT, p, ctxt);
 
 			V oldValue = result.put(entryID, value);
 			if (oldValue != null) {
-				throw new StreamReadException(p, "Duplicate sideTable entry '" + fieldName + "'");
+				return ctxt.reportInputMismatch(Object.class, "Duplicate sideTable entry '" + fieldName + "'");
 			}
 		}
 		return result;
@@ -627,7 +629,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 	public Map<String, Object> gatherParameterValuesByName(JavaType nodeJavaType, Map<String, RecordComponent> componentsByName, JsonParser p, DeserializationContext ctxt) {
 		Class<?> nodeClass = nodeJavaType.getRawClass();
 		Map<String, Object> parameterValuesByName = new HashMap<>();
-		expect(START_OBJECT, p);
+		expect(START_OBJECT, p, ctxt);
 		while (p.nextToken() != END_OBJECT) {
 			p.nextValue();
 			String name = p.currentName();
@@ -636,7 +638,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				if (ignoreUnrecognizedField(nodeClass, name)) {
 					p.skipChildren();
 				} else {
-					throw new StreamReadException(p, "No such component in record " + nodeClass.getSimpleName() + ": " + name);
+					return ctxt.reportInputMismatch(Object.class, "No such component in record " + nodeClass.getSimpleName() + ": " + name);
 				}
 			} else {
 				JavaType parameterType = typeFactory.resolveMemberType(component.getGenericType(), nodeJavaType.getBindings());
@@ -647,7 +649,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				Object value = deserializedValue;
 				Object prev = parameterValuesByName.put(name, value);
 				if (prev != null) {
-					throw new StreamReadException(p, "Parameter appeared twice: " + name);
+					return ctxt.reportInputMismatch(Object.class, "Parameter appeared twice: " + name);
 				}
 			}
 		}
@@ -666,12 +668,12 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				// must be an error rather than silently becoming Optional.empty() or, worse,
 				// being deserialized as a value with the string "null" (as the Identifier
 				// deserializer would do, since JsonParser.getString() returns "null").
-				throw new StreamReadException(p, "Optional field \"" + name + "\" cannot be null; omit the field to deserialize it as Optional.empty()");
+				return ctxt.reportInputMismatch(contentsType, "Optional field \"" + name + "\" cannot be null; omit the field to deserialize it as Optional.empty()");
 			}
 			Object deserializedValue = readField(name, p, ctxt, contentsType);
 			return Optional.of(deserializedValue);
 		} else if (Phantom.class.isAssignableFrom(effectiveClass)) {
-			throw new StreamReadException(p, "Unexpected phantom field \"" + name + "\"");
+			return ctxt.reportInputMismatch(Object.class, "Unexpected phantom field \"" + name + "\"");
 		} else {
 			ValueDeserializer<Object> parameterDeserializer = ctxt.findContextualValueDeserializer(effectiveType, null);
 			return parameterDeserializer.deserialize(p, ctxt);
@@ -698,13 +700,13 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		try {
 			return parameterizedType.findTypeParameters(expectedClass)[index];
 		} catch (IndexOutOfBoundsException e) {
-			throw new IllegalStateException("Error computing javaParameterType(" + parameterizedType + ", " + expectedClass + ", " + index + ")");
+			throw new IllegalStateException("Error computing javaParameterType(" + parameterizedType + ", " + expectedClass + ", " + index + ")", e);
 		}
 	}
 
-	public static void expect(JsonToken expected, JsonParser p) {
+	public static void expect(JsonToken expected, JsonParser p, DeserializationContext ctxt) {
 		if (p.currentToken() != expected) {
-			throw new StreamReadException(p, "Expected " + expected + "; found " + p.currentToken());
+			ctxt.reportInputMismatch(Object.class, "Expected %s; found %s", expected, p.currentToken());
 		}
 	}
 }

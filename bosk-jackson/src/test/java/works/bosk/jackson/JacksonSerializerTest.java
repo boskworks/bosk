@@ -16,10 +16,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.exc.MismatchedInputException;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BindingEnvironment;
@@ -39,6 +39,7 @@ import works.bosk.TaggedUnion;
 import works.bosk.annotations.DeserializationPath;
 import works.bosk.annotations.Polyfill;
 import works.bosk.annotations.ReferencePath;
+import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.MalformedPathException;
 import works.bosk.exceptions.ParameterUnboundException;
 import works.bosk.exceptions.UnexpectedPathException;
@@ -234,11 +235,22 @@ class JacksonSerializerTest extends AbstractBoskTest {
 		// "Present with a value of null" is not the same as "absent":
 		// an Optional field is serialized as absent when empty, so an explicit
 		// null in the input must be rejected rather than silently treated as empty.
-		assertThrows(StreamReadException.class, () ->
-			boskMapper.readerFor(HasOptionalIdentifier.class).readValue("{ \"optionalIdentifier\": null }"));
+		assertJsonException("{ \"optionalIdentifier\": null }", HasOptionalIdentifier.class);
 	}
 
 	public record HasOptionalIdentifier(Optional<Identifier> optionalIdentifier) implements StateTreeNode { }
+
+	@Test
+	void missingRequiredField_throwsWithCause() {
+		// The DeserializationException that parameterValueList throws must not be
+		// discarded when it's reported as a MismatchedInputException.
+		MismatchedInputException e = assertThrows(MismatchedInputException.class, () ->
+			boskMapper.readerFor(HasRequiredField.class).readValue("{}"));
+		assertInstanceOf(DeserializationException.class, e.getCause());
+		assertThat(e.getCause().getMessage(), containsString("Missing field \"requiredField\""));
+	}
+
+	public record HasRequiredField(String requiredField) implements StateTreeNode { }
 
 	@Test
 	void rootReference_works() {
@@ -602,7 +614,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 			params[i] = typeFactory.constructType(parameters[i]);
 		}
 		JavaType parametricType = typeFactory.constructParametricType(rawClass, params);
-		assertThrows(StreamReadException.class, () -> boskMapper.readerFor(parametricType).readValue(json));
+		assertThrows(MismatchedInputException.class, () -> boskMapper.readerFor(parametricType).readValue(json));
 	}
 
 	@Test

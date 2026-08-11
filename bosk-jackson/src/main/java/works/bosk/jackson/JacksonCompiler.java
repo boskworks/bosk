@@ -24,6 +24,7 @@ import tools.jackson.databind.SerializationConfig;
 import tools.jackson.databind.SerializationContext;
 import tools.jackson.databind.ValueDeserializer;
 import tools.jackson.databind.ValueSerializer;
+import tools.jackson.databind.exc.MismatchedInputException;
 import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BoskInfo;
 import works.bosk.Phantom;
@@ -315,7 +316,9 @@ final class JacksonCompiler {
 					try {
 						parameterValues = jacksonSerializer.parameterValueList(nodeJavaType.getRawClass(), valueMap, componentsByName, boskInfo);
 					} catch (DeserializationException e) {
-						throw new IllegalStateException(e);
+						MismatchedInputException mismatch = MismatchedInputException.from(p, nodeJavaType, e.getMessage());
+						mismatch.initCause(e);
+						throw mismatch;
 					}
 
 					@SuppressWarnings("unchecked")
