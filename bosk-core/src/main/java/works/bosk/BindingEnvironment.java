@@ -140,7 +140,7 @@ public final class BindingEnvironment {
 		 * @throws ParameterAlreadyBoundException if <code>name</code> has a binding.
 		 */
 		public Builder bind(String name, Identifier value) {
-			Identifier old = bindings.put(validParameterName(name), value);
+			Identifier old = bindings.putIfAbsent(validParameterName(name), value);
 			if (old == null) {
 				return this;
 			} else {
