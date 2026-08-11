@@ -207,7 +207,10 @@ public class BosonSerializer extends StateTreeSerializer {
 					}
 					SequencedMap<String, RecognizedMember> members = new LinkedHashMap<>();
 					variantCaseMap.forEach((name, caseType) -> {
-						var ifPresent = new TypeRefNode(DataType.of(caseType));
+						var ifPresent = new ParseCallbackSpec(
+							openVariantCaseDeserializationScope(name, lookup),
+							new TypeRefNode(DataType.of(caseType)),
+							closeVariantCaseDeserializationScope(ReferenceUtils.rawClass(caseType), lookup));
 						var ifAbsent = new ComputedSpec(supplier(
 							DataType.known(caseType),
 							() -> null)); // This is a signal to the finisher that the case is absent
@@ -464,6 +467,47 @@ public class BosonSerializer extends StateTreeSerializer {
 			List.of(lookup),
 			List.copyOf(directives)
 		);
+	}
+
+	/**
+	 * @return nullary callback that opens a {@link DeserializationScope} for a variant case tag.
+	 */
+	private @NonNull TypedHandle openVariantCaseDeserializationScope(String tag, Lookup lookup) {
+		try {
+			MethodHandle variantCaseDeserializationScope = lookup.findVirtual(StateTreeSerializer.class,
+				"variantCaseDeserializationScope",
+				methodType(DeserializationScope.class, String.class));
+			return new TypedHandle(
+				insertArguments(variantCaseDeserializationScope, 0,
+					this, tag
+				),
+				DataType.known(DeserializationScope.class), List.of());
+		} catch (NoSuchMethodException | IllegalAccessException e) {
+			throw new IllegalArgumentException("Failed to create scope callback for variant case " + tag, e);
+		}
+	}
+
+	/**
+	 * @return callback that closes a {@link DeserializationScope}
+	 * opened by {@link #openVariantCaseDeserializationScope(String, Lookup)}.
+	 */
+	private static @NonNull TypedHandle closeVariantCaseDeserializationScope(Class<?> caseClass, Lookup lookup) {
+		try {
+			MethodHandle close = lookup.findVirtual(DeserializationScope.class, "close",
+				methodType(void.class));
+
+			// The callback receives the parsed variant case value, but we don't use it
+			MethodHandle mh = dropArguments(close, 1, caseClass);
+
+			return new TypedHandle(mh,
+				DataType.VOID,
+				List.of(
+					DataType.known(DeserializationScope.class),
+					DataType.known(caseClass)
+				));
+		} catch (NoSuchMethodException | IllegalAccessException e) {
+			throw new IllegalArgumentException("Failed to create scope callback for variant case " + caseClass.getSimpleName(), e);
+		}
 	}
 
 	/**
