@@ -240,14 +240,39 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	public record HasOptionalIdentifier(Optional<Identifier> optionalIdentifier) implements StateTreeNode { }
 
-	@Test
-	void identifier_presentButNull_throws() {
-		// A null is not a valid Identifier value: it must be rejected rather than
-		// silently deserialized as Identifier.from("null").
-		assertJsonException("{ \"id\": null }", HasIdentifier.class);
+	public record HasIdentifier(Identifier id) implements StateTreeNode { }
+
+	@ParameterizedTest
+	@MethodSource("nonStringIdentifierTokens")
+	void identifier_nonStringValue_throws(String json) {
+		// A null or any other non-string value is not a valid Identifier: it must be
+		// rejected rather than silently deserialized as Identifier.from("null").
+		assertJsonException(json, HasIdentifier.class);
 	}
 
-	public record HasIdentifier(Identifier id) implements StateTreeNode { }
+	static Stream<Arguments> nonStringIdentifierTokens() {
+		return Stream.of(
+			Arguments.of("{ \"id\": null }"),
+			Arguments.of("{ \"id\": 123 }")
+		);
+	}
+
+	@ParameterizedTest
+	@MethodSource("nonStringReferenceTokens")
+	void reference_nonStringValue_throws(String json) {
+		// A null or any other non-string value is not a valid Reference: it must be
+		// rejected rather than silently parsed as a path.
+		assertJsonException(json, HasReference.class);
+	}
+
+	static Stream<Arguments> nonStringReferenceTokens() {
+		return Stream.of(
+			Arguments.of("{ \"ref\": null }"),
+			Arguments.of("{ \"ref\": 123 }")
+		);
+	}
+
+	public record HasReference(Reference<TestEntity> ref) implements StateTreeNode { }
 
 	@Test
 	void missingRequiredField_throwsWithCause() {
