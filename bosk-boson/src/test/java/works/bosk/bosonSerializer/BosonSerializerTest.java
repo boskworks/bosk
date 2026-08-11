@@ -3,6 +3,7 @@ package works.bosk.bosonSerializer;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.lang.reflect.Type;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,15 +13,21 @@ import works.bosk.Catalog;
 import works.bosk.CatalogReference;
 import works.bosk.Entity;
 import works.bosk.Identifier;
+import works.bosk.MapValue;
+import works.bosk.Path;
 import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.SideTableReference;
 import works.bosk.StateTreeNode;
+import works.bosk.TaggedUnion;
+import works.bosk.VariantCase;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.annotations.Self;
+import works.bosk.annotations.VariantCaseMap;
 import works.bosk.boson.codec.Codec;
 import works.bosk.boson.codec.CodecBuilder;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
+import works.bosk.boson.exceptions.JsonProcessingException;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.types.DataType;
@@ -28,6 +35,7 @@ import works.bosk.boson.types.TypeReference;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class BosonSerializerTest {
 
@@ -132,6 +140,53 @@ public class BosonSerializerTest {
 		assertEquals(bosk.rootReference(), parsed.self());
 		Identifier item1 = Identifier.from("item1");
 		assertEquals(refs.item(item1), parsed.items().get(item1).self());
+	}
+
+	@Test
+	void variantCaseSelfReference_includesTagPath() throws InvalidTypeException, IOException {
+		// A variant case lives at /variant/<tag>, so a @Self reference inside the case
+		// must resolve to the tag path, not the union field path.
+		Bosk<VariantRoot> variantBosk = new Bosk<>("variant", VariantRoot.class, BosonSerializerTest::initialVariantRoot, BoskConfig.simple());
+		var variantTypeMap = new TypeScanner(TypeMap.Settings.DEFAULT)
+			.addBundle(new BosonSerializer().bundleFor(variantBosk))
+			.scan(DataType.of(VariantRoot.class))
+			.build();
+		var variantCodec = CodecBuilder.using(variantTypeMap).buildInterpreter();
+
+		var parser = variantCodec.parserFor(variantTypeMap.get(DataType.of(VariantRoot.class)));
+		VariantRoot parsed = (VariantRoot)parser.parse(new CharArrayJsonReader(
+			"""
+			{"variant": {"case1": {"stringField": "hello"}}}
+			""".toCharArray()
+		));
+
+		assertEquals(Path.parse("/variant/case1"), ((VariantCase1) parsed.variant().variant()).self().path());
+	}
+
+	private static @NonNull VariantRoot initialVariantRoot(Bosk<VariantRoot> bosk) throws InvalidTypeException {
+		return new VariantRoot(TaggedUnion.of(new VariantCase1(bosk.rootReference().then(VariantCase1.class, Path.parse("/variant/case1")), "hello")));
+	}
+
+	public record VariantRoot(TaggedUnion<Variant> variant) implements StateTreeNode { }
+
+	public interface Variant extends VariantCase {
+		@Override default String tag() { return "case1"; }
+		@VariantCaseMap
+		MapValue<Type> CASES = MapValue.singleton("case1", VariantCase1.class);
+	}
+
+	public record VariantCase1(@Self Reference<VariantCase1> self, String stringField) implements Variant { }
+
+	@Test
+	void catalogEntryKeyMismatch_throws() throws InvalidTypeException {
+		// The JSON member name is the catalog key, so it must agree with the entry's own id.
+		// Otherwise the entry would be silently re-keyed by its id, discarding the key.
+		var parser = codec.parserFor(typeMap.get(DataType.of(new TypeReference<Catalog<Key>>(){})));
+		assertThrows(JsonProcessingException.class, () -> parser.parse(new CharArrayJsonReader(
+			"""
+			[{"w1": {"id": "w2"}}]
+			""".toCharArray()
+		)));
 	}
 
 }

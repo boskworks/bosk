@@ -24,8 +24,10 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BindingEnvironment;
 import works.bosk.Bosk;
+import works.bosk.BoskConfig;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
+import works.bosk.Entity;
 import works.bosk.Identifier;
 import works.bosk.ListValue;
 import works.bosk.Listing;
@@ -36,10 +38,14 @@ import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
+import works.bosk.VariantCase;
 import works.bosk.annotations.DeserializationPath;
 import works.bosk.annotations.Polyfill;
 import works.bosk.annotations.ReferencePath;
+import works.bosk.annotations.Self;
+import works.bosk.annotations.VariantCaseMap;
 import works.bosk.exceptions.DeserializationException;
+import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.MalformedPathException;
 import works.bosk.exceptions.ParameterUnboundException;
 import works.bosk.exceptions.UnexpectedPathException;
@@ -134,6 +140,16 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	private static Arguments catalogCase(String ...ids) {
 		return Arguments.of(asList(ids));
 	}
+
+	@Test
+	void catalogEntryKeyMismatch_throws() {
+		// The JSON member name is the catalog key, so it must agree with the entry's own id.
+		// Otherwise the entry would be silently re-keyed by its id, discarding the key.
+		String json = "[{\"w1\": {\"id\": \"w2\"}}]";
+		assertJsonException(json, Catalog.class, HasIdentifierOnly.class);
+	}
+
+	public record HasIdentifierOnly(Identifier id) implements Entity { }
 
 	@ParameterizedTest
 	@MethodSource("listingArguments")
@@ -239,6 +255,39 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	public record HasOptionalIdentifier(Optional<Identifier> optionalIdentifier) implements StateTreeNode { }
+
+	@Test
+	void variantCaseSelfReference_includesTagPath() throws Exception {
+		// A variant case lives at /variant/<tag>, so a @Self reference inside the case
+		// must resolve to the tag path, not the union field path.
+		Bosk<HasSelfVariant> variantBosk = new Bosk<>("variant", HasSelfVariant.class, this::initialHasSelfVariant, BoskConfig.<HasSelfVariant>builder().build());
+		JacksonSerializer serializer = new JacksonSerializer();
+		ObjectMapper mapper = JsonMapper.builder()
+			.addModule(serializer.moduleFor(variantBosk))
+			.build();
+
+		HasSelfVariant original = new HasSelfVariant(TaggedUnion.of(new SelfVariantCase(variantBosk.rootReference().then(SelfVariantCase.class, Path.parse("/variant/case1")), "hello")));
+		String json = mapper.writeValueAsString(original);
+		HasSelfVariant result;
+		try (var _ = serializer.newDeserializationScope(Path.empty())) {
+			result = mapper.readerFor(HasSelfVariant.class).readValue(json);
+		}
+		assertEquals(Path.parse("/variant/case1"), ((SelfVariantCase) result.variant().variant()).self().path());
+	}
+
+	private HasSelfVariant initialHasSelfVariant(Bosk<HasSelfVariant> bosk) throws InvalidTypeException {
+		return new HasSelfVariant(TaggedUnion.of(new SelfVariantCase(bosk.rootReference().then(SelfVariantCase.class, Path.parse("/variant/case1")), "hello")));
+	}
+
+	public record HasSelfVariant(TaggedUnion<SelfVariant> variant) implements StateTreeNode { }
+
+	public interface SelfVariant extends VariantCase {
+		@Override default String tag() { return "case1"; }
+		@VariantCaseMap
+		MapValue<Type> CASES = MapValue.singleton("case1", SelfVariantCase.class);
+	}
+
+	public record SelfVariantCase(@Self Reference<SelfVariantCase> self, String stringField) implements SelfVariant { }
 
 	@Test
 	void missingRequiredField_throwsWithCause() {

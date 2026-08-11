@@ -330,6 +330,13 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				@Override
 				public Catalog<Entity> deserialize(JsonParser p, DeserializationContext ctxt) {
 					LinkedHashMap<Identifier, Entity> entries = readMapEntries(p, entryType, ctxt);
+					for (Entry<Identifier, Entity> entry: entries.entrySet()) {
+						Identifier entryID = entry.getKey();
+						Identifier valueID = entry.getValue().id();
+						if (!entryID.equals(valueID)) {
+							return ctxt.reportInputMismatch(Object.class, "Catalog entry ID mismatch: " + entryID + " vs " + valueID);
+						}
+					}
 					return Catalog.of(entries.values());
 				}
 			};
@@ -495,7 +502,10 @@ public final class JacksonSerializer extends StateTreeSerializer {
 					if (deserializer == null) {
 						return ctxt.reportInputMismatch(Object.class, "TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected variant tag field \"" + tag + "\"; expected one of " + variantCaseMap.keySet());
 					}
-					Object deserialized = deserializer.deserialize(p, ctxt);
+					Object deserialized;
+					try (DeserializationScope scope = variantCaseDeserializationScope(tag)) {
+						deserialized = deserializer.deserialize(p, ctxt);
+					}
 					@SuppressWarnings("unchecked") Class<D> caseDynamicClass = (Class<D>) rawClass(variantCaseMap.get(tag));
 					D value;
 					try {
@@ -586,8 +596,8 @@ public final class JacksonSerializer extends StateTreeSerializer {
 	/**
 	 * Leaves the parser sitting on the END_ARRAY token. You could call nextToken() to continue with parsing.
 	 */
+	@SuppressWarnings("unchecked")
 	private <V> LinkedHashMap<Identifier, V> readMapEntries(JsonParser p, JavaType valueType, DeserializationContext ctxt) {
-		@SuppressWarnings("unchecked")
 		ValueDeserializer<V> valueDeserializer = (ValueDeserializer<V>) ctxt.findContextualValueDeserializer(valueType, null);
 		LinkedHashMap<Identifier, V> result = new LinkedHashMap<>();
 		expect(START_ARRAY, p, ctxt);
@@ -605,7 +615,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 
 			V oldValue = result.put(entryID, value);
 			if (oldValue != null) {
-				return ctxt.reportInputMismatch(Object.class, "Duplicate sideTable entry '" + fieldName + "'");
+				return ctxt.reportInputMismatch(Object.class, "Duplicate entry '" + fieldName + "'");
 			}
 		}
 		return result;

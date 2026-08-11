@@ -22,8 +22,13 @@ import works.bosk.Entity;
 import works.bosk.Identifier;
 import works.bosk.MapValue;
 import works.bosk.Path;
+import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
+import works.bosk.TaggedUnion;
+import works.bosk.VariantCase;
+import works.bosk.annotations.Self;
+import works.bosk.annotations.VariantCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.util.Types;
 
@@ -80,6 +85,24 @@ class BsonSerializerTest {
 		}
 	}
 
+	@Test
+	void variantCaseSelfReference_includesTagPath() throws InvalidTypeException {
+		BsonSerializer bp = new BsonSerializer();
+		Bosk<VariantRoot> bosk = new Bosk<VariantRoot>(boskName(), VariantRoot.class, this::initialVariantRoot, BoskConfig.simple());
+		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
+		Codec<VariantRoot> codec = registry.get(VariantRoot.class);
+
+		VariantRoot original = initialVariantRoot(bosk);
+		BsonDocument document = new BsonDocument();
+		codec.encode(new BsonDocumentWriter(document), original, EncoderContext.builder().build());
+		VariantRoot decoded = codec.decode(new BsonDocumentReader(document), DecoderContext.builder().build());
+		assertEquals(Path.parse("/variant/case1"), ((VariantCase1) decoded.variant().variant()).self().path());
+	}
+
+	private VariantRoot initialVariantRoot(Bosk<VariantRoot> bosk) throws InvalidTypeException {
+		return new VariantRoot(TaggedUnion.of(new VariantCase1(bosk.rootReference().then(VariantCase1.class, Path.parse("/variant/case1")), "hello")));
+	}
+
 	private Root initialState(Bosk<Root> bosk) throws InvalidTypeException {
 		CatalogReference<Item> catalogRef = bosk.rootReference().thenCatalog(Item.class, Path.just(Root.Fields.items));
 		return new Root(
@@ -97,5 +120,15 @@ class BsonSerializerTest {
 	public record Item(
 		Identifier id
 	) implements Entity { }
+
+	public record VariantRoot(TaggedUnion<Variant> variant) implements StateTreeNode { }
+
+	public interface Variant extends VariantCase {
+		@Override default String tag() { return "case1"; }
+		@VariantCaseMap
+		MapValue<Type> CASES = MapValue.singleton("case1", VariantCase1.class);
+	}
+
+	public record VariantCase1(@Self Reference<VariantCase1> self, String stringField) implements Variant { }
 
 }
