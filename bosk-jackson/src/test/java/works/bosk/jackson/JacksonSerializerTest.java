@@ -27,6 +27,7 @@ import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
+import works.bosk.Entity;
 import works.bosk.Identifier;
 import works.bosk.ListValue;
 import works.bosk.Listing;
@@ -139,6 +140,16 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	private static Arguments catalogCase(String ...ids) {
 		return Arguments.of(asList(ids));
 	}
+
+	@Test
+	void catalogEntryKeyMismatch_throws() {
+		// The JSON member name is the catalog key, so it must agree with the entry's own id.
+		// Otherwise the entry would be silently re-keyed by its id, discarding the key.
+		String json = "[{\"w1\": {\"id\": \"w2\"}}]";
+		assertJsonException(json, Catalog.class, HasIdentifierOnly.class);
+	}
+
+	public record HasIdentifierOnly(Identifier id) implements Entity { }
 
 	@ParameterizedTest
 	@MethodSource("listingArguments")
