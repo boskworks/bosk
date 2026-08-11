@@ -762,6 +762,7 @@ public class Bosk<R extends StateTreeNode> implements BoskInfo<R> {
 	 *
 	 * Hook methods must not be static or private, but they can be package-private.
 	 * Inherited methods are included in the scan.
+	 * If a subclass overrides a hook method, only the most-derived override is registered.
 	 * <p>
 	 * The Hook class must have no methods inaccessible to the given {@code lookup}.
 	 * Such methods interfere with our ability to validate that the hook methods are well-formed.
