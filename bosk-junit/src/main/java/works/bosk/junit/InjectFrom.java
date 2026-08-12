@@ -46,9 +46,16 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  * injecting only a subset of the enum values),
  * then you can begin by replacing the enum class with an injector like this,
  * and then you can customize it.
+ * <p>
+ * As an alternative to declaring {@link Injector} classes, a test class can
+ * declare {@link InjectorMethod @InjectorMethod} methods, each of which serves
+ * as an inline {@link Injector} whose values are the returned
+ * {@link java.util.stream.Stream}. All of these sources participate in the
+ * same injection resolution.
  *
  * @see InjectedTest
  * @see Injected
+ * @see InjectorMethod
  */
 @Retention(RUNTIME)
 @Target(TYPE)
