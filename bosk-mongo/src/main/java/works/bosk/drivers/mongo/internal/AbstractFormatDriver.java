@@ -98,7 +98,14 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		if (bsm.state() == null) {
 			throw new IOException("No existing state in document");
 		}
-		replaceFlushLock(bsm.epoch(), bsm.revision());
+		// The new FlushLock must not consider the loaded revision "already seen":
+		// MainDriver publishes this driver before applying the loaded state downstream,
+		// and a flush that failed during a disconnect and is retrying could wake up on the
+		// publish and, seeing the loaded revision already satisfied, report success while
+		// the in-memory state is still stale. Seeding the lock one revision short makes
+		// such flushes wait until MainDriver calls onHasBeenApplied, which advances the
+		// lock once the loaded state has actually been applied downstream.
+		replaceFlushLock(bsm.epoch(), new BsonInt64(bsm.revision().longValue() - 1));
 		fieldTracker.process(bsm);
 
 		R root = formatter.document2object(bsm.state(), rootRef);
