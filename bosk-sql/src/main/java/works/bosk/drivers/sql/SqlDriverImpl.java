@@ -79,9 +79,25 @@ class SqlDriverImpl implements SqlDriver {
 
 	private final ScheduledExecutorService listener;
 
+	/**
+	 * Records the value of {@link #TEST_PROBES} as it was
+	 * at the time of the constructor call.
+	 */
+	final TestProbes testProbes = TEST_PROBES.get();
+
 	private volatile String epoch;
 
 	private final AtomicLong lastChangeSubmittedDownstream = new AtomicLong(-1);
+
+	/**
+	 * Allows tests to install test probes controlling the driver's internals.
+	 * <p>
+	 * This works because {@code SqlDriverImpl} is instantiated on the same
+	 * thread as the {@code Bosk}: the probes are read here and captured at
+	 * construction, so they apply to every thread that later does database
+	 * work. See {@link TestProbes}.
+	 */
+	static final ThreadLocal<TestProbes> TEST_PROBES = ThreadLocal.withInitial(TestProbes::noop);
 
 	SqlDriverImpl(
 		SqlDriverSettings settings,
@@ -512,11 +528,13 @@ class SqlDriverImpl implements SqlDriver {
 			json = using(connection)
 				.select(STATE)
 				.from(BOSK)
+				.forUpdate() // Lock the state row until commit so concurrent submissions serialize on it
 				.fetchOptional(STATE)
 				.orElseThrow(() -> new NotYetImplementedException("No state found"));
 		} catch (RuntimeException e) {
 			throw new IllegalStateException("Unexpected error reading state from database", e);
 		}
+		testProbes.afterStateRead().run();
 		try {
 			return mapper.readTree(json);
 		} catch (JacksonException e) {
