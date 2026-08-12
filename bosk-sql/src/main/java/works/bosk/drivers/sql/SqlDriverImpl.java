@@ -528,6 +528,7 @@ class SqlDriverImpl implements SqlDriver {
 			json = using(connection)
 				.select(STATE)
 				.from(BOSK)
+				.forUpdate() // Lock the state row until commit so concurrent submissions serialize on it
 				.fetchOptional(STATE)
 				.orElseThrow(() -> new NotYetImplementedException("No state found"));
 		} catch (RuntimeException e) {
