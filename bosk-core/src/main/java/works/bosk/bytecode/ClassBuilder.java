@@ -168,8 +168,14 @@ public final class ClassBuilder<T> {
 	}
 
 	/**
-	 * @return a {@link LocalVariable} representing a reference parameter at the
-	 * given position, which is zero-based. Assumes all parameters are single-slot types.
+	 * @param index the JVM local-variable slot for the desired parameter.
+	 * For instance methods, slot 0 is the receiver ({@code this}), so the
+	 * first parameter is at slot 1. This method assumes all parameters are
+	 * single-slot types; it does not account for {@code long} or
+	 * {@code double} parameters, which occupy two slots.
+	 *
+	 * @return a {@link LocalVariable} representing the reference-typed
+	 * parameter at the given slot.
 	 */
 	public LocalVariable parameter(int index) {
 		if (0 <= index && index < currentMethod.numParameters) {
