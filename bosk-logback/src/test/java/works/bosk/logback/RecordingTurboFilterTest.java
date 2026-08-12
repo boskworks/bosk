@@ -23,6 +23,7 @@ import org.slf4j.MarkerFactory;
 import works.bosk.junit.InjectFrom;
 import works.bosk.junit.InjectedTest;
 import works.bosk.junit.Injector;
+import works.bosk.junit.InjectorMethod;
 
 import static ch.qos.logback.classic.Level.DEBUG;
 import static ch.qos.logback.classic.Level.INFO;
@@ -34,9 +35,6 @@ import static works.bosk.logback.RecordingTurboFilter.Overrides;
 import static works.bosk.logback.RecordingTurboFilter.TEST_ID_KEY;
 
 @InjectFrom({
-	RecordingTurboFilterTest.BooleanInjector.class,
-	RecordingTurboFilterTest.NullableBooleanInjector.class,
-	RecordingTurboFilterTest.CapacityInjector.class,
 	RecordingTurboFilterTest.FilterLevelInjector.class,
 	RecordingTurboFilterTest.LogLevelInjector.class
 })
@@ -340,40 +338,19 @@ class RecordingTurboFilterTest {
 		return org.slf4j.event.Level.valueOf(level.toString());
 	}
 
-	record BooleanInjector() implements Injector {
-		@Override
-		public boolean supports(AnnotatedElement e, Class<?> t) {
-			return t == boolean.class;
-		}
-
-		@Override
-		public List<Boolean> values() {
-			return List.of(true, false);
-		}
+	@InjectorMethod(primitive = true)
+	static Stream<Boolean> booleans() {
+		return Stream.of(true, false);
 	}
 
-	record NullableBooleanInjector() implements Injector {
-		@Override
-		public boolean supports(AnnotatedElement e, Class<?> t) {
-			return t == Boolean.class;
-		}
-
-		@Override
-		public List<Boolean> values() {
-			return Stream.of(null, true, false).toList();
-		}
+	@InjectorMethod
+	static Stream<Boolean> nullableBooleans() {
+		return Stream.of(null, true, false);
 	}
 
-	record CapacityInjector() implements Injector {
-		@Override
-		public boolean supports(AnnotatedElement e, Class<?> t) {
-			return t == Integer.class;
-		}
-
-		@Override
-		public List<Integer> values() {
-			return Stream.of(null, 1, 2, 3).toList();
-		}
+	@InjectorMethod
+	static Stream<Integer> capacities() {
+		return Stream.of(null, 1, 2, 3);
 	}
 
 	record FilterLevelInjector() implements Injector {
