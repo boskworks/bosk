@@ -23,8 +23,9 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
  * source serves: a field or parameter is injected from this method only if its
  * declared type is {@code T}. (Matching is by type only, like {@linkplain InjectFrom
  * enum injection}; {@link Injector} classes remain the way to customize the
- * matching logic.) Because the element type is always a reference type, an
- * {@code @InjectorMethod} cannot serve primitive-typed injection sites.
+ * matching logic.) By default the element type is the reference type; set
+ * {@link #primitive()} to serve the corresponding primitive-typed injection
+ * sites instead.
  * <p>
  * The method's own parameters are injected from sources that precede it: any
  * {@link InjectFrom} source, and any {@code @InjectorMethod} declared in a
@@ -37,4 +38,12 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Retention(RUNTIME)
 @Target(METHOD)
 public @interface InjectorMethod {
+	/**
+	 * If {@code true}, this source serves the primitive counterpart of its
+	 * element type instead of the element type itself: {@code Stream<Boolean>}
+	 * with {@code primitive = true} serves {@code boolean}-typed injection
+	 * sites. The element type must be a boxed primitive, enforced at discovery
+	 * time; the values remain the boxed type and are unboxed on injection.
+	 */
+	boolean primitive() default false;
 }

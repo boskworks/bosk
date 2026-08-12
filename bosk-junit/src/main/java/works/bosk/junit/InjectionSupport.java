@@ -276,14 +276,24 @@ class InjectionSupport {
 				"@InjectorMethod " + method + " must return a Stream<T> of a concrete element type");
 		}
 		Type elementType = parameterizedType.getActualTypeArguments()[0];
+		Class<?> result;
 		if (elementType instanceof Class<?> clazz) {
-			return clazz;
+			result = clazz;
+		} else if (elementType instanceof ParameterizedType parameterizedElement && parameterizedElement.getRawType() instanceof Class<?> rawElementType) {
+			result = rawElementType;
+		} else {
+			throw new ParameterResolutionException(
+				"@InjectorMethod " + method + " must return a Stream<T> where T is a concrete type; got " + elementType);
 		}
-		if (elementType instanceof ParameterizedType parameterizedElement && parameterizedElement.getRawType() instanceof Class<?> rawElementType) {
-			return rawElementType;
+		if (method.getAnnotation(InjectorMethod.class).primitive()) {
+			Class<?> primitive = BOXED_TO_PRIMITIVE.get(result);
+			if (primitive == null) {
+				throw new ParameterResolutionException(
+					"@InjectorMethod(primitive = true) " + method + " must return a Stream of a boxed primitive element type; got " + result);
+			}
+			return primitive;
 		}
-		throw new ParameterResolutionException(
-			"@InjectorMethod " + method + " must return a Stream<T> where T is a concrete type; got " + elementType);
+		return result;
 	}
 
 	/**
@@ -712,5 +722,15 @@ class InjectionSupport {
 		}
 		return fields;
 	}
+
+	private static final Map<Class<?>, Class<?>> BOXED_TO_PRIMITIVE = Map.of(
+		Boolean.class, boolean.class,
+		Byte.class, byte.class,
+		Character.class, char.class,
+		Short.class, short.class,
+		Integer.class, int.class,
+		Long.class, long.class,
+		Float.class, float.class,
+		Double.class, double.class);
 
 }

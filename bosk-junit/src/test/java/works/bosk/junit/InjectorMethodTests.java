@@ -138,6 +138,22 @@ class InjectorMethodTests {
 		}
 	}
 
+	@Nested
+	@InjectFields
+	class ServesPrimitiveSite {
+		@Injected boolean value;
+
+		@Test
+		void injected() {
+			assertEquals(true, value);
+		}
+
+		@InjectorMethod(primitive = true)
+		static Stream<Boolean> values() {
+			return Stream.of(true);
+		}
+	}
+
 	abstract static class InheritedSource {
 		@InjectorMethod
 		static Stream<String> inheritedValues() {

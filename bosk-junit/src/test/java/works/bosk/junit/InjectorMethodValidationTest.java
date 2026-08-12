@@ -47,6 +47,12 @@ class InjectorMethodValidationTest {
 	}
 
 	@Test
+	void primitiveWithNonBoxedElementType_rejected() throws Exception {
+		Method method = PrimitiveNonBoxed.class.getDeclaredMethod("values");
+		assertThrows(ParameterResolutionException.class, () -> InjectionSupport.validateInjectorMethod(method));
+	}
+
+	@Test
 	void duplicateSameClassMethods_rejected() throws Exception {
 		List<Method> methods = List.of(
 			Duplicate.class.getDeclaredMethod("values1"),
@@ -108,6 +114,13 @@ class InjectorMethodValidationTest {
 		@InjectorMethod
 		String values() {
 			return "x";
+		}
+	}
+
+	class PrimitiveNonBoxed {
+		@InjectorMethod(primitive = true)
+		static Stream<String> values() {
+			return Stream.of("x");
 		}
 	}
 
