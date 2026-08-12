@@ -70,6 +70,10 @@ class TypeValidationTest {
 		ListValueSubclassWithMutableField.class,
 		ListValueSubclassWithTwoConstructors.class,
 		ListValueSubclassWithWrongConstructor.class,
+		MapValueOfEntity.class,
+		MapValueOfIdentifier.class,
+		MapValueOfOptional.class,
+		MapValueOfReference.class,
 		ParameterizedFieldRoot.class,
 		ReferenceToReference.class,
 		SelfNonReference.class,
@@ -450,6 +454,50 @@ class TypeValidationTest {
 	) implements Entity {
 		public static void testException(InvalidTypeException e) {
 			assertThat(e.getMessage(), containsString("ListValueOfOptional.badField"));
+		}
+	}
+
+	public record MapValueOfIdentifier(
+		Identifier id,
+		MapValue<Identifier> badField
+	) implements Entity {
+		public static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("MapValueOfIdentifier.badField"));
+			assertThat(e.getMessage(), containsString("MapValue"));
+			assertThat(e.getMessage(), not(containsString("ListValue")));
+		}
+	}
+
+	public record MapValueOfReference(
+		Identifier id,
+		MapValue<Reference<String>> badField
+	) implements Entity {
+		public static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("MapValueOfReference.badField"));
+			assertThat(e.getMessage(), containsString("MapValue"));
+			assertThat(e.getMessage(), not(containsString("ListValue")));
+		}
+	}
+
+	public record MapValueOfEntity(
+		Identifier id,
+		MapValue<SimpleTypes> badField
+	) implements Entity {
+		public static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("MapValueOfEntity.badField"));
+			assertThat(e.getMessage(), containsString("MapValue"));
+			assertThat(e.getMessage(), not(containsString("ListValue")));
+		}
+	}
+
+	public record MapValueOfOptional(
+		Identifier id,
+		MapValue<Optional<SimpleTypes>> badField
+	) implements Entity {
+		public static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("MapValueOfOptional.badField"));
+			assertThat(e.getMessage(), containsString("MapValue"));
+			assertThat(e.getMessage(), not(containsString("ListValue")));
 		}
 	}
 
