@@ -18,11 +18,7 @@ public final class Identifier {
 
 	// TODO: Intern these.  No need to have several Identifier objects for the same value
 	public static Identifier from(String value) {
-		if (value.isEmpty()) {
-			throw new IllegalArgumentException("Identifier can't be empty");
-		} else if (value.startsWith("-") || value.endsWith("-")) {
-			throw new IllegalArgumentException("Identifier can't start or end with a hyphen");
-		}
+		validate(value);
 		// TODO: We probably ought to outlaw some characters like NUL (\u0000) but
 		//  that's O(n) in the length of the string, so it's not clear that's worth the overhead.
 		return new Identifier(value);
@@ -32,7 +28,16 @@ public final class Identifier {
 	 * I'm going to regret adding this.
 	 */
 	public static Identifier unique(String prefix) {
+		validate(prefix);
 		return new Identifier(prefix + (uniqueIdCounter.incrementAndGet()));
+	}
+
+	private static void validate(String value) {
+		if (value.isEmpty()) {
+			throw new IllegalArgumentException("Identifier can't be empty");
+		} else if (value.startsWith("-") || value.endsWith("-")) {
+			throw new IllegalArgumentException("Identifier can't start or end with a hyphen");
+		}
 	}
 
 	private static final AtomicLong uniqueIdCounter = new AtomicLong(1000);
