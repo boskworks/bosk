@@ -1,8 +1,13 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoClientSettings;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
+import org.bson.BsonDocument;
+import org.bson.BsonRegularExpression;
+import org.bson.BsonValue;
+import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
@@ -25,30 +30,102 @@ import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
- * Exhibits a race in Pando's refurbish: refurbish reads the current state, then
- * re-scatters it in a transaction, but the read happens OUTSIDE that transaction.
- * A concurrent write that commits after the read but before the re-scatter's
- * deleteMany is therefore inside the transaction's snapshot (so no write-conflict
- * aborts the refurbish) yet absent from the state that gets re-scattered -- so the
- * write is silently lost.
+ * Exhibits races between a concurrent write and Pando's load or refurbish
+ * operations, both of which read the state outside a transaction.
  * <p>
- * The test blocks the refurbish just before its deleteMany, commits a concurrent
- * write while it is paused, then releases it. A correct driver must either
- * include the write in the re-scattered state or be aborted by the write-conflict
- * and retried; either way, after the refurbish the write must still be present.
+ * {@link #loadConcurrentWithWrite_mustConverge()}: a concurrent commit between
+ * the graft (sub-part) document read and the root document read produces a
+ * "torn" load whose revision is new enough that the change-stream events that
+ * would correct it are skipped, so the downstream never converges to the
+ * database state.
+ * <p>
+ * {@link #refurbishConcurrentWithWrite_mustNotLoseUpdate()}: a concurrent
+ * write that commits after refurbish's read but before its re-scatter's
+ * deleteMany is inside the transaction's snapshot (so no write-conflict aborts
+ * the refurbish) yet absent from the state that gets re-scattered -- so the
+ * write is silently lost.
  */
 @ReplayLogsOnFailure
 @InjectFields
-public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
+public class WriteRaceTest extends AbstractMongoDriverTest {
 
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
 		return Stream.of(new ParameterSet(
-			"MongoDriverRefurbishRaceTest",
+			"WriteRaceTest",
 			MongoDriverSettings.builder()
 				.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
 				.timescaleMS(LONG_TIMESCALE)
-				.database("MongoDriverRefurbishRaceTest")));
+				.database("WriteRaceTest")));
+	}
+
+	@Test
+	void loadConcurrentWithWrite_mustConverge() throws Exception {
+		BlockingGate loadGate = new BlockingGate("the Pando load's graft read");
+
+		// Initialize the database with a single-entry catalog and keep a writer alive
+		// to perform the concurrent write. A single entry yields exactly one graft
+		// sub-document ("|catalog|123") plus the root document, so a straddling load
+		// produces a valid-but-stale torn state rather than a deserialization error.
+		Bosk<TestEntity> writerBosk = new Bosk<>(
+			boskName("loadRaceWriter"),
+			TestEntity.class,
+			this::singleEntryInitialState,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		writerBosk.driver().flush();
+		Refs refs = writerBosk.buildReferences(Refs.class);
+		Catalog<TestEntity> newCatalog = Catalog.of(
+			TestEntity.empty(entity123, refs.childCatalog(entity123))
+				.withString("changed by the writer"));
+
+		// Load the test bosk on a background thread. Its loadAllState reads the
+		// graft sub-document first, then (once released) the root document.
+		AtomicReference<Bosk<TestEntity>> testBoskRef = new AtomicReference<>();
+		AtomicReference<Throwable> constructionError = new AtomicReference<>();
+		Thread loadThread = new Thread(() -> {
+			MainDriver.TEST_PROBES.set(TestProbes.noop()
+				.withFindInterceptor((filter, options, cursor) ->
+					isPandoLoadFind(filter) ? new PausingCursor(cursor, 1, loadGate) : cursor));
+			try {
+				testBoskRef.set(new Bosk<>(
+					boskName("loadRaceTest"),
+					TestEntity.class,
+					this::singleEntryInitialState,
+					BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build()));
+			} catch (Throwable e) {
+				constructionError.set(e);
+			} finally {
+				MainDriver.TEST_PROBES.remove();
+			}
+		});
+		loadThread.start();
+
+		try {
+			// Wait for the load to read the graft sub-document, then write a change.
+			loadGate.awaitSignal(Duration.ofSeconds(30));
+			writerBosk.driver().submitReplacement(refs.catalog(), newCatalog);
+
+			// Let the load continue; it will read the root document with the new revision.
+			loadGate.release();
+			loadThread.join(60_000);
+			assertFalse(loadThread.isAlive(), "Test bosk construction should finish");
+		} finally {
+			loadGate.release();
+			if (loadThread.isAlive()) {
+				loadThread.interrupt();
+				loadThread.join();
+			}
+			MainDriver.TEST_PROBES.remove();
+		}
+
+		assertNull(constructionError.get(), "Test bosk construction should not throw");
+
+		Bosk<TestEntity> testBosk = testBoskRef.get();
+		testBosk.driver().flush();
+		try (var _ = testBosk.readSession()) {
+			assertEquals(newCatalog, testBosk.rootReference().value().catalog(),
+				"After a flush, the bosk must reflect the write that committed during the load");
+		}
 	}
 
 	@Test
@@ -130,5 +207,17 @@ public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 		Refs refs = bosk.buildReferences(Refs.class);
 		return initialRootWithEmptyCatalog(bosk)
 			.withCatalog(Catalog.of(TestEntity.empty(entity123, refs.childCatalog(entity123))));
+	}
+
+	/**
+	 * True for the {@code find} query in
+	 * {@link PandoFormatDriver#readBsonStateAndMetadata}, which reads all
+	 * documents whose {@code _id} starts with {@code "|"}.
+	 */
+	private static boolean isPandoLoadFind(Bson filter) {
+		BsonDocument asDoc = filter.toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
+		BsonValue idValue = asDoc.get("_id");
+		return idValue instanceof BsonRegularExpression regex
+			&& regex.getPattern().equals("^[|]");
 	}
 }
