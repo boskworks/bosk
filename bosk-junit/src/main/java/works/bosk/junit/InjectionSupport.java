@@ -81,14 +81,14 @@ class InjectionSupport {
 		// which we can't do until we've instantiated the injectors.
 		//
 		// So, we do an initial pass assuming we'll need them all,
-		// with all possible qualifiers:
+		// with all possible dimension names:
 
-		List<String> allQualifiers = distinctQualifiersFor(requiredElements);
+		List<String> allDimensionNames = distinctDimensionNamesFor(requiredElements);
 		List<Branch> allPossibleBranches = List.of(startingBranch);
 		var allInjectorClasses = getAllInjectorClasses(context);
 		for (var injectorClass : allInjectorClasses) {
-			for (var qualifier: allQualifiers) {
-				allPossibleBranches = expandedBranches(allPossibleBranches, injectorClass, qualifier);
+			for (var dimensionName: allDimensionNames) {
+				allPossibleBranches = expandedBranches(allPossibleBranches, injectorClass, dimensionName);
 			}
 		}
 
@@ -149,7 +149,7 @@ class InjectionSupport {
 
 		List<Branch> neededBranches = List.of(startingBranch);
 		for (var dependency: dependencies) {
-			neededBranches = expandedBranches(neededBranches, dependency.injectorClass(), dependency.qualifier());
+			neededBranches = expandedBranches(neededBranches, dependency.injectorClass(), dependency.dimensionName());
 		}
 		return neededBranches;
 	}
@@ -177,10 +177,10 @@ class InjectionSupport {
 	/**
 	 * A version of {@link Branch#expandedFor(Class, String)} that operates on a list.
 	 */
-	private static List<Branch> expandedBranches(List<Branch> currentBranches, Class<?> injectorType, String qualifier) {
+	private static List<Branch> expandedBranches(List<Branch> currentBranches, Class<?> injectorType, String dimensionName) {
 		List<Branch> expanded = new ArrayList<>();
 		for (Branch branch : currentBranches) {
-			expanded.addAll(branch.expandedFor(injectorType, qualifier));
+			expanded.addAll(branch.expandedFor(injectorType, dimensionName));
 		}
 		return unmodifiableList(expanded);
 	}
@@ -222,10 +222,10 @@ class InjectionSupport {
 		 * one branch per constructor instance; otherwise, it's a singleton list.
 		 * <p>
 		 * The resulting branches all have {@link InjectionKey}s suitable to inject
-		 * values for the given {@code injectorType} and {@code qualifier}.
+		 * values for the given {@code injectorType} and {@code dimensionName}.
 		 */
-		List<Branch> expandedFor(Class<?> injectorType, String qualifier) {
-			Dependency dependency = new Dependency(injectorType, qualifier);
+		List<Branch> expandedFor(Class<?> injectorType, String dimensionName) {
+			Dependency dependency = new Dependency(injectorType, dimensionName);
 
 			boolean alreadyExists = toInject.values().stream() // TODO: A more efficient data structure
 				.anyMatch(s -> s.provenance().contains(dependency));
@@ -236,7 +236,7 @@ class InjectionSupport {
 			}
 
 			if (injectorType.isEnum()) {
-				return expandedForEnum(injectorType, qualifier);
+				return expandedForEnum(injectorType, dimensionName);
 			} else if (!Injector.class.isAssignableFrom(injectorType)) {
 				throw new ParameterResolutionException(
 					"Unsupported injector class: "
@@ -292,7 +292,7 @@ class InjectionSupport {
 					// Add our new injector
 					var injector = instantiateInjector(ctor, ctorKeys, ctorArgs);
 					toInject.put(
-						new InjectionKey(injector, qualifier),
+						new InjectionKey(injector, dimensionName),
 						new Superposition(injector.values(), provenance)
 					);
 
@@ -311,7 +311,7 @@ class InjectionSupport {
 		 * They're orthogonal to other injectors, so they combine as a
 		 * cartesian product, so "expansion" actually just returns one {@link Branch}.
 		 */
-		private @NonNull List<Branch> expandedForEnum(Class<?> enumClass, String qualifier) {
+		private @NonNull List<Branch> expandedForEnum(Class<?> enumClass, String dimensionName) {
 			List<?> enumValues = List.of((Object[]) enumClass.getEnumConstants());
 			var enumInjector = new Injector() {
 				@Override
@@ -338,8 +338,8 @@ class InjectionSupport {
 
 			var toInject = new LinkedHashMap<>(this.toInject);
 			toInject.put(
-				new InjectionKey(enumInjector, qualifier),
-				new Superposition(enumValues, Set.of(new Dependency(enumClass, qualifier)))
+				new InjectionKey(enumInjector, dimensionName),
+				new Superposition(enumValues, Set.of(new Dependency(enumClass, dimensionName)))
 			);
 			return List.of(new Branch(unmodifiableMap(toInject)));
 		}
@@ -374,11 +374,11 @@ class InjectionSupport {
 
 		@Nullable
 		InjectionKey keyFor(AnnotatedElement element, Class<?> elementType) {
-			String qualifier = qualifierFor(element);
+			String dimensionName = dimensionNameFor(element);
 			return List.copyOf(toInject.keySet())
 				.reversed()
 				.stream()
-				.filter(k -> k.qualifier().equals(qualifier))
+				.filter(k -> k.dimensionName().equals(dimensionName))
 				.filter(k -> k.injector().supports(element, elementType))
 				.findFirst()
 				.orElse(null);
@@ -415,14 +415,14 @@ class InjectionSupport {
 		}
 	}
 
-	private static @NonNull String qualifierFor(AnnotatedElement element) {
+	private static @NonNull String dimensionNameFor(AnnotatedElement element) {
 		var injected = element.getAnnotation(Injected.class);
 		return injected == null ? "" : injected.value();
 	}
 
-	private static @NonNull List<String> distinctQualifiersFor(List<? extends AnnotatedElement> elements) {
+	private static @NonNull List<String> distinctDimensionNamesFor(List<? extends AnnotatedElement> elements) {
 		return elements.stream()
-			.map(InjectionSupport::qualifierFor)
+			.map(InjectionSupport::dimensionNameFor)
 			.distinct()
 			.toList();
 	}
@@ -433,19 +433,19 @@ class InjectionSupport {
 	 * those with different {@code InjectionKey}s will receive combinations of values.
 	 *
 	 * @param injector the injector instance providing values for this key
-	 * @param qualifier the qualifier string; empty string means the default stream
+	 * @param dimensionName the dimension name; the empty string denotes the unnamed dimension
 	 */
-	record InjectionKey(Injector injector, String qualifier) {
+	record InjectionKey(Injector injector, String dimensionName) {
 		Dependency dependency() {
-			return new Dependency(injector.injectorClass(), qualifier);
+			return new Dependency(injector.injectorClass(), dimensionName);
 		}
 
 		@Override
 		public String toString() {
-			if ("".equals(qualifier)) {
+			if ("".equals(dimensionName)) {
 				return injector.toString();
 			} else {
-				return injector + "@" + qualifier;
+				return injector + "@" + dimensionName;
 			}
 		}
 	}
@@ -482,7 +482,7 @@ class InjectionSupport {
 	 * and then rename this guy to {@link InjectionKey}.
 	 * That does move us a step away from injecting enums though.
 	 */
-	record Dependency(Class<?> injectorClass, String qualifier) {}
+	record Dependency(Class<?> injectorClass, String dimensionName) {}
 
 	@SuppressForbidden("Only for testing code; we have few other options here")
 	static void setAccessible(AccessibleObject accessibleObject) {

@@ -19,10 +19,12 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target({FIELD, PARAMETER})
 public @interface Injected {
 	/**
-	 * Optional qualifier for this injection site. Empty string means no qualifier.
-	 * For parameters that use the same {@link Injector},
-	 * if they have the same qualifier, they receive the same value;
-	 * if they have different qualifiers, they receive the Cartesian product of value combinations.
+	 * Optional dimension name for this injection site. A site that specifies no
+	 * dimension name uses the unnamed dimension, the dimension whose name is
+	 * the empty string.
+	 * For fields or parameters that use the same {@link Injector},
+	 * if they have the same dimension, they receive the same value;
+	 * if they have different dimensions, they receive the Cartesian product of value combinations.
 	 */
 	String value() default "";
 }
