@@ -1355,6 +1355,198 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 	}
 
+	@Test
+	void flush_duringReconnect_waitsForFreshState(TestInfo testInfo) throws InvalidTypeException, InterruptedException, IOException {
+		// Regression test for a race where, on reconnect, MainDriver publishes the new
+		// FormatDriver BEFORE it applies the freshly-loaded database state to the in-memory
+		// tree. A flush that failed during the disconnect and is retrying can wake up on
+		// the publish, find the new FlushLock's revision already satisfied (because
+		// loadAllState seeded it with the loaded revision), and return success while the
+		// in-memory state still holds the pre-reconnect contents.
+		//
+		// We force a disconnect, write fresh state to the database while disconnected, and
+		// then hold the ChangeReceiver between publishFormatDriver and
+		// downstream.submitReplacement by gating the downstream's submitReplacement. The
+		// flush starts while disconnected, fails, and waits for the new driver; it must NOT
+		// return until the gate is released and the fresh state has actually been applied.
+		//
+		//   Application thread            ChangeReceiver thread
+		//   ------------------            ---------------------
+		//   insert probe document ->      onEvent (rejects it, forcing a disconnect)
+		//                                 onDisconnect
+		//   await(disconnected)
+		//   write fresh state to database
+		//   flush()
+		//     -> DisconnectedException
+		//     -> prePublicationWaitAction
+		//          countDown(flushAboutToWait)
+		//          await(formatDriverChanged)
+		//   countDown(proceedWithReconnect)
+		//                                 onConnectionSucceeded
+		//                                   loadAllState (seeds the flush lock)
+		//                                   publishFormatDriver (wakes the flush)
+		//     (flush retries, reads the    downstream.submitReplacement
+		//      fresh revision, and must     reconnectGate.signal()
+		//      block awaiting it)           reconnectGate.awaitRelease
+		//   await(reconnectGate)
+		//   assert flush is blocked
+		//   reconnectGate.release()        (submitReplacement completes)
+		//                                   downstream.flush()
+		//                                   onHasBeenApplied (releases the flush)
+		//   flush() returns; a read session sees the fresh state
+
+		setLogging(ERROR, MainDriver.class, ChangeReceiver.class, AbstractFormatDriver.class);
+
+		// Use a longer timescale so the retrying flush has a generous timeout while it's
+		// blocked waiting for the gated state application.
+		MongoDriverSettings longTimescaleSettings = driverSettings.toBuilder()
+			.timescaleMS(10 * SHORT_TIMESCALE)
+			.build();
+		DriverFactory<TestEntity> longTimescaleFactory = (b, d) -> {
+			var driver = MongoDriver.<TestEntity>factory(
+				mongoService.clientSettings(testInfo),
+				longTimescaleSettings,
+				new BsonSerializer()
+			).build(b, d);
+			tearDownActions.addFirst(driver::close);
+			return driver;
+		};
+
+		AtomicBoolean initializationDone = new AtomicBoolean(false);
+		AtomicBoolean armed = new AtomicBoolean(false);
+		CountDownLatch disconnected = new CountDownLatch(1);
+		CountDownLatch flushAboutToWait = new CountDownLatch(1);
+		CountDownLatch proceedWithReconnect = new CountDownLatch(1);
+		BlockingGate reconnectGate = new BlockingGate("the reconnect's downstream state application");
+
+		MainDriver.TEST_PROBES.set(TestProbes.noop()
+			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
+				@Override
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+					if (new BsonString(DISCONNECT_PROBE_ID).equals(event.getDocumentKey().get("_id"))) {
+						LOGGER.debug("Rejecting event to force a disconnect");
+						throw new UnprocessableEventException("Forced disconnect for test", event.getOperationType());
+					} else {
+						super.onEvent(event);
+					}
+				}
+
+				@Override
+				public void onDisconnect(Throwable e) {
+					super.onDisconnect(e);
+					if (initializationDone.get()) {
+						LOGGER.debug("onDisconnect complete; counting down disconnected");
+						disconnected.countDown();
+					}
+				}
+
+				@Override
+				public void onConnectionSucceeded() throws UnrecognizedFormatException, FailedMongoClientSessionException, InterruptedException, IOException, TimeoutException, InvalidCollectionContentsException, InitialStateException {
+					if (initializationDone.get()) {
+						LOGGER.debug("onConnectionSucceeded waiting for the test to write fresh state");
+						proceedWithReconnect.await();
+						LOGGER.debug("onConnectionSucceeded proceeding");
+					}
+					super.onConnectionSucceeded();
+				}
+			})
+			.withPrePublicationWaitAction(() -> {
+				LOGGER.debug("pre-wait action: counting down flushAboutToWait");
+				flushAboutToWait.countDown();
+			}));
+
+		Thread flusher = null;
+		try {
+			LOGGER.debug("Create bosk");
+			Bosk<TestEntity> bosk = new Bosk<>(
+				boskName("reconnectFlush"),
+				TestEntity.class,
+				AbstractMongoDriverTest::initialState,
+				BoskConfig.<TestEntity>builder().driverFactory((b, d) -> longTimescaleFactory.build(b, new BufferingDriver(d, b.context()) {
+					@Override
+					public <T> void submitReplacement(Reference<T> target, T newValue) {
+						if (armed.get()) {
+							reconnectGate.signal();
+							reconnectGate.awaitRelease(Duration.ofSeconds(60));
+						}
+						super.submitReplacement(target, newValue);
+					}
+				})).build());
+			BoskDriver driver = bosk.driver();
+			driver.flush();
+			initializationDone.set(true);
+
+			LOGGER.debug("Force a disconnect by inserting a document the listener rejects");
+			mongoService.client()
+				.getDatabase(driverSettings.database())
+				.getCollection(COLLECTION_NAME, BsonDocument.class)
+				.insertOne(new BsonDocument("_id", new BsonString(DISCONNECT_PROBE_ID)));
+			assertTrue(disconnected.await(30, SECONDS),
+				"The driver must disconnect after the rejected event");
+
+			// The gate must not intercept the reconnect's replay of the driver's own
+			// initialization events, so arm it only once the disconnect is confirmed.
+			armed.set(true);
+
+			LOGGER.debug("Write fresh state to the database while the driver is disconnected");
+			mongoService.client()
+				.getDatabase(driverSettings.database())
+				.getCollection(COLLECTION_NAME, BsonDocument.class)
+				.updateOne(
+					new BsonDocument("path", new BsonString("/")),
+					new BsonDocument("$set", new BsonDocument("state.string", new BsonString("fresh after reconnect")))
+						.append("$inc", new BsonDocument("revision", new BsonInt64(1)))
+				);
+
+			LOGGER.debug("Start a flush that will fail while disconnected and retry after the reconnect");
+			AtomicReference<Throwable> flushFailure = new AtomicReference<>();
+			flusher = new Thread(() -> {
+				try {
+					driver.flush();
+				} catch (Throwable t) {
+					flushFailure.set(t);
+				}
+			});
+			flusher.start();
+			assertTrue(flushAboutToWait.await(30, SECONDS),
+				"The flush must fail while disconnected and wait for the reconnect");
+
+			LOGGER.debug("Let the driver reconnect");
+			proceedWithReconnect.countDown();
+			reconnectGate.awaitSignal(Duration.ofSeconds(30));
+
+			LOGGER.debug("The fresh state is loaded but not yet applied; the flush must still be blocked");
+			flusher.join(2 * SHORT_TIMESCALE);
+			assertTrue(flusher.isAlive(),
+				"flush() must not report success while the in-memory state is still stale");
+
+			LOGGER.debug("Release the reconnect's state application so the flush can complete");
+			reconnectGate.release();
+			flusher.join(60_000);
+			assertFalse(flusher.isAlive(), "flush() must complete once the fresh state has been applied");
+			assertNull(flushFailure.get(), "flush() must not fail; got: " + flushFailure.get());
+
+			LOGGER.debug("Check that a read session started after flush() returns sees the fresh state");
+			String actual;
+			try (var _ = bosk.readSession()) {
+				actual = bosk.rootReference().value().string();
+			}
+			assertEquals("fresh after reconnect", actual,
+				"A read session started after flush() returns must see the fresh state");
+		} finally {
+			reconnectGate.release();
+			proceedWithReconnect.countDown();
+			if (flusher != null) {
+				flusher.join(60_000);
+				if (flusher.isAlive()) {
+					flusher.interrupt();
+					flusher.join();
+				}
+			}
+			MainDriver.TEST_PROBES.remove();
+		}
+	}
+
 	private void deleteFields(MongoCollection<BsonDocument> collection, Formatter.DocumentFields... fields) {
 		BsonDocument fieldsToUnset = new BsonDocument();
 		for (Formatter.DocumentFields field: fields) {
