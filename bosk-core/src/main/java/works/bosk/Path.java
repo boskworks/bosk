@@ -57,13 +57,14 @@ public abstract class Path implements Iterable<String> {
 	 * @param urlEncoded A string representation of the path with the segments
 	 * URLEncoded and separated by slashes.
 	 *
-	 * @return A Path with one segment for each (possibly empty) string before,
-	 * between, and after the slashes.  As a special case, for a blank string,
-	 * we return {@link Path#empty()}.  (Otherwise, a blank string would refer
-	 * to the illegal path with a single blank segment.)
+	 * @return A Path with one segment for each string before, between, and
+	 * after the slashes, for a string that begins with a slash.  As a special
+	 * case, the single slash {@code "/"} denotes the empty path.  Any string
+	 * that does not begin with a slash, including a blank string, is invalid.
 	 *
-	 * @throws MalformedPathException if the given string contains any
-	 * segments that are invalid according to {@link #validParsedSegment(String)}.
+	 * @throws MalformedPathException if the given string does not begin with
+	 * a slash, or if it contains any segments that are invalid according to
+	 * {@link #validParsedSegment(String)}.
 	 */
 	public static Path parse(String urlEncoded) {
 		return parseAndValidateSegments(urlEncoded, Path::validParsedSegment);
