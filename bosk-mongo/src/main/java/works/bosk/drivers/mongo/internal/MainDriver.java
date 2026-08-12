@@ -744,6 +744,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			Object[] argsWithContext = new Object[args.length + 2];
 			System.arraycopy(args, 0, argsWithContext, 0, args.length);
 			argsWithContext[args.length] = boskInfo.name();
+			argsWithContext[args.length + 1] = boskInfo.instanceID();
 			LOGGER.debug(description + " w/{}@{}", argsWithContext);
 		}
 		if (driverSettings.testing().eventDelayMS() < 0) {
