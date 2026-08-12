@@ -12,6 +12,7 @@ import static java.lang.annotation.ElementType.PARAMETER;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @InjectFrom({IdentifierTest.ValidInjector.class, IdentifierTest.InvalidInjector.class})
 class IdentifierTest {
@@ -24,6 +25,18 @@ class IdentifierTest {
 	@InjectedTest
 	void invalidString_throws(@Invalid String invalidString) {
 		assertThrows(IllegalArgumentException.class, () -> Identifier.from(invalidString));
+	}
+
+	@InjectedTest
+	void unique_withValidPrefix_survivesRoundTrip(String validPrefix) {
+		Identifier id = Identifier.unique(validPrefix);
+		assertEquals(id, Identifier.from(id.toString()));
+		assertTrue(id.toString().startsWith(validPrefix));
+	}
+
+	@InjectedTest
+	void unique_withInvalidPrefix_throws(@Invalid String invalidPrefix) {
+		assertThrows(IllegalArgumentException.class, () -> Identifier.unique(invalidPrefix));
 	}
 
 	@Retention(RUNTIME)
@@ -54,6 +67,7 @@ class IdentifierTest {
 		public List<String> values() {
 			return List.of(
 				"",
+				"-",
 				"-startsWithDash",
 				"endsWithDash-",
 				"-startsAndEndsWithDash-"
