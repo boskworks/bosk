@@ -86,13 +86,13 @@ public final class TypeValidation {
 				Class<?> entryClass = rawClass(entryType);
 				// Exclude specific anti-patterns
 				if (Optional.class.isAssignableFrom(entryClass)) {
-					throw new InvalidTypeException("Optional is not allowed in a " + ListValue.class.getSimpleName());
+					throw new InvalidTypeException("Optional is not allowed in a " + genericClass.getSimpleName());
 				} else if (Phantom.class.isAssignableFrom(entryClass)) {
-					throw new InvalidTypeException("Phantom is not allowed in a " + ListValue.class.getSimpleName());
+					throw new InvalidTypeException("Phantom is not allowed in a " + genericClass.getSimpleName());
 				} else if (Entity.class.isAssignableFrom(entryClass)) {
-					throw new InvalidTypeException(entryClass.getSimpleName() + " Entity is not allowed in a " + ListValue.class.getSimpleName() + "; use Catalog");
+					throw new InvalidTypeException(entryClass.getSimpleName() + " Entity is not allowed in a " + genericClass.getSimpleName() + "; use Catalog");
 				} else if (Identifier.class.isAssignableFrom(entryClass) || Reference.class.isAssignableFrom(entryClass)) {
-					throw new InvalidTypeException(entryClass.getSimpleName() + " is not allowed in a " + ListValue.class.getSimpleName() + "; use Listing");
+					throw new InvalidTypeException(entryClass.getSimpleName() + " is not allowed in a " + genericClass.getSimpleName() + "; use Listing");
 				}
 				// Otherwise, any valid entryType is ok
 				validateType(entryType, alreadyValidated);
