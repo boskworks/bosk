@@ -1,9 +1,12 @@
 package works.bosk.logback;
 
 import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.filter.Filter;
 import ch.qos.logback.core.read.ListAppender;
+import ch.qos.logback.core.spi.FilterReply;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
@@ -285,6 +288,49 @@ class RecordingTurboFilterTest {
 		testLogger.debug("should not be buffered");
 
 		assertEquals(List.of(), EventSnapshot.from(filter.queueContents(TEST).events()));
+	}
+
+	@Test
+	void mongoDebugNotBuffered() {
+		denyMongoDebugEvents();
+		MDC.put(TEST_ID_KEY, "t1");
+		Logger logger = new LoggerContext().getLogger("com.mongodb.Driver");
+		filter.decide(null, logger, Level.DEBUG, "m", null, null);
+		RecordingTurboFilter.QueueContents qc = filter.queueContents("t1");
+		assertEquals(0, qc.events().size());
+	}
+
+	@Test
+	void otherLoggerBuffered() {
+		denyMongoDebugEvents();
+		MDC.put(TEST_ID_KEY, "t2");
+		Logger logger = new LoggerContext().getLogger("works.bosk.Some");
+		filter.decide(null, logger, Level.DEBUG, "m", null, null);
+		RecordingTurboFilter.QueueContents qc = filter.queueContents("t2");
+		assertEquals(1, qc.events().size());
+	}
+
+	private void denyMongoDebugEvents() {
+		// Deny MongoDB DEBUG/INFO events from being buffered
+		filter.setFilter(new Filter<>() {
+			@Override
+			public FilterReply decide(ILoggingEvent event) {
+				String name = event.getLoggerName();
+				if (name != null && (name.startsWith("com.mongodb") || name.startsWith("org.mongodb"))
+					&& event.getLevel().toInt() <= Level.INFO_INT) {
+					return FilterReply.DENY;
+				}
+				return FilterReply.NEUTRAL;
+			}
+
+			@Override
+			public void start() {
+			}
+
+			@Override
+			public void stop() {
+			}
+		});
 	}
 
 	@Test

@@ -13,8 +13,10 @@ import works.bosk.TypeValidationTest.SimpleTypes;
 import works.bosk.drivers.ForwardingDriver;
 import works.bosk.drivers.NoOpDriver;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.libtesting.AbstractBoskTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.TypeValidationTest.SimpleTypes.MyEnum.LEFT;
@@ -25,6 +27,21 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * to pre-create a {@link Bosk} because we want to test the constructor itself.
  */
 public class BoskConstructorTest {
+
+	@Test
+	void basicProperties() {
+		String name = boskName();
+		Bosk<AbstractBoskTest.TestRoot> bosk = new Bosk<>(
+			name,
+			AbstractBoskTest.TestRoot.class,
+			AbstractBoskTest::initialState,
+			BoskConfig.simple()
+		);
+
+		assertEquals(name, bosk.name());
+		assertNotNull(bosk.instanceID());
+		assertEquals(AbstractBoskTest.TestRoot.class, bosk.rootReference().targetClass());
+	}
 
 	@Test
 	void basicProperties_correctValues() {
