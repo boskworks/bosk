@@ -1181,8 +1181,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 
 		setLogging(ERROR, ChangeReceiver.class, MainDriver.class);
 
-		AtomicBoolean initializationDone = new AtomicBoolean(false);
 		AtomicBoolean armed = new AtomicBoolean(false);
+		AtomicInteger connectCount = new AtomicInteger();
 		AtomicInteger reconnects = new AtomicInteger();
 		CountDownLatch reconnected = new CountDownLatch(1);
 
@@ -1201,7 +1201,10 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				@Override
 				public void onConnectionSucceeded() throws UnrecognizedFormatException, FailedMongoClientSessionException, InterruptedException, IOException, TimeoutException, InvalidCollectionContentsException, InitialStateException {
 					super.onConnectionSucceeded();
-					if (initializationDone.get()) {
+					// The first connection is the initial one; only subsequent connections are reconnects.
+					// We can't tell them apart using a flag set by the main thread, because this
+					// callback runs on the ChangeReceiver thread and races with the flag being set.
+					if (connectCount.incrementAndGet() > 1) {
 						LOGGER.debug("onConnectionSucceeded after initialization; count = {}", reconnects.incrementAndGet());
 						reconnected.countDown();
 					}
@@ -1236,7 +1239,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				AbstractMongoDriverTest::initialState,
 				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 			Refs refs = bosk.buildReferences(Refs.class);
-			initializationDone.set(true);
 
 			// Fail the operation only after the receiver has recovered from the disconnect
 			// that the interceptor forces. The stale failure must not cause another reconnect.
@@ -1283,8 +1285,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				).build(info, downstream)
 		);
 
-		AtomicBoolean initializationDone = new AtomicBoolean(false);
 		AtomicBoolean armed = new AtomicBoolean(false);
+		AtomicInteger connectCount = new AtomicInteger();
 		AtomicInteger reconnects = new AtomicInteger();
 		BlockingGate eventGate = new BlockingGate("the change event for the interrupted flush");
 
@@ -1303,7 +1305,10 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 				@Override
 				public void onConnectionSucceeded() throws UnrecognizedFormatException, FailedMongoClientSessionException, InterruptedException, IOException, TimeoutException, InvalidCollectionContentsException, InitialStateException {
 					super.onConnectionSucceeded();
-					if (initializationDone.get()) {
+					// The first connection is the initial one; only subsequent connections are reconnects.
+					// We can't tell them apart using a flag set by the main thread, because this
+					// callback runs on the ChangeReceiver thread and races with the flag being set.
+					if (connectCount.incrementAndGet() > 1) {
 						LOGGER.debug("onConnectionSucceeded after initialization; count = {}", reconnects.incrementAndGet());
 					}
 				}
@@ -1319,7 +1324,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			BoskDriver driver = bosk.driver();
 			Refs refs = bosk.buildReferences(Refs.class);
 			driver.flush();
-			initializationDone.set(true);
 
 			// Gate the next change event so the flush below has to wait for it
 			armed.set(true);
