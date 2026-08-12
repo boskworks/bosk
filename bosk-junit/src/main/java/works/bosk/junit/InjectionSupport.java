@@ -5,10 +5,16 @@ import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -16,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
+import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -54,10 +61,10 @@ class InjectionSupport {
 	 * directly or indirectly by the {@code requiredElements}.
 	 * <p>
 	 * This is done in two phases.
-	 * First, we compute all possible branches by instantiating all injector classes.
-	 * Once we have the injectors, we can use {@link Injector#supports}
-	 * to determine which ones are needed,
-	 * and do a second pass to compute the branches for just those injectors.
+	 * First, we instantiate the injectors for every value source and compute all
+	 * possible branches. Once we have the injectors, we can use
+	 * {@link Injector#supports} to determine which ones are needed, and do a
+	 * second pass to compute the branches for just those sources.
 	 * <p>
 	 * The returned list contains the combinations of injector values necessary
 	 * to provide every element in {@code elements}, with all injectors in the correct order.
@@ -76,7 +83,7 @@ class InjectionSupport {
 		BiFunction<Branch, AnnotatedElement, InjectionKey> keyResolver
 	) {
 		// We have a chicken-and-egg thing happening here:
-		// we can't know which injectors we need until we call Injector.supportsParameter,
+		// we can't know which injectors we need until we call Injector.supports,
 		// which we can't do until we've instantiated the injectors.
 		//
 		// So, we do an initial pass assuming we'll need them all,
@@ -144,7 +151,7 @@ class InjectionSupport {
 		}
 
 		// Finally, we can recalculate the branches a second time,
-		// expanding only the injector classes known to be needed.
+		// expanding only the value sources known to be needed.
 
 		List<Branch> neededBranches = List.of(startingBranch);
 		for (var dependency: dependencies) {
@@ -155,8 +162,9 @@ class InjectionSupport {
 
 	/**
 	 * The value sources available to a test class, in the order they should be
-	 * expanded. For each class in the hierarchy (superclass first), the sources
-	 * declared by its {@link InjectFrom} annotations.
+	 * expanded. For each class in the hierarchy, superclass first, the sources
+	 * declared by its {@link InjectFrom} annotations are followed by its
+	 * {@link InjectorMethod} methods.
 	 *
 	 * @return the value sources in the order they should be expanded
 	 */
@@ -172,20 +180,36 @@ class InjectionSupport {
 					result.add(valueSourceFor(injectorClass));
 				}
 			}
+			// Methods are sorted for deterministic iteration only; the relative
+			// order of same-class methods is never relied upon semantically.
+			List<Method> methods = Arrays.stream(c.getDeclaredMethods())
+				.filter(m -> m.isAnnotationPresent(InjectorMethod.class))
+				.sorted(Comparator.comparing(Method::getName))
+				.toList();
+			for (var method : methods) {
+				validateInjectorMethod(method);
+			}
+			validateNoDuplicateMethods(methods);
+			for (var method : methods) {
+				result.add(new MethodSource(method));
+			}
 		}
 		return result;
 	}
 
 	/**
-	 * A value source: either an {@link Injector} class or an enum, whose values
-	 * are injected. A source serves sites of any dimension; each site dimension
-	 * creates a separate {@link Dependency}.
+	 * A value source: an {@link Injector} class, an enum, or an
+	 * {@link InjectorMethod @InjectorMethod} method, whose values are injected.
+	 * A source serves sites on any dimension name; a dimension is a
+	 * (source, dimension name) pair, represented by a {@link Dependency}.
 	 */
-	sealed interface ValueSource permits InjectorSource, EnumSource {}
+	sealed interface ValueSource permits InjectorSource, EnumSource, MethodSource {}
 
 	record InjectorSource(Class<?> injectorClass) implements ValueSource {}
 
 	record EnumSource(Class<?> enumClass) implements ValueSource {}
+
+	record MethodSource(Method method) implements ValueSource {}
 
 	/**
 	 * @throws ParameterResolutionException if {@code injectorClass} is neither an
@@ -201,7 +225,65 @@ class InjectionSupport {
 		throw new ParameterResolutionException(
 			"Unsupported injector class: "
 				+ injectorClass
-				+ "; accepted injector types are enum or Injector");
+				+ "; accepted types are enum or Injector classes; alternatively, a test class can declare an @InjectorMethod method");
+	}
+
+	/**
+	 * @throws ParameterResolutionException if {@code method} is not a valid
+	 * {@link InjectorMethod}: it must be static and return a {@link Stream} of
+	 * a concrete element type.
+	 */
+	static void validateInjectorMethod(Method method) {
+		if (!Modifier.isStatic(method.getModifiers())) {
+			throw new ParameterResolutionException("@InjectorMethod " + method + " must be static");
+		}
+		elementTypeOf(method);
+	}
+
+	/**
+	 * @throws ParameterResolutionException if any two {@code methods} serve the
+	 * same element type. The order of same-class methods is undefined, so there
+	 * must be exactly one method per element type.
+	 */
+	static void validateNoDuplicateMethods(List<Method> methods) {
+		Map<String, Method> seen = new HashMap<>();
+		for (var method : methods) {
+			String key = elementTypeOf(method).getName();
+			Method previous = seen.putIfAbsent(key, method);
+			if (previous != null) {
+				throw new ParameterResolutionException(
+					"Duplicate @InjectorMethod sources for element type " + key + " in " + method.getDeclaringClass().getSimpleName()
+						+ ": " + previous + " and " + method
+						+ "; the order between methods in the same class is undefined, so there must be exactly one source per element type");
+			}
+		}
+	}
+
+	/**
+	 * The raw class of the element type served by a {@link InjectorMethod}.
+	 * For {@code Stream<T>}, this is the raw class of {@code T}; for example,
+	 * {@code Stream<List<String>>} serves {@code List}-typed injection sites.
+	 *
+	 * @throws ParameterResolutionException if the method does not return a
+	 * {@link Stream} of a concrete element type
+	 */
+	static Class<?> elementTypeOf(Method method) {
+		Type returnType = method.getGenericReturnType();
+		if (!(returnType instanceof ParameterizedType parameterizedType)
+			|| !(parameterizedType.getRawType() instanceof Class<?> rawType)
+			|| !Stream.class.isAssignableFrom(rawType)) {
+			throw new ParameterResolutionException(
+				"@InjectorMethod " + method + " must return a Stream<T> of a concrete element type");
+		}
+		Type elementType = parameterizedType.getActualTypeArguments()[0];
+		if (elementType instanceof Class<?> clazz) {
+			return clazz;
+		}
+		if (elementType instanceof ParameterizedType parameterizedElement && parameterizedElement.getRawType() instanceof Class<?> rawElementType) {
+			return rawElementType;
+		}
+		throw new ParameterResolutionException(
+			"@InjectorMethod " + method + " must return a Stream<T> where T is a concrete type; got " + elementType);
 	}
 
 	/**
@@ -267,6 +349,7 @@ class InjectionSupport {
 			return switch (dependency.source()) {
 				case InjectorSource injectorSource -> expandedForInjector(injectorSource, dependency.dimensionName());
 				case EnumSource enumSource -> expandedForEnum(enumSource, dependency.dimensionName());
+				case MethodSource methodSource -> expandedForMethod(methodSource, dependency.dimensionName());
 			};
 		}
 
@@ -353,6 +436,78 @@ class InjectionSupport {
 		}
 
 		/**
+		 * Expansion for an {@link InjectorMethod @InjectorMethod} source. The
+		 * method's parameters are resolved like an injector's constructor
+		 * arguments, but only from sources that precede the method: a parameter
+		 * can never be supplied by another {@code @InjectorMethod} declared in
+		 * the same class, since the order of same-class methods is undefined.
+		 */
+		private @NonNull List<Branch> expandedForMethod(MethodSource source, String dimensionName) {
+			Method method = source.method();
+			Class<?> declaringClass = method.getDeclaringClass();
+			setAccessible(method);
+			Class<?> elementType = elementTypeOf(method);
+
+			// Determine how the parameters are to be injected.
+			Map<Parameter, InjectionKey> keyByParam = new LinkedHashMap<>();
+			for (var parameter : method.getParameters()) {
+				InjectionKey key = keyForParameterExcluding(parameter, declaringClass);
+				if (key == null) {
+					throw new ParameterResolutionException(
+						"No injector for parameter " + parameter + " of @InjectorMethod " + method
+							+ "; injector-method parameters can only come from sources that precede the method");
+				}
+				keyByParam.put(parameter, key);
+			}
+			List<InjectionKey> paramKeys = keyByParam.values().stream()
+				.distinct() // Two parameters can use the same key
+				.toList();
+
+			var provenance = new HashSet<Dependency>();
+			paramKeys.forEach(paramKey -> {
+				provenance.addAll(toInject.get(paramKey).provenance());
+				provenance.add(paramKey.dependency());
+			});
+			provenance.add(new Dependency(source, dimensionName));
+
+			List<List<?>> paramArgLists = new ArrayList<>();
+			for (InjectionKey paramKey : paramKeys) {
+				paramArgLists.add(toInject.get(paramKey).values());
+			}
+
+			// Instantiate a MethodValueInjector for each combination of parameter
+			// values, and add the corresponding branch to the result list.
+			List<Branch> result = new ArrayList<>();
+			for (List<Object> paramArgs : cartesianProduct(paramArgLists)) {
+				// Collapse superpositions for the parameter values we've chosen.
+				var toInject = new LinkedHashMap<>(this.toInject);
+				for (int i = 0; i < paramKeys.size(); i++) {
+					Object paramArgValue = paramArgs.get(i);
+					toInject.computeIfPresent(paramKeys.get(i), (_, s) -> s.collapsed(paramArgValue));
+				}
+
+				// paramArgs has one entry per InjectionKey, but we need one per parameter.
+				Object[] args = new Object[method.getParameterCount()];
+				int argIndex = 0;
+				for (var parameter : method.getParameters()) {
+					var key = keyByParam.get(parameter);
+					var paramKeyIndex = paramKeys.indexOf(key);
+					assert paramKeyIndex >= 0: "Internal error: injector not found for parameter " + parameter + " of @InjectorMethod " + method;
+					args[argIndex++] = paramArgs.get(paramKeyIndex);
+				}
+
+				var injector = new MethodValueInjector(method, elementType, args);
+				toInject.put(
+					new InjectionKey(injector, dimensionName),
+					new Superposition(injector.values(), provenance)
+				);
+
+				result.add(new Branch(unmodifiableMap(toInject)));
+			}
+			return result;
+		}
+
+		/**
 		 * @param ctorArgValues a parallel list to {@code ctorKeys} indicating which value to use for each {@link InjectionKey}.
 		 */
 		private @NonNull Injector instantiateInjector(Constructor<?> ctor, List<InjectionKey> ctorKeys, List<Object> ctorArgValues) throws InstantiationException, IllegalAccessException, InvocationTargetException {
@@ -373,6 +528,24 @@ class InjectionSupport {
 		@Nullable
 		InjectionKey keyForParameter(Parameter p) {
 			return keyFor(p, p.getType());
+		}
+
+		/**
+		 * Like {@link #keyForParameter(Parameter)}, but never matches a
+		 * {@link MethodValueInjector} declared in {@code excludedDeclaringClass}.
+		 */
+		@Nullable
+		InjectionKey keyForParameterExcluding(Parameter p, Class<?> excludedDeclaringClass) {
+			String dimensionName = dimensionNameFor(p);
+			return List.copyOf(toInject.keySet())
+				.reversed()
+				.stream()
+				.filter(k -> k.dimensionName().equals(dimensionName))
+				.filter(k -> !(k.injector() instanceof MethodValueInjector methodValueInjector
+					&& methodValueInjector.method().getDeclaringClass() == excludedDeclaringClass))
+				.filter(k -> k.injector().supports(p, p.getType()))
+				.findFirst()
+				.orElse(null);
 		}
 
 		@Nullable
@@ -452,6 +625,9 @@ class InjectionSupport {
 		Dependency dependency() {
 			if (injector instanceof EnumValueInjector enumValueInjector) {
 				return new Dependency(new EnumSource(enumValueInjector.injectorClass()), dimensionName);
+			}
+			if (injector instanceof MethodValueInjector methodValueInjector) {
+				return new Dependency(new MethodSource(methodValueInjector.method()), dimensionName);
 			}
 			return new Dependency(new InjectorSource(injector.injectorClass()), dimensionName);
 		}
