@@ -6,7 +6,6 @@ import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -30,8 +29,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
@@ -61,6 +58,8 @@ import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectorMethod;
 import works.bosk.libtesting.BlockingGate;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.logback.ReplayLogsOnFailure;
@@ -91,8 +90,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 /**
  * Tests {@link MongoDriver}-specific functionality not covered by {@link MongoDriverConformanceTest}.
  */
-@ParameterizedClass
-@MethodSource("parameterSets")
+@InjectFields
 @ReplayLogsOnFailure
 class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 	/**
@@ -118,11 +116,8 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		MainDriver.TEST_PROBES.remove();
 	}
 
-	public MongoDriverSpecialTest(ParameterSet parameters) {
-		super(parameters.driverSettingsBuilder());
-	}
-
-	static List<ParameterSet> parameterSets() {
+	@InjectorMethod
+	static Stream<ParameterSet> parameterSets() {
 		return TestParameters.driverSettings(
 			Stream.of(
 				MongoDriverSettings.DatabaseFormat.SEQUOIA,
@@ -132,7 +127,7 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			Stream.of(TestParameters.EventTiming.NORMAL)
 		).map(b -> b.applyDriverSettings(s -> s
 			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
-		)).toList();
+		));
 	}
 
 	@Test

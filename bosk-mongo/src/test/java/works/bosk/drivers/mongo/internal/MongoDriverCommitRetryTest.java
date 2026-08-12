@@ -4,6 +4,7 @@ import com.mongodb.MongoException;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
@@ -12,6 +13,8 @@ import works.bosk.Reference;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
@@ -19,6 +22,7 @@ import works.bosk.testing.junit.Slow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.drivers.mongo.internal.TestParameters.LONG_TIMESCALE;
+import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -32,13 +36,17 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  */
 @Slow
 @ReplayLogsOnFailure
+@InjectFields
 public class MongoDriverCommitRetryTest extends AbstractMongoDriverTest {
 
-	public MongoDriverCommitRetryTest() {
-		super(MongoDriverSettings.builder()
-			.preferredDatabaseFormat(PandoFormat.oneBigDocument())
-			.timescaleMS(LONG_TIMESCALE)
-			.database("MongoDriverCommitRetryTest"));
+	@InjectorMethod
+	static Stream<ParameterSet> parameterSets() {
+		return Stream.of(new ParameterSet(
+			"MongoDriverCommitRetryTest",
+			MongoDriverSettings.builder()
+				.preferredDatabaseFormat(PandoFormat.oneBigDocument())
+				.timescaleMS(LONG_TIMESCALE)
+				.database("MongoDriverCommitRetryTest")));
 	}
 
 	@AfterEach

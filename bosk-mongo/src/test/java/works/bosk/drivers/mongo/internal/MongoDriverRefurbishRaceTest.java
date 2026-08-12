@@ -2,6 +2,7 @@ package works.bosk.drivers.mongo.internal;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
@@ -10,6 +11,8 @@ import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectorMethod;
 import works.bosk.libtesting.BlockingGate;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
@@ -18,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static works.bosk.drivers.mongo.internal.TestParameters.LONG_TIMESCALE;
+import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -34,13 +38,17 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * and retried; either way, after the refurbish the write must still be present.
  */
 @ReplayLogsOnFailure
+@InjectFields
 public class MongoDriverRefurbishRaceTest extends AbstractMongoDriverTest {
 
-	public MongoDriverRefurbishRaceTest() {
-		super(MongoDriverSettings.builder()
-			.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
-			.timescaleMS(LONG_TIMESCALE)
-			.database("MongoDriverRefurbishRaceTest"));
+	@InjectorMethod
+	static Stream<ParameterSet> parameterSets() {
+		return Stream.of(new ParameterSet(
+			"MongoDriverRefurbishRaceTest",
+			MongoDriverSettings.builder()
+				.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
+				.timescaleMS(LONG_TIMESCALE)
+				.database("MongoDriverRefurbishRaceTest")));
 	}
 
 	@Test

@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.MongoCollection;
 import java.io.IOException;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonRegularExpression;
@@ -18,12 +19,15 @@ import works.bosk.SideTableReference;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.drivers.mongo.internal.TestParameters.LONG_TIMESCALE;
+import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -35,13 +39,17 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * with no final event to pop them).
  */
 @ReplayLogsOnFailure
+@InjectFields
 public class MongoDriverNoOpRecordWriteTest extends AbstractMongoDriverTest {
 
-	public MongoDriverNoOpRecordWriteTest() {
-		super(MongoDriverSettings.builder()
-			.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog/-x-/sideTable"))
-			.timescaleMS(LONG_TIMESCALE)
-			.database("MongoDriverNoOpRecordWriteTest"));
+	@InjectorMethod
+	static Stream<ParameterSet> parameterSets() {
+		return Stream.of(new ParameterSet(
+			"MongoDriverNoOpRecordWriteTest",
+			MongoDriverSettings.builder()
+				.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog/-x-/sideTable"))
+				.timescaleMS(LONG_TIMESCALE)
+				.database("MongoDriverNoOpRecordWriteTest")));
 	}
 
 	@Test
