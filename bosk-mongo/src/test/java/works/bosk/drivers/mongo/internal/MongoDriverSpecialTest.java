@@ -1402,15 +1402,18 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		MongoDriverSettings longTimescaleSettings = driverSettings.toBuilder()
 			.timescaleMS(10 * SHORT_TIMESCALE)
 			.build();
-		DriverFactory<TestEntity> longTimescaleFactory = (b, d) -> {
-			var driver = MongoDriver.<TestEntity>factory(
-				mongoService.clientSettings(testInfo),
-				longTimescaleSettings,
-				new BsonSerializer()
-			).build(b, d);
-			tearDownActions.addFirst(driver::close);
-			return driver;
-		};
+		DriverFactory<TestEntity> longTimescaleFactory = DriverStack.of(
+			BoskLogFilter.withController(logController),
+			(b, d) -> {
+				var driver = MongoDriver.<TestEntity>factory(
+					mongoService.clientSettings(testInfo),
+					longTimescaleSettings,
+					new BsonSerializer()
+				).build(b, d);
+				tearDownActions.addFirst(driver::close);
+				return driver;
+			}
+		);
 
 		AtomicBoolean initializationDone = new AtomicBoolean(false);
 		AtomicBoolean armed = new AtomicBoolean(false);
