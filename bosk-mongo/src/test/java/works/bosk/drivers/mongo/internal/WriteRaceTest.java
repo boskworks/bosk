@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.MongoClientSettings;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import org.bson.BsonDocument;
 import org.bson.BsonRegularExpression;
 import org.bson.BsonValue;
@@ -11,9 +12,12 @@ import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.Catalog;
+import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectorMethod;
 import works.bosk.libtesting.BlockingGate;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
@@ -22,31 +26,37 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static works.bosk.drivers.mongo.internal.TestParameters.LONG_TIMESCALE;
+import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
- * Exhibits the Pando {@code loadAllState} race: a concurrent commit between the
- * graft (sub-part) document read and the root document read produces a "torn"
- * load whose revision is new enough that the change-stream events that would
- * correct it are skipped, so the downstream never converges to the database
- * state.
+ * Exhibits races between a concurrent write and Pando's load or refurbish
+ * operations, both of which read the state outside a transaction.
  * <p>
- * The test pauses the load's cursor after it has read the graft document, has a
- * writer commit a change while the cursor is paused, then releases the cursor so
- * it reads the root document with the new revision. The fix makes the load run
- * inside a transaction, so it reads the whole state at one consistent snapshot:
- * a write committed during the load is then caught up by the change stream
- * (rather than being skipped as already-seen). After a flush the bosk must
- * reflect the write.
+ * {@link #loadConcurrentWithWrite_mustConverge()}: a concurrent commit between
+ * the graft (sub-part) document read and the root document read produces a
+ * "torn" load whose revision is new enough that the change-stream events that
+ * would correct it are skipped, so the downstream never converges to the
+ * database state.
+ * <p>
+ * {@link #refurbishConcurrentWithWrite_mustNotLoseUpdate()}: a concurrent
+ * write that commits after refurbish's read but before its re-scatter's
+ * deleteMany is inside the transaction's snapshot (so no write-conflict aborts
+ * the refurbish) yet absent from the state that gets re-scattered -- so the
+ * write is silently lost.
  */
 @ReplayLogsOnFailure
-public class MongoDriverLoadRaceTest extends AbstractMongoDriverTest {
+@InjectFields
+public class WriteRaceTest extends AbstractMongoDriverTest {
 
-	public MongoDriverLoadRaceTest() {
-		super(MongoDriverSettings.builder()
-			.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
-			.timescaleMS(LONG_TIMESCALE)
-			.database("MongoDriverLoadRaceTest"));
+	@InjectorMethod
+	static Stream<ParameterSet> parameterSets() {
+		return Stream.of(new ParameterSet(
+			"WriteRaceTest",
+			MongoDriverSettings.builder()
+				.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
+				.timescaleMS(LONG_TIMESCALE)
+				.database("WriteRaceTest")));
 	}
 
 	@Test
@@ -115,6 +125,81 @@ public class MongoDriverLoadRaceTest extends AbstractMongoDriverTest {
 		try (var _ = testBosk.readSession()) {
 			assertEquals(newCatalog, testBosk.rootReference().value().catalog(),
 				"After a flush, the bosk must reflect the write that committed during the load");
+		}
+	}
+
+	@Test
+	void refurbishConcurrentWithWrite_mustNotLoseUpdate() throws Exception {
+		BlockingGate refurbishGate = new BlockingGate("the refurbish deleteMany");
+
+		// The writer bosk initializes the database and later performs the concurrent write.
+		Bosk<TestEntity> writerBosk = new Bosk<>(
+			boskName("refurbishRaceWriter"),
+			TestEntity.class,
+			this::singleEntryInitialState,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		writerBosk.driver().flush();
+		Refs refs = writerBosk.buildReferences(Refs.class);
+		Catalog<TestEntity> newCatalog = Catalog.of(
+			TestEntity.empty(entity123, refs.childCatalog(entity123))
+				.withString("changed by the writer"));
+
+		// Run refurbish on a background thread. The beforeRefurbishDelete hook
+		// blocks the refurbish just before its deleteMany (the transaction's
+		// first write, and so the point where the transaction's snapshot is taken).
+		AtomicReference<Bosk<TestEntity>> refurbisherRef = new AtomicReference<>();
+		AtomicReference<Throwable> refurbishError = new AtomicReference<>();
+		Thread refurbishThread = new Thread(() -> {
+			MainDriver.TEST_PROBES.set(TestProbes.noop()
+				.withBeforeRefurbishDelete(() -> {
+					refurbishGate.signal();
+					refurbishGate.awaitRelease(Duration.ofSeconds(60));
+				}));
+			try {
+				Bosk<TestEntity> refurbisher = new Bosk<>(
+					boskName("refurbishRaceRefurbisher"),
+					TestEntity.class,
+					this::singleEntryInitialState,
+					BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+				refurbisherRef.set(refurbisher);
+				refurbisher.getDriver(MongoDriver.class).refurbish();
+			} catch (Throwable e) {
+				refurbishError.set(e);
+			} finally {
+				MainDriver.TEST_PROBES.remove();
+			}
+		});
+		refurbishThread.start();
+
+		try {
+			// Wait for refurbish to reach its deleteMany, then commit a concurrent write.
+			refurbishGate.awaitSignal(Duration.ofSeconds(30));
+			writerBosk.driver().submitReplacement(refs.catalog(), newCatalog);
+
+			refurbishGate.release();
+			refurbishThread.join(60_000);
+			assertFalse(refurbishThread.isAlive(), "Refurbish should finish");
+		} finally {
+			refurbishGate.release();
+			if (refurbishThread.isAlive()) {
+				refurbishThread.interrupt();
+				refurbishThread.join();
+			}
+			MainDriver.TEST_PROBES.remove();
+		}
+
+		assertNull(refurbishError.get(), "Refurbish should not throw");
+
+		// A fresh bosk reads whatever is actually in the database after the refurbish.
+		Bosk<TestEntity> checkBosk = new Bosk<>(
+			boskName("refurbishRaceCheck"),
+			TestEntity.class,
+			this::singleEntryInitialState,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		checkBosk.driver().flush();
+		try (var _ = checkBosk.readSession()) {
+			assertEquals(newCatalog, checkBosk.rootReference().value().catalog(),
+				"A write committed during refurbish must survive it");
 		}
 	}
 

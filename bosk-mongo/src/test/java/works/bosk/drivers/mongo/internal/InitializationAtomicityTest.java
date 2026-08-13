@@ -6,12 +6,13 @@ import org.bson.BsonDocument;
 import org.bson.BsonValue;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
+import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 
@@ -34,23 +35,18 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * writes succeed or neither does.
  */
 @ReplayLogsOnFailure
-@ParameterizedClass
-@MethodSource("classParameters")
-public class MongoDriverInitializationAtomicityTest extends AbstractMongoDriverTest {
+@InjectFields
+public class InitializationAtomicityTest extends AbstractMongoDriverTest {
 
-	public MongoDriverInitializationAtomicityTest(TestParameters.ParameterSet parameters) {
-		super(parameters.driverSettingsBuilder());
-	}
-
-	static Stream<Object[]> classParameters() {
-		Stream<TestParameters.ParameterSet> parameterSets = TestParameters.driverSettings(
+	@InjectorMethod
+	static Stream<ParameterSet> parameterSets() {
+		return TestParameters.driverSettings(
 			Stream.of(
 				MongoDriverSettings.DatabaseFormat.SEQUOIA,
 				PandoFormat.oneBigDocument()
 			),
 			Stream.of(TestParameters.EventTiming.NORMAL)
 		);
-		return parameterSets.map(s -> new Object[] {s});
 	}
 
 	@Test

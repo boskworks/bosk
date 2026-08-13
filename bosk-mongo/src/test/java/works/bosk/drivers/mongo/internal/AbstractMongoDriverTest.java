@@ -5,6 +5,9 @@ import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Optional;
+import org.bson.BsonDocument;
+import org.bson.BsonString;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,8 +31,9 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.mongo.MongoDriverSettings.MongoDriverSettingsBuilder;
+import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.Injected;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
@@ -42,15 +46,14 @@ abstract class AbstractMongoDriverTest {
 	protected static final Identifier rootID = Identifier.from("root");
 
 	protected static MongoService mongoService;
+	protected @Injected ParameterSet parameters;
 	protected BoskLogFilter.LogController logController;
 	protected DriverFactory<TestEntity> driverFactory;
 	protected Deque<Runnable> tearDownActions;
-	protected final MongoDriverSettings driverSettings;
+	protected MongoDriverSettings driverSettings;
 
-	public AbstractMongoDriverTest(MongoDriverSettingsBuilder driverSettings) {
-		this.driverSettings = driverSettings.build();
+	protected AbstractMongoDriverTest() {
 	}
-
 
 	@BeforeAll
 	public static void setupMongoConnection() {
@@ -59,6 +62,7 @@ abstract class AbstractMongoDriverTest {
 
 	@BeforeEach
 	void setupDriverFactory(TestInfo testInfo) {
+		this.driverSettings = parameters.driverSettingsBuilder().build();
 		logController = new BoskLogFilter.LogController();
 		driverFactory = createDriverFactory(logController, testInfo);
 
@@ -155,6 +159,13 @@ abstract class AbstractMongoDriverTest {
 			BoskLogFilter.withController(logController),
 			mongoDriverFactory
 		);
+	}
+
+	/**
+	 * A filter selecting the root state document(s), whose {@code path} is {@code "/"}.
+	 */
+	protected @NonNull BsonDocument rootDocumentsFilter() {
+		return new BsonDocument("path", new BsonString("/"));
 	}
 
 	public interface Refs {

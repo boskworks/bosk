@@ -2,78 +2,49 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
-import lombok.With;
-import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
-import org.bson.BsonInt32;
 import org.bson.BsonInt64;
-import org.bson.BsonNull;
 import org.bson.BsonString;
-import org.bson.Document;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.BoskDriver;
-import works.bosk.Catalog;
-import works.bosk.CatalogReference;
 import works.bosk.DriverFactory;
 import works.bosk.DriverStack;
-import works.bosk.Entity;
-import works.bosk.Identifier;
 import works.bosk.Listing;
-import works.bosk.ListingEntry;
-import works.bosk.ListingReference;
 import works.bosk.Reference;
-import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
-import works.bosk.StateTreeSerializer;
-import works.bosk.TaggedUnion;
 import works.bosk.drivers.BufferingDriver;
 import works.bosk.drivers.ForwardingDriver;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectorMethod;
 import works.bosk.libtesting.BlockingGate;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.testing.drivers.state.TestValues;
-import works.bosk.testing.drivers.state.UpgradeableEntity;
-import works.bosk.testing.junit.Slow;
-import works.bosk.util.Classes;
 
 import static ch.qos.logback.classic.Level.ERROR;
-import static java.lang.Long.max;
-import static java.lang.System.currentTimeMillis;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -89,20 +60,22 @@ import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
- * Tests {@link MongoDriver}-specific functionality not covered by {@link MongoDriverConformanceTest}.
+ * Tests the driver's behavior across disconnects and reconnects: recovery from
+ * network outages, correct handling of hooks during an outage, and the reconnect
+ * and retry machinery, which must never disconnect a healthy driver or lose an
+ * update.
  */
-@ParameterizedClass
-@MethodSource("parameterSets")
+@InjectFields
 @ReplayLogsOnFailure
-class MongoDriverSpecialTest extends AbstractMongoDriverTest {
+public class ReconnectTest extends AbstractMongoDriverTest {
+	private static final String DISCONNECT_PROBE_ID = "disconnectProbe";
+
 	/**
 	 * We deliberately don't reference {@link MainDriver#MANIFEST_ID} here
 	 * because if we change the manifest ID then that's a breaking change,
 	 * and we want this test to fail.
 	 */
 	public static final String MANIFEST_ID = "!Manifest";
-
-	private static final String DISCONNECT_PROBE_ID = "disconnectProbe";
 
 	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
 
@@ -118,171 +91,9 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		MainDriver.TEST_PROBES.remove();
 	}
 
-	public MongoDriverSpecialTest(ParameterSet parameters) {
-		super(parameters.driverSettingsBuilder());
-	}
-
-	static List<ParameterSet> parameterSets() {
-		return TestParameters.driverSettings(
-			Stream.of(
-				MongoDriverSettings.DatabaseFormat.SEQUOIA,
-				PandoFormat.oneBigDocument(),
-				PandoFormat.withGraftPoints("/catalog", "/sideTable")
-			),
-			Stream.of(TestParameters.EventTiming.NORMAL)
-		).map(b -> b.applyDriverSettings(s -> s
-			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
-		)).toList();
-	}
-
-	@Test
-	void quiescent_noErrors() throws InterruptedException, IOException {
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("quiescent"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-
-		Thread.sleep(12*SHORT_TIMESCALE);
-
-		errorRecorder.assertAllClear("after quiescent period");
-
-		bosk.driver().flush();
-
-		errorRecorder.assertAllClear("after flush");
-	}
-
-	/**
-	 * TODO: Doesn't {@link works.bosk.testing.drivers.SharedDriverConformanceTest} handle this now?
-	 * Should probably just delete this one.
-	 */
-	@Test
-	void warmStart_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
-		Bosk<TestEntity> setupBosk = new Bosk<>(
-			boskName("Setup"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		Refs refs = setupBosk.buildReferences(Refs.class);
-
-		// Make a change to the bosk so it's not just the initial root
-		setupBosk.driver().submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
-		setupBosk.driver().flush();
-		TestEntity expected = initialRoot(setupBosk)
-			.withListing(Listing.of(refs.catalog(), entity123));
-
-		Bosk<TestEntity> latecomerBosk = new Bosk<>(
-			boskName("Latecomer"),
-			TestEntity.class,
-			_ -> { throw new AssertionError("Default root function should not be called"); },
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-
-		try (var _ = latecomerBosk.readSession()) {
-			TestEntity actual = latecomerBosk.rootReference().value();
-			assertEquals(expected, actual);
-		}
-	}
-
-	@Test
-	void flush_localStateUpdated() throws InvalidTypeException, InterruptedException, IOException {
-		// Set up MongoDriver writing to a modified BufferingDriver that lets us
-		// have tight control over all the comings and goings from MongoDriver.
-		BlockingQueue<Reference<?>> replacementsSeen = new LinkedBlockingDeque<>();
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName(),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory((b, d) -> driverFactory.build(b, new BufferingDriver(d, b.context()) {
-				@Override
-				public <T> void submitReplacement(Reference<T> target, T newValue) {
-					super.submitReplacement(target, newValue);
-					replacementsSeen.add(target);
-				}
-			})).build());
-
-		CatalogReference<TestEntity> catalogRef = bosk.rootReference().thenCatalog(TestEntity.class,
-			TestEntity.Fields.catalog);
-		ListingReference<TestEntity> listingRef = bosk.rootReference().thenListing(TestEntity.class,
-			TestEntity.Fields.listing);
-
-		// Make a change
-		Reference<ListingEntry> ref = listingRef.then(entity123);
-		bosk.driver().submitReplacement(ref, LISTING_ENTRY);
-
-		// Give the driver a bit of time to make a mistake, if it's going to,
-		// but not so long that we cause a timeout that wouldn't otherwise happen
-		long budgetMillis = (1+driverSettings.timescaleMS()) / 2;
-		while (budgetMillis > 0) {
-			long startTime = currentTimeMillis();
-			Reference<?> updatedRef = replacementsSeen.poll(budgetMillis, MILLISECONDS);
-			if (ref.equals(updatedRef)) {
-				// We've seen the expected update. This is pretty likely to be a good time
-				// to proceed with the test.
-				break;
-			} else {
-				long elapsedTime = currentTimeMillis() - startTime;
-				budgetMillis -= max(elapsedTime, 1); // Always make progress despite the vagaries of the system clock
-			}
-		}
-
-		try (var _ = bosk.readSession()) {
-			TestEntity expected = initialRoot(bosk);
-			TestEntity actual = bosk.rootReference().value();
-			assertEquals(expected, actual, "MongoDriver should not have called downstream.flush() yet");
-		}
-
-		bosk.driver().flush();
-
-		try (var _ = bosk.readSession()) {
-			TestEntity expected = initialRoot(bosk).withListing(Listing.of(catalogRef, entity123));
-			TestEntity actual = bosk.rootReference().value();
-			assertEquals(expected, actual, "MongoDriver.flush() should reliably update the bosk");
-		}
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	@Test
-	void listing_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName(),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		BoskDriver driver = bosk.driver();
-		CatalogReference<TestEntity> catalogRef = bosk.rootReference().thenCatalog(TestEntity.class,
-			TestEntity.Fields.catalog);
-		ListingReference<TestEntity> listingRef = bosk.rootReference().thenListing(TestEntity.class,
-			TestEntity.Fields.listing);
-
-		// Clear the listing
-		driver.submitReplacement(listingRef, Listing.empty(catalogRef));
-
-		// Add to the listing
-		driver.submitReplacement(listingRef.then(entity124), LISTING_ENTRY);
-		driver.submitReplacement(listingRef.then(entity123), LISTING_ENTRY);
-		driver.submitReplacement(listingRef.then(entity124), LISTING_ENTRY);
-
-		// Check the contents
-		driver.flush();
-		try (var _ = bosk.readSession()) {
-			Listing<TestEntity> actual = listingRef.value();
-			Listing<TestEntity> expected = Listing.of(catalogRef, entity124, entity123);
-			assertEquals(expected, actual);
-		}
-
-		// Remove an entry
-		driver.submitDeletion(listingRef.then(entity123));
-
-		// Check the contents
-		driver.flush();
-		try (var _ = bosk.readSession()) {
-			Listing<TestEntity> actual = listingRef.value();
-			Listing<TestEntity> expected = Listing.of(catalogRef, entity124);
-			assertEquals(expected, actual);
-		}
-
-		errorRecorder.assertAllClear("after test");
+	@InjectorMethod
+	static Stream<ParameterSet> parameterSets() {
+		return TestParameters.standardDriverSettings();
 	}
 
 	@Test
@@ -340,7 +151,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 		assertEquals(expected, latecomerActual);
 	}
-
 	@Test
 	@DisruptsMongoProxy
 	void hookInterrupted_whenReceiverDisconnects() throws InvalidTypeException, InterruptedException, IOException {
@@ -416,7 +226,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 		assertEquals(expected, actual, "The bosk must recover and converge to the expected state");
 	}
-
 	@Test
 	@DisruptsMongoProxy
 	void hookRegisteredDuringNetworkOutage_works() throws InvalidTypeException, InterruptedException, IOException {
@@ -478,7 +287,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 		assertEquals(expected, actual);
 	}
-
 	@Test
 	@DisruptsMongoProxy
 	void networkOutage_changeStreamDoesntNotice_boskRecovers() throws InvalidTypeException, InterruptedException, IOException {
@@ -552,225 +360,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 		assertEquals(expected, actual);
 	}
-
-	@Test
-	void initialStateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException {
-		setLogging(ERROR, StateTreeSerializer.class);
-
-		// Upon creating bosk, the initial value will be saved to MongoDB
-		new Bosk<>(
-			boskName("Newer"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialStateWithValues,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-
-		// Upon creating prevBosk, the state in the database will be loaded into the local.
-		Bosk<OldEntity> prevBosk = new Bosk<>(
-			boskName("Prev"),
-			OldEntity.class,
-			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			BoskConfig.<OldEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		OldEntity expected = OldEntity.withString(rootID.toString(), prevBosk);
-
-		OldEntity actual;
-		try (var _ = prevBosk.readSession()) {
-			actual = prevBosk.rootReference().value();
-		}
-		assertEquals(expected, actual);
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	@Test
-	void updateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, StateTreeSerializer.class);
-
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("Newer"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		Bosk<OldEntity> prevBosk = new Bosk<>(
-			boskName("Prev"),
-			OldEntity.class,
-			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			BoskConfig.<OldEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		TestEntity initialRoot = initialRootWithEmptyCatalog(bosk);
-		bosk.driver().submitReplacement(bosk.rootReference(),
-			initialRoot
-				.withString("replacementString")
-				.withValues(Optional.of(TestValues.blank())));
-
-		prevBosk.driver().flush();
-
-		OldEntity oldEntity = OldEntity.withString("replacementString", prevBosk);
-
-		OldEntity actual;
-		try (var _ = prevBosk.readSession()) {
-			actual = prevBosk.rootReference().value();
-		}
-
-		assertEquals(oldEntity, actual);
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	@Test
-	void updateNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, AbstractFormatDriver.class, StateTreeSerializer.class);
-
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("Newer"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		Bosk<OldEntity> prevBosk = new Bosk<>(
-			boskName("Prev"),
-			OldEntity.class,
-			_ -> {
-				throw new AssertionError("prevBosk should use the state from MongoDB");
-			},
-			BoskConfig.<OldEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		Refs refs = bosk.buildReferences(Refs.class);
-		bosk.driver().submitReplacement(refs.values(),
-			TestValues.blank());
-
-		prevBosk.driver().flush();
-
-		OldEntity expected = OldEntity // unchanged from before
-			.withString(rootID.toString(), prevBosk);
-
-		OldEntity actual;
-		try (var _ = prevBosk.readSession()) {
-			actual = prevBosk.rootReference().value();
-		}
-
-		assertEquals(expected, actual);
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	@Test
-	void deleteNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, StateTreeSerializer.class);
-
-		Bosk<TestEntity> newerBosk = new Bosk<>(
-			boskName("Newer"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		Bosk<OldEntity> prevBosk = new Bosk<>(
-			boskName("Prev"),
-			OldEntity.class,
-			_ -> { throw new AssertionError("prevBosk should use the state from MongoDB"); },
-			BoskConfig.<OldEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		Refs refs = newerBosk.buildReferences(Refs.class);
-		newerBosk.driver().submitDeletion(refs.values());
-
-		prevBosk.driver().flush();
-
-		OldEntity oldEntity = OldEntity.withString(rootID.toString(), prevBosk); // unchanged
-
-		OldEntity actual;
-		try (var _ = prevBosk.readSession()) {
-			actual = prevBosk.rootReference().value();
-		}
-
-		assertEquals(oldEntity, actual);
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	@Test
-	@Slow
-	void databaseMissingField_fallsBackToDefaultState(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, ChangeReceiver.class);
-
-		LOGGER.debug("Set up database with entity that has no string field");
-		Bosk<OptionalEntity> setupBosk = new Bosk<>(
-			boskName("Setup"),
-			OptionalEntity.class,
-			b -> OptionalEntity.withString(Optional.empty(), b),
-			BoskConfig.<OptionalEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		LOGGER.debug("Connect another bosk where the string field is mandatory");
-		Bosk<TestEntity> testBosk = new Bosk<>(
-			boskName("Test"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		TestEntity expected1 = initialRoot(testBosk); // NOT what was put there by the setup bosk!
-		TestEntity actual1;
-		try (var _ = testBosk.readSession()) {
-			actual1 = testBosk.rootReference().value();
-		}
-
-		assertEquals(expected1, actual1, "Disconnected bosk should use the default initial root");
-
-		LOGGER.debug("Repair the bosk by writing the string value");
-		setupBosk.driver().submitReplacement(
-			setupBosk.rootReference().then(String.class, "string"),
-			"stringValue");
-
-		LOGGER.debug("Flush testBosk to get the state from the database");
-		testBosk.driver().flush();
-
-		Refs refs = testBosk.buildReferences(Refs.class);
-		TestEntity expected2;
-		try (var _ = setupBosk.readSession()) {
-			// (Note that we don't bother flushing setupBosk because we don't need the latest value;
-			// the variant field hasn't changed since it was initialized.)
-			expected2 = TestEntity.empty(Identifier.from("optionalEntity"), refs.catalog())
-				.withString("stringValue")
-				.withVariant(setupBosk.rootReference().value().variant().get());
-		}
-
-		TestEntity actual2;
-		try (var _ = testBosk.readSession()) {
-			actual2 = testBosk.rootReference().value();
-		}
-
-		assertEquals(expected2, actual2, "Reconnected bosk should see the state from the database");
-
-		assertEquals(0, errorRecorder.failureCount, "No connection failures");
-		assertEquals(1, errorRecorder.disconnections.size(),
-			"Expected 1 disconnection: DatabaseLoadException from DISCONNECT fallback");
-	}
-
-	@Test
-	@Slow
-	void revisionFieldWrongType_flushThrowsFlushFailureException() throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
-
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("revisionWrongType"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		try (var _ = bosk.readSession()) {
-			assertEquals(initialRoot(bosk), bosk.rootReference().value());
-		}
-
-		// Corrupt the revision field by giving it the wrong BSON type.
-		// The $exists filter targets only the document(s) that have a revision field,
-		// which is the root document in both formats.
-		mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME, BsonDocument.class)
-			.updateMany(
-				new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonDocument("$exists", BsonBoolean.TRUE)),
-				new BsonDocument("$set", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonString("oops")))
-			);
-
-		// A malformed revision must surface as a checked FlushFailureException at the driver
-		// boundary, never as a raw RuntimeException like BsonInvalidOperationException.
-		assertThrows(FlushFailureException.class, () -> bosk.driver().flush());
-	}
-
 	@Test
 	@DisruptsMongoProxy
 	void downstreamInitialStateThrows_wrappedInIllegalArgumentException() {
@@ -799,247 +388,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		assertEquals("Error computing initial state: downstream initial state failed", e.getMessage());
 		assertSame(thrown, e.getCause());
 	}
-
-	@Test
-	void unrelatedDatabase_ignored() throws InvalidTypeException, IOException, InterruptedException {
-		tearDownActions.addFirst(mongoService.client().getDatabase("unrelated")::drop);
-		doUnrelatedChangeTest("unrelated", MainDriver.COLLECTION_NAME, plausibleRootDocumentID().getValue());
-	}
-
-	@Test
-	void unrelatedCollection_ignored() throws InvalidTypeException, IOException, InterruptedException {
-		doUnrelatedChangeTest(driverSettings.database(), "unrelated", plausibleRootDocumentID().getValue());
-	}
-
-	@Test
-	void unrelatedDoc_ignored() throws InvalidTypeException, IOException, InterruptedException {
-		doUnrelatedChangeTest(driverSettings.database(), MainDriver.COLLECTION_NAME, "unrelated");
-	}
-
-	private void doUnrelatedChangeTest(String databaseName, String collectionName, String docID) throws IOException, InterruptedException, InvalidTypeException {
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName(),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-
-		MongoCollection<Document> counterfeitCollection = mongoService.client()
-			.getDatabase(databaseName)
-			.getCollection(collectionName);
-
-		// Make a realistic-looking doc to try to fool the driver
-		MongoCollection<Document> actualCollection = mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME);
-		Document doc;
-		try (MongoCursor<Document> cursor = actualCollection.find().limit(1).cursor()) {
-			doc = cursor.next();
-		}
-		doc.put("_id", docID);
-		doc.get("state", Document.class).put("string", "counterfeit");
-		counterfeitCollection.insertOne(doc);
-
-		bosk.driver().flush();
-		TestEntity expected = initialRoot(bosk);
-		try (var _ = bosk.readSession()) {
-			TestEntity actual = bosk.rootReference().value();
-			assertEquals(expected, actual);
-		}
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	@Test
-	void refurbish_createsField(TestInfo testInfo) throws IOException, InterruptedException {
-		// We'll use this as an honest observer of the actual state
-		LOGGER.debug("Create Original bosk");
-		Bosk<TestEntity> originalBosk = new Bosk<>(
-			boskName("Original"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		LOGGER.debug("Create Upgradeable bosk");
-		Bosk<UpgradeableEntity> upgradeableBosk = new Bosk<>(
-			boskName("Upgradeable"),
-			UpgradeableEntity.class,
-			_ -> { throw new AssertionError("upgradeableBosk should use the state from MongoDB"); },
-			BoskConfig.<UpgradeableEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		LOGGER.debug("Check state before");
-		Optional<TestValues> before;
-		try (var _ = originalBosk.readSession()) {
-			before = originalBosk.rootReference().value().values();
-		}
-		assertEquals(Optional.empty(), before); // Not there yet
-
-		LOGGER.debug("Call refurbish");
-		upgradeableBosk.getDriver(MongoDriver.class).refurbish();
-		originalBosk.driver().flush(); // Not the bosk that did refurbish!
-
-		LOGGER.debug("Check state after");
-		Optional<TestValues> after;
-		try (var _ = originalBosk.readSession()) {
-			after = originalBosk.rootReference().value().values();
-		}
-		assertEquals(Optional.of(TestValues.blank()), after); // Now it's there
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	@Test
-	@Slow
-	void manifestVersionBump_disconnects(TestInfo testInfo) throws IOException, InterruptedException {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
-
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName(),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		LOGGER.debug("Flush should work");
-		bosk.driver().flush();
-
-		errorRecorder.assertAllClear("before manifest version bump");
-
-		LOGGER.debug("Upgrade to an unsupported manifest version");
-		MongoCollection<Document> collection = mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME);
-		collection.updateOne(
-			new BsonDocument("_id", new BsonString(MANIFEST_ID)),
-			new BsonDocument("$inc", new BsonDocument("version", new BsonInt32(1)))
-		);
-		// Must also bump the revision number or else flush rightly does nothing
-		collection.updateOne(
-			rootDocumentsFilter(),
-			new BsonDocument("$inc", new BsonDocument("revision", new BsonInt64(1)))
-		);
-
-		LOGGER.debug("Flush should throw");
-		assertThrows(FlushFailureException.class, ()->bosk.driver().flush());
-
-		LOGGER.debug("Finished");
-	}
-
-	@Test
-	void refurbish_fixesMetadata(TestInfo testInfo) throws IOException, InterruptedException {
-		// Set up the database so it looks basically right
-		Bosk<TestEntity> initialBosk = new Bosk<>(
-			boskName("Initial"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		// (Close this so it doesn't crash when we start mucking with the database)
-		initialBosk.getDriver(MongoDriver.class).close();
-
-		// Add a bogus metadata field
-		MongoCollection<BsonDocument> collection = mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
-		String bogusField = "bogusField";
-		addFields(collection, bogusField);
-
-		// Make the bosk whose refurbish operation we want to test
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("Main"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		// Get the new bosk reconnected
-		bosk.driver().flush();
-
-		// Verify that the fields are indeed there
-		BsonDocument filterDoc = rootDocumentsFilter();
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonDocument doc = cursor.next();
-			assertEquals(new BsonString(bogusField), doc.getString(bogusField));
-		}
-
-		// Refurbish
-		bosk.getDriver(MongoDriver.class).refurbish();
-
-		// Verify the field is now gone
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonDocument doc = cursor.next();
-			assertNull(doc.get(bogusField));
-		}
-
-	}
-
-	@Test
-	void refurbish_preservesExistingEpoch(TestInfo testInfo) throws IOException, InterruptedException {
-		// Make the bosk whose refurbish operation we want to test
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("Main"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		// Get the new bosk connected, which initializes the collection with an epoch
-		bosk.driver().flush();
-
-		MongoCollection<BsonDocument> collection = mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
-		BsonDocument filterDoc = rootDocumentsFilter();
-		BsonString epochBefore;
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			epochBefore = cursor.next().getString(Formatter.DocumentFields.epoch.name());
-		}
-
-		// Refurbish
-		bosk.getDriver(MongoDriver.class).refurbish();
-
-		// The existing epoch must be preserved exactly
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonString epochAfter = cursor.next().getString(Formatter.DocumentFields.epoch.name());
-			assertEquals(epochBefore, epochAfter);
-		}
-
-	}
-
-	@Test
-	void refurbish_addsMissingEpoch(TestInfo testInfo) throws IOException, InterruptedException {
-		// Set up the database so it looks basically right
-		Bosk<TestEntity> initialBosk = new Bosk<>(
-			boskName("Initial"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-		initialBosk.getDriver(MongoDriver.class).close();
-
-		// Simulate a legacy collection by removing the epoch field
-		MongoCollection<BsonDocument> collection = mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
-		deleteFields(collection, Formatter.DocumentFields.epoch);
-
-		// Make the bosk whose refurbish operation we want to test
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("Main"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		// Get the new bosk connected
-		bosk.driver().flush();
-
-		// Refurbish
-		bosk.getDriver(MongoDriver.class).refurbish();
-
-		// The missing epoch must now be present, and must be a plausible UUID
-		BsonDocument filterDoc = rootDocumentsFilter();
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonString epoch = cursor.next().getString(Formatter.DocumentFields.epoch.name());
-			assertNotNull(epoch);
-			UUID.fromString(epoch.getValue());
-		}
-	}
-
 	@Test
 	void reconnect_lostPublishSignal_doesNotWait() {
 		// Regression test for a lost-signal race condition in waitAndRetry.
@@ -1148,7 +496,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			MainDriver.TEST_PROBES.remove();
 		}
 	}
-
 	@Test
 	void recoveredDriver_survivesStaleDisconnect() throws InterruptedException, InvalidTypeException {
 		// Regression test for a race in doRetryableDriverOperation: when an operation fails
@@ -1255,7 +602,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			MainDriver.TEST_PROBES.remove();
 		}
 	}
-
 	@Test
 	void interruptedFlush_doesNotDisconnectHealthyDriver(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		// Regression test for a bug in doRetryableDriverOperation: an InterruptedException
@@ -1358,7 +704,6 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 			MainDriver.TEST_PROBES.remove();
 		}
 	}
-
 	@Test
 	void flush_duringReconnect_waitsForFreshState(TestInfo testInfo) throws InvalidTypeException, InterruptedException, IOException {
 		// Regression test for a race where, on reconnect, MainDriver publishes the new
@@ -1554,109 +899,5 @@ class MongoDriverSpecialTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	private void deleteFields(MongoCollection<BsonDocument> collection, Formatter.DocumentFields... fields) {
-		BsonDocument fieldsToUnset = new BsonDocument();
-		for (Formatter.DocumentFields field: fields) {
-			fieldsToUnset.append(field.name(), BsonNull.VALUE); // Value is ignored
-		}
-		BsonDocument filterDoc = rootDocumentsFilter();
-		collection.updateOne(
-			filterDoc,
-			new BsonDocument("$unset", fieldsToUnset));
-
-		// Let's just make sure they're gone
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonDocument doc = cursor.next();
-			for (Formatter.DocumentFields field: fields) {
-				assertNull(doc.get(field.name()));
-			}
-		}
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	private void addFields(MongoCollection<BsonDocument> collection, String... fieldNames) {
-		BsonDocument fieldsToSet = new BsonDocument();
-		for (String fieldName: fieldNames) {
-			fieldsToSet.append(fieldName, new BsonString(fieldName));
-		}
-		BsonDocument filterDoc = rootDocumentsFilter();
-		collection.updateOne(
-			filterDoc,
-			new BsonDocument("$set", fieldsToSet));
-
-		// Make sure they exist
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonDocument doc = cursor.next();
-			for (String fieldName: fieldNames) {
-				assertEquals(new BsonString(fieldName), doc.getString(fieldName));
-			}
-		}
-
-		errorRecorder.assertAllClear("after test");
-	}
-
-	private @NonNull BsonDocument rootDocumentsFilter() {
-		return new BsonDocument("path", new BsonString("/"));
-	}
-
-	@NonNull
-	private BsonString plausibleRootDocumentID() {
-		return (MongoDriverSettings.DatabaseFormat.SEQUOIA == driverSettings.preferredDatabaseFormat())
-			? SequoiaFormatDriver.DOCUMENT_ID
-			: new BsonString("|"); // Not every PANDO mode uses this, but hey, it's plausible
-	}
-
-	/**
-	 * Represents an earlier version of the entity before some fields were added.
-	 */
-	@With
-	public record OldEntity(
-		Identifier id,
-		String string,
-		// We need catalog and sideTable because we use them in our PandoConfiguration
-		Catalog<OldEntity> catalog,
-		SideTable<OldEntity, OldEntity> sideTable
-	) implements Entity {
-		public static OldEntity withString(String value, Bosk<OldEntity> bosk) throws InvalidTypeException {
-			Reference<Catalog<OldEntity>> catalogRef = bosk.rootReference().then(Classes.catalog(OldEntity.class), "catalog");
-			return new OldEntity(
-				rootID,
-				value,
-				Catalog.empty(),
-				SideTable.empty(catalogRef)
-			);
-		}
-	}
-
-	/**
-	 * A version of {@link TestEntity} where all the fields are {@link Optional} so we
-	 * have full control over what fields we set.
-	 */
-	@With
-	public record OptionalEntity(
-		Identifier id,
-		Optional<String> string,
-		Optional<Catalog<TestEntity>> catalog,
-		Optional<Listing<TestEntity>> listing,
-		Optional<SideTable<TestEntity, TestEntity>> sideTable,
-		Optional<SideTable<TestEntity, SideTable<TestEntity, TestEntity>>> nestedSideTable,
-		Optional<TaggedUnion<TestEntity.Variant>> variant,
-		Optional<TestValues> values
-	) implements Entity {
-		static OptionalEntity withString(Optional<String> string, Bosk<OptionalEntity> bosk) throws InvalidTypeException {
-			CatalogReference<TestEntity> domain = bosk.rootReference().thenCatalog(TestEntity.class, "catalog");
-			return new OptionalEntity(
-				Identifier.from("optionalEntity"),
-				string,
-				Optional.of(Catalog.empty()),
-				Optional.of(Listing.empty(domain)),
-				Optional.of(SideTable.empty(domain)),
-				Optional.of(SideTable.empty(domain)),
-				Optional.of(TaggedUnion.of(new TestEntity.StringCase("stringCase"))),
-				Optional.empty());
-		}
-	}
-
-	private static final Logger LOGGER = LoggerFactory.getLogger(MongoDriverSpecialTest.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(ReconnectTest.class);
 }

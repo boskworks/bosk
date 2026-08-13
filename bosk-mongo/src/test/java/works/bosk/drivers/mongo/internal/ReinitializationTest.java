@@ -7,8 +7,6 @@ import java.util.stream.Stream;
 import org.bson.BsonDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedClass;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Bosk;
@@ -17,6 +15,8 @@ import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
+import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectorMethod;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.junit.Slow;
 
@@ -33,13 +33,8 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * even if the new collection's revision numbers happen to coincide with old ones.
  */
 @Slow
-@ParameterizedClass
-@MethodSource("classParameters")
-public class MongoDriverReinitializationTest extends AbstractMongoDriverTest {
-
-	MongoDriverReinitializationTest(ParameterSet parameters) {
-		super(parameters.driverSettingsBuilder());
-	}
+@InjectFields
+public class ReinitializationTest extends AbstractMongoDriverTest {
 
 	@BeforeEach
 	void overrideLogging() {
@@ -47,7 +42,8 @@ public class MongoDriverReinitializationTest extends AbstractMongoDriverTest {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 	}
 
-	static Stream<ParameterSet> classParameters() {
+	@InjectorMethod
+	static Stream<ParameterSet> parameterSets() {
 		return TestParameters.driverSettings(
 			Stream.of(
 				MongoDriverSettings.DatabaseFormat.SEQUOIA,
@@ -117,5 +113,5 @@ public class MongoDriverReinitializationTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(MongoDriverReinitializationTest.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(ReinitializationTest.class);
 }
