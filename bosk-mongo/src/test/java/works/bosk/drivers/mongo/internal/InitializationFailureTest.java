@@ -21,17 +21,17 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * Tests the functionality of {@link MongoDriverSettings.InitialDatabaseUnavailableMode#FAIL_FAST FAIL_FAST} mode.
- * The other tests in {@link MongoDriverRecoveryTest} exercise {@link MongoDriverSettings.InitialDatabaseUnavailableMode#DISCONNECT DISCONNECT} mode.
+ * The other tests in {@link RecoveryTest} exercise {@link MongoDriverSettings.InitialDatabaseUnavailableMode#DISCONNECT DISCONNECT} mode.
  */
 @ReplayLogsOnFailure
 @InjectFields
-public class MongoDriverInitializationFailureTest extends AbstractMongoDriverTest {
+public class InitializationFailureTest extends AbstractMongoDriverTest {
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
 		return Stream.of(new ParameterSet(
-			"MongoDriverInitializationFailureTest",
+			"InitializationFailureTest",
 			MongoDriverSettings.builder()
-				.database(MongoDriverInitializationFailureTest.class.getSimpleName())
+				.database(InitializationFailureTest.class.getSimpleName())
 				.timescaleMS(SHORT_TIMESCALE)
 				.initialDatabaseUnavailableMode(FAIL_FAST)));
 	}

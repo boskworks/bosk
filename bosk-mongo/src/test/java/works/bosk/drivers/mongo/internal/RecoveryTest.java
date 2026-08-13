@@ -62,8 +62,8 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  */
 @Slow
 @InjectFields
-@InjectFrom({MongoDriverRecoveryTest.FlushOrWait.class})
-public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
+@InjectFrom({RecoveryTest.FlushOrWait.class})
+public class RecoveryTest extends AbstractMongoDriverTest {
 	@Injected FlushOrWait flushOrWait;
 	ErrorRecordingChangeListener.ErrorRecorder errorRecorder;
 
@@ -475,5 +475,5 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 
 	private static final AtomicInteger boskCounter = new AtomicInteger(0);
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(MongoDriverRecoveryTest.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(RecoveryTest.class);
 }

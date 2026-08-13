@@ -37,16 +37,16 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 @Slow
 @ReplayLogsOnFailure
 @InjectFields
-public class MongoDriverCommitRetryTest extends AbstractMongoDriverTest {
+public class CommitRetryTest extends AbstractMongoDriverTest {
 
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
 		return Stream.of(new ParameterSet(
-			"MongoDriverCommitRetryTest",
+			"CommitRetryTest",
 			MongoDriverSettings.builder()
 				.preferredDatabaseFormat(PandoFormat.oneBigDocument())
 				.timescaleMS(LONG_TIMESCALE)
-				.database("MongoDriverCommitRetryTest")));
+				.database("CommitRetryTest")));
 	}
 
 	@AfterEach

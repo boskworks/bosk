@@ -36,7 +36,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  */
 @ReplayLogsOnFailure
 @InjectFields
-public class MongoDriverInitializationAtomicityTest extends AbstractMongoDriverTest {
+public class InitializationAtomicityTest extends AbstractMongoDriverTest {
 
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {

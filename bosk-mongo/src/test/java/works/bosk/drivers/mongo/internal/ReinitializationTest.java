@@ -34,7 +34,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  */
 @Slow
 @InjectFields
-public class MongoDriverReinitializationTest extends AbstractMongoDriverTest {
+public class ReinitializationTest extends AbstractMongoDriverTest {
 
 	@BeforeEach
 	void overrideLogging() {
@@ -113,5 +113,5 @@ public class MongoDriverReinitializationTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(MongoDriverReinitializationTest.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(ReinitializationTest.class);
 }

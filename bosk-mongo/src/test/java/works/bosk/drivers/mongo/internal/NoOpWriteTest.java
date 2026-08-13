@@ -38,7 +38,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * behind. The two variants differ only in the Pando graft-point configuration,
  * so each lives in its own {@link Nested} class.
  */
-public class MongoDriverNoOpWriteTest {
+public class NoOpWriteTest {
 
 	@Nested
 	@ReplayLogsOnFailure
@@ -47,11 +47,11 @@ public class MongoDriverNoOpWriteTest {
 		@InjectorMethod
 		static Stream<ParameterSet> parameterSets() {
 			return Stream.of(new ParameterSet(
-				"MongoDriverNoOpWriteTest",
+				"NoOpWriteTest",
 				MongoDriverSettings.builder()
 					.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
 					.timescaleMS(LONG_TIMESCALE)
-					.database("MongoDriverNoOpWriteTest")));
+					.database("NoOpWriteTest")));
 		}
 
 		@Test
