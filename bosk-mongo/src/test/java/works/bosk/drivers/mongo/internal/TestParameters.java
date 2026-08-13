@@ -6,6 +6,7 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import lombok.Value;
 import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.PandoFormat;
 
 public class TestParameters {
 	private static final AtomicInteger dbCounter = new AtomicInteger(0);
@@ -69,6 +70,25 @@ public class TestParameters {
 		return formats
 			.flatMap(f -> timingsList.stream()
 				.map(e -> ParameterSet.from(f,e)));
+	}
+
+	/**
+	 * The standard driver-format matrix used by the MongoDriver behavior test
+	 * classes: {@linkplain MongoDriverSettings.DatabaseFormat#SEQUOIA SEQUOIA}
+	 * and the two representative Pando formats, at normal event timing. The
+	 * short timescale makes timeout tests run fast.
+	 */
+	static Stream<ParameterSet> standardDriverSettings() {
+		return driverSettings(
+			Stream.of(
+				MongoDriverSettings.DatabaseFormat.SEQUOIA,
+				PandoFormat.oneBigDocument(),
+				PandoFormat.withGraftPoints("/catalog", "/sideTable")
+			),
+			Stream.of(EventTiming.NORMAL)
+		).map(b -> b.applyDriverSettings(s -> s
+			.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
+		));
 	}
 
 	public enum EventTiming {

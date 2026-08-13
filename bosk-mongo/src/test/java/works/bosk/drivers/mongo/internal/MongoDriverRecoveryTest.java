@@ -129,7 +129,7 @@ public class MongoDriverRecoveryTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, AbstractMongoDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		LOGGER.debug("Done creating bosk");
 
-		MongoDriverSpecialTest.Refs refs = bosk.buildReferences(MongoDriverSpecialTest.Refs.class);
+		Refs refs = bosk.buildReferences(Refs.class);
 		BoskDriver driver = bosk.driver();
 		TestEntity defaultRoot = initialRoot(bosk);
 

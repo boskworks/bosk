@@ -5,6 +5,9 @@ import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Optional;
+import org.bson.BsonDocument;
+import org.bson.BsonString;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -156,6 +159,13 @@ abstract class AbstractMongoDriverTest {
 			BoskLogFilter.withController(logController),
 			mongoDriverFactory
 		);
+	}
+
+	/**
+	 * A filter selecting the root state document(s), whose {@code path} is {@code "/"}.
+	 */
+	protected @NonNull BsonDocument rootDocumentsFilter() {
+		return new BsonDocument("path", new BsonString("/"));
 	}
 
 	public interface Refs {
