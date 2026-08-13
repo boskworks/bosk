@@ -13,3 +13,13 @@ dependencies {
 	testImplementation project(":bosk-logback")
 	testImplementation project(":bosk-testing")
 }
+
+tasks.named('test') {
+	// Each test JVM starts its own MongoDB and toxiproxy containers
+	// (MongoService's containers are static, hence per-JVM), so spread the
+	// tests across several JVMs. This lets the long serialized network-outage
+	// tests overlap with the rest of the suite, and keeps any single container
+	// from having to serve the whole suite at once, which is what makes the
+	// wall-clock time collapse between 1-2 forks and 3+ forks.
+	maxParallelForks = 3
+}
