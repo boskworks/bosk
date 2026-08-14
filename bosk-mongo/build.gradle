@@ -21,7 +21,11 @@ tasks.named('test') {
 	// tests overlap with the rest of the suite, and keeps any single container
 	// from having to serve the whole suite at once, which is what makes the
 	// wall-clock time collapse between 1-2 forks and 3+ forks.
-	maxParallelForks = 3
+	maxParallelForks = 2
+
+	// TEMPORARY: cap within-JVM JUnit class parallelism for the flake
+	// experiment. Revert this after the experiment.
+	systemProperty 'junit.jupiter.execution.parallel.config.fixed.parallelism', '2'
 
 	// TEMPORARY: force re-execution on every CI run so we can measure the
 	// flake rate of the mongo tests. Revert this after the experiment.
