@@ -1,5 +1,6 @@
 package works.bosk.jackson;
 
+import java.lang.classfile.CodeBuilder;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
@@ -29,15 +30,26 @@ import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BoskInfo;
 import works.bosk.Phantom;
 import works.bosk.ReferenceUtils;
-import works.bosk.bytecode.ClassBuilder;
+import works.bosk.bytecode.Currier;
+import works.bosk.bytecode.GeneratedClass;
 import works.bosk.bytecode.LocalVariable;
 import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.InvalidTypeException;
 
+import static java.lang.classfile.Opcode.IFNE;
+import static java.lang.classfile.TypeKind.REFERENCE;
+import static java.lang.reflect.AccessFlag.PUBLIC;
 import static java.util.Arrays.asList;
 import static works.bosk.ReferenceUtils.getterMethod;
 import static works.bosk.StateTreeSerializer.isImplicitParameter;
-import static works.bosk.bytecode.ClassBuilder.here;
+import static works.bosk.bytecode.Codegen.autoBox;
+import static works.bosk.bytecode.Codegen.autoUnbox;
+import static works.bosk.bytecode.Codegen.castTo;
+import static works.bosk.bytecode.Codegen.invoke;
+import static works.bosk.bytecode.Codegen.lineInfo;
+import static works.bosk.bytecode.Codegen.parameter;
+import static works.bosk.bytecode.Codegen.popToLocal;
+import static works.bosk.bytecode.GeneratedClass.here;
 import static works.bosk.util.ReflectionHelpers.boxedClass;
 
 @RequiredArgsConstructor
@@ -74,13 +86,12 @@ final class JacksonCompiler {
 			List<RecordComponent> components = asList(nodeClass.getRecordComponents());
 
 			// Generate the Codec class and instantiate it
-			ClassBuilder<Codec> cb = new ClassBuilder<>("BOSK_JACKSON_" + nodeClass.getSimpleName(), JacksonCodecRuntime.class, nodeClass.getClassLoader(), here());
-			cb.beginClass();
-
-			generate_writeFields(nodeType, components, cb);
-			generate_instantiateFrom(constructor, components, cb);
-
-			Codec codec = cb.buildInstance();
+			StackWalker.StackFrame origin = here();
+			Currier currier = new Currier();
+			Codec codec = GeneratedClass.instantiate("BOSK_JACKSON_" + nodeClass.getSimpleName(), JacksonCodecRuntime.class, nodeClass.getClassLoader(), origin, currier, cb -> {
+				generate_writeFields(cb, currier, origin, nodeType, components);
+				generate_instantiateFrom(cb, origin, constructor, components);
+			});
 
 			// Return a CodecWrapper for the codec
 			LinkedHashMap<String, RecordComponent> componentsByName = new LinkedHashMap<>();
@@ -109,7 +120,8 @@ final class JacksonCompiler {
 		 * Send all fields of <code>node</code> to the given <code>jsonWriter</code>
 		 * as name+value pairs.
 		 *
-		 * @return Nothing. {@link ClassBuilder} does not yet support void methods.
+		 * @return Nothing. The generated class returns the node, since generating a
+		 * 		void method would require the {@link Codec} interface to allow it.
 		 */
 		Object writeFields(Object node, JsonGenerator jsonGenerator, SerializationContext serializers);
 
@@ -123,82 +135,86 @@ final class JacksonCompiler {
 	/**
 	 * Generates the body of the {@link Codec#writeFields} method.
 	 */
-	private void generate_writeFields(Type nodeType, List<RecordComponent> components, ClassBuilder<Codec> cb) {
+	private void generate_writeFields(java.lang.classfile.ClassBuilder cb, Currier currier, StackWalker.StackFrame origin, Type nodeType, List<RecordComponent> components) {
 		JavaType nodeJavaType = typeFactory.constructType(nodeType);
 		Class<?> nodeClass = nodeJavaType.getRawClass();
-		cb.beginMethod(CODEC_WRITE_FIELDS);
-		// Incoming arguments
-		final LocalVariable node = cb.parameter(1);
-		final LocalVariable jsonGenerator = cb.parameter(2);
-		final LocalVariable serializers = cb.parameter(3);
+		cb.withMethodBody("writeFields", GeneratedClass.mtd(Object.class, Object.class, JsonGenerator.class, SerializationContext.class), PUBLIC.mask(), codeBuilder -> {
+			lineInfo(codeBuilder, origin);
+			// Incoming arguments
+			final LocalVariable node = parameter(codeBuilder, 1);
+			final LocalVariable jsonGenerator = parameter(codeBuilder, 2);
+			final LocalVariable serializers = parameter(codeBuilder, 3);
 
-		for (RecordComponent component : components) {
-			if (isImplicitParameter(nodeClass, component)) {
-				continue;
+			for (RecordComponent component : components) {
+				if (isImplicitParameter(nodeClass, component)) {
+					continue;
+				}
+				if (Phantom.class.isAssignableFrom(component.getType())) {
+					continue;
+				}
+
+				String name = component.getName();
+
+				// Build a FieldWritePlan
+				// Maintenance note: resist the urge to put case-specific intelligence into
+				// building the plan. The plan should be straightforward and "obviously
+				// correct". The execution of the plan should contain the sophistication.
+				FieldWritePlan plan;
+				JavaType parameterType = typeFactory.resolveMemberType(component.getGenericType(), nodeJavaType.getBindings());
+				plan = new OrdinaryFieldWritePlan();
+				if (Optional.class.isAssignableFrom(component.getType())) {
+					plan = new OptionalFieldWritePlan(plan);
+				}
+
+				LOGGER.debug("FieldWritePlan for {}.{}: {}", nodeClass.getSimpleName(), name, plan);
+
+				// Put the field value on the operand stack
+				codeBuilder.loadLocal(REFERENCE, node.slot());
+				castTo(codeBuilder, nodeClass);
+				try {
+					invoke(codeBuilder, getterMethod(nodeClass, name));
+					autoBox(codeBuilder, component.getType());
+				} catch (InvalidTypeException e) {
+					throw new AssertionError("Should be impossible for a type that has already been validated", e);
+				}
+
+				// Execute the plan
+				SerializationContext serializerProvider = null; // static optimization not yet implemented
+				plan.generateFieldWrite(codeBuilder, currier, name, jsonGenerator, serializers, serializerProvider, parameterType);
 			}
-			if (Phantom.class.isAssignableFrom(component.getType())) {
-				continue;
-			}
-
-			String name = component.getName();
-
-			// Build a FieldWritePlan
-			// Maintenance note: resist the urge to put case-specific intelligence into
-			// building the plan. The plan should be straightforward and "obviously
-			// correct". The execution of the plan should contain the sophistication.
-			FieldWritePlan plan;
-			JavaType parameterType = typeFactory.resolveMemberType(component.getGenericType(), nodeJavaType.getBindings());
-			plan = new OrdinaryFieldWritePlan();
-			if (Optional.class.isAssignableFrom(component.getType())) {
-				plan = new OptionalFieldWritePlan(plan);
-			}
-
-			LOGGER.debug("FieldWritePlan for {}.{}: {}", nodeClass.getSimpleName(), name, plan);
-
-			// Put the field value on the operand stack
-			cb.pushLocal(node);
-			cb.castTo(nodeClass);
-			try {
-				cb.invoke(getterMethod(nodeClass, name));
-				cb.autoBox(component.getType());
-			} catch (InvalidTypeException e) {
-				throw new AssertionError("Should be impossible for a type that has already been validated", e);
-			}
-
-			// Execute the plan
-			SerializationContext serializerProvider = null; // static optimization not yet implemented
-			plan.generateFieldWrite(name, cb, jsonGenerator, serializers, serializerProvider, parameterType);
-		}
-		// TODO: Support void methods
-		cb.pushLocal(node);
-		cb.finishMethod();
+			// TODO: Support void methods
+			codeBuilder.loadLocal(REFERENCE, node.slot());
+			codeBuilder.areturn();
+		});
 	}
 
 	/**
 	 * Generates the body of the {@link Codec#instantiateFrom} method.
 	 */
-	private void generate_instantiateFrom(Constructor<?> constructor, List<RecordComponent> components, ClassBuilder<Codec> cb) {
-		cb.beginMethod(CODEC_INSTANTIATE_FROM);
+	private void generate_instantiateFrom(java.lang.classfile.ClassBuilder cb, StackWalker.StackFrame origin, Constructor<?> constructor, List<RecordComponent> components) {
+		cb.withMethodBody("instantiateFrom", GeneratedClass.mtd(Object.class, List.class), PUBLIC.mask(), codeBuilder -> {
+			lineInfo(codeBuilder, origin);
 
-		// Save incoming operand to local variable
-		final LocalVariable parameterValues = cb.parameter(1);
+			// Save incoming operand to local variable
+			final LocalVariable parameterValues = parameter(codeBuilder, 1);
 
-		// New object
-		cb.instantiate(constructor.getDeclaringClass());
+			// New object
+			codeBuilder.new_(GeneratedClass.cd(constructor.getDeclaringClass()));
 
-		// Push components and invoke constructor
-		cb.dup();
-		for (int i = 0; i < components.size(); i++) {
-			cb.pushLocal(parameterValues);
-			cb.pushInt(i);
-			cb.invoke(LIST_GET);
-			Class<?> type = components.get(i).getType();
-			cb.castTo(boxedClass(type));
-			cb.autoUnbox(type);
-		}
-		cb.invoke(constructor);
+			// Push components and invoke constructor
+			codeBuilder.dup();
+			for (int i = 0; i < components.size(); i++) {
+				codeBuilder.loadLocal(REFERENCE, parameterValues.slot());
+				codeBuilder.loadConstant(i);
+				invoke(codeBuilder, LIST_GET);
+				Class<?> type = components.get(i).getType();
+				castTo(codeBuilder, boxedClass(type));
+				autoUnbox(codeBuilder, type);
+			}
+			invoke(codeBuilder, constructor);
 
-		cb.finishMethod();
+			codeBuilder.areturn();
+		});
 	}
 
 	/**
@@ -221,8 +237,9 @@ final class JacksonCompiler {
 		 * with modified parameters.
 		 */
 		void generateFieldWrite(
+			CodeBuilder codeBuilder,
+			Currier currier,
 			String name,
-			ClassBuilder<Codec> cb,
 			LocalVariable jsonGenerator,
 			LocalVariable serializers,
 			SerializationContext serializerProvider,
@@ -237,12 +254,12 @@ final class JacksonCompiler {
 		 * {@inheritDoc}
 		 */
 		@Override
-		public void generateFieldWrite(String name, ClassBuilder<Codec> cb, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider, JavaType type) {
-			cb.pushString(name);
-			cb.pushObject("type", type, JavaType.class);
-			cb.pushLocal(jsonGenerator);
-			cb.pushLocal(serializers);
-			cb.invoke(DYNAMIC_WRITE_FIELD);
+		public void generateFieldWrite(CodeBuilder codeBuilder, Currier currier, String name, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider, JavaType type) {
+			codeBuilder.loadConstant(name);
+			currier.pushCurried(codeBuilder, "type", type, JavaType.class);
+			codeBuilder.loadLocal(REFERENCE, jsonGenerator.slot());
+			codeBuilder.loadLocal(REFERENCE, serializers.slot());
+			invoke(codeBuilder, DYNAMIC_WRITE_FIELD);
 		}
 	}
 
@@ -259,18 +276,18 @@ final class JacksonCompiler {
 		 * {@inheritDoc}
 		 */
 		@Override
-		public void generateFieldWrite(String name, ClassBuilder<Codec> cb, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider, JavaType type) {
-			cb.castTo(Optional.class);
-			LocalVariable optional = cb.popToLocal();
-			cb.pushLocal(optional);
-			cb.invoke(OPTIONAL_IS_PRESENT);
-			cb.ifTrue(() -> {
+		public void generateFieldWrite(CodeBuilder codeBuilder, Currier currier, String name, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider, JavaType type) {
+			castTo(codeBuilder, Optional.class);
+			LocalVariable optional = popToLocal(codeBuilder);
+			codeBuilder.loadLocal(REFERENCE, optional.slot());
+			invoke(codeBuilder, OPTIONAL_IS_PRESENT);
+			codeBuilder.ifThen(IFNE, block -> {
 				// Unwrap
-				cb.pushLocal(optional);
-				cb.invoke(OPTIONAL_GET);
+				block.loadLocal(REFERENCE, optional.slot());
+				invoke(block, OPTIONAL_GET);
 
 				// Write the value
-				valueWriter.generateFieldWrite(name, cb, jsonGenerator, serializers, serializerProvider,
+				valueWriter.generateFieldWrite(block, currier, name, jsonGenerator, serializers, serializerProvider,
 					JacksonSerializer.javaParameterType(type, Optional.class, 0));
 			});
 		}
@@ -329,15 +346,12 @@ final class JacksonCompiler {
 		}
 	}
 
-	private static final Method CODEC_WRITE_FIELDS, CODEC_INSTANTIATE_FROM;
 	private static final Method DYNAMIC_WRITE_FIELD;
 	private static final Method LIST_GET;
 	private static final Method OPTIONAL_IS_PRESENT, OPTIONAL_GET;
 
 	static {
 		try {
-			CODEC_WRITE_FIELDS = Codec.class.getDeclaredMethod("writeFields", Object.class, JsonGenerator.class, SerializationContext.class);
-			CODEC_INSTANTIATE_FROM = Codec.class.getDeclaredMethod("instantiateFrom", List.class);
 			DYNAMIC_WRITE_FIELD = JacksonCodecRuntime.class.getDeclaredMethod("dynamicWriteField", Object.class, String.class, JavaType.class, JsonGenerator.class, SerializationContext.class);
 			LIST_GET = List.class.getDeclaredMethod("get", int.class);
 			OPTIONAL_IS_PRESENT = Optional.class.getDeclaredMethod("isPresent");

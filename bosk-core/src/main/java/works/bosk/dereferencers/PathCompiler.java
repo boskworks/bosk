@@ -1,7 +1,6 @@
 package works.bosk.dereferencers;
 
-import java.lang.invoke.CallSite;
-import java.lang.invoke.ConstantCallSite;
+import java.lang.classfile.CodeBuilder;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -36,10 +35,13 @@ import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
 import works.bosk.VariantCase;
+import works.bosk.bytecode.Codegen;
+import works.bosk.bytecode.GeneratedClass;
 import works.bosk.bytecode.LocalVariable;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
 
+import static java.lang.classfile.TypeKind.REFERENCE;
 import static java.lang.invoke.MethodHandles.collectArguments;
 import static java.lang.invoke.MethodHandles.permuteArguments;
 import static java.util.Collections.synchronizedList;
@@ -51,7 +53,11 @@ import static works.bosk.ReferenceUtils.getterMethod;
 import static works.bosk.ReferenceUtils.gettersForConstructorParameters;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
-import static works.bosk.bytecode.ClassBuilder.here;
+import static works.bosk.bytecode.Codegen.autoBox;
+import static works.bosk.bytecode.Codegen.autoUnbox;
+import static works.bosk.bytecode.Codegen.invokeExact;
+import static works.bosk.bytecode.Codegen.popToLocal;
+import static works.bosk.bytecode.GeneratedClass.here;
 import static works.bosk.util.ReflectionHelpers.boxedClass;
 
 /**
@@ -180,7 +186,7 @@ public final class PathCompiler {
 		 *     <dt>Final stack</dt><dd>targetObject</dd>
 		 * </dl>
 		 */
-		void generate_get();
+		void generate_get(CodeBuilder codeBuilder);
 
 		/**
 		 * <dl>
@@ -188,7 +194,7 @@ public final class PathCompiler {
 		 *     <dt>Final stack</dt><dd>newPenultimateObject</dd>
 		 * </dl>
 		 */
-		void generate_with();
+		void generate_with(CodeBuilder codeBuilder);
 
 		default Class<?> targetClass() {
 			return rawClass(targetType());
@@ -205,7 +211,7 @@ public final class PathCompiler {
 		 *     <dt>Final stack</dt><dd>newPenultimateObject</dd>
 		 * </dl>
 		 */
-		void generate_without();
+		void generate_without(CodeBuilder codeBuilder);
 	}
 
 	/**
@@ -301,8 +307,8 @@ public final class PathCompiler {
 				return new CustomStep(
 					targetType,
 					segment,
-					new ConstantCallSite(methodHandle_get),
-					new ConstantCallSite(methodHandle_with)
+					methodHandle_get,
+					methodHandle_with
 				);
 			}
 		}
@@ -333,32 +339,32 @@ public final class PathCompiler {
 		//
 
 		@Override
-		protected void generate_get() {
-			pushSourceObject(rawClass(sourceType));
+		protected void generate_get(CodeBuilder codeBuilder) {
+			pushSourceObject(codeBuilder, rawClass(sourceType));
 			for (Step step : steps) {
-				step.generate_get();
-				castTo(step.targetClass());
+				step.generate_get(codeBuilder);
+				castTo(codeBuilder, step.targetClass());
 			}
 		}
 
 		@Override
-		protected void generate_with() {
-			pushSegmentStack();
-			pushNewValueObject(lastStep().targetClass());
-			lastStep().generate_with();
-			generateVineFoldingSequence();
+		protected void generate_with(CodeBuilder codeBuilder) {
+			pushSegmentStack(codeBuilder);
+			pushNewValueObject(codeBuilder, lastStep().targetClass());
+			lastStep().generate_with(codeBuilder);
+			generateVineFoldingSequence(codeBuilder);
 		}
 
 		@Override
-		protected void generate_without() {
+		protected void generate_without(CodeBuilder codeBuilder) {
 			if (lastStep() instanceof DeletableStep d) {
-				pushSegmentStack();
-				d.generate_without();
-				generateVineFoldingSequence();
+				pushSegmentStack(codeBuilder);
+				d.generate_without(codeBuilder);
+				generateVineFoldingSequence(codeBuilder);
 			} else {
-				pushSourceObject(rawClass(sourceType));
-				pushReference();
-				invoke(INVALID_WITHOUT);
+				pushSourceObject(codeBuilder, rawClass(sourceType));
+				pushReference(codeBuilder);
+				invoke(codeBuilder, INVALID_WITHOUT);
 			}
 		}
 
@@ -383,12 +389,12 @@ public final class PathCompiler {
 		 * Initial stack: (nothing)
 		 * Final stack: sourceObject, segment_0, segment_1, ..., segment_n-2
 		 */
-		private void pushSegmentStack() {
-			pushSourceObject(rawClass(sourceType));
+		private void pushSegmentStack(CodeBuilder codeBuilder) {
+			pushSourceObject(codeBuilder, rawClass(sourceType));
 			for (Step step : steps.subList(0, steps.size() - 1)) {
-				dup();
-				step.generate_get();
-				castTo(step.targetClass());
+				dup(codeBuilder);
+				step.generate_get(codeBuilder);
+				castTo(codeBuilder, step.targetClass());
 			}
 		}
 
@@ -400,11 +406,11 @@ public final class PathCompiler {
 		 * Initial stack: sourceObject, segment_0, segment_1, ..., segment_n-3, newValue_n-2
 		 * Final stack: newSourceObject
 		 */
-		private void generateVineFoldingSequence() {
+		private void generateVineFoldingSequence(CodeBuilder codeBuilder) {
 			for (int i = steps.size() - 2; i >= 0; i--) {
 				Step step = steps.get(i);
-				castTo(step.targetClass());
-				step.generate_with();
+				castTo(codeBuilder, step.targetClass());
+				step.generate_with(codeBuilder);
 			}
 		}
 
@@ -486,38 +492,38 @@ public final class PathCompiler {
 			@Override public String fullyParameterizedPathSegment() { return name; }
 
 			@Override
-			public void generate_get() {
-				invoke(getter());
-				cb.autoBox(valueType());
+			public void generate_get(CodeBuilder codeBuilder) {
+				invoke(codeBuilder, getter());
+				autoBox(codeBuilder, valueType());
 			}
 
 			@Override
-			public void generate_with() {
-				cb.autoUnbox(valueType());
+			public void generate_with(CodeBuilder codeBuilder) {
+				autoUnbox(codeBuilder, valueType());
 
 				// This is too complex to do on the stack. Put what we need in local variables.
-				LocalVariable newValue = cb.popToLocal();
-				LocalVariable originalObject = cb.popToLocal();
+				LocalVariable newValue = popToLocal(codeBuilder);
+				LocalVariable originalObject = popToLocal(codeBuilder);
 
 				// Create a blank instance of the class
-				cb.instantiate(constructor.getDeclaringClass());
+				codeBuilder.new_(GeneratedClass.cd(constructor.getDeclaringClass()));
 
 				// Make a copy of the object reference to pass to the constructor;
 				// the original will be the result we're returning.
-				cb.dup();
+				codeBuilder.dup();
 
 				// Push constructor parameters and invoke
 				for (Parameter parameter : constructor.getParameters()) {
 					if (parameter.getName().equals(name)) {
 						// This is the parameter we're substituting
-						cb.pushLocal(newValue);
+						codeBuilder.loadLocal(REFERENCE, newValue.slot());
 					} else {
 						// All other parameter values come from originalObject
-						cb.pushLocal(originalObject);
-						cb.invoke(gettersByName.get(parameter.getName()));
+						codeBuilder.loadLocal(REFERENCE, originalObject.slot());
+						invoke(codeBuilder, gettersByName.get(parameter.getName()));
 					}
 				}
-				cb.invoke(constructor);
+				Codegen.invoke(codeBuilder, constructor);
 			}
 
 			@Override
@@ -537,21 +543,21 @@ public final class PathCompiler {
 			}
 
 			@Override
-			public void generate_get() {
-				pushIdAt(segmentNum);
-				pushReference();
-				invoke(CATALOG_GET);
+			public void generate_get(CodeBuilder codeBuilder) {
+				pushIdAt(codeBuilder, segmentNum);
+				pushReference(codeBuilder);
+				invoke(codeBuilder, CATALOG_GET);
 			}
 
 			@Override
-			public void generate_with() {
-				invoke(CATALOG_WITH);
+			public void generate_with(CodeBuilder codeBuilder) {
+				invoke(codeBuilder, CATALOG_WITH);
 			}
 
 			@Override
-			public void generate_without() {
-				pushIdAt(segmentNum);
-				invoke(CATALOG_WITHOUT);
+			public void generate_without(CodeBuilder codeBuilder) {
+				pushIdAt(codeBuilder, segmentNum);
+				invoke(codeBuilder, CATALOG_WITHOUT);
 			}
 
 			@Override
@@ -580,23 +586,23 @@ public final class PathCompiler {
 			}
 
 			@Override
-			public void generate_get() {
-				pushIdAt(segmentNum);
-				pushReference();
-				invoke(LISTING_GET);
+			public void generate_get(CodeBuilder codeBuilder) {
+				pushIdAt(codeBuilder, segmentNum);
+				pushReference(codeBuilder);
+				invoke(codeBuilder, LISTING_GET);
 			}
 
 			@Override
-			public void generate_with() {
-				pushIdAt(segmentNum);
-				swap();
-				invoke(LISTING_WITH);
+			public void generate_with(CodeBuilder codeBuilder) {
+				pushIdAt(codeBuilder, segmentNum);
+				swap(codeBuilder);
+				invoke(codeBuilder, LISTING_WITH);
 			}
 
 			@Override
-			public void generate_without() {
-				pushIdAt(segmentNum);
-				invoke(LISTING_WITHOUT);
+			public void generate_without(CodeBuilder codeBuilder) {
+				pushIdAt(codeBuilder, segmentNum);
+				invoke(codeBuilder, LISTING_WITHOUT);
 			}
 
 			@Override
@@ -617,23 +623,23 @@ public final class PathCompiler {
 			}
 
 			@Override
-			public void generate_get() {
-				pushIdAt(segmentNum);
-				pushReference();
-				invoke(SIDE_TABLE_GET);
+			public void generate_get(CodeBuilder codeBuilder) {
+				pushIdAt(codeBuilder, segmentNum);
+				pushReference(codeBuilder);
+				invoke(codeBuilder, SIDE_TABLE_GET);
 			}
 
 			@Override
-			public void generate_with() {
-				pushIdAt(segmentNum);
-				swap();
-				invoke(SIDE_TABLE_WITH);
+			public void generate_with(CodeBuilder codeBuilder) {
+				pushIdAt(codeBuilder, segmentNum);
+				swap(codeBuilder);
+				invoke(codeBuilder, SIDE_TABLE_WITH);
 			}
 
 			@Override
-			public void generate_without() {
-				pushIdAt(segmentNum);
-				invoke(SIDE_TABLE_WITHOUT);
+			public void generate_without(CodeBuilder codeBuilder) {
+				pushIdAt(codeBuilder, segmentNum);
+				invoke(codeBuilder, SIDE_TABLE_WITHOUT);
 			}
 
 			@Override
@@ -653,22 +659,22 @@ public final class PathCompiler {
 			}
 
 			@Override
-			public void generate_get() {
-				fieldStep.generate_get();
-				pushReference();
-				invoke(OPTIONAL_OR_THROW);
+			public void generate_get(CodeBuilder codeBuilder) {
+				fieldStep.generate_get(codeBuilder);
+				pushReference(codeBuilder);
+				invoke(codeBuilder, OPTIONAL_OR_THROW);
 			}
 
 			@Override
-			public void generate_with() {
-				invoke(OPTIONAL_OF);
-				fieldStep.generate_with();
+			public void generate_with(CodeBuilder codeBuilder) {
+				invoke(codeBuilder, OPTIONAL_OF);
+				fieldStep.generate_with(codeBuilder);
 			}
 
 			@Override
-			public void generate_without() {
-				invoke(OPTIONAL_EMPTY);
-				fieldStep.generate_with();
+			public void generate_without(CodeBuilder codeBuilder) {
+				invoke(codeBuilder, OPTIONAL_EMPTY);
+				fieldStep.generate_with(codeBuilder);
 			}
 
 			@Override
@@ -688,22 +694,22 @@ public final class PathCompiler {
 			}
 
 			@Override
-			public void generate_get() {
-				pop();
-				pushReference();
-				invoke(THROW_NONEXISTENT_ENTRY);
+			public void generate_get(CodeBuilder codeBuilder) {
+				pop(codeBuilder);
+				pushReference(codeBuilder);
+				invoke(codeBuilder, THROW_NONEXISTENT_ENTRY);
 			}
 
 			@Override
-			public void generate_with() {
-				pop();
-				pop();
-				pushReference();
-				invoke(THROW_CANNOT_REPLACE_PHANTOM);
+			public void generate_with(CodeBuilder codeBuilder) {
+				pop(codeBuilder);
+				pop(codeBuilder);
+				pushReference(codeBuilder);
+				invoke(codeBuilder, THROW_CANNOT_REPLACE_PHANTOM);
 			}
 
 			@Override
-			public void generate_without() { /* No effect */ }
+			public void generate_without(CodeBuilder codeBuilder) { /* No effect */ }
 
 			@Override
 			public String toString() {
@@ -727,23 +733,23 @@ public final class PathCompiler {
 			}
 
 			@Override
-			public void generate_get() {
+			public void generate_get(CodeBuilder codeBuilder) {
 				// Regardless of which case we select from a {@link works.bosk.TaggedUnion},
 				// we always just call {@link TaggedUnion#value()}.
-				cb.invoke(TAGGED_UNION_VALUE);
+				Codegen.invoke(codeBuilder, TAGGED_UNION_VALUE);
 
 				// On a tag mismatch, report nonexistent
-				cb.pushString(name);
-				pushReference();
-				invoke(TAG_CHECK);
+				codeBuilder.loadConstant(name);
+				pushReference(codeBuilder);
+				invoke(codeBuilder, TAG_CHECK);
 			}
 
 			@Override
-			public void generate_with() {
-				pop();
-				pop();
-				pushReference();
-				invoke(THROW_CANNOT_REPLACE_VARIANT_CASE);
+			public void generate_with(CodeBuilder codeBuilder) {
+				pop(codeBuilder);
+				pop(codeBuilder);
+				pushReference(codeBuilder);
+				invoke(codeBuilder, THROW_CANNOT_REPLACE_VARIANT_CASE);
 			}
 
 			@Override
@@ -756,8 +762,8 @@ public final class PathCompiler {
 		class CustomStep implements Step {
 			Type valueType;
 			String fullyParameterizedPathSegment;
-			CallSite callSite_get;
-			CallSite callSite_with;
+			MethodHandle handle_get;
+			MethodHandle handle_with;
 
 			@Override
 			public Type targetType() {
@@ -774,15 +780,15 @@ public final class PathCompiler {
 			}
 
 			@Override
-			public void generate_get() {
-				cb.invokeDynamic("get", callSite_get);
-				cb.autoBox(valueType);
+			public void generate_get(CodeBuilder codeBuilder) {
+				invokeExact(codeBuilder, currier, handle_get, "get");
+				autoBox(codeBuilder, valueType);
 			}
 
 			@Override
-			public void generate_with() {
-				cb.autoUnbox(valueType);
-				cb.invokeDynamic("with", callSite_with);
+			public void generate_with(CodeBuilder codeBuilder) {
+				autoUnbox(codeBuilder, valueType);
+				invokeExact(codeBuilder, currier, handle_with, "with");
 			}
 
 			@Override

@@ -1,6 +1,6 @@
 package works.bosk.bytecode;
 
-import java.lang.invoke.ConstantCallSite;
+import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,32 +9,32 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static java.lang.invoke.MethodType.methodType;
+import static java.lang.reflect.AccessFlag.PUBLIC;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static works.bosk.bytecode.ClassBuilder.here;
+import static works.bosk.bytecode.Codegen.invokeExact;
 
-public class ClassBuilderTest {
+public class GeneratedClassTest {
 	private static final int NUM_CALLERS = 20;
 	ExecutorService executor = Executors.newFixedThreadPool(NUM_CALLERS);
-	ClassBuilder<Foo> cb;
-
-	@BeforeEach
-	void createClassBuilder() {
-		cb = new ClassBuilder<>("TestClass", Foo.class, getClass().getClassLoader(), here());
-	}
 
 	@Test
-	void multithreadedBootstrap_works() throws NoSuchMethodException, IllegalAccessException, ExecutionException, InterruptedException {
-		cb.beginClass();
-
-		cb.beginMethod(Foo.class.getDeclaredMethod("foo", String.class));
-		cb.invokeDynamic("testMethod", new ConstantCallSite(MethodHandles.lookup().findStatic(ClassBuilderTest.class, "returnABC", methodType(String.class))));
-		cb.finishMethod();
-
-		Foo instance = cb.buildInstance();
+	void multithreadedInvocation_works() throws NoSuchMethodException, IllegalAccessException, ExecutionException, InterruptedException {
+		MethodHandle returnABC = MethodHandles.lookup().findStatic(GeneratedClassTest.class, "returnABC", methodType(String.class));
+		Currier currier = new Currier();
+		Foo instance = GeneratedClass.instantiate(
+			"TestClass",
+			Foo.class,
+			getClass().getClassLoader(),
+			GeneratedClass.here(),
+			currier,
+			cb -> cb.withMethodBody("foo", GeneratedClass.mtd(String.class, String.class), PUBLIC.mask(), codeBuilder -> {
+				invokeExact(codeBuilder, currier, returnABC, "returnABC");
+				codeBuilder.areturn();
+			})
+		);
 
 		// Have a lot of threads all try to use the object at the same time
 		List<Future<String>> results = new ArrayList<>(NUM_CALLERS);
