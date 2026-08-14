@@ -31,6 +31,10 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * <li>{@code beforeRefurbishDelete}: runs before the refurbish transaction
  * deletes the collection contents, allowing a race to be induced between a
  * refurbish and a concurrent write.</li>
+ * <li>{@code beforeInitialStateApplied}: runs on the thread that loaded the
+ * initial state, before that state has been applied to the in-memory tree,
+ * allowing a race to be induced where change events are processed before the
+ * state is ready to receive them.</li>
  * <li>{@code findInterceptor}: interposes on database reads; see
  * {@link FindInterceptor}.</li>
  * <li>{@code writeInterceptor}: interposes on database writes; see
@@ -45,12 +49,13 @@ record TestProbes(
 	UnaryOperator<ChangeListener> listenerFactory,
 	Runnable prePublicationWaitAction,
 	Runnable beforeRefurbishDelete,
+	Runnable beforeInitialStateApplied,
 	FindInterceptor findInterceptor,
 	WriteInterceptor writeInterceptor,
 	CommitInterceptor commitInterceptor
 ) {
 	static TestProbes noop() {
-		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity());
+		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity());
 	}
 
 	private static final Runnable NOOP = () -> {};
