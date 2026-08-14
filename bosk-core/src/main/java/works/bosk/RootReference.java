@@ -13,7 +13,7 @@ import works.bosk.exceptions.InvalidTypeException;
  */
 public sealed interface RootReference<R>
 	extends Reference<R>
-	permits Bosk.RootRef {
+	permits BoskBase.RootRef {
 
 	/**
 	 * Dynamically generates an object that can return {@link Reference}s
