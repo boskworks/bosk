@@ -22,4 +22,8 @@ tasks.named('test') {
 	// from having to serve the whole suite at once, which is what makes the
 	// wall-clock time collapse between 1-2 forks and 3+ forks.
 	maxParallelForks = 3
+
+	// TEMPORARY: force re-execution on every CI run so we can measure the
+	// flake rate of the mongo tests. Revert this after the experiment.
+	outputs.cacheIf { false }
 }
