@@ -7,7 +7,6 @@ import java.lang.classfile.ClassBuilder;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.CodeBuilder;
 import java.lang.classfile.Label;
-import java.lang.classfile.MethodBuilder;
 import java.lang.classfile.TypeKind;
 import java.lang.classfile.attribute.SourceFileAttribute;
 import java.lang.classfile.instruction.SwitchCase;
@@ -38,7 +37,6 @@ import works.bosk.boson.codec.Generator;
 import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Parser;
 import works.bosk.boson.codec.Token;
-import works.bosk.boson.codec.compiler.LocalVariableAllocator.LocalVariable;
 import works.bosk.boson.codec.interpreter.SpecInterpretingGenerator;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
@@ -69,6 +67,7 @@ import static java.lang.reflect.AccessFlag.FINAL;
 import static java.lang.reflect.AccessFlag.PRIVATE;
 import static java.lang.reflect.AccessFlag.PUBLIC;
 import static java.lang.reflect.AccessFlag.STATIC;
+import static java.util.stream.Collectors.joining;
 import static works.bosk.boson.codec.Token.END_ARRAY;
 import static works.bosk.boson.codec.Token.END_OBJECT;
 import static works.bosk.boson.codec.Token.NULL;
@@ -132,22 +131,20 @@ public class SpecCompiler {
 					}
 				});
 
-				classBuilder.withMethod("<init>",
+				classBuilder.withMethodBody("<init>",
 					MethodTypeDesc.of(VOID, cd(JsonReader.class)),
 					PUBLIC.mask(),
-					mb -> mb.withCode(cb -> {
-						cb.loadLocal(REFERENCE, 0);
-						cb.loadLocal(REFERENCE, 1);
+					cb -> {
+						cb.loadLocal(REFERENCE, cb.receiverSlot());
+						cb.loadLocal(REFERENCE, cb.parameterSlot(0));
 						lineInfo(cb);
 						cb.invokespecial(
-							classBuilder.constantPool().methodRefEntry(
-								cd(CompiledParserRuntime.class),
-								"<init>",
-								MethodTypeDesc.of(VOID, cd(JsonReader.class))
-							)
+							cd(CompiledParserRuntime.class),
+							"<init>",
+							MethodTypeDesc.of(VOID, cd(JsonReader.class))
 						);
 						cb.return_();
-					})
+					}
 				);
 
 				currier.curried.forEach(cv ->
@@ -159,25 +156,26 @@ public class SpecCompiler {
 				);
 
 				long curryKey = CompiledParserRuntime.curry(currier.valueArray());
-				classBuilder.withMethod("<clinit>",
+				classBuilder.withMethodBody("<clinit>",
 					MethodTypeDesc.of(VOID),
 					PUBLIC.mask() | STATIC.mask(),
-					mb -> mb.withCode(cb -> {
+					cb -> {
 						cb.loadConstant(curryKey);
 						cb.invokestatic(
-							cb.constantPool().methodRefEntry(
-								cd(CompiledParserRuntime.class),
-								"claimCurriedArray",
-								MethodTypeDesc.of(cd(Object.class).arrayType(), long.class.describeConstable().get())
-							)
+							cd(CompiledParserRuntime.class),
+							"claimCurriedArray",
+							MethodTypeDesc.of(cd(Object.class).arrayType(), long.class.describeConstable().get())
 						);
 
 						currier._initializeStatics(cb, ClassDesc.of(className));
 						cb.return_();
-					})
+					}
 				);
 			});
 
+		if (VERIFY_BYTECODE) {
+			verify(bytecode);
+		}
 		if (LOGGER.isInfoEnabled()) {
 			Path bytecodeFile = tempDir.resolve(className + ".class");
 			LOGGER.info("Writing bytecode to {}", bytecodeFile);
@@ -264,11 +262,11 @@ public class SpecCompiler {
 			boxed = PRIMITIVE_NUMBER_CLASSES.get(p.rawClass());
 		}
 		lineInfo(cb);
-		cb.invokestatic(cb.constantPool().methodRefEntry(
+		cb.invokestatic(
 			cd(boxed),
 			"valueOf",
 			mtd(boxed, p.rawClass())
-		));
+		);
 	}
 
 
@@ -278,15 +276,15 @@ public class SpecCompiler {
 	 */
 	private void emitParseMethod(ClassBuilder classBuilder, JsonValueSpec spec, Currier currier) {
 		var m = getParseMethod(spec);
-		classBuilder.withMethod(
+		classBuilder.withMethodBody(
 			m.name(),
 			m.type(),
 			m.accessFlagMask(),
-			mb -> mb.withCode(cb -> {
-				new ParserCodeBuilder(classBuilder, mb, cb, currier)
+			cb -> {
+				new ParserCodeBuilder(cb, currier)
 					._parseAny(spec);
 				cb.return_(nodeReturnTypeKind(spec));
-			})
+			}
 		);
 	}
 
@@ -379,22 +377,19 @@ public class SpecCompiler {
 	 * The {@code _parseXxx} methods leave the resulting value on the operand stack.
 	 */
 	class ParserCodeBuilder {
-		final ClassBuilder classBuilder;
-		final MethodBuilder methodBuilder;
 		final CodeBuilder codeBuilder;
 		final Currier currier;
-		final LocalVariableAllocator localVariableAllocator = new LocalVariableAllocator(1);
 
 		ParserCodeBuilder(
-			ClassBuilder classBuilder,
-			MethodBuilder methodBuilder,
 			CodeBuilder codeBuilder,
 			Currier currier
 		) {
-			this.classBuilder = classBuilder;
-			this.methodBuilder = methodBuilder;
 			this.codeBuilder = codeBuilder;
 			this.currier = currier;
+		}
+
+		private LocalVariable allocate(TypeKind typeKind) {
+			return new LocalVariable(typeKind, codeBuilder.allocateLocal(typeKind));
 		}
 
 		private void _parseAny(JsonValueSpec n) {
@@ -435,29 +430,27 @@ public class SpecCompiler {
 			// 2-slot values (and even 0-slot for the callback context!).
 			// Writing it in the following way makes the datatypes all work out.
 
-			try (var locals = localVariableAllocator.newScope()) {
-				TypeKind returnKind = nodeReturnTypeKind(node);
-				LocalVariable result = locals.allocate(returnKind);
+			TypeKind returnKind = nodeReturnTypeKind(node);
+			LocalVariable result = allocate(returnKind);
 
-				// Get this MH in the right place on the call stack before things get hairy
-				var afterType = curryAndLoad(node.after().handle(), "after");
+			// Get this MH in the right place on the call stack before things get hairy
+			var afterType = curryAndLoad(node.after().handle(), "after");
 
-				// Call `before` leaving its result on the stack
-				var beforeType = curryAndLoad(node.before().handle(), "before");
-				_invokeExact(beforeType);
+			// Call `before` leaving its result on the stack
+			var beforeType = curryAndLoad(node.before().handle(), "before");
+			_invokeExact(beforeType);
 
-				// Parse and store the result so we can use it twice
-				_parseAny(node.child());
-				result.store(codeBuilder);
+			// Parse and store the result so we can use it twice
+			_parseAny(node.child());
+			result.store(codeBuilder);
 
-				// At this stage, the operand stack already has the `after` handle and the callback context value if any.
-				// The third argument to the `after` handle is the parsed object
-				result.load(codeBuilder);
-				_invokeExact(afterType);
+			// At this stage, the operand stack already has the `after` handle and the callback context value if any.
+			// The third argument to the `after` handle is the parsed object
+			result.load(codeBuilder);
+			_invokeExact(afterType);
 
-				// The result of this whole process is the parsed object
-				result.load(codeBuilder);
-			}
+			// The result of this whole process is the parsed object
+			result.load(codeBuilder);
 		}
 
 		private void _parseComputed(ComputedSpec node) {
@@ -498,122 +491,118 @@ public class SpecCompiler {
 //			codeBuilder.dup();
 
 			var acc = node.accumulator();
-			try (var locals = localVariableAllocator.newScope()) {
-				// Allocate labels
-				Label loop = codeBuilder.newLabel();
-				Label element = codeBuilder.newLabel();
-				Label endArray = codeBuilder.newLabel();
-				Label error = codeBuilder.newLabel();
+			// Allocate labels
+			Label loop = codeBuilder.newLabel();
+			Label element = codeBuilder.newLabel();
+			Label endArray = codeBuilder.newLabel();
+			Label error = codeBuilder.newLabel();
 
-				_skipToken(START_ARRAY);
+			_skipToken(START_ARRAY);
 
-				LocalVariable accumulator = locals.allocate(REFERENCE);
-				_invokeExact(curryAndLoad(acc.creator().handle(), "acc_creator"));
+			LocalVariable accumulator = allocate(REFERENCE);
+			_invokeExact(curryAndLoad(acc.creator().handle(), "acc_creator"));
+			accumulator.store(codeBuilder);
+
+			codeBuilder.labelBinding(loop);
+			_peekTokenOrdinal();
+			codeBuilder.lookupswitch(element,
+				List.of(
+					SwitchCase.of(END_ARRAY.ordinal(), endArray)
+				)
+			);
+
+			codeBuilder.labelBinding(element);
+			var integratorType = curryAndLoad(acc.integrator().handle(), "acc_integrator");
+			accumulator.load(codeBuilder);
+			_parseAny(node.elementNode());
+			_invokeExact(integratorType);
+			if (integratorType.returnType() != void.class) {
 				accumulator.store(codeBuilder);
-
-				codeBuilder.labelBinding(loop);
-				_peekTokenOrdinal();
-				codeBuilder.lookupswitch(element,
-					List.of(
-						SwitchCase.of(END_ARRAY.ordinal(), endArray)
-					)
-				);
-
-				codeBuilder.labelBinding(element);
-				var integratorType = curryAndLoad(acc.integrator().handle(), "acc_integrator");
-				accumulator.load(codeBuilder);
-				_parseAny(node.elementNode());
-				_invokeExact(integratorType);
-				if (integratorType.returnType() != void.class) {
-					accumulator.store(codeBuilder);
-				}
-				codeBuilder.goto_w(loop);
-
-				codeBuilder.labelBinding(error);
-				_throwParseError("Unexpected character");
-
-				codeBuilder.labelBinding(endArray);
-				_skipToken(END_ARRAY);
-
-				var finisherType = curryAndLoad(acc.finisher().handle(), "acc_finisher");
-				accumulator.load(codeBuilder);
-				_invokeExact(finisherType);
-
 			}
+			codeBuilder.goto_w(loop);
+
+			codeBuilder.labelBinding(error);
+			_throwParseError("Unexpected character");
+
+			codeBuilder.labelBinding(endArray);
+			_skipToken(END_ARRAY);
+
+			var finisherType = curryAndLoad(acc.finisher().handle(), "acc_finisher");
+			accumulator.load(codeBuilder);
+			_invokeExact(finisherType);
+
 		}
 
 		private void _parseUniformMap(UniformMapNode node) {
 			var acc = node.accumulator();
-			try (var locals = localVariableAllocator.newScope()) {
-				// Allocate labels
-				Label loop = codeBuilder.newLabel();
-				Label member = codeBuilder.newLabel();
-				Label endObject = codeBuilder.newLabel();
-				Label error = codeBuilder.newLabel();
+			// Allocate labels
+			Label loop = codeBuilder.newLabel();
+			Label member = codeBuilder.newLabel();
+			Label endObject = codeBuilder.newLabel();
+			Label error = codeBuilder.newLabel();
 
-				_skipToken(START_OBJECT);
+			_skipToken(START_OBJECT);
 
-				LocalVariable accumulator = locals.allocate(nodeReturnTypeKind(node));
-				_invokeExact(curryAndLoad(acc.creator().handle(), "acc_creator"));
-				accumulator.store(codeBuilder);
+			LocalVariable accumulator = allocate(nodeReturnTypeKind(node));
+			_invokeExact(curryAndLoad(acc.creator().handle(), "acc_creator"));
+			accumulator.store(codeBuilder);
 
-				codeBuilder.labelBinding(loop);
-				_peekTokenOrdinal();
-				codeBuilder.lookupswitch(error,
-					List.of(
-						SwitchCase.of(STRING.ordinal(), member),
-						SwitchCase.of(END_OBJECT.ordinal(), endObject)
-					)
-				);
+			codeBuilder.labelBinding(loop);
+			_peekTokenOrdinal();
+			codeBuilder.lookupswitch(error,
+				List.of(
+					SwitchCase.of(STRING.ordinal(), member),
+					SwitchCase.of(END_OBJECT.ordinal(), endObject)
+				)
+			);
 
-				codeBuilder.labelBinding(member);
-				_parseAny(node.keyNode());
-				TypeKind keyKind = nodeReturnTypeKind(node.keyNode());
-				LocalVariable keyLocal = locals.allocate(keyKind);
-				keyLocal.store(codeBuilder);
+			codeBuilder.labelBinding(member);
+			_parseAny(node.keyNode());
+			TypeKind keyKind = nodeReturnTypeKind(node.keyNode());
+			LocalVariable keyLocal = allocate(keyKind);
+			keyLocal.store(codeBuilder);
 
-				LocalVariable handlerResultLocal = null;
-				var keyHandler = acc.keyHandler();
-				boolean hasHandlerResult = !DataType.VOID.equals(keyHandler.returnType());
-				var keyHandlerMt = curryAndLoad(keyHandler.handle(), "keyHandler");
-				accumulator.load(codeBuilder);
-				keyLocal.load(codeBuilder);
-				_invokeExact(keyHandlerMt);
-				if (hasHandlerResult) {
-					TypeKind handlerKind = TypeKind.fromDescriptor(
-						keyHandler.returnType().leastUpperBoundClass().descriptorString());
-					handlerResultLocal = locals.allocate(handlerKind);
-					handlerResultLocal.store(codeBuilder);
-				}
-
-				_parseAny(node.valueNode());
-				TypeKind valueKind = nodeReturnTypeKind(node.valueNode());
-				LocalVariable valueLocal = locals.allocate(valueKind);
-				valueLocal.store(codeBuilder);
-
-				var integratorType = curryAndLoad(acc.integrator().handle(), "acc_integrator");
-				accumulator.load(codeBuilder);
-				keyLocal.load(codeBuilder);
-				valueLocal.load(codeBuilder);
-				if (hasHandlerResult) {
-					handlerResultLocal.load(codeBuilder);
-				}
-				_invokeExact(integratorType);
-				if (integratorType.returnType() != void.class) {
-					accumulator.store(codeBuilder);
-				}
-				codeBuilder.goto_w(loop);
-
-				codeBuilder.labelBinding(error);
-				_throwParseError("Unexpected character");
-
-				codeBuilder.labelBinding(endObject);
-				_skipToken(END_OBJECT);
-
-				var finisherType = curryAndLoad(acc.finisher().handle(), "acc_finisher");
-				accumulator.load(codeBuilder);
-				_invokeExact(finisherType);
+			LocalVariable handlerResultLocal = null;
+			var keyHandler = acc.keyHandler();
+			boolean hasHandlerResult = !DataType.VOID.equals(keyHandler.returnType());
+			var keyHandlerMt = curryAndLoad(keyHandler.handle(), "keyHandler");
+			accumulator.load(codeBuilder);
+			keyLocal.load(codeBuilder);
+			_invokeExact(keyHandlerMt);
+			if (hasHandlerResult) {
+				TypeKind handlerKind = TypeKind.fromDescriptor(
+					keyHandler.returnType().leastUpperBoundClass().descriptorString());
+				handlerResultLocal = allocate(handlerKind);
+				handlerResultLocal.store(codeBuilder);
 			}
+
+			_parseAny(node.valueNode());
+			TypeKind valueKind = nodeReturnTypeKind(node.valueNode());
+			LocalVariable valueLocal = allocate(valueKind);
+			valueLocal.store(codeBuilder);
+
+			var integratorType = curryAndLoad(acc.integrator().handle(), "acc_integrator");
+			accumulator.load(codeBuilder);
+			keyLocal.load(codeBuilder);
+			valueLocal.load(codeBuilder);
+			if (hasHandlerResult) {
+				handlerResultLocal.load(codeBuilder);
+			}
+			_invokeExact(integratorType);
+			if (integratorType.returnType() != void.class) {
+				accumulator.store(codeBuilder);
+			}
+			codeBuilder.goto_w(loop);
+
+			codeBuilder.labelBinding(error);
+			_throwParseError("Unexpected character");
+
+			codeBuilder.labelBinding(endObject);
+			_skipToken(END_OBJECT);
+
+			var finisherType = curryAndLoad(acc.finisher().handle(), "acc_finisher");
+			accumulator.load(codeBuilder);
+			_invokeExact(finisherType);
 		}
 
 		private void _parseMaybeNull(MaybeNullSpec node) {
@@ -717,64 +706,62 @@ public class SpecCompiler {
 			LOGGER.debug(" -> trie: {}", trie);
 //			codeBuilder.dup(); // This causes a stack underflow that makes the classfile API dump the bytecode
 
-			try (var locals = localVariableAllocator.newScope()) {
-				// Allocate labels
-				Label loop = codeBuilder.newLabel();
-				Label member = codeBuilder.newLabel();
-				Label endObject = codeBuilder.newLabel();
-				Label error = codeBuilder.newLabel();
+			// Allocate labels
+			Label loop = codeBuilder.newLabel();
+			Label member = codeBuilder.newLabel();
+			Label endObject = codeBuilder.newLabel();
+			Label error = codeBuilder.newLabel();
 
-				// Allocate locals
-				Map<String, LocalVariable> componentLocalsByName = new LinkedHashMap<>(); // ORDER MATTERS
-				fixedObjectNode.memberSpecs().forEach((name, componentNode) -> {
-					TypeKind typeKind = nodeReturnTypeKind(componentNode.valueSpec());
-					LocalVariable v = locals.allocate(typeKind);
-					componentLocalsByName.put(name, v);
+			// Allocate locals
+			Map<String, LocalVariable> componentLocalsByName = new LinkedHashMap<>(); // ORDER MATTERS
+			fixedObjectNode.memberSpecs().forEach((name, componentNode) -> {
+				TypeKind typeKind = nodeReturnTypeKind(componentNode.valueSpec());
+				LocalVariable v = allocate(typeKind);
+				componentLocalsByName.put(name, v);
 
-					// Initialize with default value
-					switch (componentNode.valueSpec()) {
-						case ComputedSpec s -> _parseComputed(s);
-						case MaybeAbsentSpec(_, var s, _) -> _parseComputed(s);
-						default -> _loadDefault(typeKind);
-					}
-					v.store(codeBuilder);
-				});
+				// Initialize with default value
+				switch (componentNode.valueSpec()) {
+					case ComputedSpec s -> _parseComputed(s);
+					case MaybeAbsentSpec(_, var s, _) -> _parseComputed(s);
+					default -> _loadDefault(typeKind);
+				}
+				v.store(codeBuilder);
+			});
 
-				_skipToken(START_OBJECT);
+			_skipToken(START_OBJECT);
 
-				codeBuilder.labelBinding(loop);
-				_peekTokenOrdinal();
-				codeBuilder.lookupswitch(error,
-					List.of(
-						SwitchCase.of(STRING.ordinal(), member),
-						SwitchCase.of(END_OBJECT.ordinal(), endObject)
-					)
-				);
+			codeBuilder.labelBinding(loop);
+			_peekTokenOrdinal();
+			codeBuilder.lookupswitch(error,
+				List.of(
+					SwitchCase.of(STRING.ordinal(), member),
+					SwitchCase.of(END_OBJECT.ordinal(), endObject)
+				)
+			);
 
-				codeBuilder.labelBinding(member);
-				_startConsumingString();
-				generateCodePointSwitch(trie, fixedObjectNode, componentLocalsByName, loop, error);
+			codeBuilder.labelBinding(member);
+			_startConsumingString();
+			generateCodePointSwitch(trie, fixedObjectNode, componentLocalsByName, loop, error);
 
-				codeBuilder.labelBinding(error);
-				_throwParseError("Unexpected character; was expecting one of " + fixedObjectNode.memberSpecs().keySet());
+			codeBuilder.labelBinding(error);
+			_throwParseError("Unexpected character; was expecting one of " + fixedObjectNode.memberSpecs().keySet());
 
-				codeBuilder.labelBinding(endObject);
-				_skipToken(END_OBJECT);
+			codeBuilder.labelBinding(endObject);
+			_skipToken(END_OBJECT);
 
-				// All the local variables should have their values now.
-				// Time to call the finisher
-				var mt = curryAndLoad(fixedObjectNode.finisher().handle(), "fixedObject_finisher");
-				fixedObjectNode.memberSpecs().forEach((name, node) -> {
-					var local = componentLocalsByName.get(name);
-					local.load(codeBuilder);
-					if (local.typeKind() == REFERENCE) {
-						Class<?> expectedType = node.dataType().leastUpperBoundClass();
-						LOGGER.trace("typeKind is {} for {}", local.typeKind(), expectedType);
-						codeBuilder.checkcast(cd(expectedType));
-					}
-				});
-				_invokeExact(mt);
-			}
+			// All the local variables should have their values now.
+			// Time to call the finisher
+			var mt = curryAndLoad(fixedObjectNode.finisher().handle(), "fixedObject_finisher");
+			fixedObjectNode.memberSpecs().forEach((name, node) -> {
+				var local = componentLocalsByName.get(name);
+				local.load(codeBuilder);
+				if (local.typeKind() == REFERENCE) {
+					Class<?> expectedType = node.dataType().leastUpperBoundClass();
+					LOGGER.trace("typeKind is {} for {}", local.typeKind(), expectedType);
+					codeBuilder.checkcast(cd(expectedType));
+				}
+			});
+			_invokeExact(mt);
 		}
 
 		private void _loadDefault(TypeKind typeKind) {
@@ -901,15 +888,15 @@ public class SpecCompiler {
 
 		private void _invokeVirtual(MethodRef mr) {
 			_loadRuntime();
-			codeBuilder.invokevirtual(classBuilder.constantPool().methodRefEntry(
+			codeBuilder.invokevirtual(
 				mr.owner(),
 				mr.name(),
 				mr.type()
-			));
+			);
 		}
 
 		private void _loadRuntime() {
-			codeBuilder.loadLocal(REFERENCE, 0);
+			codeBuilder.loadLocal(REFERENCE, codeBuilder.receiverSlot());
 		}
 
 		private void _peekTokenOrdinal() {
@@ -919,18 +906,18 @@ public class SpecCompiler {
 		}
 
 		private void _callRuntime(Class<?> returnType, String methodName, Class<?>... parameterTypes) {
-			codeBuilder.invokevirtual(classBuilder.constantPool().methodRefEntry(
+			codeBuilder.invokevirtual(
 				cd(CompiledParserRuntime.class),
 				methodName,
-				mtd(returnType, parameterTypes))
+				mtd(returnType, parameterTypes)
 			);
 		}
 
 		private void _callRuntime(String methodName, Class<?>... parameterTypes) {
-			codeBuilder.invokevirtual(classBuilder.constantPool().methodRefEntry(
+			codeBuilder.invokevirtual(
 				cd(CompiledParserRuntime.class),
 				methodName,
-				mtd(VOID, parameterTypes))
+				mtd(VOID, parameterTypes)
 			);
 		}
 
@@ -954,9 +941,44 @@ public class SpecCompiler {
 		return MethodTypeDesc.of(returnType, Stream.of(parameterTypes).map(SpecCompiler::cd).toArray(ClassDesc[]::new));
 	}
 
+	/**
+	 * Best-effort verification of the generated bytecode, for early feedback
+	 * when the compiler has a bug. The JVM's verifier is the authoritative check.
+	 * <p>
+	 * The generated code calls its own methods (for recursive types), so the
+	 * verifier must resolve the generated class itself, which doesn't exist yet;
+	 * it reports such resolution failures as errors. We ignore those and defer
+	 * to the JVM, but still fail on any genuine structural problem. If the
+	 * {@link ClassFile} API is unable to verify for any other reason, we defer
+	 * to the JVM as well.
+	 */
+	private static void verify(byte[] bytecode) {
+		List<VerifyError> errors;
+		try {
+			errors = ClassFile.of().verify(bytecode);
+		} catch (RuntimeException e) {
+			LOGGER.debug("Unable to verify generated class", e);
+			return;
+		}
+		if (errors.stream().anyMatch(e -> !e.getMessage().contains(RESOLUTION_FAILURE))) {
+			String message = errors.stream().map(Throwable::getMessage).collect(
+				joining("\n\t", "Generated class failed verification:\n\t", ""));
+			throw new AssertionError(message, errors.getFirst());
+		}
+	}
+
+	private static final String RESOLUTION_FAILURE = "Could not resolve class";
+
 	static final ClassDesc VOID = ClassDesc.ofDescriptor("V");
 
 	private static final AtomicLong CLASS_COUNTER = new AtomicLong(0);
+
+	/**
+	 * The {@link ClassFile} API's verifier gives better error messages than the
+	 * JVM's own verifier, but it's best-effort and slower. Enable it when assertions
+	 * are on (as they are for tests), so bugs surface with helpful diagnostics.
+	 */
+	private static final boolean VERIFY_BYTECODE = SpecCompiler.class.desiredAssertionStatus();
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SpecCompiler.class);
 }

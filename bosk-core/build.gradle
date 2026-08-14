@@ -1,8 +1,6 @@
 
 dependencies {
 	api project(":bosk-annotations")
-	implementation libs.asm
-//	implementation libs.asm.util // Useful for dumping bytecode
 	implementation libs.pcollections
 	testImplementation project(':bosk-testing')
 }

@@ -3,27 +3,26 @@ package works.bosk;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.bytecode.ClassBuilder;
+import works.bosk.bytecode.Currier;
+import works.bosk.bytecode.GeneratedClass;
 import works.bosk.exceptions.InvalidTypeException;
 
+import static java.lang.classfile.TypeKind.REFERENCE;
+import static java.lang.reflect.AccessFlag.PUBLIC;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
-import static works.bosk.bytecode.ClassBuilder.here;
+import static works.bosk.bytecode.Codegen.invoke;
+import static works.bosk.bytecode.Codegen.lineInfo;
+import static works.bosk.bytecode.GeneratedClass.here;
 
 class ReferenceBuilder {
 	@SuppressWarnings({"unchecked","rawtypes"})
 	static <T> T buildReferences(Class<T> refsClass, Bosk<?> bosk) throws InvalidTypeException {
-		ClassBuilder<T> cb = new ClassBuilder<>(
-			"REFS_" + refsClass.getSimpleName(),
-			refsClass,
-			refsClass.getClassLoader(),
-			here()
-		);
-
-		cb.beginClass();
-
+		List<MethodBinding> bindings = new ArrayList<>();
 		for (Method method: refsClass.getDeclaredMethods()) { // TODO: Inherited methods
 			ReferencePath referencePath = method.getAnnotation(ReferencePath.class);
 			if (referencePath == null) {
@@ -35,7 +34,6 @@ class ReferenceBuilder {
 				throw new InvalidTypeException("Expected " + methodName(method) + " to return a Reference");
 			}
 			Type targetType = parameterType(returnType, Reference.class, 0);
-			cb.beginMethod(method);
 			Reference<?> result;
 			try {
 				Path path = Path.parseParameterized(referencePath.value());
@@ -56,27 +54,50 @@ class ReferenceBuilder {
 				// Add some troubleshooting info for the user
 				throw new InvalidTypeException("Reference type mismatch on " + methodName(method) + ": " + e.getMessage(), e);
 			}
-			cb.pushObject(method.getName(), result, Reference.class);
-			int parameterIndex = 0;
 			for (Parameter p: method.getParameters()) {
-				++parameterIndex;
-				if (Identifier.class.isAssignableFrom(p.getType())) {
-					cb.pushLocal(cb.parameter(parameterIndex));
-					cb.invoke(REFERENCE_BOUND_TO_ID);
-				} else if (Identifier[].class.isAssignableFrom(p.getType())) {
-					cb.pushLocal(cb.parameter(parameterIndex));
-					cb.invoke(REFERENCE_BOUND_TO_ARRAY);
-				} else if (BindingEnvironment.class.isAssignableFrom(p.getType())) {
-					cb.pushLocal(cb.parameter(parameterIndex));
-					cb.invoke(REFERENCE_BOUND_BY);
-				} else {
+				if (!Identifier.class.isAssignableFrom(p.getType())
+					&& !Identifier[].class.isAssignableFrom(p.getType())
+					&& !BindingEnvironment.class.isAssignableFrom(p.getType())) {
 					throw new InvalidTypeException("Unexpected parameter type " + p.getType().getSimpleName() + " on " + methodName(method));
 				}
 			}
-			cb.finishMethod();
+			bindings.add(new MethodBinding(method, result));
 		}
-		return cb.buildInstance();
+		StackWalker.StackFrame origin = here();
+		Currier currier = new Currier();
+		return GeneratedClass.instantiate(
+			"REFS_" + refsClass.getSimpleName(),
+			refsClass,
+			refsClass.getClassLoader(),
+			origin,
+			currier,
+			cb -> {
+				for (MethodBinding binding: bindings) {
+					Method method = binding.method();
+					cb.withMethodBody(method.getName(), GeneratedClass.mtd(method.getReturnType(), method.getParameterTypes()), PUBLIC.mask(), codeBuilder -> {
+						lineInfo(codeBuilder, origin);
+						currier.pushCurried(codeBuilder, method.getName(), binding.result(), Reference.class);
+						int parameterIndex = 0;
+						for (Parameter p: method.getParameters()) {
+							codeBuilder.loadLocal(REFERENCE, codeBuilder.parameterSlot(parameterIndex++));
+							if (Identifier.class.isAssignableFrom(p.getType())) {
+								invoke(codeBuilder, REFERENCE_BOUND_TO_ID);
+							} else if (Identifier[].class.isAssignableFrom(p.getType())) {
+								invoke(codeBuilder, REFERENCE_BOUND_TO_ARRAY);
+							} else if (BindingEnvironment.class.isAssignableFrom(p.getType())) {
+								invoke(codeBuilder, REFERENCE_BOUND_BY);
+							} else {
+								// Should have been rejected in the validation loop above
+								throw new AssertionError("Unexpected parameter type " + p.getType().getSimpleName() + " on " + methodName(method));
+							}
+						}
+						codeBuilder.areturn();
+					});
+				}
+			});
 	}
+
+	private record MethodBinding(Method method, Reference<?> result) { }
 
 	@NonNull
 	private static String methodName(Method method) {

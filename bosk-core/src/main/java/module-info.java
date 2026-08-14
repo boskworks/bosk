@@ -9,7 +9,6 @@
  */
 module works.bosk.core {
 	requires static transitive org.jspecify;
-	requires org.objectweb.asm;
 	requires org.pcollections;
 	requires org.slf4j;
 	requires transitive works.bosk.annotations;

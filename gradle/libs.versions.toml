@@ -1,5 +1,4 @@
 [versions]
-asm = "9.10.1"
 graphql-java = "26.0"
 hamcrest = "3.0"
 jackson = "3.2.1"
@@ -15,7 +14,6 @@ spring-boot = "4.1.0"
 testcontainers = "2.0.5"
 
 [libraries]
-asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
 graphql-java = { module = "com.graphql-java:graphql-java", version.ref = "graphql-java" }
 hamcrest = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
 hamcrest-library = { module = "org.hamcrest:hamcrest-library", version.ref = "hamcrest" }
