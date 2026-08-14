@@ -248,7 +248,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				throw new IllegalStateException("initialState has already run");
 			}
 			try {
-				return rootType.cast(task.call(boskInfo.context().getAttributes()));
+				RR result = rootType.cast(task.call(boskInfo.context().getAttributes()));
+				testProbes.beforeInitialStateApplied().run();
+				return result;
 			} catch (ExecutionException e) {
 				switch (e.getCause()) {
 					case InitialStateFailureException i -> {
@@ -565,6 +567,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						throw new DatabaseLoadException("Unable to load initial state from MongoDB", e);
 					}
 				}
+				awaitBoskReady();
+			}
+		}
+
+		/**
+		 * Blocks until the bosk is ready to accept updates.
+		 *
+		 * @throws InitialStateFailureException if the {@link Bosk} constructor failed
+		 * after the state was loaded
+		 */
+		private void awaitBoskReady() throws InterruptedException, InitialStateFailureException {
+			try {
+				boskInfo.boskFuture().get();
+			} catch (ExecutionException e) {
+				throw new InitialStateFailureException("Bosk construction failed after loading the initial state", e.getCause());
 			}
 		}
 

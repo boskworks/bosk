@@ -150,8 +150,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 				// We assume the seed replica's constructor has finished by this point,
 				// which is true if the bosks are constructed in the same order as their drivers.
 				// This should be a safe assumption--some shenanigans would be required
-				// to violate this--but unfortunately we have no way to verify it here,
-				// because at this point in the code, we cannot tell which replica we're initializing.
+				// to violate this--and seedReadSession throws if we're wrong.
 				try (var _ = seedReadSession(seed)) {
 					return rootType.cast(seed.boskInfo().bosk().rootReference().value());
 				}

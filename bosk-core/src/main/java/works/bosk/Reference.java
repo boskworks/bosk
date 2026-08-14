@@ -22,7 +22,7 @@ public sealed interface Reference<T> permits
 	ListingReference,
 	RootReference,
 	SideTableReference,
-	Bosk.ReferenceImpl
+	BoskBase.ReferenceImpl
 {
 	Path path();
 
