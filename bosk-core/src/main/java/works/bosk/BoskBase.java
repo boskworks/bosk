@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
@@ -40,9 +40,11 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
  * The implementation of a {@link Bosk}, held in a superclass so that its final
- * fields are all frozen when this constructor returns. The {@link Bosk} subclass
- * constructor body therefore runs once the bosk's final fields are reliably
- * initialized, even though the {@link Bosk} constructor has not yet returned.
+ * fields are all frozen when this constructor returns, which happens-before the
+ * {@link Bosk} subclass completes {@link BoskInfo#boskFuture()}'s future. Waiters on
+ * that future therefore observe a fully-initialized bosk: every final field is
+ * properly published, without relying on the constructor of {@code Bosk} itself
+ * having returned.
  */
 abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	final String name;
@@ -62,10 +64,10 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		.name("bosk-hook-", 1);
 
 	/**
-	 * Set once the bosk is fully initialized, so that {@link BoskInfo#bosk()}
-	 * can report readiness; see {@link BoskInfo#bosk()}.
+	 * Completed once the bosk is fully initialized and ready to accept updates;
+	 * see {@link BoskInfo#boskFuture()}.
 	 */
-	final AtomicReference<Bosk<R>> boskRef = new AtomicReference<>();
+	final CompletableFuture<Bosk<R>> initializationFuture = new CompletableFuture<>();
 
 	/**
 	 * Mutable state.
@@ -83,7 +85,6 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 * @param boskConfig          Customizations for this bosk.
 	 * @see DriverStack
 	 */
-	@SuppressWarnings("this-escape")
 	protected BoskBase(String name, Type rootType, Bosk.DefaultStateFunction<R> defaultStateFunction, BoskConfig<R> boskConfig) {
 		this.name = requireNonNull(name);
 		this.pathCompiler = PathCompiler.withSourceType(requireNonNull(rootType)); // Required before rootRef
@@ -96,7 +97,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		}
 
 		context = new BoskContext(Context::empty);
-		Info<R> boskInfo = new Info<>(name, instanceID, rootRef, context, boskRef);
+		Info<R> boskInfo = new Info<>(name, instanceID, rootRef, context, initializationFuture);
 
 		// We do this as late as possible because the driver factory is allowed
 		// to do such things as create References, so it needs the rest of the
@@ -108,11 +109,9 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		try {
 			this.currentState = ingressDriver.initialState(rootRef.targetClass());
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
+			initializationFuture.completeExceptionally(e);
 			throw new IllegalArgumentException("Error computing initial state: " + e.getMessage(), e);
 		}
-
-		// Ok, we're done initializing. The cast is safe because BoskBase permits only Bosk.
-		boskInfo.boskRef().set((Bosk<R>) this); // @SuppressWarnings("this-escape")
 	}
 
 	record Info<RR extends StateTreeNode>(
@@ -120,16 +119,11 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		Identifier instanceID,
 		RootReference<RR> rootReference,
 		BoskContext context,
-		AtomicReference<Bosk<RR>> boskRef
+		CompletableFuture<Bosk<RR>> initializationFuture
 	) implements BoskInfo<RR> {
 		@Override
-		public Bosk<RR> bosk() {
-			var result = boskRef.get();
-			if (result == null) {
-				throw new IllegalStateException("Bosk is not yet initialized");
-			} else {
-				return result;
-			}
+		public CompletableFuture<Bosk<RR>> boskFuture() {
+			return initializationFuture;
 		}
 	}
 

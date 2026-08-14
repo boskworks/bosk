@@ -5,6 +5,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -63,8 +64,13 @@ public non-sealed class Bosk<R extends StateTreeNode> extends BoskBase<R> implem
 	 * @param boskConfig          Customizations for this bosk.
 	 * @see DriverStack
 	 */
+	@SuppressWarnings("this-escape")
 	public Bosk(String name, Type rootType, DefaultStateFunction<R> defaultStateFunction, BoskConfig<R> boskConfig) {
 		super(name, rootType, defaultStateFunction, boskConfig);
+		// All final fields were frozen when the BoskBase constructor returned, so
+		// publishing `this` here is a proper publication: callers of boskFuture() observe
+		// a fully-initialized bosk.
+		initializationFuture.complete(this);
 	}
 
 	@Override
@@ -97,6 +103,11 @@ public non-sealed class Bosk<R extends StateTreeNode> extends BoskBase<R> implem
 
 	public interface DefaultStateFunction<RR extends StateTreeNode> {
 		RR apply(Bosk<RR> bosk) throws InvalidTypeException, IOException, InterruptedException;
+	}
+
+	@Override
+	public CompletableFuture<Bosk<R>> boskFuture() {
+		return initializationFuture;
 	}
 
 	@Override
