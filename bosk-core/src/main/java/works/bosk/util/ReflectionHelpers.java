@@ -2,26 +2,20 @@ package works.bosk.util;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.MethodModel;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.AccessFlag;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassVisitor;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
 
 import static java.util.Objects.requireNonNull;
-import static org.objectweb.asm.ClassReader.SKIP_CODE;
-import static org.objectweb.asm.ClassReader.SKIP_DEBUG;
-import static org.objectweb.asm.ClassReader.SKIP_FRAMES;
-import static org.objectweb.asm.Opcodes.ACC_STATIC;
-import static org.objectweb.asm.Opcodes.ASM9;
-import static org.objectweb.asm.Type.ARRAY;
-import static org.objectweb.asm.Type.OBJECT;
 
 public final class ReflectionHelpers {
 
@@ -37,7 +31,7 @@ public final class ReflectionHelpers {
 
 		List<Method> result = new ArrayList<>();
 		ClassLoader loader = type.getClassLoader();
-		ClassReader cr;
+		ClassModel classModel;
 		try {
 			String typeName = type.getName();
 			String fileName = typeName.substring(typeName.lastIndexOf('.') + 1) + ".class";
@@ -45,42 +39,41 @@ public final class ReflectionHelpers {
 			if (resource == null) {
 				throw new IOException("No resource called \"" + fileName + "\"");
 			}
-			cr = new ClassReader(resource);
+			try (resource) {
+				classModel = ClassFile.of().parse(resource.readAllBytes());
+			}
 		} catch (IOException e) {
 			throw new IllegalStateException("Unable to open the classfile corresponding to " + type, e);
 		}
-		cr.accept(new ClassVisitor(ASM9) {
-			@Override
-			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-				if (name.equals("<init>") || name.equals("<clinit>")) {
-					return null;
-				} else if ((access & Opcodes.ACC_SYNTHETIC) != 0) {
-					return null;
-				}
-				Type[] argumentTypes = Type.getArgumentTypes(descriptor);
-				Class<?>[] argumentClasses = new Class<?>[argumentTypes.length];
-				for (int i = 0; i < argumentTypes.length; i++) {
-					argumentClasses[i] = findClass(argumentTypes[i], loader);
-				}
-				Type returnType = Type.getReturnType(descriptor);
-				Class<?> returnClass = findClass(returnType, loader);
-				try {
-					MethodHandle mh;
-					if ((access & ACC_STATIC) == 0) {
-						mh = lookup.findVirtual(type, name, MethodType.methodType(returnClass, argumentClasses));
-					} else {
-						mh = lookup.findStatic(type, name, MethodType.methodType(returnClass, argumentClasses));
-					}
-					Method method = lookup.revealDirect(mh).reflectAs(Method.class, lookup);
-					result.add(method);
-				} catch (NoSuchMethodException e) {
-					throw new IllegalStateException("Method found in bytecode cannot be retrieved via reflection", e);
-				} catch (IllegalAccessException e) {
-					throw new IllegalArgumentException("Unable to access method", e);
-				}
-				return null;
+		for (MethodModel methodModel: classModel.methods()) {
+			String name = methodModel.methodName().stringValue();
+			if (name.equals("<init>") || name.equals("<clinit>")) {
+				continue;
+			} else if (methodModel.flags().has(AccessFlag.SYNTHETIC)) {
+				continue;
 			}
-		}, SKIP_CODE | SKIP_DEBUG | SKIP_FRAMES);
+			MethodTypeDesc methodType = methodModel.methodTypeSymbol();
+			List<ClassDesc> parameterTypes = methodType.parameterList();
+			Class<?>[] argumentClasses = new Class<?>[parameterTypes.size()];
+			for (int i = 0; i < parameterTypes.size(); i++) {
+				argumentClasses[i] = findClass(parameterTypes.get(i), loader);
+			}
+			Class<?> returnClass = findClass(methodType.returnType(), loader);
+			try {
+				MethodHandle mh;
+				if (methodModel.flags().has(AccessFlag.STATIC)) {
+					mh = lookup.findStatic(type, name, MethodType.methodType(returnClass, argumentClasses));
+				} else {
+					mh = lookup.findVirtual(type, name, MethodType.methodType(returnClass, argumentClasses));
+				}
+				Method method = lookup.revealDirect(mh).reflectAs(Method.class, lookup);
+				result.add(method);
+			} catch (NoSuchMethodException e) {
+				throw new IllegalStateException("Method found in bytecode cannot be retrieved via reflection", e);
+			} catch (IllegalAccessException e) {
+				throw new IllegalArgumentException("Unable to access method", e);
+			}
+		}
 		return result;
 	}
 
@@ -93,43 +86,22 @@ public final class ReflectionHelpers {
 		}
 	}
 
-	private static Class<?> findClass(Type argumentType, ClassLoader loader) {
+	private static Class<?> findClass(ClassDesc classDesc, ClassLoader loader) {
 		try {
-			return switch (argumentType.getSort()) {
-				case OBJECT ->
-					requireNonNull(Class.forName(argumentType.getClassName(), false, loader));
-				case ARRAY ->
-					findClass(argumentType.getElementType(), loader).arrayType();
-				default ->
-					requireNonNull(classForPrimitiveName(argumentType.getClassName()));
-			};
+			if (classDesc.isPrimitive()) {
+				return requireNonNull(Class.forPrimitiveName(classDesc.displayName()));
+			} else if (classDesc.isArray()) {
+				return findClass(classDesc.componentType(), loader).arrayType();
+			} else {
+				// Class.forName requires the dotted binary name, which we must
+				// derive from the classfile's internal (slashy) descriptor.
+				String descriptor = classDesc.descriptorString();
+				String dottedName = descriptor.substring(1, descriptor.length() - 1).replace('/', '.');
+				return requireNonNull(Class.forName(dottedName, false, loader));
+			}
 		} catch (ClassNotFoundException e) {
 			throw new IllegalStateException(e);
 		}
-	}
-
-	/**
-	 * Stolen shamelessly from Java 22
-	 */
-	private static Class<?> classForPrimitiveName(String primitiveName) {
-		return switch(primitiveName) {
-			// Integral types
-			case "int"     -> int.class;
-			case "long"    -> long.class;
-			case "short"   -> short.class;
-			case "char"    -> char.class;
-			case "byte"    -> byte.class;
-
-			// Floating-point types
-			case "float"   -> float.class;
-			case "double"  -> double.class;
-
-			// Other types
-			case "boolean" -> boolean.class;
-			case "void"    -> void.class;
-
-			default        -> null;
-		};
 	}
 
 	public static Class<?> boxedClass(Class<?> valueClass) {
