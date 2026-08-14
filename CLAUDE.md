@@ -141,6 +141,12 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 - For multi-line commit messages, the first line (the summary) should end with a period.
 - Single-line commit messages should not end with a period.
 
+### Pull request descriptions
+
+- Write PR descriptions in plain, informal language. Say what the change is and why, and which modules it touches; don't pad them out with formal headers or restate what's obvious from the diff.
+- Don't list the commits in the description: readers can browse the commits themselves.
+- For bug fixes, describe the motivating bug and its mechanism so reviewers can see the "why", not just the "what" in the diff.
+
 ## Test Coding Patterns
 
 - Tests use JUnit 5
