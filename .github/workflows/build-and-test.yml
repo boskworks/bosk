@@ -13,12 +13,20 @@ on:
 jobs:
   build_and_test:
 
-    name: Build and test (${{ matrix.attempt }})
+    name: Build and test (${{ matrix.group }} #${{ matrix.rep }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        rep: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        group: [mongo, sql, other]
+        include:
+          - group: mongo
+            gradle: ":bosk-mongo:check"
+          - group: sql
+            gradle: ":bosk-sql:check"
+          - group: other
+            gradle: "check -x :bosk-mongo:check -x :bosk-sql:check"
     permissions:
       contents: read
 
@@ -39,10 +47,16 @@ jobs:
 
       - name: Run Gradle Test
         run: |
-          ./gradlew test --fail-fast check
+          ./gradlew --fail-fast ${{ matrix.gradle }}
         env:
           ORG_GRADLE_PROJECT_ossrhUsername: ${{secrets.OSSRH_USERNAME}}
           ORG_GRADLE_PROJECT_ossrhPassword: ${{secrets.OSSRH_TOKEN}}
           ORG_GRADLE_PROJECT_signingKey: ${{secrets.GPG_PRIVATE_KEY}}
           ORG_GRADLE_PROJECT_signingPassword: ${{secrets.GPG_PASSWORD}}
 
+      - name: Upload test results
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: reports-${{ matrix.group }}-${{ matrix.rep }}
+          path: "**/build/reports/"
