@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import lombok.With;
 import works.bosk.Bosk;
@@ -35,6 +36,9 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * initial state, before that state has been applied to the in-memory tree,
  * allowing a race to be induced where change events are processed before the
  * state is ready to receive them.</li>
+ * <li>{@code onDisruption}: observes when the driver is unable to initialize the
+ * database and falls back to the downstream initial state. Tests can throw from
+ * here to fail when such a disruption was not expected.</li>
  * <li>{@code findInterceptor}: interposes on database reads; see
  * {@link FindInterceptor}.</li>
  * <li>{@code writeInterceptor}: interposes on database writes; see
@@ -52,11 +56,13 @@ record TestProbes(
 	Runnable beforeInitialStateApplied,
 	FindInterceptor findInterceptor,
 	WriteInterceptor writeInterceptor,
-	CommitInterceptor commitInterceptor
+	CommitInterceptor commitInterceptor,
+	Consumer<Throwable> onDisruption
 ) {
 	static TestProbes noop() {
-		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity());
+		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), NOOP_DISRUPTION);
 	}
 
 	private static final Runnable NOOP = () -> {};
+	private static final Consumer<Throwable> NOOP_DISRUPTION = _ -> {};
 }

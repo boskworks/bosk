@@ -100,6 +100,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private volatile FormatDriver<R> formatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
 
 	/**
+	 * Set by {@link #doInitialState} when it couldn't initialize the database and
+	 * fell back to the downstream initial state. Read by {@link #initialState} so it
+	 * can fire the {@link TestProbes#onDisruption} probe. Written on the
+	 * ChangeReceiver thread and read on the thread constructing the {@link Bosk}.
+	 */
+	private volatile Throwable initFallbackReason;
+
+	/**
 	 * Allows tests to install test probes controlling the driver's internals.
 	 * <p>
 	 * This works because {@code MainDriver} is instantiated
@@ -250,6 +258,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			try {
 				RR result = rootType.cast(task.call(boskInfo.context().getAttributes()));
 				testProbes.beforeInitialStateApplied().run();
+				reportInitialStateFallback();
 				return result;
 			} catch (ExecutionException e) {
 				switch (e.getCause()) {
@@ -271,6 +280,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			} finally {
 				LOGGER.debug("Done initialState");
 			}
+		}
+	}
+
+	/**
+	 * If {@link #doInitialState} couldn't initialize the database and fell back to
+	 * the downstream initial state, fires the {@link TestProbes#onDisruption} probe
+	 * so tests can observe the disruption. Runs on the thread that called
+	 * {@link #initialState}, i.e. the thread constructing the {@link Bosk}, so a
+	 * probe that throws will fail the constructor.
+	 */
+	private void reportInitialStateFallback() {
+		Throwable reason = initFallbackReason;
+		if (reason != null) {
+			initFallbackReason = null;
+			testProbes.onDisruption().accept(reason);
 		}
 	}
 
@@ -333,6 +357,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2, formatDriver);
+				initFallbackReason = e2;
 			}
 		} catch (UnrecognizedFormatException | InvalidCollectionContentsException | IOException | FailedMongoClientSessionException e) {
 			throw new DatabaseLoadException("Unable to load initial state from MongoDB", e);
