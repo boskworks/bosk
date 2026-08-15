@@ -83,7 +83,8 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 	void setupErrorRecording() {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
 		MainDriver.TEST_PROBES.set(TestProbes.noop()
-			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream)));
+			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream))
+			.withOnDisruption(reason -> { throw new AssertionError("driver disruption during init", reason); }));
 	}
 
 	@AfterEach
