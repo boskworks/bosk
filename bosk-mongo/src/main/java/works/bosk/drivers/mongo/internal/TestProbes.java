@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import lombok.With;
 import works.bosk.Bosk;
@@ -11,8 +12,10 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * driver's internals.
  * <p>
  * All probes are no-ops by default; tests install the probes they need by
- * starting from {@link #noop()} and using the {@code with} methods. The probes
- * are read from {@link MainDriver#TEST_PROBES} on the thread that constructs
+ * starting from {@link #noop()} and using the {@code with} methods. Tests set,
+ * modify, or clear the current thread's probes via {@link MainDriver#setProbes(TestProbes)},
+ * {@link MainDriver#modifyProbes(UnaryOperator)}, and {@link MainDriver#resetProbes()};
+ * the probes are read on the thread that constructs
  * the {@link MainDriver} (and hence the {@link Bosk}), and are captured at
  * construction time, so they apply to every thread that later does database
  * work.
@@ -35,6 +38,9 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * initial state, before that state has been applied to the in-memory tree,
  * allowing a race to be induced where change events are processed before the
  * state is ready to receive them.</li>
+ * <li>{@code onDisruption}: observes when the driver is unable to initialize the
+ * database and falls back to the downstream initial state. Tests can throw from
+ * here to fail when such a disruption was not expected.</li>
  * <li>{@code findInterceptor}: interposes on database reads; see
  * {@link FindInterceptor}.</li>
  * <li>{@code writeInterceptor}: interposes on database writes; see
@@ -52,11 +58,22 @@ record TestProbes(
 	Runnable beforeInitialStateApplied,
 	FindInterceptor findInterceptor,
 	WriteInterceptor writeInterceptor,
-	CommitInterceptor commitInterceptor
+	CommitInterceptor commitInterceptor,
+	Consumer<Throwable> onDisruption
 ) {
 	static TestProbes noop() {
-		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity());
+		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), NOOP_DISRUPTION);
+	}
+
+	/**
+	 * Returns a copy of this {@link TestProbes} whose {@link #onDisruption} probe
+	 * fails the test (by throwing an {@link AssertionError}) when the driver's
+	 * initialization falls back to the downstream initial state.
+	 */
+	TestProbes withFailOnDisruption() {
+		return withOnDisruption(reason -> { throw new AssertionError("driver disruption during init", reason); });
 	}
 
 	private static final Runnable NOOP = () -> {};
+	private static final Consumer<Throwable> NOOP_DISRUPTION = _ -> {};
 }

@@ -82,7 +82,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 		AtomicReference<Bosk<TestEntity>> testBoskRef = new AtomicReference<>();
 		AtomicReference<Throwable> constructionError = new AtomicReference<>();
 		Thread loadThread = new Thread(() -> {
-			MainDriver.TEST_PROBES.set(TestProbes.noop()
+			MainDriver.setProbes(TestProbes.noop()
 				.withFindInterceptor((filter, options, cursor) ->
 					isPandoLoadFind(filter) ? new PausingCursor(cursor, 1, loadGate) : cursor));
 			try {
@@ -94,7 +94,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 			} catch (Throwable e) {
 				constructionError.set(e);
 			} finally {
-				MainDriver.TEST_PROBES.remove();
+				MainDriver.resetProbes();
 			}
 		});
 		loadThread.start();
@@ -114,7 +114,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 				loadThread.interrupt();
 				loadThread.join();
 			}
-			MainDriver.TEST_PROBES.remove();
+			MainDriver.resetProbes();
 		}
 
 		assertNull(constructionError.get(), "Test bosk construction should not throw");
@@ -162,7 +162,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 		AtomicReference<Bosk<TestEntity>> testBoskRef = new AtomicReference<>();
 		AtomicReference<Throwable> constructionError = new AtomicReference<>();
 		Thread loadThread = new Thread(() -> {
-			MainDriver.TEST_PROBES.set(TestProbes.noop()
+			MainDriver.setProbes(TestProbes.noop()
 				.withFindInterceptor((filter, options, cursor) ->
 					isPandoLoadFind(filter) ? new PausingCursor(cursor, 1, loadGate) : cursor)
 				.withListenerFactory(downstream -> new GatingChangeListener(downstream, eventGate, eventReached, eventProcessed))
@@ -179,7 +179,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 			} catch (Throwable e) {
 				constructionError.set(e);
 			} finally {
-				MainDriver.TEST_PROBES.remove();
+				MainDriver.resetProbes();
 			}
 		});
 		loadThread.start();
@@ -224,7 +224,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 				loadThread.interrupt();
 				loadThread.join();
 			}
-			MainDriver.TEST_PROBES.remove();
+			MainDriver.resetProbes();
 		}
 
 		assertNull(constructionError.get(), "Test bosk construction should not throw");
@@ -333,7 +333,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 		AtomicReference<Bosk<TestEntity>> refurbisherRef = new AtomicReference<>();
 		AtomicReference<Throwable> refurbishError = new AtomicReference<>();
 		Thread refurbishThread = new Thread(() -> {
-			MainDriver.TEST_PROBES.set(TestProbes.noop()
+			MainDriver.setProbes(TestProbes.noop()
 				.withBeforeRefurbishDelete(() -> {
 					refurbishGate.signal();
 					refurbishGate.awaitRelease(Duration.ofSeconds(60));
@@ -349,7 +349,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 			} catch (Throwable e) {
 				refurbishError.set(e);
 			} finally {
-				MainDriver.TEST_PROBES.remove();
+				MainDriver.resetProbes();
 			}
 		});
 		refurbishThread.start();
@@ -368,7 +368,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 				refurbishThread.interrupt();
 				refurbishThread.join();
 			}
-			MainDriver.TEST_PROBES.remove();
+			MainDriver.resetProbes();
 		}
 
 		assertNull(refurbishError.get(), "Refurbish should not throw");

@@ -50,13 +50,13 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 	@BeforeEach
 	void setupErrorRecording() {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
+		MainDriver.setProbes(TestProbes.noop()
 			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream)));
 	}
 
 	@AfterEach
 	void resetErrorRecording() {
-		MainDriver.TEST_PROBES.remove();
+		MainDriver.resetProbes();
 	}
 
 	@InjectorMethod

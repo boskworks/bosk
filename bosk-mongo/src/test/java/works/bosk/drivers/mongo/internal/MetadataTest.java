@@ -54,13 +54,14 @@ public class MetadataTest extends AbstractMongoDriverTest {
 	@BeforeEach
 	void setupErrorRecording() {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
-			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream)));
+		MainDriver.setProbes(TestProbes.noop()
+			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream))
+			.withFailOnDisruption());
 	}
 
 	@AfterEach
 	void resetErrorRecording() {
-		MainDriver.TEST_PROBES.remove();
+		MainDriver.resetProbes();
 	}
 
 	@InjectorMethod

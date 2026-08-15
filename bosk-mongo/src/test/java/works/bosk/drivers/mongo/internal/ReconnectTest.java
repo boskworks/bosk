@@ -82,13 +82,14 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 	@BeforeEach
 	void setupErrorRecording() {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
-			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream)));
+		MainDriver.setProbes(TestProbes.noop()
+			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream))
+			.withFailOnDisruption());
 	}
 
 	@AfterEach
 	void resetErrorRecording() {
-		MainDriver.TEST_PROBES.remove();
+		MainDriver.resetProbes();
 	}
 
 	@InjectorMethod
@@ -295,8 +296,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		// Make the ChangeReceiver wait when it sees an error.
 		// We want the flush operation to encounter the outage first.
 		var lock = new Object(){};
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
-			.withListenerFactory(d -> new ForwardingChangeListener(d) {
+		MainDriver.modifyProbes(t -> t.withListenerFactory(d -> new ForwardingChangeListener(d) {
 			@Override
 			public void onConnectionFailed(Exception cause) throws DownstreamInitialStateException {
 				waitUp();
@@ -422,8 +422,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		CountDownLatch appAtPreWait = new CountDownLatch(1);
 		CountDownLatch published = new CountDownLatch(1);
 
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
-			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
+		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 			@Override
 			public void onDisconnect(Throwable e) {
 				super.onDisconnect(e); // calls setDisconnectedDriver
@@ -493,7 +492,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 			Thread.currentThread().interrupt();
 			throw new AssertionError("Interrupted", e);
 		} finally {
-			MainDriver.TEST_PROBES.remove();
+			MainDriver.resetProbes();
 		}
 	}
 	@Test
@@ -533,8 +532,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		AtomicInteger reconnects = new AtomicInteger();
 		CountDownLatch reconnected = new CountDownLatch(1);
 
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
-			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
+		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
 				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 					if (new BsonString(DISCONNECT_PROBE_ID).equals(event.getDocumentKey().get("_id"))) {
@@ -599,7 +597,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 			assertEquals(1, reconnects.get(),
 				"The stale disconnect must not have forced another reconnect cycle");
 		} finally {
-			MainDriver.TEST_PROBES.remove();
+			MainDriver.resetProbes();
 		}
 	}
 	@Test
@@ -636,8 +634,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		AtomicInteger reconnects = new AtomicInteger();
 		BlockingGate eventGate = new BlockingGate("the change event for the interrupted flush");
 
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
-			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
+		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
 				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 					if (armed.compareAndSet(true, false)) {
@@ -701,7 +698,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 				"Interrupting a driver operation must not cause a disconnect/reconnect cycle");
 			errorRecorder.assertAllClear("after interrupting a flush");
 		} finally {
-			MainDriver.TEST_PROBES.remove();
+			MainDriver.resetProbes();
 		}
 	}
 	@Test
@@ -771,8 +768,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		CountDownLatch proceedWithReconnect = new CountDownLatch(1);
 		BlockingGate reconnectGate = new BlockingGate("the reconnect's downstream state application");
 
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
-			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
+		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
 				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 					if (new BsonString(DISCONNECT_PROBE_ID).equals(event.getDocumentKey().get("_id"))) {
@@ -895,7 +891,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 					flusher.join();
 				}
 			}
-			MainDriver.TEST_PROBES.remove();
+			MainDriver.resetProbes();
 		}
 	}
 

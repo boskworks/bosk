@@ -54,7 +54,7 @@ public class InitializationAtomicityTest extends AbstractMongoDriverTest {
 		// This test deliberately provokes a disconnect, so log errors only
 		logController.setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
+		MainDriver.setProbes(TestProbes.noop()
 			.withWriteInterceptor(filter -> {
 				if (isManifestWrite(filter)) {
 					throw new IllegalStateException("Test injection: failing the manifest write");
@@ -70,7 +70,7 @@ public class InitializationAtomicityTest extends AbstractMongoDriverTest {
 				AbstractMongoDriverTest::initialState,
 				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 		} finally {
-			MainDriver.TEST_PROBES.remove();
+			MainDriver.resetProbes();
 		}
 
 		var collection = mongoService.client()
