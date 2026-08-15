@@ -66,12 +66,12 @@ record TestProbes(
 	}
 
 	/**
-	 * An {@link #onDisruption()} consumer that fails the test by throwing an
-	 * {@link AssertionError}, for tests that treat an unexpected disruption as a
-	 * failure.
+	 * Returns a copy of this {@link TestProbes} whose {@link #onDisruption} probe
+	 * fails the test (by throwing an {@link AssertionError}) when the driver's
+	 * initialization falls back to the downstream initial state.
 	 */
-	static Consumer<Throwable> failOnDisruption() {
-		return reason -> { throw new AssertionError("driver disruption during init", reason); };
+	TestProbes withFailOnDisruption() {
+		return withOnDisruption(reason -> { throw new AssertionError("driver disruption during init", reason); });
 	}
 
 	private static final Runnable NOOP = () -> {};

@@ -78,7 +78,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
 		MainDriver.setProbes(TestProbes.noop()
 			.withListenerFactory(d -> new ErrorRecordingChangeListener(errorRecorder, d))
-			.withOnDisruption(TestProbes.failOnDisruption()));
+			.withFailOnDisruption());
 	}
 
 	@AfterEach
