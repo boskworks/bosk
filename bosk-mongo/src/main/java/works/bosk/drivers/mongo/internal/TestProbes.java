@@ -65,6 +65,15 @@ record TestProbes(
 		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), NOOP_DISRUPTION);
 	}
 
+	/**
+	 * An {@link #onDisruption()} consumer that fails the test by throwing an
+	 * {@link AssertionError}, for tests that treat an unexpected disruption as a
+	 * failure.
+	 */
+	static Consumer<Throwable> failOnDisruption() {
+		return reason -> { throw new AssertionError("driver disruption during init", reason); };
+	}
+
 	private static final Runnable NOOP = () -> {};
 	private static final Consumer<Throwable> NOOP_DISRUPTION = _ -> {};
 }

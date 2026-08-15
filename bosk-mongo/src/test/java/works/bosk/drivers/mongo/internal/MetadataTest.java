@@ -56,7 +56,7 @@ public class MetadataTest extends AbstractMongoDriverTest {
 		errorRecorder = new ErrorRecordingChangeListener.ErrorRecorder();
 		MainDriver.setProbes(TestProbes.noop()
 			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream))
-			.withOnDisruption(reason -> { throw new AssertionError("driver disruption during init", reason); }));
+			.withOnDisruption(TestProbes.failOnDisruption()));
 	}
 
 	@AfterEach

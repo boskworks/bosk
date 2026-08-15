@@ -54,7 +54,7 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 		var defaultFactory = TestProbes.noop().clientFactory();
 		MainDriver.setProbes(TestProbes.noop()
 			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream))
-			.withOnDisruption(reason -> { throw new AssertionError("driver disruption during init", reason); })
+			.withOnDisruption(TestProbes.failOnDisruption())
 			.withClientFactory(new MongoClientFactory(
 				settings -> SHARED_CLIENTS.computeIfAbsent(settings, defaultFactory.function()),
 				false

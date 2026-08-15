@@ -33,14 +33,14 @@ class DisruptionProbeTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
-	void initialStateFallback_failsConstructionViaOnDisruptionProbe() {
+	void initialStateFallback_failsConstruction() {
 		// Force the init transaction's commit to fail, and fail on the resulting disruption.
 		MainDriver.setProbes(TestProbes.noop()
 			.withCommitInterceptor(() -> { throw new MongoException("Forced commit failure"); })
-			.withOnDisruption(reason -> { throw new AssertionError("driver disruption during init", reason); }));
+			.withOnDisruption(reason -> { throw new DisruptionProbeException(reason); }));
 
 		// The constructor must fail because the init fell back and the probe threw.
-		assertThrows(AssertionError.class, () -> new Bosk<>(
+		assertThrows(DisruptionProbeException.class, () -> new Bosk<>(
 			boskName(),
 			TestEntity.class,
 			AbstractMongoDriverTest::initialState,
@@ -63,6 +63,17 @@ class DisruptionProbeTest extends AbstractMongoDriverTest {
 
 		assertEquals(0, disruptions.get(), "No disruption expected when initialization succeeds");
 		MainDriver.resetProbes();
+	}
+
+	/**
+	 * Thrown by the {@link TestProbes#onDisruption} probe in
+	 * {@link #initialStateFallback_failsConstruction()}, so the test can tell a
+	 * disruption apart from any other exception thrown during initialization.
+	 */
+	private static final class DisruptionProbeException extends RuntimeException {
+		DisruptionProbeException(Throwable cause) {
+			super(cause);
+		}
 	}
 
 }
