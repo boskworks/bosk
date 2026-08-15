@@ -47,7 +47,7 @@ jobs:
 
       - name: Run Gradle Test
         run: |
-          ./gradlew --fail-fast ${{ matrix.gradle }}
+          ./gradlew ${{ matrix.gradle }}
         env:
           ORG_GRADLE_PROJECT_ossrhUsername: ${{secrets.OSSRH_USERNAME}}
           ORG_GRADLE_PROJECT_ossrhPassword: ${{secrets.OSSRH_TOKEN}}
