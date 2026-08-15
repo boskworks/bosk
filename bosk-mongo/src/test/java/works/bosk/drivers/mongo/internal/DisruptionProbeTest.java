@@ -1,5 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
+import ch.qos.logback.classic.Level;
 import com.mongodb.MongoException;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,6 +35,11 @@ class DisruptionProbeTest extends AbstractMongoDriverTest {
 
 	@Test
 	void initialStateFallback_failsConstruction() {
+		// This test deliberately forces initialization to fail, so the resulting
+		// "Failed to initialize database" warning is expected; suppress it so it
+		// doesn't clutter the test output.
+		setLogging(Level.ERROR, MainDriver.class);
+
 		// Force the init transaction's commit to fail, and fail on the resulting disruption.
 		MainDriver.setProbes(TestProbes.noop()
 			.withCommitInterceptor(() -> { throw new MongoException("Forced commit failure"); })
