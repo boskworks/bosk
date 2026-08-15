@@ -51,14 +51,14 @@ public class CommitRetryTest extends AbstractMongoDriverTest {
 
 	@AfterEach
 	void resetProbes() {
-		MainDriver.TEST_PROBES.remove();
+		MainDriver.resetProbes();
 	}
 
 	@Test
 	void submitReplacement_retriesCommit_whenCommitResultUnknown() throws InvalidTypeException, IOException, InterruptedException {
 		AtomicInteger commitAttempts = new AtomicInteger();
 		AtomicBoolean armCommitFailure = new AtomicBoolean(false);
-		MainDriver.TEST_PROBES.set(TestProbes.noop().withCommitInterceptor(() -> {
+		MainDriver.setProbes(TestProbes.noop().withCommitInterceptor(() -> {
 			if (armCommitFailure.get() && commitAttempts.getAndIncrement() == 0) {
 				throw unknownCommitResult();
 			}

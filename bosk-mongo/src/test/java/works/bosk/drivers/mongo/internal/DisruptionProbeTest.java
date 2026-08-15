@@ -35,7 +35,7 @@ class DisruptionProbeTest extends AbstractMongoDriverTest {
 	@Test
 	void initialStateFallback_failsConstructionViaOnDisruptionProbe() {
 		// Force the init transaction's commit to fail, and fail on the resulting disruption.
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
+		MainDriver.setProbes(TestProbes.noop()
 			.withCommitInterceptor(() -> { throw new MongoException("Forced commit failure"); })
 			.withOnDisruption(reason -> { throw new AssertionError("driver disruption during init", reason); }));
 
@@ -46,13 +46,13 @@ class DisruptionProbeTest extends AbstractMongoDriverTest {
 			AbstractMongoDriverTest::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build()));
 
-		MainDriver.TEST_PROBES.remove();
+		MainDriver.resetProbes();
 	}
 
 	@Test
 	void successfulInitialization_doesNotFireOnDisruptionProbe() throws InvalidTypeException, IOException, InterruptedException {
 		AtomicInteger disruptions = new AtomicInteger();
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
+		MainDriver.setProbes(TestProbes.noop()
 			.withOnDisruption(reason -> disruptions.incrementAndGet()));
 
 		new Bosk<>(
@@ -62,7 +62,7 @@ class DisruptionProbeTest extends AbstractMongoDriverTest {
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
 		assertEquals(0, disruptions.get(), "No disruption expected when initialization succeeds");
-		MainDriver.TEST_PROBES.remove();
+		MainDriver.resetProbes();
 	}
 
 }

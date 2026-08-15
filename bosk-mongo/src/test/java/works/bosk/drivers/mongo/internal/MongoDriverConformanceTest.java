@@ -52,7 +52,7 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 
 		// This guy uses a literal bazillion TCP ports if we don't share clients
 		var defaultFactory = TestProbes.noop().clientFactory();
-		MainDriver.TEST_PROBES.set(TestProbes.noop()
+		MainDriver.setProbes(TestProbes.noop()
 			.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream))
 			.withOnDisruption(reason -> { throw new AssertionError("driver disruption during init", reason); })
 			.withClientFactory(new MongoClientFactory(
@@ -63,7 +63,7 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 
 	@AfterEach
 	void teardownErrorRecording() {
-		MainDriver.TEST_PROBES.remove();
+		MainDriver.resetProbes();
 		errorRecorder.assertAllClear("after test");
 	}
 

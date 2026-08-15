@@ -12,8 +12,10 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * driver's internals.
  * <p>
  * All probes are no-ops by default; tests install the probes they need by
- * starting from {@link #noop()} and using the {@code with} methods. The probes
- * are read from {@link MainDriver#TEST_PROBES} on the thread that constructs
+ * starting from {@link #noop()} and using the {@code with} methods. Tests set,
+ * modify, or clear the current thread's probes via {@link MainDriver#setProbes(TestProbes)},
+ * {@link MainDriver#modifyProbes(UnaryOperator)}, and {@link MainDriver#resetProbes()};
+ * the probes are read on the thread that constructs
  * the {@link MainDriver} (and hence the {@link Bosk}), and are captured at
  * construction time, so they apply to every thread that later does database
  * work.

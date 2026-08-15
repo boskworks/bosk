@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
 import org.bson.BsonValue;
@@ -115,7 +116,31 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * captured at construction, so they apply to every thread that later
 	 * does database work. See {@link TestProbes}.
 	 */
-	static final ThreadLocal<TestProbes> TEST_PROBES = ThreadLocal.withInitial(TestProbes::noop);
+	private static final ThreadLocal<TestProbes> TEST_PROBES = ThreadLocal.withInitial(TestProbes::noop);
+
+	/**
+	 * Replaces the current thread's {@link TestProbes} with the given ones.
+	 */
+	static void setProbes(TestProbes newProbes) {
+		TEST_PROBES.set(newProbes);
+	}
+
+	/**
+	 * Modifies the current thread's {@link TestProbes} by applying the given
+	 * operation, so tests can change an individual probe without discarding the
+	 * others.
+	 */
+	static void modifyProbes(UnaryOperator<TestProbes> op) {
+		TEST_PROBES.set(op.apply(TEST_PROBES.get()));
+	}
+
+	/**
+	 * Clears the current thread's {@link TestProbes} so the next use reverts to
+	 * the {@link TestProbes#noop()} default.
+	 */
+	static void resetProbes() {
+		TEST_PROBES.remove();
+	}
 
 	record MongoClientFactory(
 		Function<MongoClientSettings, MongoClient> function,
