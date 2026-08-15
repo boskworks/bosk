@@ -13,8 +13,23 @@ on:
 jobs:
   build_and_test:
 
-    name: Build and test
+    # Isolate the Testcontainers-heavy suites (Mongo and SQL) onto their own
+    # runner VMs. The Mongo tests use a deliberately short timeout, and running
+    # the whole check on one VM lets the SQL tests' Postgres container and the
+    # other test JVMs starve the mongod container enough to trip that timeout.
+    name: "[${{ matrix.group }}]"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [mongo, sql, other]
+        include:
+          - group: mongo
+            gradle: ":bosk-mongo:check"
+          - group: sql
+            gradle: ":bosk-sql:check"
+          - group: other
+            gradle: "check -x :bosk-mongo:check -x :bosk-sql:check"
     permissions:
       contents: read
       actions: write # for upload-artifact
@@ -36,7 +51,7 @@ jobs:
 
       - name: Run Gradle Test
         run: |
-          ./gradlew --profile test --fail-fast check
+          ./gradlew ${{ matrix.gradle }}
         env:
           ORG_GRADLE_PROJECT_ossrhUsername: ${{secrets.OSSRH_USERNAME}}
           ORG_GRADLE_PROJECT_ossrhPassword: ${{secrets.OSSRH_TOKEN}}
@@ -45,7 +60,23 @@ jobs:
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
-        if: success() || failure()
+        if: failure()
         with:
-          name: reports
+          name: reports-${{ matrix.group }}
           path: "**/build/reports/"
+
+  # A single summary job named "Build and test" that the branch protection
+  # rules require as a check. It passes only when every group above passed.
+  build_and_test_summary:
+    name: Build and test
+    needs: build_and_test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify that all test groups passed
+        run: |
+          if [ "${{ needs.build_and_test.result }}" != "success" ]; then
+            echo "::error::One or more test groups failed"
+            exit 1
+          fi
+          echo "All test groups passed"
