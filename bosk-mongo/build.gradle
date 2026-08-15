@@ -22,4 +22,8 @@ tasks.named('test') {
 	// us to increase the deliberately short Mongo timeout, slowing down the tests
 	// for developers.
 	maxParallelForks = 1
+
+	// TEMPORARY: force re-execution on every CI run so we can measure the
+	// flake rate of the mongo tests. Revert this after the experiment.
+	outputs.cacheIf { false }
 }
