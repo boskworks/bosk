@@ -39,7 +39,7 @@ jobs:
         run: |
           ./gradlew check -x test
 
-  build_and_test:
+  test:
 
     # Isolate the Testcontainers-heavy suites (Mongo and SQL) onto their own
     # runner VMs. The Mongo tests use a deliberately short timeout, and running
@@ -53,13 +53,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [mongo, sql, other]
+        group: [mongo, sql, others]
         include:
           - group: mongo
             gradle: ":bosk-mongo:test"
           - group: sql
             gradle: ":bosk-sql:test"
-          - group: other
+          - group: others
             gradle: "test -x :bosk-mongo:test -x :bosk-sql:test"
     permissions:
       contents: read
@@ -94,16 +94,20 @@ jobs:
   # A single summary job named "Build and test" that the branch protection
   # rules require as a check. It passes only when the build and every test
   # group above passed.
-  build_and_test_summary:
+  build_and_test:
     name: Build and test
-    needs: [build, build_and_test]
+    needs: [build, test]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Verify that the build and all test groups passed
         run: |
-          if [ "${{ needs.build.result }}" != "success" ] || [ "${{ needs.build_and_test.result }}" != "success" ]; then
-            echo "::error::The build or one of the test groups failed"
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::The build failed (${{ needs.build.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::One or more test groups failed (${{ needs.test.result }})"
             exit 1
           fi
           echo "The build and all test groups passed"
