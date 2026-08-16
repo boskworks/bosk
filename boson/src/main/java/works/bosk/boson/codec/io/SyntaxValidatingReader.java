@@ -144,7 +144,10 @@ public final class SyntaxValidatingReader implements JsonReader {
 	}
 
 	/**
-	 * Depending on the next state, perform the appropriate stack manipulation.
+	 * Updates the parser's validation state after the given token has been
+	 * consumed from the downstream reader.
+	 *
+	 * @param token the token just consumed, which determines the next state
 	 */
 	private void doStateTransition(Token token) {
 		Map<Token, State> transitions = currentState.transitions();
@@ -235,6 +238,12 @@ public final class SyntaxValidatingReader implements JsonReader {
 	@Override
 	public void skipToEndOfString() {
 		downstream.skipToEndOfString();
+		doStateTransition(STRING);
+	}
+
+	@Override
+	public void consumeEndOfString() {
+		downstream.consumeEndOfString();
 		doStateTransition(STRING);
 	}
 

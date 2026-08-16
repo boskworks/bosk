@@ -136,6 +136,12 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	@Override
+	public void consumeEndOfString() {
+		assert peekRawChar() == '"';
+		pos++;
+	}
+
+	@Override
 	public void close() {
 
 	}

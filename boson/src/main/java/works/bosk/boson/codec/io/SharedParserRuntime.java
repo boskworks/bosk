@@ -151,6 +151,10 @@ public abstract class SharedParserRuntime {
 		input.skipStringChars(n);
 	}
 
+	protected final void consumeEndOfString() {
+		input.consumeEndOfString();
+	}
+
 	protected final void skipToEndOfString(int remainingChars) {
 		input.skipToEndOfString(remainingChars);
 	}

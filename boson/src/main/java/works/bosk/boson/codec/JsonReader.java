@@ -267,22 +267,35 @@ public sealed interface JsonReader extends AutoCloseable permits
 	void skipToEndOfString();
 
 	/**
-	 * A variant of {@link #skipToEndOfString} that asserts that the number of remaining
-	 * characters in the string is as expected.
-	 * Can be faster than {@link #skipToEndOfString} if the number of remaining characters is known.
+	 * Consumes the closing quote of the string currently being consumed.
+	 * The closing quote must be the next character.
+	 * <p>
+	 * Equivalent to calling {@link #nextStringChar()} and asserting that the
+	 * result is {@link #END_OF_STRING}; implementations may override it to
+	 * consume the quote more directly.
+	 */
+	default void consumeEndOfString() {
+		int nextChar = nextStringChar();
+		assert nextChar == END_OF_STRING;
+	}
+
+	/**
+	 * A variant of {@link #skipToEndOfString} that skips a known number of
+	 * remaining characters before consuming the closing quote.
+	 * Can be faster than {@link #skipToEndOfString} if the number of remaining
+	 * characters is known.
 	 * <p>
 	 * Equivalent to calling {@link #skipStringChars(int)} with the given number,
-	 * followed by {@link #nextStringChar()} to consume the closing quote,
-	 * and (optionally) verifying that -1 is returned.
+	 * followed by {@link #consumeEndOfString()} to consume the closing quote.
 	 * If {@code remainingChars} is incorrect, the wrong number of characters may be skipped.
-	 * <p>
-	 * Note that simply calling {@link #skipToEndOfString()} is also a valid implementation.
 	 *
-	 * @param remainingChars the expected number of remaining characters in the string
+	 * @param remainingChars the exact number of characters remaining in the string,
+	 *        not including the closing quote
 	 * @see #skipToEndOfString()
 	 */
 	default void skipToEndOfString(int remainingChars) {
-		skipToEndOfString();
+		skipStringChars(remainingChars);
+		consumeEndOfString();
 	}
 
 	/**

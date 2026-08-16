@@ -129,6 +129,50 @@ public class SpecCompilerTest {
 		assertEquals("Expected boolean, not STRING", e.getMessage());
 	}
 
+	/**
+	 * Member names that differ only in their final character are fully consumed
+	 * by the trie's code-point switches, so there are no remaining characters to
+	 * skip and the generated code must consume the closing quote directly.
+	 */
+	@Test
+	void testFullyConsumedMemberNames() throws IOException, NoSuchMethodException, IllegalAccessException {
+		record SamePrefixDifferentLastChar(String field1, String field2) {}
+		Parser parser = compiledParser(DataType.of(SamePrefixDifferentLastChar.class));
+		var actual = (SamePrefixDifferentLastChar) parser.parse(CharArrayJsonReader.forString("""
+			{"field1": "one", "field2": "two"}"""));
+		assertEquals(new SamePrefixDifferentLastChar("one", "two"), actual);
+	}
+
+	/**
+	 * A member name written with a Unicode escape matches the same trie branch
+	 * as its plain form: the trie switches on decoded code points, and the
+	 * closing-quote handling counts logical characters, so the escape is
+	 * transparent to the matching.
+	 */
+	@Test
+	void testEscapedMemberName() throws IOException, NoSuchMethodException, IllegalAccessException {
+		record SamePrefixDifferentLastChar(String field1, String field2) {}
+		Parser parser = compiledParser(DataType.of(SamePrefixDifferentLastChar.class));
+		var actual = (SamePrefixDifferentLastChar) parser.parse(CharArrayJsonReader.forString(
+			"{\"field1\": \"one\", \"\\u0066ield2\": \"two\"}"));
+		assertEquals(new SamePrefixDifferentLastChar("one", "two"), actual);
+	}
+
+	/**
+	 * When a member name is unique from its first character, the trie stops
+	 * switching early and skips the remaining characters in bulk. The skip
+	 * counts logical characters, so a Unicode escape in the skipped suffix is
+	 * decoded rather than miscounted against the physical length of the input.
+	 */
+	@Test
+	void testEscapedMemberNameSuffix() throws IOException, NoSuchMethodException, IllegalAccessException {
+		record UniqueFirstChar(String alpha, String beta) {}
+		Parser parser = compiledParser(DataType.of(UniqueFirstChar.class));
+		var actual = (UniqueFirstChar) parser.parse(CharArrayJsonReader.forString(
+			"{\"al\\u0070ha\": \"x\", \"beta\": \"y\"}"));
+		assertEquals(new UniqueFirstChar("x", "y"), actual);
+	}
+
 	private Parser compiledParser(DataType dataType) throws NoSuchMethodException, IllegalAccessException {
 		var typeMap = testTypeMap(dataType, new TypeMap.Settings(true, true, true, true, false));
 		return new SpecCompiler(typeMap).compile().parserFor(typeMap.get(dataType));

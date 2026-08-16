@@ -784,7 +784,13 @@ public class SpecCompiler {
 			LOGGER.debug("generateCodePointSwitch({})", node);
 			switch (node) {
 				case TrieNode.LeafNode(String memberName, int matchedPrefix) -> {
-					_skipToEnd(memberName.length() - matchedPrefix);
+					int remaining = memberName.length() - matchedPrefix;
+					if (remaining == 0) {
+						// The whole member name has already been consumed; only the closing quote remains.
+						_consumeEndOfString();
+					} else {
+						_skipToEnd(remaining);
+					}
 					var child = fixedObjectNode.memberSpecs().get(memberName);
 					LOGGER.debug("-> leaf({})", child);
 					switch (child.valueSpec()) {
@@ -855,6 +861,19 @@ public class SpecCompiler {
 			codeBuilder.loadConstant(remainingLength);
 			lineInfo(codeBuilder, 1);
 			_callRuntime(void.class, "skipToEndOfString", int.class);
+		}
+
+		/**
+		 * Consumes the closing quote of a member name whose whole text has
+		 * already been matched by the code-point switches. Equivalent to
+		 * {@link #_skipToEnd(int) _skipToEnd(0)}, but the reader consumes the
+		 * closing quote directly instead of skipping zero characters through
+		 * the generic string machinery.
+		 */
+		private void _consumeEndOfString() {
+			_loadRuntime();
+			lineInfo(codeBuilder, 1);
+			_callRuntime(void.class, "consumeEndOfString");
 		}
 
 		private void _skipToken(Token token) {
