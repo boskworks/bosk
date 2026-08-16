@@ -31,14 +31,12 @@ import works.bosk.junit.Injected;
 import works.bosk.junit.Injector;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.testing.junit.Slow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
-@Slow
 @InjectFields
 @InjectFrom(ConfigInjector.class)
 @ReplayLogsOnFailure

@@ -21,12 +21,10 @@ import works.bosk.junit.InjectFrom;
 import works.bosk.junit.Injected;
 import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.HanoiTest;
-import works.bosk.testing.junit.Slow;
 
 import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 
 @Disabled // This is slow and has dubious value
-@Slow
 @InjectFields
 @InjectFrom(MongoDriverHanoiTest.ParameterSetInjector.class)
 public class MongoDriverHanoiTest extends HanoiTest {

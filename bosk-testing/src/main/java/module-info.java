@@ -14,5 +14,4 @@ module works.bosk.testing {
 	exports works.bosk.testing.drivers;
 	exports works.bosk.testing.drivers.state;
 	exports works.bosk.testing.drivers.operations;
-	exports works.bosk.testing.junit;
 }

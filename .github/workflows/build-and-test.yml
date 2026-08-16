@@ -11,25 +11,56 @@ on:
       - main
 
 jobs:
-  build_and_test:
+  # Compile every module and run all the static analysis once, so the test
+  # jobs below can reuse the results from the build cache instead of each
+  # compiling the shared modules themselves.
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          # First version is for Bosk to use, and the second is for Gradle
+          java-version: |
+            26
+            25
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
+
+      - name: Build
+        run: |
+          ./gradlew check -x test
+
+  test:
 
     # Isolate the Testcontainers-heavy suites (Mongo and SQL) onto their own
     # runner VMs. The Mongo tests use a deliberately short timeout, and running
     # the whole check on one VM lets the SQL tests' Postgres container and the
     # other test JVMs starve the mongod container enough to trip that timeout.
-    name: "[${{ matrix.group }}]"
+    # The split is purely for isolation: it is not a way to speed up the build
+    # by running the groups in parallel.
+    name: "Test [${{ matrix.group }}]"
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        group: [mongo, sql, other]
+        group: [mongo, sql, others]
         include:
           - group: mongo
-            gradle: ":bosk-mongo:check"
+            gradle: ":bosk-mongo:test"
           - group: sql
-            gradle: ":bosk-sql:check"
-          - group: other
-            gradle: "check -x :bosk-mongo:check -x :bosk-sql:check"
+            gradle: ":bosk-sql:test"
+          - group: others
+            gradle: "test -x :bosk-mongo:test -x :bosk-sql:test"
     permissions:
       contents: read
       actions: write # for upload-artifact
@@ -47,7 +78,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         with:
-          cache-read-only: false # OR: ${{ github.ref != 'refs/heads/develop' }}
+          cache-read-only: true
 
       - name: Run Gradle Test
         run: |
@@ -61,17 +92,22 @@ jobs:
           path: "**/build/reports/"
 
   # A single summary job named "Build and test" that the branch protection
-  # rules require as a check. It passes only when every group above passed.
-  build_and_test_summary:
+  # rules require as a check. It passes only when the build and every test
+  # group above passed.
+  build_and_test:
     name: Build and test
-    needs: build_and_test
+    needs: [build, test]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Verify that all test groups passed
+      - name: Verify that the build and all test groups passed
         run: |
-          if [ "${{ needs.build_and_test.result }}" != "success" ]; then
-            echo "::error::One or more test groups failed"
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::The build failed (${{ needs.build.result }})"
             exit 1
           fi
-          echo "All test groups passed"
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::One or more test groups failed (${{ needs.test.result }})"
+            exit 1
+          fi
+          echo "The build and all test groups passed"
