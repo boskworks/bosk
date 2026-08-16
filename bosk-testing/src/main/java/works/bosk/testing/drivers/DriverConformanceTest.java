@@ -46,7 +46,6 @@ import works.bosk.testing.drivers.state.TestEntity.IdentifierCase;
 import works.bosk.testing.drivers.state.TestEntity.StringCase;
 import works.bosk.testing.drivers.state.TestEntity.Variant;
 import works.bosk.testing.drivers.state.TestValues;
-import works.bosk.testing.junit.Slow;
 
 import static java.lang.annotation.ElementType.PARAMETER;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
@@ -98,7 +97,6 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@Slow
 	@InjectedTest
 	void replaceIdentical(@EnclosingCatalog Path enclosingCatalogPath, @Child Identifier childID) throws InvalidTypeException {
 		CatalogReference<TestEntity> ref = initializeBoskWithCatalog(enclosingCatalogPath);
@@ -106,7 +104,6 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@Slow
 	@InjectedTest
 	void replaceDifferent(@EnclosingCatalog Path enclosingCatalogPath, @Child Identifier childID) throws InvalidTypeException {
 		CatalogReference<TestEntity> ref = initializeBoskWithCatalog(enclosingCatalogPath);
@@ -115,7 +112,6 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
-	@Slow
 	@InjectedTest
 	void replaceWholeThenParts(@EnclosingCatalog Path enclosingCatalogPath, @Child Identifier childID) throws InvalidTypeException {
 		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);

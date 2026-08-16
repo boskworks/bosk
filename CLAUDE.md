@@ -24,7 +24,6 @@ Subprojects starting with `bosk-` are published libraries that contain their own
 The usual Gradle commands, plus:
 
 ```bash
-./gradlew smoke          # Fast-running tests (excludes @Slow tests)
 ./gradlew spotlessApply  # Apply code formatting
 ```
 
@@ -154,8 +153,6 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 - Tests use JUnit 5
 - For parameterizing test methods, use the `@InjectedTest` annotation: `bosk-junit/src/main/java/works/bosk/junit/InjectedTest.java`
 - Tests for subprojects that integrate with external technologies like databases use Testcontainers to run those technologies, not mocks
-- `@Slow` annotation marks tests excluded from `smoke` task
-  - Smoke tests should exercise a component enough to demonstrate it's not completely broken; if the tests are fast, they can do more
 - Subclasses of `DriverConformanceTest` in `bosk-testing` verify driver implementations; all drivers ought to pass these tests
   - Use `SharedDriverConformanceTest` for drivers that do replication between bosks
 - Aim for readability in test code.

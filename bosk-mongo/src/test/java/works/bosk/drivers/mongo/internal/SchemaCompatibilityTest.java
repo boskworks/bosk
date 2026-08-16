@@ -28,7 +28,6 @@ import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
-import works.bosk.testing.junit.Slow;
 import works.bosk.util.Classes;
 
 import static ch.qos.logback.classic.Level.ERROR;
@@ -197,7 +196,6 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
-	@Slow
 	void databaseMissingField_fallsBackToDefaultState(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		setLogging(ERROR, ChangeReceiver.class);
 

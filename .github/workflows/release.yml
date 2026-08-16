@@ -30,7 +30,7 @@ jobs:
 
       - name: Run Gradle Publish
         run: |
-          ./gradlew smoke publishToSonatype closeAndReleaseSonatypeStagingRepository \
+          ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository \
             -Pversion="${{github.event.release.tag_name}}" \
             --info
         env:

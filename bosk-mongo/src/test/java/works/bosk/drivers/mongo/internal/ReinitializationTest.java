@@ -18,7 +18,6 @@ import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectorMethod;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.testing.junit.Slow;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,7 +31,6 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * The bosk must detect that the collection has been deleted and recreated,
  * even if the new collection's revision numbers happen to coincide with old ones.
  */
-@Slow
 @InjectFields
 public class ReinitializationTest extends AbstractMongoDriverTest {
 

@@ -31,11 +31,9 @@ import works.bosk.junit.Injected;
 import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.PolyfillDriverConformanceTest;
-import works.bosk.testing.junit.Slow;
 
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 
-@Slow
 @InjectFields
 @ReplayLogsOnFailure
 class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {

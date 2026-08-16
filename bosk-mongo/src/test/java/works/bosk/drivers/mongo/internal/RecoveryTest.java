@@ -43,7 +43,6 @@ import works.bosk.junit.Injected;
 import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.testing.junit.Slow;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -60,7 +59,6 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 /**
  * Tests the kinds of recovery actions a human operator might take to try to get a busted service running again.
  */
-@Slow
 @InjectFields
 @InjectFrom({RecoveryTest.FlushOrWait.class})
 public class RecoveryTest extends AbstractMongoDriverTest {

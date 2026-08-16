@@ -6,7 +6,6 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.parallel.ResourceLock;
-import works.bosk.testing.junit.Slow;
 
 import static org.junit.jupiter.api.parallel.ResourceAccessMode.READ_WRITE;
 
@@ -27,7 +26,6 @@ import static org.junit.jupiter.api.parallel.ResourceAccessMode.READ_WRITE;
 @Target({ ElementType.ANNOTATION_TYPE, ElementType.METHOD, ElementType.TYPE })
 @Retention(RetentionPolicy.RUNTIME)
 @ResourceLock(value="mongoContainer", mode=READ_WRITE)
-@Slow // These are inherently slow because they prevent tests from running in parallel
 @Tag(DisruptsMongoProxy.TAG)
 public @interface DisruptsMongoProxy {
 	public static final String TAG = "disruptsMongoProxy";
