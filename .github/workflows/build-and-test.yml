@@ -77,8 +77,9 @@ jobs:
             25
 
       - uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: true
+        # The default writes the cache on main and reads it everywhere else, so
+        # tests whose inputs haven't changed since main come back FROM-CACHE
+        # and are skipped instead of being run again.
 
       - name: Run Gradle Test
         run: |
