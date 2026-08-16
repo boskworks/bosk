@@ -99,6 +99,7 @@ jobs:
     needs: [build, test]
     if: always()
     runs-on: ubuntu-latest
+    permissions: {} # This job only reads job results, so the token needs no permissions
     steps:
       - name: Verify that the build and all test groups passed
         run: |
