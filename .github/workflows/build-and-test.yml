@@ -77,8 +77,9 @@ jobs:
             25
 
       - uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: true
+        # The default writes the cache on main and reads it everywhere else, so
+        # tests whose inputs haven't changed since main come back FROM-CACHE
+        # and are skipped instead of being run again.
 
       - name: Run Gradle Test
         run: |
@@ -99,6 +100,7 @@ jobs:
     needs: [build, test]
     if: always()
     runs-on: ubuntu-latest
+    permissions: {} # This job only reads job results, so the token needs no permissions
     steps:
       - name: Verify that the build and all test groups passed
         run: |
