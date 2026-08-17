@@ -14,6 +14,7 @@ dependencies {
 	implementation project(":bosk-jackson")
 	implementation project(":bosk-mongo")
 	implementation project(":bosk-boson")
+	implementation libs.logback.classic
 
 	// The main build.gradle brings these in as test dependencies,
 	// but we need them as main dependencies.
