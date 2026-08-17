@@ -15,6 +15,7 @@ import works.bosk.libtesting.LogCapture;
 import static java.lang.invoke.MethodType.methodType;
 import static java.lang.reflect.AccessFlag.PUBLIC;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.bytecode.Codegen.invokeExact;
 
@@ -79,6 +80,25 @@ public class GeneratedClassTest {
 			);
 			assertTrue(capture.formattedMessages().stream().anyMatch(message -> message.contains("== foo")),
 				"Disassembly should include the foo method");
+		}
+	}
+
+	@Test
+	void generatingAClassThatFailsVerification_logsItsDisassemblyAtWarn() {
+		try (LogCapture capture = LogCapture.captureTrace(GeneratedClass.class)) {
+			assertThrows(AssertionError.class, () -> GeneratedClass.instantiate(
+				"BadClass",
+				Foo.class,
+				getClass().getClassLoader(),
+				GeneratedClass.here(),
+				new Currier(),
+				cb -> cb.withMethodBody("foo", GeneratedClass.mtd(String.class, String.class), PUBLIC.mask(), codeBuilder -> {
+					codeBuilder.loadConstant(0);
+					codeBuilder.areturn();
+				})
+			));
+			assertTrue(capture.formattedMessages().stream().anyMatch(message -> message.contains("foo(Ljava/lang/String;)Ljava/lang/String;")),
+				"Disassembly should be logged when verification fails");
 		}
 	}
 
