@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 import works.bosk.boson.codec.Codec;
 import works.bosk.boson.codec.Generator;
 import works.bosk.boson.codec.JsonReader;
@@ -59,6 +60,7 @@ import works.bosk.boson.mapping.spec.UniformMapNode;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
 import works.bosk.boson.types.PrimitiveType;
+import works.bosk.codon.BytecodeDisassembler;
 
 import static java.lang.StackWalker.Option.RETAIN_CLASS_REFERENCE;
 import static java.lang.classfile.Opcode.IFEQ;
@@ -173,6 +175,9 @@ public class SpecCompiler {
 				);
 			});
 
+		if (LOGGER.isTraceEnabled()) {
+			BytecodeDisassembler.log(LOGGER, Level.TRACE, bytecode);
+		}
 		if (VERIFY_BYTECODE) {
 			verify(bytecode);
 		}

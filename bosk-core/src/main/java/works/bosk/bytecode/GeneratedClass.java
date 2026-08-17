@@ -13,6 +13,8 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
+import works.bosk.codon.BytecodeDisassembler;
 import works.bosk.exceptions.NotYetImplementedException;
 
 import static java.lang.classfile.TypeKind.REFERENCE;
@@ -87,6 +89,9 @@ public final class GeneratedClass {
 				currier.emitStaticsAndClinit(classBuilder, curryKey);
 			}
 		});
+		if (LOGGER.isTraceEnabled()) {
+			BytecodeDisassembler.log(LOGGER, Level.TRACE, bytes);
+		}
 		if (VERIFY_BYTECODE) {
 			verify(bytes);
 		}

@@ -10,10 +10,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
+import works.bosk.libtesting.LogCapture;
 
 import static java.lang.invoke.MethodType.methodType;
 import static java.lang.reflect.AccessFlag.PUBLIC;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.bytecode.Codegen.invokeExact;
 
 public class GeneratedClassTest {
@@ -58,6 +60,26 @@ public class GeneratedClassTest {
 		}
 
 		executor.shutdown();
+	}
+
+	@Test
+	void generatingAClass_logsItsDisassemblyAtTrace() {
+		try (LogCapture capture = LogCapture.captureTrace(GeneratedClass.class)) {
+			Currier currier = new Currier();
+			GeneratedClass.instantiate(
+				"TestClass",
+				Foo.class,
+				getClass().getClassLoader(),
+				GeneratedClass.here(),
+				currier,
+				cb -> cb.withMethodBody("foo", GeneratedClass.mtd(String.class, String.class), PUBLIC.mask(), codeBuilder -> {
+					codeBuilder.loadConstant("hi");
+					codeBuilder.areturn();
+				})
+			);
+			assertTrue(capture.formattedMessages().stream().anyMatch(message -> message.contains("== foo")),
+				"Disassembly should include the foo method");
+		}
 	}
 
 	public interface Foo {
