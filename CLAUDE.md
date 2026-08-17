@@ -54,8 +54,8 @@ The usual Gradle commands, plus:
   - The overarching goal of Bosk is to reduce the behaviour gap between local development and production. If your code works, you probably did things right.
 
 ### Code ordering
-- Generally, in a class, instance fields come first, followed by shared mutable state (i.e. static fields, even if the reference is final), then constructors, then methods in use-before-declaration order
-- Internal constants (static final) and the logger go at the bottom
+- Generally, in a class, instance fields come first, followed by shared mutable state (i.e. static fields, even if the reference is final),
+  then constructors, then methods in use-before-declaration order, and finally internal constants (static final) and the logger.
 
 ### Formatting
 
@@ -65,8 +65,13 @@ The usual Gradle commands, plus:
   - Conditional guarded statements should be on their own line to facilitate breakpoints
 - Prefer if-then-else over early returns (to make subsequent refactoring easier) except in specific situations:
   - If there's an especially simple case, like errors or "already computed" one-liner cases, those can return early to avoid mixing with complex logic
+
+### Writing style
+
 - Documentation and comments should compose proper sentences with normal words and punctuation,
   rather than gluing together sentence fragments with em dashes.
+- Avoid the word "honest", including the filler "to be honest" (just drop it);
+  prefer more meaningful words like "accurate", "representative", "faithful", "realistic", etc.
 
 ### Modules
 
