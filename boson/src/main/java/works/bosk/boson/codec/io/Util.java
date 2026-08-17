@@ -65,6 +65,44 @@ public class Util {
 	}
 
 	/**
+	 * Parses the given number text without creating an intermediate {@link String}.
+	 */
+	public static byte parseByte(CharSequence s) {
+		int value = Integer.parseInt(s, 0, s.length(), 10);
+		if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
+			throw new NumberFormatException("Value out of range for byte: " + s);
+		}
+		return (byte) value;
+	}
+
+	/**
+	 * Parses the given number text without creating an intermediate {@link String}.
+	 */
+	public static short parseShort(CharSequence s) {
+		int value = Integer.parseInt(s, 0, s.length(), 10);
+		if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
+			throw new NumberFormatException("Value out of range for short: " + s);
+		}
+		return (short) value;
+	}
+
+	public static int parseInt(CharSequence s) {
+		return Integer.parseInt(s, 0, s.length(), 10);
+	}
+
+	public static long parseLong(CharSequence s) {
+		return Long.parseLong(s, 0, s.length(), 10);
+	}
+
+	public static float parseFloat(CharSequence s) {
+		return Float.parseFloat(s.toString());
+	}
+
+	public static double parseDouble(CharSequence s) {
+		return Double.parseDouble(s.toString());
+	}
+
+	/**
 	 * Zero is a special case that the caller must handle separately.
 	 */
 	public static boolean isNumberLeadingChar(int b) {

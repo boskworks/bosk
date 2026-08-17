@@ -38,6 +38,7 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Parser;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.codec.interpreter.SpecInterpretingGenerator;
+import works.bosk.boson.codec.io.Util;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.BigNumberNode;
@@ -681,24 +682,15 @@ public class SpecCompiler {
 		}
 
 		private void _parsePrimitiveNumber(PrimitiveNumberNode node) {
-			Class<? extends Number> boxedType = PRIMITIVE_NUMBER_CLASSES.get(node.targetClass());
 			String parseMethodName = PRIMITIVE_PARSE_METHOD_NAMES.get(node.targetClass());
 
-			// Read the number as a string
+			// Parse the number text directly from the reader's CharSequence.
 			_readNumberAsCharSequence();
 			lineInfo(codeBuilder);
-			codeBuilder.invokeinterface(
-				cd(CharSequence.class),
-				"toString",
-				mtd(String.class)
-			);
-
-			// Call the appropriate parse method
-			lineInfo(codeBuilder);
 			codeBuilder.invokestatic(
-				cd(boxedType),
+				cd(Util.class),
 				parseMethodName,
-				mtd(node.targetClass(), String.class)
+				mtd(node.targetClass(), CharSequence.class)
 			);
 		}
 
