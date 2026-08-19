@@ -109,10 +109,10 @@ breaking some implicit design rule by adding a new exception that wasn't there b
 ### Logging
 
 Pick the log level by its audience:
-- `error`/`warn` — read by the application's operators, who may not know what bosk is. Write them in plain language, to guide troubleshooting. As a library, prefer `warn`; use `error` only for malfunctions that will inevitably be fatal to an operation the application was trying to perform.
-- `info` — targets knowledgeable Bosk users, and should explain what the library is doing in a way that helps them learn to use it more effectively.
-- `debug` — targets Bosk developers. Can use some Bosk jargon, but should also help new Bosk developers climb the learning curve, and should allow developers to tell what code paths executed.
-- `trace` — targets expert Bosk developers troubleshooting very tricky bugs. Can include information too voluminous to emit under most circumstances — stack traces for routine situations, dumps of entire data structures, or high-frequency messages — but do this cautiously, since even disabled log statements have nonzero overhead.
+- `error` and `warn` are read by the application's operators, who may not know what bosk is. Write them in plain language, to guide troubleshooting. As a library, prefer `warn`; use `error` only for malfunctions that will inevitably be fatal to an operation the application was trying to perform.
+- `info` targets knowledgeable Bosk users, and should explain what the library is doing in a way that helps them learn to use it more effectively.
+- `debug` targets Bosk developers. Can use some Bosk jargon, but should also help new Bosk developers climb the learning curve, and should allow developers to tell what code paths executed.
+- `trace` targets expert Bosk developers troubleshooting very tricky bugs. Can include information too voluminous to emit under most circumstances, such as stack traces for routine situations, dumps of entire data structures, or high-frequency messages, but do this cautiously, since even disabled log statements have nonzero overhead.
 
 ### Javadocs
 
