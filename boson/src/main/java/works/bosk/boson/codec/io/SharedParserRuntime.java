@@ -17,8 +17,10 @@ import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 
 import static java.util.Objects.requireNonNull;
+import static works.bosk.boson.codec.Token.FALSE;
 import static works.bosk.boson.codec.Token.NUMBER;
 import static works.bosk.boson.codec.Token.STRING;
+import static works.bosk.boson.codec.Token.TRUE;
 import static works.bosk.boson.codec.Token.values;
 
 /**
@@ -36,13 +38,13 @@ public abstract class SharedParserRuntime {
 	protected final boolean parseBoolean() {
 		Token token = input.peekValueToken();
 		return switch (token) {
-			case FALSE -> {
-				input.consumeSyntax(token);
-				yield false;
-			}
 			case TRUE -> {
 				input.consumeSyntax(token);
 				yield true;
+			}
+			case FALSE -> {
+				input.consumeSyntax(token);
+				yield false;
 			}
 			default -> throw new JsonContentException("Expected boolean, not " + token);
 		};
@@ -85,9 +87,18 @@ public abstract class SharedParserRuntime {
 	protected final CharSequence readNumberAsCharSequence() {
 		Token token = input.peekValueToken();
 		if (token != NUMBER) {
-			parseError("Expected number, not " + token);
+			return readNumberAsCharSequence_rare(token);
 		}
 		return input.consumeNumber();
+	}
+
+	/**
+	 * The rare path of {@link #readNumberAsCharSequence}, for input that is not
+	 * a number. Malformed input is rare, so this can sit off the common path.
+	 * This method never returns normally.
+	 */
+	private CharSequence readNumberAsCharSequence_rare(Token token) {
+		throw parseError("Expected number, not " + token);
 	}
 
 	protected final int peekTokenOrdinal() {
@@ -191,7 +202,7 @@ public abstract class SharedParserRuntime {
 		// assert expectedToken.hasFixedRepresentation();
 		var token = input.peekValueToken();
 		if (token != expectedToken) {
-			parseError("Expected token " + expectedToken + ", not " + token);
+			throw parseError("Expected token " + expectedToken + ", not " + token);
 		}
 		input.consumeSyntax(expectedToken);
 	}
@@ -200,9 +211,9 @@ public abstract class SharedParserRuntime {
 		return input.consumeString();
 	}
 
-	protected final void parseError(String message) {
+	protected final JsonContentException parseError(String message) {
 		String previewString = previewString();
-		throw new JsonContentException(message + " at offset " + input.currentOffset() + ": |" + previewString + "|");
+		return new JsonContentException(message + " at offset " + input.currentOffset() + ": |" + previewString + "|");
 	}
 
 	private static final Map<Class<?>, MethodHandle> PRIMITIVE_PARSE_HANDLES = new ConcurrentHashMap<>();
