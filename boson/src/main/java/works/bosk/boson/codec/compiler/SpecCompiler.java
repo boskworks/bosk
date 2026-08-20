@@ -527,7 +527,7 @@ public class SpecCompiler {
 			_throwParseError("Unexpected character");
 
 			codeBuilder.labelBinding(endArray);
-			_skipToken(END_ARRAY);
+			_consumeToken(END_ARRAY);
 
 			var finisherType = curryAndLoad(acc.finisher().handle(), "acc_finisher");
 			accumulator.load(codeBuilder);
@@ -600,7 +600,7 @@ public class SpecCompiler {
 			_throwParseError("Unexpected character");
 
 			codeBuilder.labelBinding(endObject);
-			_skipToken(END_OBJECT);
+			_consumeToken(END_OBJECT);
 
 			var finisherType = curryAndLoad(acc.finisher().handle(), "acc_finisher");
 			accumulator.load(codeBuilder);
@@ -613,7 +613,7 @@ public class SpecCompiler {
 			codeBuilder.loadConstant(NULL.ordinal());
 			codeBuilder.isub();
 			codeBuilder.ifThen(IFEQ, block-> {
-				_skipToken(NULL);
+				_consumeToken(NULL);
 				block.aconst_null();
 				block.goto_w(done);
 			});
@@ -749,7 +749,7 @@ public class SpecCompiler {
 			_throwParseError("Unexpected character; was expecting one of " + fixedObjectNode.memberSpecs().keySet());
 
 			codeBuilder.labelBinding(endObject);
-			_skipToken(END_OBJECT);
+			_consumeToken(END_OBJECT);
 
 			// All the local variables should have their values now.
 			// Time to call the finisher
@@ -881,6 +881,13 @@ public class SpecCompiler {
 			codeBuilder.loadConstant(token.ordinal());
 			lineInfo(codeBuilder, 1);
 			_callRuntime("skipTokenWithOrdinal", int.class);
+		}
+
+		private void _consumeToken(Token token) {
+			_loadRuntime();
+			codeBuilder.loadConstant(token.ordinal());
+			lineInfo(codeBuilder, 1);
+			_callRuntime("consumeTokenWithOrdinal", int.class);
 		}
 
 		private void _parseStringValue() {

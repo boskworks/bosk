@@ -37,11 +37,11 @@ public abstract class SharedParserRuntime {
 		Token token = input.peekValueToken();
 		return switch (token) {
 			case FALSE -> {
-				skipSyntax(token);
+				input.consumeSyntax(token);
 				yield false;
 			}
 			case TRUE -> {
-				skipSyntax(token);
+				input.consumeSyntax(token);
 				yield true;
 			}
 			default -> throw new JsonContentException("Expected boolean, not " + token);
@@ -174,6 +174,17 @@ public abstract class SharedParserRuntime {
 		assert token.hasFixedRepresentation();
 //		LOGGER.debug("skipTokenWithOrdinal: {}", token);
 		skipSyntax(token);
+	}
+
+	/**
+	 * Consumes the token with the given ordinal, which must be the token the
+	 * reader is currently seated on. Unlike {@link #skipTokenWithOrdinal}, this
+	 * does not seek to the token first; the caller must already have peeked it.
+	 */
+	protected final void consumeTokenWithOrdinal(int ord) {
+		Token token = values()[ord];
+		assert token.hasFixedRepresentation();
+		input.consumeSyntax(token);
 	}
 
 	protected final void skipSyntax(Token expectedToken) {
