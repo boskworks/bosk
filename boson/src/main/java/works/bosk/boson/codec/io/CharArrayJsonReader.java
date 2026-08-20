@@ -4,6 +4,8 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
+import static java.lang.Character.MAX_SURROGATE;
+import static java.lang.Character.MIN_SURROGATE;
 import static java.lang.Math.min;
 
 /**
@@ -150,7 +152,61 @@ public final class CharArrayJsonReader implements JsonReader {
 	}
 
 	@Override
+	public void skipStringChars(int n) {
+		// Fast path: skip n plain characters with no quotes, escapes, control
+		// characters, or surrogate pairs. Otherwise fall back to the default
+		// implementation, which handles those cases character by character.
+		int limit = pos + n;
+		if (limit <= chars.length) {
+			int i = pos;
+			while (i < limit) {
+				char c = chars[i];
+				if (c == '"' || c == '\\' || c < 0x20 || (MIN_SURROGATE <= c && c <= MAX_SURROGATE)) {
+					skipStringChars_rare(n);
+					return;
+				}
+				i++;
+			}
+			if (i == limit) {
+				pos = limit;
+				return;
+			}
+		}
+		skipStringChars_rare(n);
+	}
+
+	/**
+	 * The rare path of {@link #skipStringChars}: the characters are not all
+	 * plain, n is negative, or the string ends early. Fall back to the default
+	 * implementation, which handles escapes, surrogate pairs, and end-of-string
+	 * checks character by character. Member names rarely contain escapes or
+	 * surrogate pairs, so the slower per-character path is acceptable when
+	 * they do.
+	 */
+	private void skipStringChars_rare(int n) {
+		if (n < 0) {
+			throw new IllegalArgumentException("Must skip a non-negative number of characters, got " + n);
+		}
+		JsonReader.super.skipStringChars(n);
+	}
+
+	@Override
 	public void skipToEndOfString() {
+		// Fast path: scan for the closing quote over plain characters. On an
+		// escape or control character, fall back to the per-character loop,
+		// which decodes escape sequences and rejects control characters.
+		int p = pos;
+		while (p < chars.length) {
+			char c = chars[p];
+			if (c == '"') {
+				pos = p + 1;
+				return;
+			}
+			if (c == '\\' || c < 0x20) {
+				break;
+			}
+			p++;
+		}
 		while (nextStringChar() >= 0) { }
 	}
 
