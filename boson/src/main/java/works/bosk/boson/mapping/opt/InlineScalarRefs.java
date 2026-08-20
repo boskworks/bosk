@@ -33,6 +33,14 @@ import static works.bosk.boson.mapping.spec.SpecNode.transform;
  * and replaces it with that target node.
  * The idea is that the processing of such nodes is itself so simple (often a one-liner)
  * that implementing them directly doesn't require much more code than calling a method.
+ * <p>
+ * This is what I'd refer to as a "simplification" optimization:
+ * it walks the graph of IL elements in postorder,
+ * looking "downward only" at the node and its children at each step.
+ * Since the spec nodes are records, there can't be cycles, though there
+ * can be shared nodes, and a postorder walk handles that well.
+ * Cycles can happen for recursive types via TypeRefNode, so we do
+ * need to be careful about those.
  */
 public class InlineScalarRefs {
 	final TypeMap typeMap;
