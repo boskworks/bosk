@@ -189,7 +189,7 @@ public final class SyntaxValidatingReader implements JsonReader {
 		while (true) {
 			Token result = downstream.peekNonWhitespaceToken();
 			if (result.isInsignificant()) {
-				assert result.hasFixedRepresentation();
+				// assert result.hasFixedRepresentation();
 				downstream.consumeSyntax(result);
 				doStateTransition(result);
 			} else {

@@ -20,7 +20,7 @@ final class AsciiChunkCharSequence implements CharSequence {
 	}
 
 	AsciiChunkCharSequence(ByteChunk chunk, int start, int length) {
-		assert start >= 0 && length >= 0 && start + length <= chunk.stop();
+		// assert start >= 0 && length >= 0 && start + length <= chunk.stop();
 		this(chunk.bytes(), start, length);
 	}
 

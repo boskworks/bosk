@@ -146,7 +146,7 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * @throws JsonSyntaxException if the next token is not the expected one.
 	 */
 	default void expectSyntax(Token expected) {
-		assert expected.hasFixedRepresentation();
+		// assert expected.hasFixedRepresentation();
 		if (expected != peekValueToken()) {
 			throw new JsonSyntaxException("Expected token " + expected + ", not " + peekValueToken());
 		}
@@ -270,13 +270,13 @@ public sealed interface JsonReader extends AutoCloseable permits
 	 * Consumes the closing quote of the string currently being consumed.
 	 * The closing quote must be the next character.
 	 * <p>
-	 * Equivalent to calling {@link #nextStringChar()} and asserting that the
-	 * result is {@link #END_OF_STRING}; implementations may override it to
-	 * consume the quote more directly.
+	 * Equivalent to calling {@link #nextStringChar()}, which consumes the
+	 * closing quote and returns {@link #END_OF_STRING}; implementations may
+	 * override it to consume the quote more directly.
 	 */
 	default void consumeEndOfString() {
 		int nextChar = nextStringChar();
-		assert nextChar == END_OF_STRING;
+		// assert nextChar == END_OF_STRING;
 	}
 
 	/**

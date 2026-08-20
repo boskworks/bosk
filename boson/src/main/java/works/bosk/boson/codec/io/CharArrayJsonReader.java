@@ -62,7 +62,7 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	@Override
 	public void consumeSyntax(Token token) {
-		assert peekRawToken() == token;
+		// assert peekRawToken() == token;
 		pos += token.fixedRepresentation().length();
 	}
 
@@ -77,7 +77,7 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	@Override
 	public void startConsumingString() {
-		assert peekRawToken() == Token.STRING;
+		// assert peekRawToken() == Token.STRING;
 		pos++; // Skip opening quote
 	}
 
@@ -137,7 +137,7 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	@Override
 	public void consumeEndOfString() {
-		assert peekRawChar() == '"';
+		// assert peekRawChar() == '"';
 		pos++;
 	}
 

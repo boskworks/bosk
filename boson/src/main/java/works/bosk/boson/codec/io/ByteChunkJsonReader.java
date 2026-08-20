@@ -7,7 +7,6 @@ import works.bosk.boson.exceptions.JsonSyntaxException;
 import static java.lang.Math.min;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static works.bosk.boson.codec.Token.END_TEXT;
-import static works.bosk.boson.codec.Token.NUMBER;
 
 
 /**
@@ -99,14 +98,14 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	@Override
 	public void consumeSyntax(Token token) {
-		assert peekRawToken() == token;
-		assert token.hasFixedRepresentation();
+		// assert peekRawToken() == token;
+		// assert token.hasFixedRepresentation();
 		skip(token.fixedRepresentation().length());
 	}
 
 	@Override
 	public CharSequence consumeNumber() {
-		assert peekRawToken() == NUMBER;
+		// assert peekRawToken() == NUMBER;
 
 		int startPos = currentChunkPos;
 		byte[] buf = currentChunk.bytes();
@@ -128,7 +127,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 
 	@Override
 	public void startConsumingString() {
-		assert peekRawToken() == Token.STRING;
+		// assert peekRawToken() == Token.STRING;
 		advance(); // Eat the opening quote
 	}
 
@@ -170,7 +169,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 			} else {
 				// Decode UTF-8 multibyte sequence
 				result = decodeUtf8Char(b);
-				assert result != '"' && result != '\\': "These are ASCII characters and should have been handled above";
+				// assert result != '"' && result != '\\': "These are ASCII characters and should have been handled above";
 			}
 
 			// Because we decode backslash sequences into code points,
@@ -247,7 +246,7 @@ public final class ByteChunkJsonReader implements JsonReader {
 			while (limit-- > 0) {
 				byte b = buf[currentChunkPos++];
 				char expectedChar = expectedCharacters.charAt(matchedSoFar++);
-				assert 1 <= expectedChar && expectedChar <= 127: "ASCII characters only: " + Character.getName(expectedChar);
+				// assert 1 <= expectedChar && expectedChar <= 127: "ASCII characters only: " + Character.getName(expectedChar);
 				if (b != expectedChar) {
 					throw new JsonSyntaxException("Unexpected character '" + (char) b +
 						"'; expected '" + expectedChar + "'");

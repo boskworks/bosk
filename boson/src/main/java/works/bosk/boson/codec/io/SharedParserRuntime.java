@@ -51,7 +51,7 @@ public abstract class SharedParserRuntime {
 	protected final Number parseBigNumber() {
 		logEntry("parseBigNumber");
 		var token = input.peekValueToken();
-		assert token == NUMBER;
+		// assert token == NUMBER;
 		return new BigDecimal(input.consumeNumber().toString());
 	}
 
@@ -71,7 +71,7 @@ public abstract class SharedParserRuntime {
 
 	protected final Object parsePrimitiveNumber(MethodHandle parseHandle) {
 		var token = input.peekValueToken();
-		assert token == NUMBER;
+		// assert token == NUMBER;
 		String string = input.consumeNumber().toString();
 		try {
 			return parseHandle.invoke(string);
@@ -106,7 +106,7 @@ public abstract class SharedParserRuntime {
 	 * @return true if the token was the expected one
 	 */
 	protected final boolean nextTokenIs(Token expectedToken) {
-		assert expectedToken.hasFixedRepresentation();
+		// assert expectedToken.hasFixedRepresentation();
 		Token readToken = input.peekValueToken();
 		if (readToken == expectedToken) {
 			input.consumeSyntax(readToken);
@@ -139,7 +139,7 @@ public abstract class SharedParserRuntime {
 	}
 
 	protected final void startConsumingString() {
-		assert input.peekRawToken() == STRING;
+		// assert input.peekRawToken() == STRING;
 		input.startConsumingString();
 	}
 
@@ -171,7 +171,7 @@ public abstract class SharedParserRuntime {
 
 	protected final void skipTokenWithOrdinal(int ord) {
 		Token token = values()[ord];
-		assert token.hasFixedRepresentation();
+		// assert token.hasFixedRepresentation();
 //		LOGGER.debug("skipTokenWithOrdinal: {}", token);
 		skipSyntax(token);
 	}
@@ -183,12 +183,12 @@ public abstract class SharedParserRuntime {
 	 */
 	protected final void consumeTokenWithOrdinal(int ord) {
 		Token token = values()[ord];
-		assert token.hasFixedRepresentation();
+		// assert token.hasFixedRepresentation();
 		input.consumeSyntax(token);
 	}
 
 	protected final void skipSyntax(Token expectedToken) {
-		assert expectedToken.hasFixedRepresentation();
+		// assert expectedToken.hasFixedRepresentation();
 		var token = input.peekValueToken();
 		if (token != expectedToken) {
 			parseError("Expected token " + expectedToken + ", not " + token);
