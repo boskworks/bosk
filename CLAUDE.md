@@ -12,6 +12,16 @@ Aims to reduce the behaviour gap between local development and production.
 - **Logging**: SLF4J. Tests use Logback
 - **Persistence and replication**: MongoDB (primary), SQL (experimental)
 
+## Design grounding
+
+Before writing or reviewing substantial code in a module, ground yourself in its design principles. Start
+with the user's guide (`USERS.md`, in particular `docs/USERS.md`); it is the best overview of how the
+library is meant to work. Then read what applies to the module in question: the relevant README sections,
+its `DEVELOPERS.md` where present, the `package-info.java` javadocs of the core packages, and the
+foundational types it builds on (Bosk, BoskDriver, ReadSession, Reference). The javadocs carry the design
+principles; whether you are writing code or judging someone else's, ground your work in those principles
+rather than in the surface of the diff alone.
+
 ## Project Structure
 
 Subprojects starting with `bosk-` are published libraries that contain their own `README.md` files briefly explaining what they are.
