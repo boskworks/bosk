@@ -14,7 +14,9 @@ dependencies {
 	implementation project(":bosk-jackson")
 	implementation project(":bosk-mongo")
 	implementation project(":bosk-boson")
-	implementation libs.logback.classic
+	// LogCapture exposes ch.qos.logback.classic.Logger in its API, so this must be `api`
+	// to match the `requires transitive` in module-info.java.
+	api libs.logback.classic
 
 	// The main build.gradle brings these in as test dependencies,
 	// but we need them as main dependencies.
