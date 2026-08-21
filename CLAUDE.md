@@ -19,7 +19,8 @@ with the user's guide (`USERS.md`, in particular `docs/USERS.md`); it is the bes
 library is meant to work. Then read what applies to the module in question: the relevant README sections,
 its `DEVELOPERS.md` where present, the `package-info.java` javadocs of the core packages, and the
 foundational types it builds on (Bosk, BoskDriver, ReadSession, Reference). The javadocs carry the design
-principles; don't judge or write from the surface of a diff alone.
+principles; whether you are writing code or judging someone else's, ground your work in those principles
+rather than in the surface of the diff alone.
 
 ## Project Structure
 

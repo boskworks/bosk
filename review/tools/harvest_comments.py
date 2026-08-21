@@ -13,7 +13,6 @@ import json
 import subprocess
 from pathlib import Path
 
-MIN_BODY_LEN = 2
 TRIVIAL = {"lgtm", "+1", "-1", "thanks", "thank you", "agree", "agreed", "done", "ok"}
 
 
@@ -24,7 +23,7 @@ def gh(*args: str) -> str:
 
 def substantive(body: str) -> bool:
     text = body.strip().lower()
-    return len(text) >= MIN_BODY_LEN and text not in TRIVIAL and not text.startswith("lgtm")
+    return bool(text) and text not in TRIVIAL and not text.startswith("lgtm")
 
 
 def harvest(repo: str, author: str, limit: int) -> list:

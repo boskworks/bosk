@@ -9,10 +9,12 @@ in PLAN.md:
   2. "Question:"    -- an expert reply prefixed with "Question:" overrides
   3. unjudged       -- otherwise omitted from metrics
 
-The expert's own top-level review comments (not replies) are *added findings*,
-the recall signal. GitHub is the system of record: labels are a pure function
-of GitHub state, recomputed fresh each run. Label valence beyond the explicit
-emoji and "Question:" signals is not guessed here; it is the judge's job.
+The expert's own top-level review comments (not replies) are *added findings*:
+problems the automated review missed that the maintainer had to point out. They
+are the recall signal — how much of what the maintainer found the review
+caught. GitHub is the system of record: labels are a pure function of GitHub
+state, recomputed fresh each run. Label valence beyond the explicit emoji and
+"Question:" signals is not guessed here; it is the judge's job.
 """
 from __future__ import annotations
 
@@ -24,7 +26,9 @@ from pathlib import Path
 
 EXPERT = "prdoyle"
 REVIEWER = "prdoyle-agent"
-MARKER = re.compile(r"\(prompt ([0-9a-f]+)\)\s*$")
+# The "(prompt <hash>)" suffix review.md has the agent append to its comments;
+# it records which version of the review prompt produced the review.
+PROMPT_VERSION_MARKER = re.compile(r"\(prompt ([0-9a-f]+)\)\s*$")
 
 
 def reaction_label(expert_reactions):
@@ -57,11 +61,12 @@ def classify_pr(pr_dir: Path):
         body = c.get("body", "")
         is_reply = c.get("in_reply_to_id") is not None
         user = c.get("user", {}).get("login")
-        marker = MARKER.search(body)
+        marker = PROMPT_VERSION_MARKER.search(body)
         # The review agent posts under its reviewer account, and its review
         # comments are the only top-level comments that account makes, so the
-        # account identifies them regardless of who authored the PR. The marker
-        # is retained only to attribute a prompt version when one is present.
+        # account identifies them regardless of who authored the PR. The
+        # prompt-version marker is retained only to attribute a prompt version
+        # when one is present.
         if not is_reply and user == REVIEWER:
             # A review-agent comment: label it by the expert's engagement.
             replies = [cc for cc in comments if cc.get("in_reply_to_id") == c["id"] and cc.get("user", {}).get("login") == EXPERT]
