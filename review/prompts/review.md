@@ -120,9 +120,10 @@ Produce the review as a JSON document with four fields:
   goes here; findings never live in the summary.
 - **verdict** — one of `APPROVE`, `REQUEST_CHANGES`, `COMMENT`. Request changes only for genuine blockers.
 - **prompt** — the short hash of this prompt's contents (see Attribution).
-- **comments** — one entry per finding, each `{"path", "line", "body"}` anchored to the line it is about and
-  addressing a single thing. A review with no comments is a failure: a wall of text defeats per-comment
-  reactions and cannot be reviewed quickly.
+- **comments** — one entry per finding, each `{"path", "line", "body"}`, with `subject_type` `"line"` by
+  default or `"file"` for a point about a whole file (in which case omit `line`). Each is anchored to the
+  line it is about and addresses a single thing. A review with no comments is a failure: a wall of text
+  defeats per-comment reactions and cannot be reviewed quickly.
 
 Write the JSON document to the path you were given. Do not post anything to GitHub yourself; posting is a
 separate step performed by the posting helper.
@@ -132,7 +133,7 @@ separate step performed by the posting helper.
 - Anchor every finding to the line it is about, in the PR's diff at the head commit (an added or context
   line on the right side).
 - For a point about a deleted line, anchor to the nearest line in the same hunk. For a point about a whole
-  file, comment on the file rather than a line.
+  file, comment on the file (`subject_type` `"file"`, no `line`) rather than a line.
 - Find line numbers by reading the files at the PR's head commit; do not switch the working tree with
   `gh pr checkout`.
 - Never fall back to merging a finding into the summary body because anchoring is inconvenient.

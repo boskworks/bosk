@@ -37,7 +37,7 @@ the maintainer's reactions._
 **Deliberate stand-ins:**
 - The matcher (an LLM deciding whether a review comment captures a gold finding) is unvalidated: its
   numbers are reported as a matcher reading, not a measurement, until validated against the maintainer's
-  reactions (Option B).
+  reactions.
 - The judge (`prompts/judge.md`) is built but uncalibrated; judge calibration and the refine loop both
   require live review cycles — the seed corpus has no review-agent comments to react to.
 
@@ -107,7 +107,7 @@ One run produces **one proposed patch** to `prompts/review.md`, with the evidenc
   (PR, prompt) via `opencode run` and scores recall against the expert's gold findings. Matching is
   semantic: an LLM matcher decides whether a review comment captures a gold finding, because string
   similarity misses reworded matches. The matcher's verdicts are not trusted as a measurement until
-  validated against the expert's reactions (Option B); until then, recall is an unvalidated matcher
+  validated against the expert's reactions; until then, recall is an unvalidated matcher
   reading. Precision on virtual reviews would need the calibrated judge, since they have no expert
   reactions, so it is deferred to the judge phase.
 - **Attribution by reviewer account.** The review agent posts under its reviewer account
@@ -208,7 +208,7 @@ run on demand in an opencode window:
    recall of the added findings via the matcher, with the reachability guard. `harvest_comments.py` mines
    the maintainer's comments as few-shot material.
 5. **validate the matcher** — compare its verdicts against the maintainer's reactions on enough PRs; the
-   recall numbers are not trusted until then (Option B).
+   recall numbers are not trusted until then.
 6. **calibrate judge** (only when needed) — iterate `prompts/judge.md` until its whole-review pass/fail
    predicts the expert's finalized labels.
 7. **propose** — an agent reads the report + `prompts/review.md` and drafts ONE focused patch for the

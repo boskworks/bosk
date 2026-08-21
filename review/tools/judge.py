@@ -28,14 +28,14 @@ def main():
 
     judge_prompt = (Path(__file__).resolve().parent.parent / "prompts" / "judge.md").read_text()
     context = args.pr_dir / "virtual" / "context.diff"
-    context_note = f"Review-time diff: {context}" if context.exists() else "No review-time diff available."
+    context_text = context.read_text() if context.exists() else "No review-time diff available."
 
     instruction = (
         judge_prompt
         + "\n\n## Review under evaluation\n"
         + args.review.read_text()
         + "\n\n## Context\n"
-        + context_note
+        + context_text
         + "\n\nRender your verdict in the output format described above."
     )
     cmd = ["opencode", "run", "--auto", "--dir", str(args.repo_dir), "--model", args.model, instruction]

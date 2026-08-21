@@ -42,7 +42,6 @@ def reaction_label(expert_reactions):
 
 def classify_pr(pr_dir: Path):
     comments = json.loads((pr_dir / "comments.json").read_text())
-    by_id = {c["id"]: c for c in comments}
 
     # Reactions by comment id.
     reactions = {}
@@ -68,12 +67,11 @@ def classify_pr(pr_dir: Path):
             replies = [cc for cc in comments if cc.get("in_reply_to_id") == c["id"] and cc.get("user", {}).get("login") == EXPERT]
             reply_texts = [cc.get("body", "") for cc in replies]
             label, source = "unjudged", "none"
-            if any(t.startswith("Question:") for t in reply_texts):
+            rl = reaction_label(reactions.get(c["id"], []))
+            if rl:
+                label, source = rl
+            elif any(t.startswith("Question:") for t in reply_texts):
                 label, source = "question", "prefix"
-            else:
-                rl = reaction_label(reactions.get(c["id"], []))
-                if rl:
-                    label, source = rl
             review_comments.append({
                 "comment_id": c["id"],
                 "body": body,

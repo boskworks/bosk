@@ -13,7 +13,7 @@ import json
 import subprocess
 from pathlib import Path
 
-MIN_BODY_LEN = 40
+MIN_BODY_LEN = 2
 TRIVIAL = {"lgtm", "+1", "-1", "thanks", "thank you", "agree", "agreed", "done", "ok"}
 
 

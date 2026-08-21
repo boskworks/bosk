@@ -13,7 +13,7 @@ The context given to the agent reproduces the PR's review-time state: one
 anchor. See PLAN.md for the reconstruction rules and the reachability guard.
 
 The matcher's verdicts are not trusted as a measurement until validated against
-the expert's reactions (PLAN.md, Option B); recall is reported meanwhile as an
+the expert's reactions; recall is reported meanwhile as an
 unvalidated matcher reading. Precision is not measured here at all: a virtual
 review has no expert reactions, so "would the expert dispute this comment?"
 needs the calibrated judge, which is a later phase. See PLAN.md.
@@ -90,7 +90,9 @@ def generate_review(repo_dir: Path, model: str, pr: int, context_file: Path, out
         f"{context_file}: it is divided into sections, one per review anchor (each headed '# anchor "
         f"<sha>'). Examine repository files at the anchor commit of the section they appear in with "
         f"`git show <sha>:<path>`. The anchor commit is the review-time state of the PR; use it as the "
-        f"source for your analysis. Only for files that are not present at any anchor commit, read them at "
+        f"source for your analysis. In this virtual flow the anchor commit takes the place of the PR's "
+        f"head commit, so anchor each comment to the line it is about in that section's diff. Only for "
+        f"files that are not present at any anchor commit, read them at "
         f"the head commit instead. Produce the review as the JSON document described in "
         f"review/prompts/review.md and write it to {out}. Do not post anything."
     )
