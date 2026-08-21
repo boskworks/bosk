@@ -1,0 +1,5 @@
+
+dependencies {
+	// No dependencies beyond what the root build.gradle adds:
+	// slf4j-api for logging, jspecify for annotations, etc.
+}
