@@ -32,7 +32,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 import works.bosk.boson.codec.Codec;
 import works.bosk.boson.codec.Generator;
 import works.bosk.boson.codec.JsonReader;
@@ -176,7 +175,7 @@ public class SpecCompiler {
 			});
 
 		if (LOGGER.isTraceEnabled()) {
-			BytecodeDisassembler.log(LOGGER, Level.TRACE, bytecode);
+			LOGGER.trace(renderDisassembly(bytecode));
 		}
 		if (VERIFY_BYTECODE) {
 			verify(bytecode);

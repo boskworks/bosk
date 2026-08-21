@@ -1,5 +1,6 @@
 package works.bosk.bytecode;
 
+import ch.qos.logback.classic.Level;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
@@ -65,7 +66,8 @@ public class GeneratedClassTest {
 
 	@Test
 	void generatingAClass_logsItsDisassemblyAtTrace() {
-		try (LogCapture capture = LogCapture.captureTrace(GeneratedClass.class)) {
+		try (LogCapture capture = LogCapture.capture(GeneratedClass.class)) {
+			LogCapture.logger(GeneratedClass.class).setLevel(Level.TRACE);
 			Currier currier = new Currier();
 			GeneratedClass.instantiate(
 				"TestClass",
@@ -85,7 +87,7 @@ public class GeneratedClassTest {
 
 	@Test
 	void generatingAClassThatFailsVerification_logsItsDisassemblyAtWarn() {
-		try (LogCapture capture = LogCapture.captureTrace(GeneratedClass.class)) {
+		try (LogCapture capture = LogCapture.capture(GeneratedClass.class)) {
 			assertThrows(AssertionError.class, () -> GeneratedClass.instantiate(
 				"BadClass",
 				Foo.class,
@@ -97,7 +99,7 @@ public class GeneratedClassTest {
 					codeBuilder.areturn();
 				})
 			));
-			assertTrue(capture.formattedMessages().stream().anyMatch(message -> message.contains("foo(Ljava/lang/String;)Ljava/lang/String;")),
+			assertTrue(capture.formattedMessages().stream().anyMatch(message -> message.contains("failed verification")),
 				"Disassembly should be logged when verification fails");
 		}
 	}

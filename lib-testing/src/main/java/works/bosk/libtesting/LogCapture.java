@@ -1,6 +1,5 @@
 package works.bosk.libtesting;
 
-import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -11,27 +10,31 @@ import org.slf4j.LoggerFactory;
 /**
  * Captures the log events emitted by a given logger during a test.
  * <p>
- * Configure the logger to emit at trace level, attach an appender to it,
- * and retrieve the events it has captured. Closing the capture removes the
- * appender and restores the logger's previous level.
+ * Attach a capture to a logger and retrieve the formatted messages it has emitted.
+ * Closing the capture removes the appender. The logger's level is left untouched;
+ * tests that need a particular level can set it on the logger returned by
+ * {@link #logger}.
  */
 public final class LogCapture implements AutoCloseable {
 	private final Logger logger;
-	private final Level previousLevel;
 	private final ListAppender<ILoggingEvent> appender;
 
 	/**
-	 * Starts capturing trace-level events emitted by the logger for the given class.
+	 * Starts capturing the log events emitted by the logger for the given class.
 	 */
-	public static LogCapture captureTrace(Class<?> loggerOwner) {
-		LoggerContext context = logbackContext();
-		Logger logger = context.getLogger(loggerOwner);
-		Level previousLevel = logger.getLevel();
-		logger.setLevel(Level.TRACE);
+	public static LogCapture capture(Class<?> loggerOwner) {
+		Logger logger = logger(loggerOwner);
 		ListAppender<ILoggingEvent> appender = new ListAppender<>();
 		appender.start();
 		logger.addAppender(appender);
-		return new LogCapture(logger, previousLevel, appender);
+		return new LogCapture(logger, appender);
+	}
+
+	/**
+	 * The logback logger for the given class, for setting log levels in tests.
+	 */
+	public static Logger logger(Class<?> loggerOwner) {
+		return logbackContext().getLogger(loggerOwner);
 	}
 
 	/**
@@ -43,7 +46,6 @@ public final class LogCapture implements AutoCloseable {
 
 	@Override
 	public void close() {
-		logger.setLevel(previousLevel);
 		logger.detachAppender(appender);
 	}
 
@@ -65,9 +67,8 @@ public final class LogCapture implements AutoCloseable {
 		}
 	}
 
-	private LogCapture(Logger logger, Level previousLevel, ListAppender<ILoggingEvent> appender) {
+	private LogCapture(Logger logger, ListAppender<ILoggingEvent> appender) {
 		this.logger = logger;
-		this.previousLevel = previousLevel;
 		this.appender = appender;
 	}
 }

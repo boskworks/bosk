@@ -38,7 +38,7 @@ import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDesc;
 import java.lang.constant.DirectMethodHandleDesc;
 import java.lang.constant.MethodTypeDesc;
-import java.lang.reflect.AccessFlag;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -109,8 +109,12 @@ public final class BytecodeDisassembler {
 	 */
 	public static String disassemble(CodeModel code) {
 		StringBuilder sb = new StringBuilder();
-		code.parent().ifPresent(method ->
-			sb.append("== ").append(method.methodName().stringValue()).append(method.methodType().stringValue()).append(" ==\n"));
+		code.parent().ifPresent(method -> {
+			sb.append("== ")
+				.append(method.methodName().stringValue())
+				.append(method.methodType().stringValue())
+				.append(" ==\n");
+		});
 		renderCode(sb, code);
 		return sb.toString();
 	}
@@ -143,29 +147,8 @@ public final class BytecodeDisassembler {
 	}
 
 	private static String modifiers(AccessFlags flags) {
-		StringBuilder sb = new StringBuilder();
-		if (flags.has(AccessFlag.PUBLIC)) {
-			sb.append("public ");
-		}
-		if (flags.has(AccessFlag.PRIVATE)) {
-			sb.append("private ");
-		}
-		if (flags.has(AccessFlag.PROTECTED)) {
-			sb.append("protected ");
-		}
-		if (flags.has(AccessFlag.STATIC)) {
-			sb.append("static ");
-		}
-		if (flags.has(AccessFlag.FINAL)) {
-			sb.append("final ");
-		}
-		if (flags.has(AccessFlag.VOLATILE)) {
-			sb.append("volatile ");
-		}
-		if (flags.has(AccessFlag.TRANSIENT)) {
-			sb.append("transient ");
-		}
-		return sb.toString();
+		String modifiers = Modifier.toString(flags.flagsMask());
+		return modifiers.isEmpty() ? modifiers : modifiers + " ";
 	}
 
 	private static void renderMethod(StringBuilder sb, MethodModel method) {
@@ -182,14 +165,12 @@ public final class BytecodeDisassembler {
 		List<java.lang.classfile.CodeElement> elements = code.elementStream().toList();
 		Map<Label, Integer> labelIndex = new IdentityHashMap<>();
 		Map<Label, List<ExceptionCatch>> catchesByHandler = new IdentityHashMap<>();
-		int bci = 0;
 		for (var element : elements) {
-			if (element instanceof Label label) {
-				labelIndex.put(label, labelIndex.size() + 1);
-			} else if (element instanceof Instruction instruction) {
-				bci += instruction.sizeInBytes();
-			} else if (element instanceof ExceptionCatch exceptionCatch) {
-				catchesByHandler.computeIfAbsent(exceptionCatch.handler(), k -> new ArrayList<>()).add(exceptionCatch);
+			switch (element) {
+				case Label label -> labelIndex.put(label, labelIndex.size() + 1);
+				case ExceptionCatch exceptionCatch -> catchesByHandler
+					.computeIfAbsent(exceptionCatch.handler(), _ -> new ArrayList<>()).add(exceptionCatch);
+				default -> {}
 			}
 		}
 		int runningBci = 0;
@@ -285,45 +266,41 @@ public final class BytecodeDisassembler {
 	}
 
 	private static void renderOperands(StringBuilder sb, Instruction instruction, Map<Label, Integer> labelIndex) {
-		if (instruction instanceof ConstantInstruction.IntrinsicConstantInstruction) {
-			// The mnemonic already encodes the constant
-		} else if (instruction instanceof ConstantInstruction.ArgumentConstantInstruction constant) {
-			sb.append(' ').append(constant.constantValue());
-		} else if (instruction instanceof ConstantInstruction.LoadConstantInstruction constant) {
-			sb.append(' ').append(renderConstant(constant.constantValue()));
-		} else if (instruction instanceof IncrementInstruction increment) {
-			sb.append(' ').append(increment.slot()).append(", ").append(increment.constant());
-		} else if (instruction instanceof LoadInstruction load) {
-			appendLocalSlot(sb, load.opcode(), load.slot());
-		} else if (instruction instanceof StoreInstruction store) {
-			appendLocalSlot(sb, store.opcode(), store.slot());
-		} else if (instruction instanceof FieldInstruction field) {
-			var fieldRef = field.field();
-			sb.append(' ').append(fieldRef.owner().name().stringValue()).append('.')
-				.append(fieldRef.name().stringValue()).append(':').append(fieldRef.type().stringValue());
-		} else if (instruction instanceof InvokeInstruction invoke) {
-			var methodRef = invoke.method();
-			sb.append(' ').append(methodRef.owner().name().stringValue()).append('.')
-				.append(methodRef.name().stringValue()).append(':').append(methodRef.type().stringValue());
-		} else if (instruction instanceof InvokeDynamicInstruction indy) {
-			sb.append(' ').append(indy.name().stringValue()).append(':').append(indy.typeSymbol().descriptorString()).append('\n');
-			sb.append(BOOTSTRAP_INDENT).append("bootstrap B").append(indy.invokedynamic().bootstrap().bsmIndex())
-				.append(": ").append(indy.bootstrapMethod().owner().displayName())
-				.append("::").append(indy.bootstrapMethod().methodName());
-		} else if (instruction instanceof BranchInstruction branch) {
-			sb.append(" L").append(labelIndex.get(branch.target()));
-		} else if (instruction instanceof TypeCheckInstruction typeCheck) {
-			sb.append(' ').append(typeCheck.type().name().stringValue());
-		} else if (instruction instanceof NewObjectInstruction newObject) {
-			sb.append(' ').append(newObject.className().name().stringValue());
-		} else if (instruction instanceof NewReferenceArrayInstruction newReferenceArray) {
-			sb.append(' ').append(newReferenceArray.componentType().name().stringValue());
-		} else if (instruction instanceof NewPrimitiveArrayInstruction newPrimitiveArray) {
-			sb.append(' ').append(newPrimitiveArray.typeKind().name().toLowerCase());
-		} else if (instruction instanceof NewMultiArrayInstruction newMultiArray) {
-			sb.append(' ').append(newMultiArray.arrayType().name().stringValue()).append(" dims=").append(newMultiArray.dimensions());
+		switch (instruction) {
+			case ConstantInstruction.IntrinsicConstantInstruction _ -> {
+				// The mnemonic already encodes the constant
+			}
+			case ConstantInstruction.ArgumentConstantInstruction constant -> sb.append(' ').append(constant.constantValue());
+			case ConstantInstruction.LoadConstantInstruction constant -> sb.append(' ').append(renderConstant(constant.constantValue()));
+			case IncrementInstruction increment -> sb.append(' ').append(increment.slot()).append(", ").append(increment.constant());
+			case LoadInstruction load -> appendLocalSlot(sb, load.opcode(), load.slot());
+			case StoreInstruction store -> appendLocalSlot(sb, store.opcode(), store.slot());
+			case FieldInstruction field -> {
+				var fieldRef = field.field();
+				sb.append(' ').append(fieldRef.owner().name().stringValue()).append('.')
+					.append(fieldRef.name().stringValue()).append(':').append(fieldRef.type().stringValue());
+			}
+			case InvokeInstruction invoke -> {
+				var methodRef = invoke.method();
+				sb.append(' ').append(methodRef.owner().name().stringValue()).append('.')
+					.append(methodRef.name().stringValue()).append(':').append(methodRef.type().stringValue());
+			}
+			case InvokeDynamicInstruction indy -> {
+				sb.append(' ').append(indy.name().stringValue()).append(':').append(indy.typeSymbol().descriptorString()).append('\n');
+				sb.append(BOOTSTRAP_INDENT).append("bootstrap B").append(indy.invokedynamic().bootstrap().bsmIndex())
+					.append(": ").append(indy.bootstrapMethod().owner().displayName())
+					.append("::").append(indy.bootstrapMethod().methodName());
+			}
+			case BranchInstruction branch -> sb.append(" L").append(labelIndex.get(branch.target()));
+			case TypeCheckInstruction typeCheck -> sb.append(' ').append(typeCheck.type().name().stringValue());
+			case NewObjectInstruction newObject -> sb.append(' ').append(newObject.className().name().stringValue());
+			case NewReferenceArrayInstruction newReferenceArray -> sb.append(' ').append(newReferenceArray.componentType().name().stringValue());
+			case NewPrimitiveArrayInstruction newPrimitiveArray -> sb.append(' ').append(newPrimitiveArray.typeKind().name().toLowerCase());
+			case NewMultiArrayInstruction newMultiArray -> sb.append(' ').append(newMultiArray.arrayType().name().stringValue()).append(" dims=").append(newMultiArray.dimensions());
+			default -> {
+				// Other instructions (returns, throws, arithmetic, etc.) take no operands
+			}
 		}
-		// Other instructions (returns, throws, arithmetic, etc.) take no operands
 	}
 
 	private static void appendLocalSlot(StringBuilder sb, Opcode opcode, int slot) {
@@ -333,20 +310,14 @@ public final class BytecodeDisassembler {
 	}
 
 	private static String renderConstant(ConstantDesc constant) {
-		if (constant instanceof String string) {
-			return quote(string);
-		}
-		if (constant instanceof ClassDesc classDesc) {
-			return classDesc.displayName() + ".class";
-		}
-		if (constant instanceof DirectMethodHandleDesc methodHandle) {
-			return methodHandle.owner().displayName() + "::" + methodHandle.methodName()
+		return switch (constant) {
+			case String string -> quote(string);
+			case ClassDesc classDesc -> classDesc.displayName() + ".class";
+			case DirectMethodHandleDesc methodHandle -> methodHandle.owner().displayName() + "::" + methodHandle.methodName()
 				+ " " + MethodTypeDesc.ofDescriptor(methodHandle.lookupDescriptor()).displayDescriptor();
-		}
-		if (constant instanceof MethodTypeDesc methodType) {
-			return methodType.displayDescriptor();
-		}
-		return constant.toString();
+			case MethodTypeDesc methodType -> methodType.displayDescriptor();
+			default -> constant.toString();
+		};
 	}
 
 	/**
@@ -376,13 +347,22 @@ public final class BytecodeDisassembler {
 				case '\t' -> sb.append("\\t");
 				case '\b' -> sb.append("\\b");
 				case '\f' -> sb.append("\\f");
-				default -> {
-					if (c < 0x20 || c == 0x7f) {
-						sb.append(String.format("\\u%04x", (int) c));
+			default -> {
+				if (Character.isISOControl(c) || Character.getType(c) == Character.FORMAT) {
+					sb.append(String.format("\\u%04x", (int) c));
+				} else if (Character.isHighSurrogate(c)) {
+					if (i + 1 < to && Character.isLowSurrogate(string.charAt(i + 1))) {
+						sb.append(c).append(string.charAt(i + 1));
+						i++;
 					} else {
-						sb.append(c);
+						sb.append(String.format("\\u%04x", (int) c));
 					}
+				} else if (Character.isLowSurrogate(c)) {
+					sb.append(String.format("\\u%04x", (int) c));
+				} else {
+					sb.append(c);
 				}
+			}
 			}
 		}
 	}
@@ -407,46 +387,22 @@ public final class BytecodeDisassembler {
 	}
 
 	private static String renderAnnotationValue(AnnotationValue value) {
-		if (value instanceof AnnotationValue.OfString string) {
-			return quote(string.stringValue());
-		}
-		if (value instanceof AnnotationValue.OfInt integer) {
-			return Integer.toString(integer.intValue());
-		}
-		if (value instanceof AnnotationValue.OfLong longValue) {
-			return Long.toString(longValue.longValue());
-		}
-		if (value instanceof AnnotationValue.OfShort shortValue) {
-			return Short.toString(shortValue.shortValue());
-		}
-		if (value instanceof AnnotationValue.OfByte byteValue) {
-			return Byte.toString(byteValue.byteValue());
-		}
-		if (value instanceof AnnotationValue.OfChar charValue) {
-			return "'" + charValue.charValue() + "'";
-		}
-		if (value instanceof AnnotationValue.OfFloat floatValue) {
-			return Float.toString(floatValue.floatValue());
-		}
-		if (value instanceof AnnotationValue.OfDouble doubleValue) {
-			return Double.toString(doubleValue.doubleValue());
-		}
-		if (value instanceof AnnotationValue.OfBoolean booleanValue) {
-			return Boolean.toString(booleanValue.booleanValue());
-		}
-		if (value instanceof AnnotationValue.OfClass classValue) {
-			return classValue.classSymbol().displayName() + ".class";
-		}
-		if (value instanceof AnnotationValue.OfEnum enumValue) {
-			return enumValue.classSymbol().displayName() + "." + enumValue.constantName().stringValue();
-		}
-		if (value instanceof AnnotationValue.OfAnnotation annotation) {
-			return renderAnnotationInline(annotation.annotation());
-		}
-		if (value instanceof AnnotationValue.OfArray array) {
-			return array.values().stream().map(BytecodeDisassembler::renderAnnotationValue).collect(joining(", ", "{", "}"));
-		}
-		throw new AssertionError("Unexpected annotation value " + value);
+		return switch (value) {
+			case AnnotationValue.OfString string -> quote(string.stringValue());
+			case AnnotationValue.OfInt integer -> Integer.toString(integer.intValue());
+			case AnnotationValue.OfLong longValue -> Long.toString(longValue.longValue());
+			case AnnotationValue.OfShort shortValue -> Short.toString(shortValue.shortValue());
+			case AnnotationValue.OfByte byteValue -> Byte.toString(byteValue.byteValue());
+			case AnnotationValue.OfChar charValue -> "'" + charValue.charValue() + "'";
+			case AnnotationValue.OfFloat floatValue -> Float.toString(floatValue.floatValue());
+			case AnnotationValue.OfDouble doubleValue -> Double.toString(doubleValue.doubleValue());
+			case AnnotationValue.OfBoolean booleanValue -> Boolean.toString(booleanValue.booleanValue());
+			case AnnotationValue.OfClass classValue -> classValue.classSymbol().displayName() + ".class";
+			case AnnotationValue.OfEnum enumValue -> enumValue.classSymbol().displayName() + "." + enumValue.constantName().stringValue();
+			case AnnotationValue.OfAnnotation annotation -> renderAnnotationInline(annotation.annotation());
+			case AnnotationValue.OfArray array -> array.values().stream().map(BytecodeDisassembler::renderAnnotationValue).collect(joining(", ", "{", "}"));
+			default -> throw new AssertionError("Unexpected annotation value " + value);
+		};
 	}
 
 	private static String renderAnnotationInline(Annotation annotation) {

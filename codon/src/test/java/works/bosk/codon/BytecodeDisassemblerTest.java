@@ -1,5 +1,7 @@
 package works.bosk.codon;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -23,8 +25,6 @@ import javax.tools.SimpleJavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 import works.bosk.libtesting.LogCapture;
 
 import static java.util.Arrays.stream;
@@ -108,6 +108,15 @@ public class BytecodeDisassemblerTest {
 	}
 
 	@Test
+	void strings_escapeUnicodeThatWouldMuddleTheLog() {
+		assertEquals(disassembly(
+			"class UnicodeStrings extends Object",
+			"== pick(Ljava/lang/String;)Ljava/lang/String; ==",
+			"     0: +1: ldc \"a\\u0085b\\u200bc\\ud800d\"",
+			"     2: -1: areturn"), BytecodeDisassembler.disassemble(unicodeStringClass()));
+	}
+
+	@Test
 	void operandDependentNets() {
 		String text = BytecodeDisassembler.disassemble(netClass());
 		assertTrue(text.contains("     0: +2: getstatic SomeClass.dbl:D"), text);
@@ -161,8 +170,10 @@ public class BytecodeDisassemblerTest {
 
 	@Test
 	void log_logsDisassemblyWhenTraceEnabled() {
-		try (LogCapture capture = LogCapture.captureTrace(BytecodeDisassembler.class)) {
-			BytecodeDisassembler.log(LoggerFactory.getLogger(BytecodeDisassembler.class), Level.TRACE, loopClass());
+		try (LogCapture capture = LogCapture.capture(BytecodeDisassembler.class)) {
+			Logger logger = LogCapture.logger(BytecodeDisassembler.class);
+			logger.setLevel(Level.TRACE);
+			BytecodeDisassembler.log(logger, org.slf4j.event.Level.TRACE, loopClass());
 			assertEquals(1, capture.formattedMessages().size(), "Exactly one trace event expected");
 			assertTrue(capture.formattedMessages().getFirst().contains("== sumUpTo(I)I =="),
 				"Disassembly should include the sumUpTo method");
@@ -251,6 +262,16 @@ public class BytecodeDisassemblerTest {
 					cob.ldc("short");
 					cob.ldc("This is a very long string that definitely exceeds fifty characters, doesn't it?");
 					cob.ldc("tab\there\nand \"quotes\" and \\backslash\\");
+					cob.areturn();
+				});
+		});
+	}
+
+	private static byte[] unicodeStringClass() {
+		return ClassFile.of().build(ClassDesc.of("UnicodeStrings"), cb -> {
+			cb.withMethodBody("pick", mtd(String.class, String.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.ldc("a\u0085b\u200bc\ud800d");
 					cob.areturn();
 				});
 		});

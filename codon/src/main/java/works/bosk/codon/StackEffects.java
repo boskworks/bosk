@@ -8,9 +8,12 @@ import java.lang.classfile.instruction.InvokeDynamicInstruction;
 import java.lang.classfile.instruction.InvokeInstruction;
 import java.lang.classfile.instruction.NewMultiArrayInstruction;
 import java.lang.constant.ClassDesc;
-import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.util.EnumMap;
+
+import static java.lang.constant.ConstantDescs.CD_double;
+import static java.lang.constant.ConstantDescs.CD_long;
+import static java.lang.constant.ConstantDescs.CD_void;
 
 /**
  * Computes the net effect of an instruction on the depth of the operand stack,
@@ -225,10 +228,10 @@ final class StackEffects {
 	 * The number of operand stack slots occupied by a value of the given type.
 	 */
 	private static int slots(ClassDesc type) {
-		if (type.equals(ConstantDescs.CD_void)) {
+		if (type.equals(CD_void)) {
 			return 0;
 		}
-		if (type.equals(ConstantDescs.CD_long) || type.equals(ConstantDescs.CD_double)) {
+		if (type.equals(CD_long) || type.equals(CD_double)) {
 			return 2;
 		}
 		return 1;
