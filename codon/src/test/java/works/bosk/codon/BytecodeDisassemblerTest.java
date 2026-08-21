@@ -27,6 +27,21 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import works.bosk.libtesting.LogCapture;
 
+import static java.lang.classfile.Opcode.GETFIELD;
+import static java.lang.classfile.Opcode.GETSTATIC;
+import static java.lang.classfile.Opcode.IF_ICMPGE;
+import static java.lang.classfile.Opcode.INVOKEDYNAMIC;
+import static java.lang.classfile.Opcode.INVOKEINTERFACE;
+import static java.lang.classfile.Opcode.INVOKESPECIAL;
+import static java.lang.classfile.Opcode.INVOKESTATIC;
+import static java.lang.classfile.Opcode.INVOKEVIRTUAL;
+import static java.lang.classfile.Opcode.LDC;
+import static java.lang.classfile.Opcode.LDC2_W;
+import static java.lang.classfile.Opcode.LDC_W;
+import static java.lang.classfile.Opcode.MULTIANEWARRAY;
+import static java.lang.classfile.Opcode.PUTFIELD;
+import static java.lang.classfile.Opcode.PUTSTATIC;
+import static java.lang.classfile.Opcode.values;
 import static java.util.Arrays.stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -130,12 +145,12 @@ public class BytecodeDisassemblerTest {
 	@Test
 	void everyOpcode_hasANetEffect() {
 		Set<Opcode> operandDependent = Set.of(
-			Opcode.LDC, Opcode.LDC_W, Opcode.LDC2_W,
-			Opcode.GETSTATIC, Opcode.PUTSTATIC, Opcode.GETFIELD, Opcode.PUTFIELD,
-			Opcode.INVOKEVIRTUAL, Opcode.INVOKESPECIAL, Opcode.INVOKESTATIC, Opcode.INVOKEINTERFACE,
-			Opcode.INVOKEDYNAMIC, Opcode.MULTIANEWARRAY
+			LDC, LDC_W, LDC2_W,
+			GETSTATIC, PUTSTATIC, GETFIELD, PUTFIELD,
+			INVOKEVIRTUAL, INVOKESPECIAL, INVOKESTATIC, INVOKEINTERFACE,
+			INVOKEDYNAMIC, MULTIANEWARRAY
 		);
-		for (Opcode opcode : Opcode.values()) {
+		for (Opcode opcode : values()) {
 			assertTrue(StackEffects.FIXED_NET.containsKey(opcode) || operandDependent.contains(opcode),
 				"No net effect defined for " + opcode);
 		}
@@ -193,7 +208,7 @@ public class BytecodeDisassemblerTest {
 					cob.labelBinding(loop);
 					cob.iload(2);
 					cob.iload(0);
-					cob.branch(Opcode.IF_ICMPGE, end);
+					cob.branch(IF_ICMPGE, end);
 					cob.iload(1);
 					cob.iload(2);
 					cob.iadd();
