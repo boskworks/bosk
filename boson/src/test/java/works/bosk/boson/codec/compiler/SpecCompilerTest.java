@@ -11,6 +11,7 @@ import works.bosk.boson.TestUtils.Month;
 import works.bosk.boson.TestUtils.OneOfEach;
 import works.bosk.boson.codec.Parser;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
+import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.spec.ComputedSpec;
@@ -24,6 +25,7 @@ import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.boson.TestUtils.ABSENT_FIELD_VALUE;
 import static works.bosk.boson.TestUtils.COMPUTED_FIELD_VALUE;
 import static works.bosk.boson.TestUtils.ONE_OF_EACH;
@@ -116,6 +118,15 @@ public class SpecCompilerTest {
 		Parser parser = compiledParser(DataType.of(OneOfEach.class));
 		OneOfEach actual = (OneOfEach) parser.parse(CharArrayJsonReader.forString(ONE_OF_EACH));
 		assertEquals(expectedOneOfEach(), actual);
+	}
+
+	@Test
+	void testContentErrorSurfaces() throws IOException, NoSuchMethodException, IllegalAccessException {
+		record HasBoolean(boolean field1) {}
+		Parser parser = compiledParser(DataType.of(HasBoolean.class));
+		JsonContentException e = assertThrows(JsonContentException.class, () ->
+			parser.parse(CharArrayJsonReader.forString("{\"field1\": \"hello\"}")));
+		assertEquals("Expected boolean, not STRING", e.getMessage());
 	}
 
 	private Parser compiledParser(DataType dataType) throws NoSuchMethodException, IllegalAccessException {

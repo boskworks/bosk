@@ -224,8 +224,10 @@ public class SpecCompiler {
 					try {
 						CompiledParserRuntime parserRuntime = (CompiledParserRuntime) ctor.invoke(json);
 						return parseMH.invoke(parserRuntime);
+					} catch (RuntimeException | Error e) {
+						throw e;
 					} catch (Throwable e) {
-						throw new IllegalStateException("wat", e);
+						throw new IllegalStateException("Unexpected error invoking the generated parser", e);
 					}
 				};
 			}
