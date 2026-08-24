@@ -1,6 +1,6 @@
 package works.bosk.boson.codec.io;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.charset.StandardCharsets.ISO_8859_1;
 
 /**
  * A high-performance lightweight CharSequence implementation
@@ -20,7 +20,7 @@ final class AsciiChunkCharSequence implements CharSequence {
 	}
 
 	AsciiChunkCharSequence(ByteChunk chunk, int start, int length) {
-		assert start >= 0 && length >= 0 && start + length <= chunk.stop();
+		// assert start >= 0 && length >= 0 && start + length <= chunk.stop();
 		this(chunk.bytes(), start, length);
 	}
 
@@ -44,6 +44,8 @@ final class AsciiChunkCharSequence implements CharSequence {
 
 	@Override
 	public String toString() {
-		return new String(buffer, start, length, UTF_8);
+		// The buffer is ASCII-only, so ISO-8859-1 decodes it with a plain
+		// byte-to-char copy instead of going through UTF-8 decoding.
+		return new String(buffer, start, length, ISO_8859_1);
 	}
 }

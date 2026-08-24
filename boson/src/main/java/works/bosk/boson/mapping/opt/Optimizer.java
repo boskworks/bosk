@@ -10,6 +10,7 @@ import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.ComputedSpec;
 import works.bosk.boson.mapping.spec.FixedObjectNode;
+import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.MaybeAbsentSpec;
 import works.bosk.boson.mapping.spec.MaybeNullSpec;
 import works.bosk.boson.mapping.spec.ParseCallbackSpec;
@@ -21,7 +22,6 @@ import works.bosk.boson.mapping.spec.UniformMapNode;
 import works.bosk.boson.types.DataType;
 
 public class Optimizer {
-
 	/**
 	 * Given a {@link TypeMap}, returns another that is functionally equivalent
 	 * but more efficient.
@@ -32,33 +32,32 @@ public class Optimizer {
 	 * requiring a frozen map helps avoid mistakenly optimizing
 	 * a type map that is still under construction.
 	 * <p>
-	 * Whether a node is shared or duplicated in the tree has no semantic significance:
-	 * that node is treated as though a copy of it appears wherever it is referenced.
+	 * No pass is currently registered: the one pass we had, inlining scalar
+	 * refs, turned out to be counterproductive (see docs/PERF-NOTES-202608.md
+	 * for the measurements), and the copy is all the consumers need. Revisit
+	 * the policy once the generated methods are small enough that inlining a
+	 * scalar into them would pay.
+	 * <p>
+	 * The compiled parser and the interpreter share the {@link TypeMap}, so a
+	 * registered pass applies to both; measurements to date have been against
+	 * the compiled parser, whose performance is the priority.
 	 */
 	public TypeMap optimize(TypeMap original) {
 		assert original.isFrozen():
 			"TypeMap must be frozen before optimization; " +
 				"ensure all types are specified and then call freeze()";
 		TypeMap typeMap = TypeMap.copyOf(original);
-		var optimizationPass = new InlineScalarRefs(typeMap); // Currently our only optimization!
-
-		// We now begin the analysis. The typeMap initially reflects everything
-		// we knew at the start, and then it gradually improves
-		// as we optimize each entry.
-		//
-		// This is what I'd refer to as a "simplification" optimization:
-		// it walks the graph of IL elements in postorder,
-		// looking "downward only" at the node and its children at each step.
-		// Since the spec nodes are records, there can't be cycles, though there
-		// can be shared nodes, and a postorder walk handles that well.
-		// Cycles can happen for recursive types via TypeRefNode, so we do
-		// need to be careful about those.
-
-		postorder(typeMap).forEach(type -> {
-			typeMap.put(type, optimizationPass.optimize(original.get(type)));
-		});
-
+		for (OptimizationPass pass : PASSES) {
+			postorder(typeMap).forEach(type ->
+				typeMap.put(type, pass.apply(typeMap.get(type))));
+		}
 		return typeMap;
+	}
+
+	private static final List<OptimizationPass> PASSES = List.of();
+
+	private interface OptimizationPass {
+		JsonValueSpec apply(JsonValueSpec node);
 	}
 
 	private List<DataType> postorder(TypeMap typeMap) {

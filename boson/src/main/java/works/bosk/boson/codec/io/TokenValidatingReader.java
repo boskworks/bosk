@@ -188,6 +188,11 @@ public record TokenValidatingReader(JsonReader downstream) implements JsonReader
 	}
 
 	@Override
+	public void consumeEndOfString() {
+		downstream.consumeEndOfString();
+	}
+
+	@Override
 	public void validateSyntax(CharSequence expectedCharacters) {
 		downstream.validateSyntax(expectedCharacters);
 	}

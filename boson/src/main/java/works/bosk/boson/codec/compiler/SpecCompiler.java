@@ -38,6 +38,8 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Parser;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.codec.interpreter.SpecInterpretingGenerator;
+import works.bosk.boson.codec.io.SharedParserRuntime;
+import works.bosk.boson.codec.io.Util;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
 import works.bosk.boson.mapping.spec.BigNumberNode;
@@ -224,8 +226,10 @@ public class SpecCompiler {
 					try {
 						CompiledParserRuntime parserRuntime = (CompiledParserRuntime) ctor.invoke(json);
 						return parseMH.invoke(parserRuntime);
+					} catch (RuntimeException | Error e) {
+						throw e;
 					} catch (Throwable e) {
-						throw new IllegalStateException("wat", e);
+						throw new IllegalStateException("Unexpected error invoking the generated parser", e);
 					}
 				};
 			}
@@ -281,9 +285,15 @@ public class SpecCompiler {
 			m.type(),
 			m.accessFlagMask(),
 			cb -> {
-				new ParserCodeBuilder(cb, currier)
-					._parseAny(spec);
-				cb.return_(nodeReturnTypeKind(spec));
+				var pcb = new ParserCodeBuilder(cb, currier);
+				if (spec instanceof BooleanNode) {
+					// A boolean parse method contains the logic directly; going
+					// through _parseAny would make it call itself.
+					pcb._emitBooleanLogic();
+				} else {
+					pcb._parseAny(spec);
+					cb.return_(nodeReturnTypeKind(spec));
+				}
 			}
 		);
 	}
@@ -395,7 +405,7 @@ public class SpecCompiler {
 		private void _parseAny(JsonValueSpec n) {
 			switch (n) {
 				case BigNumberNode node -> _parseBigNumber(node);
-				case BooleanNode _ -> _parseBoolean();
+				case BooleanNode node -> _parseBoolean(node);
 				case BoxedPrimitiveSpec node -> _parseBoxedPrimitive(node);
 				case EnumByNameNode node -> _parseEnumByName(node);
 				case ArrayNode node -> _parseArray(node);
@@ -467,10 +477,61 @@ public class SpecCompiler {
 			codeBuilder.checkcast(cd(node.numberClass()));
 		}
 
-		private void _parseBoolean() {
+		/**
+		 * Parsing a boolean value requires a surprising amount of bytecode: a
+		 * peek, a range check on the token's ordinal, a consume, and a return.
+		 * Emitting that sequence at every call site would bloat the generated
+		 * code, and a runtime helper would be too large for the JIT to inline
+		 * freely. The boolean logic is therefore generated into this node's own
+		 * parse method, which is small enough for the JIT to inline or leave as
+		 * a call. This method just calls it, the same way {@link #_parseTypeRef}
+		 * calls the parse method of a referenced type.
+		 */
+		private void _parseBoolean(BooleanNode node) {
+			lineInfo(codeBuilder, 1);
+			_invokeVirtual(getParseMethod(node));
+		}
+
+		/**
+		 * Hand-emits the boolean parse logic, because javac's version is too
+		 * large to fit under the 35-byte cold inlining limit. Javac stores the
+		 * ordinal in a local variable, which forces redundant loads and
+		 * branches, and it converts the int ordinal to a boolean even though
+		 * the two have the same numeric value. Keeping the ordinal on the
+		 * operand stack throughout, and relying on the FALSE and TRUE ordinals
+		 * matching their boolean values, brings this version down to a range
+		 * check, a consume, and a return.
+		 */
+		private void _emitBooleanLogic() {
+			// Read the value token's ordinal.
 			_loadRuntime();
 			lineInfo(codeBuilder);
-			_callRuntime(boolean.class, "parseBoolean");
+			codeBuilder.getfield(cd(SharedParserRuntime.class), "input", cd(JsonReader.class));
+			codeBuilder.invokeinterface(cd(JsonReader.class), "peekValueToken", mtd(cd(Token.class)));
+			codeBuilder.invokevirtual(cd(Token.class), "ordinal", mtd(int.class));
+
+			// An ordinal greater than 1 means the token is not a boolean.
+			codeBuilder.dup();
+			lineInfo(codeBuilder);
+			codeBuilder.iconst_1();
+			Label notABoolean = codeBuilder.newLabel();
+			codeBuilder.if_icmpgt(notABoolean);
+
+			// Consume the token; its ordinal is the boolean value.
+			codeBuilder.dup();
+			_loadRuntime();
+			lineInfo(codeBuilder);
+			codeBuilder.swap();
+			_callRuntime(void.class, "consumeTokenWithOrdinal", int.class);
+			codeBuilder.ireturn();
+
+			// Not a boolean.
+			codeBuilder.labelBinding(notABoolean);
+			_loadRuntime();
+			codeBuilder.swap();
+			lineInfo(codeBuilder);
+			_callRuntime(boolean.class, "parseBoolean_rare", int.class);
+			codeBuilder.ireturn();
 		}
 
 		private void _parseEnumByName(EnumByNameNode node) {
@@ -525,7 +586,7 @@ public class SpecCompiler {
 			_throwParseError("Unexpected character");
 
 			codeBuilder.labelBinding(endArray);
-			_skipToken(END_ARRAY);
+			_consumeToken(END_ARRAY);
 
 			var finisherType = curryAndLoad(acc.finisher().handle(), "acc_finisher");
 			accumulator.load(codeBuilder);
@@ -598,7 +659,7 @@ public class SpecCompiler {
 			_throwParseError("Unexpected character");
 
 			codeBuilder.labelBinding(endObject);
-			_skipToken(END_OBJECT);
+			_consumeToken(END_OBJECT);
 
 			var finisherType = curryAndLoad(acc.finisher().handle(), "acc_finisher");
 			accumulator.load(codeBuilder);
@@ -611,7 +672,7 @@ public class SpecCompiler {
 			codeBuilder.loadConstant(NULL.ordinal());
 			codeBuilder.isub();
 			codeBuilder.ifThen(IFEQ, block-> {
-				_skipToken(NULL);
+				_consumeToken(NULL);
 				block.aconst_null();
 				block.goto_w(done);
 			});
@@ -679,24 +740,15 @@ public class SpecCompiler {
 		}
 
 		private void _parsePrimitiveNumber(PrimitiveNumberNode node) {
-			Class<? extends Number> boxedType = PRIMITIVE_NUMBER_CLASSES.get(node.targetClass());
 			String parseMethodName = PRIMITIVE_PARSE_METHOD_NAMES.get(node.targetClass());
 
-			// Read the number as a string
+			// Parse the number text directly from the reader's CharSequence.
 			_readNumberAsCharSequence();
 			lineInfo(codeBuilder);
-			codeBuilder.invokeinterface(
-				cd(CharSequence.class),
-				"toString",
-				mtd(String.class)
-			);
-
-			// Call the appropriate parse method
-			lineInfo(codeBuilder);
 			codeBuilder.invokestatic(
-				cd(boxedType),
+				cd(Util.class),
 				parseMethodName,
-				mtd(node.targetClass(), String.class)
+				mtd(node.targetClass(), CharSequence.class)
 			);
 		}
 
@@ -747,7 +799,7 @@ public class SpecCompiler {
 			_throwParseError("Unexpected character; was expecting one of " + fixedObjectNode.memberSpecs().keySet());
 
 			codeBuilder.labelBinding(endObject);
-			_skipToken(END_OBJECT);
+			_consumeToken(END_OBJECT);
 
 			// All the local variables should have their values now.
 			// Time to call the finisher
@@ -782,7 +834,13 @@ public class SpecCompiler {
 			LOGGER.debug("generateCodePointSwitch({})", node);
 			switch (node) {
 				case TrieNode.LeafNode(String memberName, int matchedPrefix) -> {
-					_skipToEnd(memberName.length() - matchedPrefix);
+					int remaining = memberName.length() - matchedPrefix;
+					if (remaining == 0) {
+						// The whole member name has already been consumed; only the closing quote remains.
+						_consumeEndOfString();
+					} else {
+						_skipToEnd(remaining);
+					}
 					var child = fixedObjectNode.memberSpecs().get(memberName);
 					LOGGER.debug("-> leaf({})", child);
 					switch (child.valueSpec()) {
@@ -855,11 +913,31 @@ public class SpecCompiler {
 			_callRuntime(void.class, "skipToEndOfString", int.class);
 		}
 
+		/**
+		 * Consumes the closing quote of a member name whose whole text has
+		 * already been matched by the code-point switches. Equivalent to
+		 * {@link #_skipToEnd(int) _skipToEnd(0)}, but the reader consumes the
+		 * closing quote directly instead of skipping zero characters through
+		 * the generic string machinery.
+		 */
+		private void _consumeEndOfString() {
+			_loadRuntime();
+			lineInfo(codeBuilder, 1);
+			_callRuntime(void.class, "consumeEndOfString");
+		}
+
 		private void _skipToken(Token token) {
 			_loadRuntime();
 			codeBuilder.loadConstant(token.ordinal());
 			lineInfo(codeBuilder, 1);
 			_callRuntime("skipTokenWithOrdinal", int.class);
+		}
+
+		private void _consumeToken(Token token) {
+			_loadRuntime();
+			codeBuilder.loadConstant(token.ordinal());
+			lineInfo(codeBuilder, 1);
+			_callRuntime("consumeTokenWithOrdinal", int.class);
 		}
 
 		private void _parseStringValue() {

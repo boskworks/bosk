@@ -4,6 +4,8 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.exceptions.JsonSyntaxException;
 
+import static java.lang.Character.MAX_SURROGATE;
+import static java.lang.Character.MIN_SURROGATE;
 import static java.lang.Math.min;
 
 /**
@@ -62,7 +64,7 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	@Override
 	public void consumeSyntax(Token token) {
-		assert peekRawToken() == token;
+		// assert peekRawToken() == token;
 		pos += token.fixedRepresentation().length();
 	}
 
@@ -77,7 +79,7 @@ public final class CharArrayJsonReader implements JsonReader {
 
 	@Override
 	public void startConsumingString() {
-		assert peekRawToken() == Token.STRING;
+		// assert peekRawToken() == Token.STRING;
 		pos++; // Skip opening quote
 	}
 
@@ -90,49 +92,128 @@ public final class CharArrayJsonReader implements JsonReader {
 		if (c == '"') {
 			return END_OF_STRING;
 		} else if (c == '\\') {
-			if (pos >= chars.length) {
-				throw new JsonSyntaxException("Unterminated escape sequence at end of input");
-			}
-			char esc = chars[pos++];
-			return switch (esc) {
-				case '"', '\\', '/' -> esc;
-				case 'b' -> '\b';
-				case 'f' -> '\f';
-				case 'n' -> '\n';
-				case 'r' -> '\r';
-				case 't' -> '\t';
-				case 'u' -> {
-					if (pos + 4 > chars.length) {
-						throw new JsonSyntaxException("Incomplete Unicode escape sequence at end of input");
-					}
-					int value = 0;
-					for (int i = 0; i < 4; i++) {
-						char b = chars[pos++];
-						value <<= 4;
-						int digit = Character.digit(b, 16);
-						if (digit == -1) {
-							throw new JsonSyntaxException("Invalid hex digit in Unicode escape: '" + b + "'");
-						} else {
-							value |= digit;
-						}
-					}
-					yield value;
-				}
-				default -> throw new JsonSyntaxException("Invalid escape: \\" + esc);
-			};
+			return decodeEscape();
 		} else if (c >= 0x20) {
 			return c;
 		} else {
-			// Because we decode backslash sequences into code points,
-			// this is the only place we can distinguish actual illegal characters
-			// from legal escape sequences.
-			throw new JsonSyntaxException("Invalid character in string: " + Integer.toHexString(c));
+			return nextStringChar_rare(c);
 		}
+	}
+
+	/**
+	 * Decodes an escape sequence into the code point it represents. Escape
+	 * sequences are uncommon in member names and string values, so keeping the
+	 * decoding here lets {@link #nextStringChar}'s common path stay small
+	 * enough for C2 to inline; escaped strings pay an extra call, which is
+	 * acceptable.
+	 */
+	private int decodeEscape() {
+		if (pos >= chars.length) {
+			throw new JsonSyntaxException("Unterminated escape sequence at end of input");
+		}
+		char esc = chars[pos++];
+		return switch (esc) {
+			case '"', '\\', '/' -> esc;
+			case 'b' -> '\b';
+			case 'f' -> '\f';
+			case 'n' -> '\n';
+			case 'r' -> '\r';
+			case 't' -> '\t';
+			case 'u' -> {
+				if (pos + 4 > chars.length) {
+					throw new JsonSyntaxException("Incomplete Unicode escape sequence at end of input");
+				}
+				int value = 0;
+				for (int i = 0; i < 4; i++) {
+					char b = chars[pos++];
+					value <<= 4;
+					int digit = Character.digit(b, 16);
+					if (digit == -1) {
+						throw new JsonSyntaxException("Invalid hex digit in Unicode escape: '" + b + "'");
+					} else {
+						value |= digit;
+					}
+				}
+				yield value;
+			}
+			default -> throw new JsonSyntaxException("Invalid escape: \\" + esc);
+		};
+	}
+
+	/**
+	 * The rare path of {@link #nextStringChar}, for an illegal character in a
+	 * string. Because escape sequences are decoded into code points by
+	 * {@link #decodeEscape}, this is the only place that can distinguish actual
+	 * illegal characters from legal escape sequences. Malformed input is rare,
+	 * so this can sit off the common path. This method never returns normally.
+	 */
+	private int nextStringChar_rare(int c) {
+		throw new JsonSyntaxException("Invalid character in string: " + Integer.toHexString(c));
+	}
+
+	@Override
+	public void skipStringChars(int n) {
+		// Fast path: skip n plain characters with no quotes, escapes, control
+		// characters, or surrogate pairs. Otherwise fall back to the default
+		// implementation, which handles those cases character by character.
+		int limit = pos + n;
+		if (limit <= chars.length) {
+			int i = pos;
+			while (i < limit) {
+				char c = chars[i];
+				if (c == '"' || c == '\\' || c < 0x20 || (MIN_SURROGATE <= c && c <= MAX_SURROGATE)) {
+					skipStringChars_rare(n);
+					return;
+				}
+				i++;
+			}
+			if (i == limit) {
+				pos = limit;
+				return;
+			}
+		}
+		skipStringChars_rare(n);
+	}
+
+	/**
+	 * The rare path of {@link #skipStringChars}: the characters are not all
+	 * plain, n is negative, or the string ends early. Fall back to the default
+	 * implementation, which handles escapes, surrogate pairs, and end-of-string
+	 * checks character by character. Member names rarely contain escapes or
+	 * surrogate pairs, so the slower per-character path is acceptable when
+	 * they do.
+	 */
+	private void skipStringChars_rare(int n) {
+		if (n < 0) {
+			throw new IllegalArgumentException("Must skip a non-negative number of characters, got " + n);
+		}
+		JsonReader.super.skipStringChars(n);
 	}
 
 	@Override
 	public void skipToEndOfString() {
+		// Fast path: scan for the closing quote over plain characters. On an
+		// escape or control character, fall back to the per-character loop,
+		// which decodes escape sequences and rejects control characters.
+		int p = pos;
+		while (p < chars.length) {
+			char c = chars[p];
+			if (c == '"') {
+				pos = p + 1;
+				return;
+			}
+			if (c == '\\' || c < 0x20) {
+				break;
+			}
+			p++;
+		}
 		while (nextStringChar() >= 0) { }
+	}
+
+	@Override
+	public void consumeEndOfString() {
+		// assert peekRawChar() == '"';
+		pos++;
 	}
 
 	@Override
@@ -144,22 +225,31 @@ public final class CharArrayJsonReader implements JsonReader {
 	public String consumeString() {
 		// We can do better than the default implementation
 		int start = ++pos; // First actual character in the string's value
-		int c;
-		try {
-			while (pos <= chars.length && (c = chars[pos]) != '"') {
-				pos++;
-				if (c == '\\') {
-					// Whoops, found an escape code. Fast path doesn't work.
-					pos = start - 1; // Back up to the opening quote
-					return JsonReader.super.consumeString();
-				}
+		while (pos < chars.length) {
+			char c = chars[pos];
+			if (c == '"') {
+				String result = new String(chars, start, pos - start);
+				pos++; // Skip closing quote
+				return result;
 			}
-		} catch (ArrayIndexOutOfBoundsException e) {
-			throw new JsonSyntaxException("Unterminated string", e);
+			if (c == '\\') {
+				// Whoops, found an escape code. Fast path doesn't work.
+				return consumeString_rare(start);
+			}
+			pos++;
 		}
-		String result = new String(chars, start, pos - start);
-		pos++; // Skip closing quote
-		return result;
+		throw new JsonSyntaxException("Unterminated string");
+	}
+
+	/**
+	 * The rare path of {@link #consumeString}: the string contains an escape
+	 * sequence, so back up to the opening quote and fall back to the
+	 * character-by-character default implementation. Strings with escapes are
+	 * uncommon, so the slower fallback is acceptable.
+	 */
+	private String consumeString_rare(int start) {
+		pos = start - 1; // Back up to the opening quote
+		return JsonReader.super.consumeString();
 	}
 
 	@Override

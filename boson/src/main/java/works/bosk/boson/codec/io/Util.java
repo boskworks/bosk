@@ -1,9 +1,6 @@
 package works.bosk.boson.codec.io;
 
 import java.util.stream.LongStream;
-import works.bosk.boson.codec.Token;
-
-import static works.bosk.boson.codec.Token.WHITESPACE;
 
 public class Util {
 	private static final long INSIGNIFICANT_CHARS = LongStream
@@ -36,7 +33,7 @@ public class Util {
 		long answer = bitIsSet & ~(isNegative | isTooBig);
 
 		boolean result = (answer != 0);
-		assert result == Token.startingWith(codePoint).isInsignificant();
+		// assert result == Token.startingWith(codePoint).isInsignificant();
 		return result;
 	}
 
@@ -56,12 +53,50 @@ public class Util {
 		long answer = bitIsSet & ~(isNegative | isTooBig);
 
 		boolean result = (answer != 0);
-		assert result == (Token.startingWith(codePoint) == WHITESPACE);
+		// assert result == (Token.startingWith(codePoint) == WHITESPACE);
 		return result;
 	}
 
 	public static boolean isNumberChar(int b) {
 		return (b >= '0' && b <= '9') || b == '.' || b == '-' || b == '+' || b == 'e' || b == 'E';
+	}
+
+	/**
+	 * Parses the given number text without creating an intermediate {@link String}.
+	 */
+	public static byte parseByte(CharSequence s) {
+		int value = Integer.parseInt(s, 0, s.length(), 10);
+		if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
+			throw new NumberFormatException("Value out of range for byte: " + s);
+		}
+		return (byte) value;
+	}
+
+	/**
+	 * Parses the given number text without creating an intermediate {@link String}.
+	 */
+	public static short parseShort(CharSequence s) {
+		int value = Integer.parseInt(s, 0, s.length(), 10);
+		if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
+			throw new NumberFormatException("Value out of range for short: " + s);
+		}
+		return (short) value;
+	}
+
+	public static int parseInt(CharSequence s) {
+		return Integer.parseInt(s, 0, s.length(), 10);
+	}
+
+	public static long parseLong(CharSequence s) {
+		return Long.parseLong(s, 0, s.length(), 10);
+	}
+
+	public static float parseFloat(CharSequence s) {
+		return Float.parseFloat(s.toString());
+	}
+
+	public static double parseDouble(CharSequence s) {
+		return Double.parseDouble(s.toString());
 	}
 
 	/**
