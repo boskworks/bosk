@@ -492,6 +492,21 @@ public class SpecInterpretingParser implements Parser {
 			};
 		}
 
+		private boolean parseBoolean() {
+			Token token = input.peekValueToken();
+			return switch (token) {
+				case FALSE -> {
+					input.consumeSyntax(token);
+					yield false;
+				}
+				case TRUE -> {
+					input.consumeSyntax(token);
+					yield true;
+				}
+				default -> throw new JsonContentException("Expected boolean, not " + token);
+			};
+		}
+
 		private Object parseMaybeNull(MaybeNullSpec node) throws IOException {
 			if (nextTokenIs(NULL)) {
 				return null;

@@ -17,10 +17,8 @@ import works.bosk.boson.mapping.spec.JsonValueSpec;
 import works.bosk.boson.mapping.spec.PrimitiveNumberNode;
 
 import static java.util.Objects.requireNonNull;
-import static works.bosk.boson.codec.Token.FALSE;
 import static works.bosk.boson.codec.Token.NUMBER;
 import static works.bosk.boson.codec.Token.STRING;
-import static works.bosk.boson.codec.Token.TRUE;
 import static works.bosk.boson.codec.Token.values;
 
 /**
@@ -35,19 +33,8 @@ public abstract class SharedParserRuntime {
 		this.input = requireNonNull(input);
 	}
 
-	protected final boolean parseBoolean() {
-		Token token = input.peekValueToken();
-		return switch (token) {
-			case TRUE -> {
-				input.consumeSyntax(token);
-				yield true;
-			}
-			case FALSE -> {
-				input.consumeSyntax(token);
-				yield false;
-			}
-			default -> throw new JsonContentException("Expected boolean, not " + token);
-		};
+	protected final boolean parseBoolean_rare(int ord) {
+		throw new JsonContentException("Expected boolean, not " + values()[ord]);
 	}
 
 	protected final Number parseBigNumber() {

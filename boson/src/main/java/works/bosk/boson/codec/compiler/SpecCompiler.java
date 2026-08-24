@@ -38,6 +38,7 @@ import works.bosk.boson.codec.JsonReader;
 import works.bosk.boson.codec.Parser;
 import works.bosk.boson.codec.Token;
 import works.bosk.boson.codec.interpreter.SpecInterpretingGenerator;
+import works.bosk.boson.codec.io.SharedParserRuntime;
 import works.bosk.boson.codec.io.Util;
 import works.bosk.boson.mapping.TypeMap;
 import works.bosk.boson.mapping.spec.ArrayNode;
@@ -284,9 +285,15 @@ public class SpecCompiler {
 			m.type(),
 			m.accessFlagMask(),
 			cb -> {
-				new ParserCodeBuilder(cb, currier)
-					._parseAny(spec);
-				cb.return_(nodeReturnTypeKind(spec));
+				var pcb = new ParserCodeBuilder(cb, currier);
+				if (spec instanceof BooleanNode) {
+					// A boolean parse method contains the logic directly; going
+					// through _parseAny would make it call itself.
+					pcb._emitBooleanLogic();
+				} else {
+					pcb._parseAny(spec);
+					cb.return_(nodeReturnTypeKind(spec));
+				}
 			}
 		);
 	}
@@ -398,7 +405,7 @@ public class SpecCompiler {
 		private void _parseAny(JsonValueSpec n) {
 			switch (n) {
 				case BigNumberNode node -> _parseBigNumber(node);
-				case BooleanNode _ -> _parseBoolean();
+				case BooleanNode node -> _parseBoolean(node);
 				case BoxedPrimitiveSpec node -> _parseBoxedPrimitive(node);
 				case EnumByNameNode node -> _parseEnumByName(node);
 				case ArrayNode node -> _parseArray(node);
@@ -470,10 +477,61 @@ public class SpecCompiler {
 			codeBuilder.checkcast(cd(node.numberClass()));
 		}
 
-		private void _parseBoolean() {
+		/**
+		 * Parsing a boolean value requires a surprising amount of bytecode: a
+		 * peek, a range check on the token's ordinal, a consume, and a return.
+		 * Emitting that sequence at every call site would bloat the generated
+		 * code, and a runtime helper would be too large for the JIT to inline
+		 * freely. The boolean logic is therefore generated into this node's own
+		 * parse method, which is small enough for the JIT to inline or leave as
+		 * a call. This method just calls it, the same way {@link #_parseTypeRef}
+		 * calls the parse method of a referenced type.
+		 */
+		private void _parseBoolean(BooleanNode node) {
+			lineInfo(codeBuilder, 1);
+			_invokeVirtual(getParseMethod(node));
+		}
+
+		/**
+		 * Hand-emits the boolean parse logic, because javac's version is too
+		 * large to fit under the 35-byte cold inlining limit. Javac stores the
+		 * ordinal in a local variable, which forces redundant loads and
+		 * branches, and it converts the int ordinal to a boolean even though
+		 * the two have the same numeric value. Keeping the ordinal on the
+		 * operand stack throughout, and relying on the FALSE and TRUE ordinals
+		 * matching their boolean values, brings this version down to a range
+		 * check, a consume, and a return.
+		 */
+		private void _emitBooleanLogic() {
+			// Read the value token's ordinal.
 			_loadRuntime();
 			lineInfo(codeBuilder);
-			_callRuntime(boolean.class, "parseBoolean");
+			codeBuilder.getfield(cd(SharedParserRuntime.class), "input", cd(JsonReader.class));
+			codeBuilder.invokeinterface(cd(JsonReader.class), "peekValueToken", mtd(cd(Token.class)));
+			codeBuilder.invokevirtual(cd(Token.class), "ordinal", mtd(int.class));
+
+			// An ordinal greater than 1 means the token is not a boolean.
+			codeBuilder.dup();
+			lineInfo(codeBuilder);
+			codeBuilder.iconst_1();
+			Label notABoolean = codeBuilder.newLabel();
+			codeBuilder.if_icmpgt(notABoolean);
+
+			// Consume the token; its ordinal is the boolean value.
+			codeBuilder.dup();
+			_loadRuntime();
+			lineInfo(codeBuilder);
+			codeBuilder.swap();
+			_callRuntime(void.class, "consumeTokenWithOrdinal", int.class);
+			codeBuilder.ireturn();
+
+			// Not a boolean.
+			codeBuilder.labelBinding(notABoolean);
+			_loadRuntime();
+			codeBuilder.swap();
+			lineInfo(codeBuilder);
+			_callRuntime(boolean.class, "parseBoolean_rare", int.class);
+			codeBuilder.ireturn();
 		}
 
 		private void _parseEnumByName(EnumByNameNode node) {
