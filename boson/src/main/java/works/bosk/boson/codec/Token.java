@@ -4,10 +4,15 @@ package works.bosk.boson.codec;
  * A syntactically significant element of JSON text.
  */
 public enum Token {
-	END_TEXT,
-	NULL,
+	// The booleans are listed first so that their ordinals, 0 and 1, match the
+	// numeric values they stand for. The compiled code reads a boolean token's
+	// ordinal and treats it as the boolean value, so this match must hold at
+	// the bytecode level.
 	FALSE,
 	TRUE,
+
+	END_TEXT,
+	NULL,
 	NUMBER,
 	START_OBJECT,
 	END_OBJECT,
