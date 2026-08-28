@@ -37,6 +37,12 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *       value, no action is taken.</li>
  *     </ul>
  *   </li>
+ *   <li>
+ *     <b>MongoDB-backed bosks</b> — When the {@code bosk-mongo} library is on the
+ *     classpath, the {@code bosk.mongodb.*} properties configure the beans needed to
+ *     build a MongoDB-backed bosk, reusing the application's existing
+ *     {@code spring.mongodb.*} connection and database when present.
+ *   </li>
  * </ul>
  */
 module works.bosk.spring.boot {
@@ -49,6 +55,10 @@ module works.bosk.spring.boot {
 	requires transitive spring.web;
 	requires transitive works.bosk.core;
 	requires transitive works.bosk.jackson;
+
+	// Support MongoDB if it's present, but don't require it
+	requires static works.bosk.mongo;
+	requires static spring.boot.mongodb;
 
 	requires static lombok;
 

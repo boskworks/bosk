@@ -11,6 +11,13 @@ configurations {
 dependencies {
 	api project(":bosk-jackson")
 	implementation libs.spring.boot.starter.webmvc
+
+	// compileOnly: don't drag the MongoDB driver into applications that don't use it
+	compileOnly project(":bosk-mongo")
+	compileOnly libs.spring.boot.mongodb
+	testImplementation project(":bosk-mongo")
+	testImplementation libs.spring.boot.mongodb
+
 	testImplementation libs.spring.boot.starter.test
 	testImplementation libs.spring.boot.starter.webmvc.test
 	annotationProcessor libs.spring.boot.annotation.processor
