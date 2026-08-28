@@ -112,7 +112,7 @@ public class RefurbishTest extends AbstractMongoDriverTest {
 		// Add a bogus metadata field
 		MongoCollection<BsonDocument> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+			.getCollection(driverSettings.collection(), BsonDocument.class);
 		String bogusField = "bogusField";
 		addFields(collection, bogusField);
 
@@ -158,7 +158,7 @@ public class RefurbishTest extends AbstractMongoDriverTest {
 
 		MongoCollection<BsonDocument> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+			.getCollection(driverSettings.collection(), BsonDocument.class);
 		BsonDocument filterDoc = rootDocumentsFilter();
 		BsonString epochBefore;
 		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
@@ -189,7 +189,7 @@ public class RefurbishTest extends AbstractMongoDriverTest {
 		// Simulate a legacy collection by removing the epoch field
 		MongoCollection<BsonDocument> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+			.getCollection(driverSettings.collection(), BsonDocument.class);
 		deleteFields(collection, Formatter.DocumentFields.epoch);
 
 		// Make the bosk whose refurbish operation we want to test

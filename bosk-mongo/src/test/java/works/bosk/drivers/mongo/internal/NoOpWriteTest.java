@@ -80,7 +80,7 @@ public class NoOpWriteTest {
 		private BsonInt64 rootDocumentRevision() {
 			MongoCollection<BsonDocument> collection = mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+				.getCollection(driverSettings.collection(), BsonDocument.class);
 			try (var cursor = collection.find(new BsonDocument("_id", new BsonString("|"))).cursor()) {
 				return cursor.next().getInt64(BsonFormatter.DocumentFields.revision.name());
 			}
@@ -145,7 +145,7 @@ public class NoOpWriteTest {
 		private BsonInt64 rootDocumentRevision() {
 			MongoCollection<BsonDocument> collection = mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+				.getCollection(driverSettings.collection(), BsonDocument.class);
 			try (var cursor = collection.find(new BsonDocument("_id", new BsonString("|"))).cursor()) {
 				return cursor.next().getInt64(BsonFormatter.DocumentFields.revision.name());
 			}
@@ -154,7 +154,7 @@ public class NoOpWriteTest {
 		private long countDocumentsWithIdPrefix(String prefix) {
 			MongoCollection<BsonDocument> collection = mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+				.getCollection(driverSettings.collection(), BsonDocument.class);
 			return collection.countDocuments(new BsonDocument("_id",
 				new BsonRegularExpression("^" + Pattern.quote(prefix))));
 		}

@@ -55,7 +55,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
-import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -471,7 +470,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 			LOGGER.debug("Cause disconnection by deleting and re-creating the manifest document");
 			MongoCollection<BsonDocument> collection = mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class);
+				.getCollection(driverSettings.collection(), BsonDocument.class);
 			BsonDocument originalManifest = collection.findOneAndDelete(
 				new BsonDocument("_id", new BsonString(MANIFEST_ID)));
 			assertNotNull(originalManifest, "Manifest document must exist");
@@ -561,7 +560,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 					// One benign change event: the listener will reject it by its _id, forcing a disconnect.
 					mongoService.client()
 						.getDatabase(driverSettings.database())
-						.getCollection(MainDriver.COLLECTION_NAME, BsonDocument.class)
+						.getCollection(driverSettings.collection(), BsonDocument.class)
 						.insertOne(new BsonDocument("_id", new BsonString(DISCONNECT_PROBE_ID)));
 
 					try {
@@ -827,7 +826,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 			LOGGER.debug("Force a disconnect by inserting a document the listener rejects");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class)
+				.getCollection(driverSettings.collection(), BsonDocument.class)
 				.insertOne(new BsonDocument("_id", new BsonString(DISCONNECT_PROBE_ID)));
 			assertTrue(disconnected.await(30, SECONDS),
 				"The driver must disconnect after the rejected event");
@@ -839,7 +838,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 			LOGGER.debug("Write fresh state to the database while the driver is disconnected");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class)
+				.getCollection(driverSettings.collection(), BsonDocument.class)
 				.updateOne(
 					new BsonDocument("path", new BsonString("/")),
 					new BsonDocument("$set", new BsonDocument("state.string", new BsonString("fresh after reconnect")))

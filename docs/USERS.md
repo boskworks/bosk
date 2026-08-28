@@ -742,7 +742,7 @@ static <RR extends Entity> MongoDriverFactory<RR> factory(
 The arguments are as follows:
 
 - `clientSettings` is how the MongoDB client library configures the database connection.
-- `driverSettings` contains the bosk-specific settings, the most important of which is `database` (the name of the database in which the bosk state is to be stored). Bosks that use the same database will share the same state.
+- `driverSettings` contains the bosk-specific settings, the most important of which is `database` (the name of the database in which the bosk state is to be stored). Bosks that use the same database and collection will share the same state; the collection name is configurable via `MongoDriverSettings.collection()` and defaults to `boskCollection`, so that a bosk can coexist in a database alongside the application's own collections.
 - `bsonSerializer` controls the translation between BSON objects and the application's state tree node objects. For simple scenarios, the application won't need to worry about this object, and can simply instantiate one and pass it in.
 
 Here is an example of a method that would return a fully configured `MongoDriverFactory`:
@@ -825,7 +825,9 @@ You can include these in your encoder pattern as well, for example `%X{bosk.Mong
 
 The format of the database is described by a manifest document whose ID is `!Manifest`.
 
-For Sequoia, the collection is called `boskCollection` and the document has four fields:
+For Sequoia, the bosk state is stored in a single document within a single collection.
+The collection is named `boskCollection` by default, and can be renamed with `MongoDriverSettings.collection()`.
+The document has four fields:
 
 - `_id`: this is always `boskDocument`
 - `path`: this is always `/`

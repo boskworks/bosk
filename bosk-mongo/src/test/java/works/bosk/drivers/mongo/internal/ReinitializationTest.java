@@ -21,7 +21,6 @@ import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 import static works.bosk.drivers.mongo.internal.TestParameters.LONG_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -76,7 +75,7 @@ public class ReinitializationTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Delete the collection and manifest, then reinitialize with different content");
 		MongoCollection<BsonDocument> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME, BsonDocument.class);
+			.getCollection(driverSettings.collection(), BsonDocument.class);
 		collection.drop();
 		TestEntity afterState = initializeDatabase("after reinitialization");
 

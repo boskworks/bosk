@@ -146,7 +146,7 @@ public class SpuriousActionTest extends AbstractMongoDriverTest {
 	@Test
 	void unrelatedDatabase_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		tearDownActions.addFirst(mongoService.client().getDatabase("unrelated")::drop);
-		doUnrelatedChangeTest("unrelated", MainDriver.COLLECTION_NAME, plausibleRootDocumentID().getValue());
+		doUnrelatedChangeTest("unrelated", driverSettings.collection(), plausibleRootDocumentID().getValue());
 	}
 
 	@Test
@@ -156,10 +156,10 @@ public class SpuriousActionTest extends AbstractMongoDriverTest {
 
 	@Test
 	void unrelatedDoc_ignored() throws InvalidTypeException, IOException, InterruptedException {
-		doUnrelatedChangeTest(driverSettings.database(), MainDriver.COLLECTION_NAME, "unrelated");
+		doUnrelatedChangeTest(driverSettings.database(), driverSettings.collection(), "unrelated");
 	}
 
-	private void doUnrelatedChangeTest(String databaseName, String collectionName, String docID) throws IOException, InterruptedException, InvalidTypeException {
+	private void doUnrelatedChangeTest(String databaseName, String collection, String docID) throws IOException, InterruptedException, InvalidTypeException {
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),
 			TestEntity.class,
@@ -168,12 +168,12 @@ public class SpuriousActionTest extends AbstractMongoDriverTest {
 
 		MongoCollection<Document> counterfeitCollection = mongoService.client()
 			.getDatabase(databaseName)
-			.getCollection(collectionName);
+			.getCollection(collection);
 
 		// Make a realistic-looking doc to try to fool the driver
 		MongoCollection<Document> actualCollection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME);
+			.getCollection(driverSettings.collection());
 		Document doc;
 		try (MongoCursor<Document> cursor = actualCollection.find().limit(1).cursor()) {
 			doc = cursor.next();
