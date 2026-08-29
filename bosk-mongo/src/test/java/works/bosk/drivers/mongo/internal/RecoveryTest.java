@@ -50,7 +50,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
-import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
@@ -197,7 +196,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 			LOGGER.debug("Drop database");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME)
+				.getCollection(driverSettings.collection())
 				.drop();
 		}, (_) -> initializeDatabase("after drop"));
 	}
@@ -208,7 +207,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 			LOGGER.debug("Drop collection");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME)
+				.getCollection(driverSettings.collection())
 				.drop();
 		}, (_) -> initializeDatabase("after drop"));
 	}
@@ -219,7 +218,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 			LOGGER.debug("Delete document");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME)
+				.getCollection(driverSettings.collection())
 				.deleteMany(new BsonDocument());
 		}, (_) -> initializeDatabase("after deletion"));
 	}
@@ -228,7 +227,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 	void documentReappears_recovers() throws InterruptedException, IOException {
 		MongoCollection<Document> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME);
+			.getCollection(driverSettings.collection());
 		AtomicReference<Document> originalDocument = new AtomicReference<>();
 		BsonDocument rootDocumentsFilter = new BsonDocument("path", new BsonString("/"));
 		testRecovery(() -> {
@@ -275,7 +274,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Delete revision field");
 		mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME)
+			.getCollection(driverSettings.collection())
 			.updateOne(
 				new BsonDocument(),
 				new BsonDocument("$unset", new BsonDocument(Formatter.DocumentFields.revision.name(), BsonNull.VALUE)) // Value is ignored
@@ -305,7 +304,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 		// Delete all non-manifest documents, simulating a state document getting lost
 		mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME, BsonDocument.class)
+			.getCollection(driverSettings.collection(), BsonDocument.class)
 			.deleteMany(new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID)));
 
 		// Starting a new Bosk in FAIL_FAST mode should throw because the
@@ -341,7 +340,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 		// Remove the revision field from the root document
 		mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME, BsonDocument.class)
+			.getCollection(driverSettings.collection(), BsonDocument.class)
 			.updateMany(
 				new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonDocument("$exists", BsonBoolean.TRUE)),
 				new BsonDocument("$unset", new BsonDocument(Formatter.DocumentFields.revision.name(), BsonNull.VALUE)) // Value is ignored
@@ -389,7 +388,7 @@ public class RecoveryTest extends AbstractMongoDriverTest {
 	private void setRevision(long revisionNumber) {
 		mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME)
+			.getCollection(driverSettings.collection())
 			.updateOne(
 				new BsonDocument(),
 				new BsonDocument("$set", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonInt64(revisionNumber))) // Value is ignored

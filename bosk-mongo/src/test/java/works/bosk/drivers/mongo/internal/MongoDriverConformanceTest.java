@@ -108,7 +108,7 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 		tearDownActions.forEach(Runnable::run);
 		mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME)
+			.getCollection(driverSettings.collection())
 			.drop();
 	}
 

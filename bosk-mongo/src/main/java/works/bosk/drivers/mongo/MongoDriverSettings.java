@@ -17,6 +17,17 @@ public class MongoDriverSettings {
 	String database;
 
 	/**
+	 * The name of the collection within the {@link #database} in which the bosk state
+	 * is stored. Bosks that use the same database and collection share the same state,
+	 * so the two names together identify a replication group. Using a different
+	 * collection name lets a bosk coexist in a database alongside the application's own
+	 * collections, or alongside an unrelated bosk.
+	 * <p>
+	 * The default is {@link #DEFAULT_COLLECTION_NAME}.
+	 */
+	@Default String collection = DEFAULT_COLLECTION_NAME;
+
+	/**
 	 * The general responsiveness of the system under unusual circumstances.
 	 * Changes to the database connectivity and status will be "noticed"
 	 * in about this many milliseconds, and other time-related behaviours
@@ -146,11 +157,22 @@ public class MongoDriverSettings {
 	}
 
 	public void validate() {
+		if (database == null || database.isBlank()) {
+			throw new IllegalArgumentException("Database name must not be blank");
+		}
+		if (collection == null || collection.isBlank()) {
+			throw new IllegalArgumentException("Collection name must not be blank");
+		}
 		if (preferredDatabaseFormat() instanceof PandoFormat) {
 			if (experimental.orphanDocumentMode() == EARNEST) {
 				throw new IllegalArgumentException("Pando format does not support earnest orphan document cleanup");
 			}
 		}
 	}
+
+	/**
+	 * The default value of {@link #collection()}.
+	 */
+	public static final String DEFAULT_COLLECTION_NAME = "boskCollection";
 
 }

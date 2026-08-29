@@ -742,7 +742,7 @@ static <RR extends Entity> MongoDriverFactory<RR> factory(
 The arguments are as follows:
 
 - `clientSettings` is how the MongoDB client library configures the database connection.
-- `driverSettings` contains the bosk-specific settings, the most important of which is `database` (the name of the database in which the bosk state is to be stored). Bosks that use the same database will share the same state.
+- `driverSettings` contains the bosk-specific settings, the most important of which is `database` (the name of the database in which the bosk state is to be stored). Bosks that use the same database and collection will share the same state; the collection name is configurable via `MongoDriverSettings.collection()` and defaults to `boskCollection`, so that a bosk can coexist in a database alongside the application's own collections.
 - `bsonSerializer` controls the translation between BSON objects and the application's state tree node objects. For simple scenarios, the application won't need to worry about this object, and can simply instantiate one and pass it in.
 
 Here is an example of a method that would return a fully configured `MongoDriverFactory`:
@@ -764,6 +764,58 @@ static DriverFactory<ExampleState> driverFactory() {
 		clientSettings,
 		driverSettings,
 		bsonSerializer);
+}
+```
+
+##### Spring Boot auto-configuration
+
+`bosk-spring-boot` integrates bosk with Spring Boot. Alongside the automatic read
+session and maintenance endpoints it provides (see the `bosk-spring-boot` module
+javadoc), when `bosk-mongo` is on the classpath it auto-configures the beans needed to
+build a MongoDB-backed bosk: a `MongoDriverSettings`, a `BsonSerializer`, and a
+`MongoDriverFactory`. Each backs off if the application defines its own.
+
+The connection is composed the same way Spring's `MongoAutoConfiguration` composes its
+own client: the application's `MongoClientSettings` bean (or Spring's, when the
+application uses Spring Data) is taken as the base, and every
+`MongoClientSettingsBuilderCustomizer` bean is applied on top. This honors both the
+`spring.mongodb.uri` and the host/port/credentials/ssl property forms, so an application
+that already connects to MongoDB via Spring Data picks up the same connection for bosk
+with no additional configuration. To customize bosk's connection, define a
+`MongoClientSettingsBuilderCustomizer` bean.
+
+The database in which bosk stores its state is taken from `spring.mongodb.database`, or
+from the database named in `spring.mongodb.uri`, and defaults to `bosk` when neither
+specifies one. The `bosk` fallback keeps bosk's state in its own database rather than
+silently sharing the application's default database (which Spring Data uses for its own
+collections); to share the application's database exactly, set `spring.mongodb.database`
+or use a connection string that names one.
+
+The `bosk.mongodb.*` properties customize bosk-specific settings, all of which are
+optional and default to bosk's own defaults:
+
+- `bosk.mongodb.timescale-ms` — how promptly the driver reacts to unusual circumstances
+  such as a database outage; a lower value recovers faster but gives up sooner. See
+  `MongoDriverSettings`.
+- `bosk.mongodb.collection` — the collection in which the bosk state is stored within
+  the database; defaults to `boskCollection`.
+- `bosk.mongodb.initial-database-unavailable-mode` — how to behave if the database state
+  can't be loaded during initialization; `DISCONNECT` (the default) or `FAIL_FAST`.
+  `FAIL_FAST` is recommended during development.
+
+To construct your bosk with the auto-configured driver factory, inject it into your
+`Bosk` subclass:
+
+``` java
+@Component
+public class ExampleBosk extends Bosk<ExampleState> {
+	@SuppressWarnings("unchecked") // The factory is generic-agnostic until build() is called
+	public ExampleBosk(MongoDriverFactory<?> mongoDriverFactory) {
+		super("Example", ExampleState.class, ExampleBosk::defaultState,
+			BoskConfig.<ExampleState>builder()
+				.driverFactory((DriverFactory<ExampleState>) mongoDriverFactory)
+				.build());
+	}
 }
 ```
 
@@ -825,7 +877,9 @@ You can include these in your encoder pattern as well, for example `%X{bosk.Mong
 
 The format of the database is described by a manifest document whose ID is `!Manifest`.
 
-For Sequoia, the collection is called `boskCollection` and the document has four fields:
+For Sequoia, the bosk state is stored in a single document within a single collection.
+The collection is named `boskCollection` by default, and can be renamed with `MongoDriverSettings.collection()`.
+The document has four fields:
 
 - `_id`: this is always `boskDocument`
 - `path`: this is always `/`

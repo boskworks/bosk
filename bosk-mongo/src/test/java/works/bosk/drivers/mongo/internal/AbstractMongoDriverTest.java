@@ -38,8 +38,6 @@ import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 
-import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
-
 abstract class AbstractMongoDriverTest {
 	protected static final Identifier entity123 = Identifier.from("123");
 	protected static final Identifier entity124 = Identifier.from("124");
@@ -69,7 +67,7 @@ abstract class AbstractMongoDriverTest {
 		// Start with a clean slate
 		mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME)
+			.getCollection(driverSettings.collection())
 			.drop();
 	}
 

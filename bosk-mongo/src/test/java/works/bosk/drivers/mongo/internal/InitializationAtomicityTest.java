@@ -18,7 +18,6 @@ import works.bosk.testing.drivers.state.TestEntity;
 
 import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -75,7 +74,7 @@ public class InitializationAtomicityTest extends AbstractMongoDriverTest {
 
 		var collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME, BsonDocument.class);
+			.getCollection(driverSettings.collection(), BsonDocument.class);
 		assertEquals(0, collection.countDocuments(),
 			"Collection must be empty after a failed initialization: "
 				+ "the state document and manifest writes must be atomic");

@@ -29,7 +29,6 @@ import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.TypeValidation.validateType;
-import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -86,7 +85,7 @@ public class MetadataTest extends AbstractMongoDriverTest {
 		// which is the root document in both formats.
 		mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME, BsonDocument.class)
+			.getCollection(driverSettings.collection(), BsonDocument.class)
 			.updateMany(
 				new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonDocument("$exists", BsonBoolean.TRUE)),
 				new BsonDocument("$set", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonString("oops")))
@@ -115,7 +114,7 @@ public class MetadataTest extends AbstractMongoDriverTest {
 		LOGGER.debug("Upgrade to an unsupported manifest version");
 		MongoCollection<Document> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(MainDriver.COLLECTION_NAME);
+			.getCollection(driverSettings.collection());
 		collection.updateOne(
 			new BsonDocument("_id", new BsonString(MANIFEST_ID)),
 			new BsonDocument("$inc", new BsonDocument("version", new BsonInt32(1)))

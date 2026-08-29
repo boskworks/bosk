@@ -53,7 +53,8 @@ but is allowed to, if it finds some other way to communicate the deletion via ch
 
 ## Database contents
 
-A Pando-formatted database has a single collection called `boskCollection`, just as for Sequoia.
+A Pando-formatted database, like a Sequoia-formatted one, stores the bosk state in a single collection.
+The collection is named `boskCollection` by default, and can be renamed with `MongoDriverSettings.collection()`.
 
 #### Document `manifest`
 

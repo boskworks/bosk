@@ -236,8 +236,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(COLLECTION_NAME, BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor());
-			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), COLLECTION_NAME);
+				.getCollection(driverSettings.collection(), BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor());
+			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), driverSettings.collection());
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
 
@@ -257,7 +257,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				driverSettings,
 				changeStreamClient
 					.getDatabase(driverSettings.database())
-					.getCollection(COLLECTION_NAME, BsonDocument.class)
+					.getCollection(driverSettings.collection(), BsonDocument.class)
 			);
 		}
 
@@ -733,14 +733,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				} else {
 					throw new UnrecognizedFormatException("Manifest document not found: "
 						+ "collection=" + driverSettings.database()
-						+ "." + COLLECTION_NAME
+						+ "." + driverSettings.collection()
 						+ " _id=" + MANIFEST_ID
 						+ "; found \"" + doc.getString("_id") + "\"");
 				}
 			} else {
 				throw new UninitializedCollectionException(
 					"Collection is empty: " + driverSettings.database()
-						+ "." + COLLECTION_NAME
+						+ "." + driverSettings.collection()
 				);
 			}
 		}
@@ -992,7 +992,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		void run() throws X,Y;
 	}
 
-	public static final String COLLECTION_NAME = "boskCollection";
 	public static final BsonString MANIFEST_ID = new BsonString("!Manifest");
 	private static final Exception FAILURE_TO_COMPUTE_INITIAL_STATE = new IllegalStateException("Failure to compute initial state");
 	private static final Logger LOGGER = LoggerFactory.getLogger(MainDriver.class);

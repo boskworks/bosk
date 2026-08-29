@@ -22,8 +22,6 @@ import works.bosk.junit.Injected;
 import works.bosk.junit.Injector;
 import works.bosk.testing.drivers.HanoiTest;
 
-import static works.bosk.drivers.mongo.internal.MainDriver.COLLECTION_NAME;
-
 @Disabled // This is slow and has dubious value
 @InjectFields
 @InjectFrom(MongoDriverHanoiTest.ParameterSetInjector.class)
@@ -46,7 +44,7 @@ public class MongoDriverHanoiTest extends HanoiTest {
 		);
 		mongoService.client()
 			.getDatabase(settings.database())
-			.getCollection(COLLECTION_NAME)
+			.getCollection(settings.collection())
 			.drop();
 	}
 
