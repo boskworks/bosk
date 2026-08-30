@@ -35,14 +35,14 @@ def harvest(repo: str, author: str, limit: int) -> list:
     records = []
     for pr in prs:
         n = pr["number"]
-        comments = json.loads(gh("api", f"repos/{repo}/pulls/{n}/comments"))
+        comments = json.loads(gh("api", f"repos/{repo}/pulls/{n}/comments", "--paginate"))
         for c in comments:
             if c.get("user", {}).get("login") == author and substantive(c.get("body", "")):
                 records.append({
                     "repo": repo, "pr": n, "path": c.get("path"),
                     "html_url": c.get("html_url"), "body": c["body"],
                 })
-        reviews = json.loads(gh("api", f"repos/{repo}/pulls/{n}/reviews"))
+        reviews = json.loads(gh("api", f"repos/{repo}/pulls/{n}/reviews", "--paginate"))
         for r in reviews:
             if r.get("user", {}).get("login") == author and substantive(r.get("body", "")):
                 records.append({
