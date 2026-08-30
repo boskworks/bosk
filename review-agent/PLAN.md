@@ -250,6 +250,68 @@ consumes the same JSON without posting. A review JSON that is never posted is a 
 follows the same rule: the agent reads the current threads from the packet and writes its decisions as a responses
 JSON, which `review-agent/review/post-responses.py` posts.
 
+## Testing
+
+The review tooling has never had a test suite, and the review that introduced it surfaced a cluster of bugs an
+automated suite would have caught. The bugs fall into four types, each with a distinct remedy:
+
+1. **Pure-logic correctness** — for example the classify label priority and the round filter in build-packet.
+   Unit tests on the logic catch these.
+2. **Data-shape drift** — for example the packet missing `original_commit_id` and the gratuitous field renames.
+   The code worked; the shape was just wrong. Golden tests on the packet, plus contract tests between the
+   skill's JSON specs and what the posting scripts validate, catch these. The packet is doubly important because
+   it feeds both production reviews and the eval, so a wrong shape corrupts both.
+3. **Dead code and awkward idioms** — for example an unused map in classify. Lint (pyflakes) catches these.
+4. **Prompt design** — for example the judge's exposure to prompt injection and the comment-anchor wording. Not
+   unit-testable; the eval is the test for the prompt products (`reviewer.md`, `judge.md`).
+
+### Structure: functional core, imperative shell
+
+The recommended structure is functional core / imperative shell: a core of pure functions that take input as
+parameters and return output, with no I/O or side effects, and a thin shell that does all I/O with the minimum
+possible logic. This is the structural form of the CLAUDE.md principle "separate complex logic from side effects
+to facilitate unit testing". It applies where the logic is non-trivial and bug-prone:
+
+- `corpus/build-packet.py` — core `build_snapshot(comments, diffs, pr, boundary, reactions)`; shell reads the
+  corpus and runs git/gh.
+- `corpus/classify-comments.py` — core `classify(comments, reactions, reviews, pr_meta)`; shell reads the corpus
+  and writes `classification.json`.
+- `review/post-review.py`, `review/post-responses.py` — cores `validate_review(doc)` and `validate_responses(doc)`
+  (plus the comment-to-thread mapping); shells run gh.
+- `corpus/reconstruct-review.py` — core `reconstruct(comments, rvs)`; shell reads and writes.
+
+It does not apply to the prompt products (eval-tested, not unit-tested), to already-pure shells (`fetch-prs.sh`,
+`run-loop.sh`), or to mostly-I/O orchestration (`eval.py`, the calibrate tools) whose pure core would be a few
+lines. The split is mechanical and behavior-preserving, and can be verified by diffing output before and after
+against the existing corpus.
+
+### Recommended test suite
+
+Hermetic unit tests under `review-agent/tests/` with small committed fixtures; no live GitHub, so deterministic
+and CI-able.
+
+- build-packet: golden snapshot output; round-boundary behavior; the required comment-field set (a regression
+  test for `original_commit_id`).
+- classify: label priority (emoji authoritative, "Question:" overrides, unjudged).
+- post-review / post-responses: accept valid and reject invalid review and responses JSON, the contract with
+  the skill's output formats.
+- match_findings: `extract_json` parses the last JSON object out of noisy output.
+- Lint (pyflakes) for dead code, plus a mutation-style meta-check (remove a required packet field; the golden
+  test must fail) so the tests cannot go stale.
+
+What is not unit-tested: the shells, which are thin, mechanical, and already exercised by the eval and by real
+runs, and the prompt products, which the eval covers. A hermetic smoke test of build-packet against a fixture git
+repo (a merged PR, so no GitHub access is needed) is a possible future addition.
+
+### Open decisions
+
+- Framework: pytest (readable, parametrized; a new dependency for this directory) vs stdlib `unittest` (zero
+  dependencies). pytest is preferred.
+- CI wiring: a GitHub Actions job (lint and tests) vs a local `review-agent/run-tests.sh`.
+- Scope: whether to include linting.
+- Whether the FCIS restructure and the tests are separate commits. The recommendation is a behavior-preserving
+  refactoring commit first, then the tests.
+
 ## Phases
 
 ### Phase 0 — Seed corpus and reviewer prompt v1 (done)
