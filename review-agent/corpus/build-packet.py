@@ -35,10 +35,6 @@ SNAPSHOT_COMMENT_FIELDS = ("id", "user", "path", "line", "original_line", "start
                            "in_reply_to_id", "created_at")
 
 
-def gh(*args: str, cwd: Path | None = None) -> str:
-    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True, cwd=cwd).stdout
-
-
 def git(*args: str, cwd: Path | None = None) -> str:
     return subprocess.run(["git", *args], check=True, capture_output=True, text=True, cwd=cwd).stdout
 
@@ -70,7 +66,6 @@ def round_comments(comments: list, boundary: str | None) -> list:
 
 def build_diffs(pr_dir: Path, repo_dir: Path, pr: dict, boundary: str | None) -> list:
     """Per-anchor review-time diffs for the round; the full change set for the current state."""
-    n = pr_dir.name
     comments = json.loads((pr_dir / "comments.json").read_text())
     anchors = sorted({c["original_commit_id"] for c in round_comments(comments, boundary)
                       if c.get("original_commit_id")})
@@ -83,8 +78,17 @@ def build_diffs(pr_dir: Path, repo_dir: Path, pr: dict, boundary: str | None) ->
             parts.append({"anchor": anchor, "diff": diff})
         if parts:
             return parts
-    body = gh("pr", "diff", n, cwd=repo_dir)
-    return [{"anchor": None, "diff": body}]
+    # The reviewed change set is the branch's own commits up to the commit being
+    # reviewed, computed locally. Diffing against the *reviewed head* — the
+    # round's anchor, or the PR head for the current state — keeps the snapshot
+    # consistent with the worktree and omits commits that postdate the review: a
+    # review must not see the future. The corpus's commits are always in the
+    # local clone, so git is the only source of truth here; a failure is a real
+    # error, not a signal to consult a different source.
+    reviewed = review_head(pr, comments, boundary)
+    fork = git("-C", str(repo_dir), "merge-base", pr["base"]["sha"], reviewed).strip()
+    diff = git("-C", str(repo_dir), "diff", fork, reviewed)
+    return [{"anchor": None, "diff": diff}]
 
 
 def snapshot_files(diffs: list) -> list:
