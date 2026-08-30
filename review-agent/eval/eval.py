@@ -21,9 +21,11 @@ procedure, where the reviewer is given the same packet inputs.
 
 The matcher's verdicts are not trusted as a measurement until validated against
 the expert's reactions; recall is reported meanwhile as an
-unvalidated matcher reading. Precision is not measured here at all: a virtual
-review has no expert reactions, so "would the expert dispute this comment?"
-needs the calibrated judge, which is a later phase. See PLAN.md.
+unvalidated matcher reading. Precision is not measured here: virtual reviews
+have no expert reactions, so "would the expert dispute this comment?" is judged
+by the review judge (eval/judge.md, run by run-judge.py and scored by
+calibrate/measure-agreement.py), which has had an initial calibration on PR 439
+but is not yet trusted as a measurement. See PLAN.md.
 """
 from __future__ import annotations
 
