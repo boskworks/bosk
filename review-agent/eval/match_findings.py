@@ -25,7 +25,8 @@ MATCH_INSTRUCTION = (
 def match_findings(repo_dir: Path, model: str, gold_bodies: list, comments: list, log: Path) -> list:
     """Ask the model which review comments cover which gold findings. Returns the 'matched' list.
 
-    The model occasionally rambles or its call fails; retry once before giving up.
+    A failed call is a failed match: it is surfaced to the caller, not retried on
+    the hope that a second attempt happens to work.
     """
     payload = {
         "gold_findings": gold_bodies,
@@ -36,15 +37,9 @@ def match_findings(repo_dir: Path, model: str, gold_bodies: list, comments: list
     }
     cmd = ["opencode", "run", "--auto", "--dir", str(repo_dir), "--model", model,
            MATCH_INSTRUCTION + json.dumps(payload)]
-    last_error = None
-    for _ in range(2):
-        try:
-            with log.open("w") as f:
-                subprocess.run(cmd, check=True, stdout=f, stderr=subprocess.STDOUT, timeout=600)
-            return extract_json(log.read_text()).get("matched", [])
-        except (RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-            last_error = e
-    raise RuntimeError(f"match failed after 2 attempts: {last_error}")
+    with log.open("w") as f:
+        subprocess.run(cmd, check=True, stdout=f, stderr=subprocess.STDOUT, timeout=600)
+    return extract_json(log.read_text()).get("matched", [])
 
 
 def extract_json(text: str) -> dict:
