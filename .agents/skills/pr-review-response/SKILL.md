@@ -1,0 +1,34 @@
+---
+name: pr-review-response
+description: Respond to the review comments on a pull request
+---
+
+Respond to the review comments on a pull request on behalf of the maintainer.
+
+## Workflow
+
+1. Read the PR and list its review comments:
+   `gh api repos/{owner}/{repo}/pulls/{pull_number}/comments --paginate --jq '.[] | {id, in_reply_to_id, user: .user.login, path, line, original_line, original_start_line, diff_hunk, body}'`
+   (group them into threads by `in_reply_to_id`; the top-level comment is each thread's root. Note that GitHub normalizes a reply to a reply so its `in_reply_to_id` points at the thread root, not the immediate parent — a reply to the maintainer's follow-up still groups under the original comment).
+2. For every comment, either make the requested change (or a better one) or refute the comment with specific reasoning. There is no third option, and no comment gets skipped.
+3. Reply to every comment — including the ones you addressed with a change. Say what you changed and where (commit hash), or why you're refuting.
+4. Push a new commit with the changes, then post the replies.
+
+## Which line a comment references
+
+A comment's `original_line` (or the span `original_start_line`..`original_line`, for a range comment) within its `diff_hunk` shows exactly what the commenter was looking at; read the comment in that context. `line` is the comment's current position and may be null or stale; don't trust it to point at the code. Never guess which code a comment refers to from the conversation.
+
+## Weight of comments
+
+Pay particular attention to comments from the maintainer (login `prdoyle`). They carry more weight than comments from `prdoyle-agent` or any other reviewer: the maintainer's questions and objections are decisions, not suggestions. Address them first and directly.
+
+## Posting discipline
+
+- Use `gh api --jq` for all response extraction. Never pipe `gh` output through `head`/`grep`/`sed`: a pipe hands the exit status to the filter and can truncate the error body, so failures become invisible.
+- Reply to a review comment (the pull number is part of the path; omitting it returns 404):
+  `gh api repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies --method POST -f body="..."`
+- Confirm success from the call itself: append `--jq '.id'` to the POST and check the printed id and exit status.
+- Gate on the exit status (`set -e`, or `if ! gh api ...; then`). A non-zero exit means the call failed; read the error.
+- After posting, verify the end state with a read-back (list the comments again and confirm each reply is on its thread). Only report success after that verification.
+- Resolve the threads your replies close out, via GraphQL (the REST API can't resolve threads). Query the thread IDs with `gh api graphql -f query='query { repository(owner: "{owner}", name: "{repo}") { pullRequest(number: {n}) { reviewThreads(first: 20) { nodes { id isResolved path } } } } }'`, then resolve each with `gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "..."}) { thread { isResolved } } }'`. Only resolve a thread once its comment is genuinely addressed; a thread you refuted or only partially addressed stays open.
+- If a comment was posted by mistake, delete it: `gh api repos/{owner}/{repo}/pulls/comments/{comment_id} --method DELETE`.

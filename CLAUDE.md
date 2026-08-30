@@ -12,6 +12,14 @@ Aims to reduce the behaviour gap between local development and production.
 - **Logging**: SLF4J. Tests use Logback
 - **Persistence and replication**: MongoDB (primary), SQL (experimental)
 
+## Design grounding
+
+Before writing or reviewing substantial code in a module, ground yourself in its design principles. Start
+with the user's guide (`USERS.md`, in particular `docs/USERS.md`); it is the best overview of how the
+library is meant to work. Then read what applies to the module in question: the relevant README sections,
+its `DEVELOPERS.md` where present, the `package-info.java` javadocs of the core packages, and the
+foundational types it builds on (Bosk, BoskDriver, ReadSession, Reference).
+
 ## Project Structure
 
 Subprojects starting with `bosk-` are published libraries that contain their own `README.md` files briefly explaining what they are.
@@ -126,12 +134,15 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 
 - Commits in a PR should ideally be rebased and massaged to follow these guidelines prior to committing, to give a clean history:
 
+- **Exception while a PR is under review:** respond to review comments with new commits, one per logical change, and leave the existing commits alone. Don't squash review fixes into the commits that introduced the bugs, and don't rebase the branch, until the maintainer explicitly says it's time to tidy up the history. The guidelines below describe that final tidy-up, not the review process itself.
+
 - Each **logical change** gets its own commit: one commit per bug fix (fix + test), one per refactoring, one per feature.
 - Tests belong in the same commit as the code that motivated them (not in a separate "Tests" commit).
 - Commits should be in this overall order:
   1. Fixes for existing bugs (including new tests for those bugs)
   2. Refactoring to make subsequent work easier
   3. The newly added functionality
+- **Arrange commits in dependency order**: no commit references anything that appears in a future commit.
 - When a bug is introduced **within the same branch**, squash the fix into the commit that introduced the bug. The history should read as if the code was correct from the start.
 - Mechanical refactorings (eg. using an IDE) should be in their own commit describing what they do in enough detail that they could be repeated if necessary.
 - Avoid merging a bug and its fix in the same PR. Prefer squashing the fix into the commit with the bug so it looks like the bug was never there.
