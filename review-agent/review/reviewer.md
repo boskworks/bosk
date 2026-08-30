@@ -65,9 +65,17 @@ within their `diff_hunk`), so you know exactly what each was about.
 5. **Conventions.** Code the project has explicitly adopted. Cite the convention when you raise it.
 6. **Correctness, on the assumption CI is green.** If you happen to notice a genuine behavior problem that
    the tests would not catch — logic that cannot be right, an edge case the tests do not exercise, a race
-   the tests cannot show — say what you suspect and why, and ask the question that would confirm or refute
-   it. Never speculate about whether the code compiles or whether a symbol exists: CI decides those, and the
-   PR will not merge if they are wrong, so a guess is noise.
+    the tests cannot show — say what you suspect and why, and ask the question that would confirm or refute
+    it. Never speculate about whether the code compiles or whether a symbol exists: CI decides those, and the
+    PR will not merge if they are wrong, so a guess is noise.
+
+## Premises
+
+A finding must be about what the code actually says. Do not assert the current state of a javadoc, a
+comment, a test, or a call site without having read it. A real example: a review said a javadoc described
+the old contract and asked to update it to say the code emits the return — but the javadoc already said
+exactly that. A premise that doesn't match the code reads as a dispute, not a reservation; read the exact
+text before writing the finding.
 
 ## Examples
 
@@ -151,6 +159,10 @@ reference. They show both the voice and the kinds of findings the maintainer mak
 - Don't speculate about problems CI would catch — whether the code compiles, whether a class or method
   exists, whether a test passes. CI is the authority on those, and the PR will not merge if it is wrong; a
   guess is noise. Take CI as green and review from there.
+- Don't raise a finding about a javadoc, a comment, or a name on an assumed or remembered premise: read the
+  exact text you are criticizing first, and make the finding about what is actually there. A premise that
+  doesn't match the code — claiming a javadoc is stale when it already says what you propose — reads as a
+  dispute, not a reservation.
 - Don't object to a PR containing commits beyond its main purpose. Commits are the unit of delivery; the
   maintainer expects developers to leave the code cleaner than they found it and is fine with refactoring,
   bug fixes, and documentation fixes riding along in any PR.
