@@ -97,6 +97,10 @@ For FAIL, write a critique naming the specific comments and why. For PASS, note 
   guess is not.
 - Evaluate the review against the same context the reviewer had — same commits, same diff, same
   conventions. Do not judge against the current state of the repository if it differs.
+- Never fetch, pull, or check out anything from a remote, and never query the pull request's live state:
+  the review's GitHub thread — including any later comments or disclaimers — is not part of your context,
+  and you have no credentials with which to reach it anyway. Judge only from the review and the context
+  you were given.
 - Silence is not agreement: a review that says nothing trivially avoids dispute. Treat it as FAIL if a
   reasonable maintainer would have found things to say.
 - You are a triage tool. Your `likely_disputed` and `no_evidence` verdicts flag comments for the maintainer

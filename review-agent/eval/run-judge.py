@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from match_findings import extract_json
@@ -22,6 +24,7 @@ from match_findings import extract_json
 sys.stdout.reconfigure(line_buffering=True)
 
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+_EMPTY_GH_DIR = tempfile.mkdtemp(prefix="review-gh-empty-")
 
 
 def context_text(snapshot: Path, pr_dir: Path) -> str:
@@ -76,7 +79,11 @@ def main():
         + "\n<<<END DATA>>>\n\nRender your verdict in the output format described above."
     )
     cmd = ["opencode", "run", "--auto", "--dir", str(args.repo_dir), "--model", args.model, instruction]
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=900)
+    env = dict(os.environ)
+    env["GH_TOKEN"] = ""
+    env["GITHUB_TOKEN"] = ""
+    env["GH_CONFIG_DIR"] = _EMPTY_GH_DIR
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=900, env=env)
     output = result.stdout.strip()
 
     if args.json:
