@@ -98,7 +98,16 @@ improvement makes the next run cheaper.
 Long-running steps (a review generation, a judge verdict, a matcher call) take minutes each and should be
 launched in the background rather than run blocking in the foreground: start the tool with `nohup`, log to
 a session directory, and gauge progress by tailing the aggregate log or the per-PR generation logs under
-`data/eval/<prompt-hash>-<model>/`. The tools print a line per PR as each one completes.
+`data/eval/<key>/`. The tools print a line per PR as each one completes.
+
+Eval runs do not destroy their predecessors: before a PR is regenerated, its current artifacts (review, log,
+match results, stats) move to `data/eval/archive-<ts>/<key>/`, so successive runs of the same prompt stay
+comparable and a timed-out generation's log survives its retry. Each generation also writes
+`<PR>.stats.json` — duration, token usage (input/output/reasoning/cache), cost, tool calls, tokens/sec, and
+assistant-turn latency, plus the packet's size — so variance in generation time can be diagnosed without
+parsing the raw log. When a regeneration takes more than 2x longer than the previous one for the same PR,
+the eval flags it as a warning in both the run output and the report: a large slowdown is a signal worth
+investigating (model degradation or rate limiting), not something to absorb silently.
 
 ## The loop
 
@@ -217,6 +226,7 @@ review-agent/
     judge.md               # judge prompt — the instrument (uncalibrated)
     run-judge.py           # run the judge on a review JSON (triage)
     match_findings.py      # the recall matcher (imported by eval.py)
+    analyze.py             # post hoc analysis: stats, run comparison, outside-packet audit, in-flight monitor
   calibrate/               # workflow: Calibrate — keep the instruments trustworthy
     harvest-comments.py    # mine the maintainer's comments as few-shot material
     measure-agreement.py   # judge verdicts vs the expert's labels: the calibration score
@@ -225,9 +235,11 @@ review-agent/
     fetch-prs.sh           # closed agent PRs, excluding base_ref_changed: metadata, comments, reactions
     classify-comments.py   # labels: emoji / "Question:" / unjudged → ground truth
     build-packet.py        # the reviewer's inputs: snapshot + worktree at the reviewed commit
+  tests/                   # hermetic unit tests on the tooling's pure cores
   data/                    # gitignored
     corpus/<PR>/…          # reference data: metadata, comments, reactions, classifications, contexts
-    eval/<prompt-hash>-<model>/<PR>.json   # run artifacts: virtual reviews, match results, logs
+    eval/<key>/<PR>.{json,log,stats,match*}   # run artifacts: virtual reviews, generation logs and stats, match results
+    eval/archive-<ts>/<key>/…                 # superseded generations, preserved for post hoc analysis
     reports/               # evidence output
 ```
 
