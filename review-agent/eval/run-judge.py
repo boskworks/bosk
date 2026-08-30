@@ -62,10 +62,14 @@ def main():
     parser.add_argument("--out", help="write the judge's verdict to this path (default: stdout)")
     parser.add_argument("--packets", default=str(Path(__file__).resolve().parent.parent / "data" / "packets"),
                         help="where review packets live (default %(default)s)")
+    parser.add_argument("--packet", help="packet directory for the PR's review-time context; "
+                        "defaults to <packets>/<PR>-r1 for the round-based packets, and must be "
+                        "given for PRs whose packet is the current-state one (no review rounds)")
     args = parser.parse_args()
 
     judge_prompt = (Path(__file__).resolve().parent / "judge.md").read_text()
-    default_snapshot = Path(args.packets) / f"{args.pr_dir.name}-r1" / "snapshot.json"
+    default_snapshot = (Path(args.packet) / "snapshot.json" if args.packet
+                        else Path(args.packets) / f"{args.pr_dir.name}-r1" / "snapshot.json")
     ctx_text = context_text(default_snapshot, args.pr_dir)
 
     instruction = (
