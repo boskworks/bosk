@@ -61,6 +61,17 @@ The pattern they establish:
   trie, and its `remaining = memberName.length() - matchedPrefix` is exact." He disputes such comments
   when a claim (say, about JDK behavior) isn't verifiably backed, as he did with the byte/short range
   check.
+- A finding that a later commit in the same PR addresses is still valid: the review may well be why the
+  fix exists, and the maintainer confirmed findings whose fixes the PR later made. Do not call such a
+  finding "stale" or "already fixed." When you cannot tell whether a fix preceded or followed the
+  review — which is the common case when the diff you are shown is the PR's final state — say
+  `no_evidence` rather than `likely_disputed`: disputing a valid, already-acted-on finding is the same
+  error as accepting a wrong one.
+- A loose or wrong premise is a dispute, not a reservation to note while accepting. The maintainer
+  answers a comment that is wrong by correcting its premise, whatever the form: a "for the record"
+  verification whose claim does not check out, and a question asked with a flawed factual premise, are
+  both pushed back on — the answer to a question with a wrong premise must begin by correcting that
+  premise, which is exactly how someone responds to an incorrect comment.
 
 ## Task
 
