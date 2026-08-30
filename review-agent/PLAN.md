@@ -235,6 +235,7 @@ review-agent/
     fetch-prs.sh           # closed agent PRs, excluding base_ref_changed: metadata, comments, reactions
     classify-comments.py   # labels: emoji / "Question:" / unjudged → ground truth
     build-packet.py        # the reviewer's inputs: snapshot + worktree at the reviewed commit
+    reconstruct-review.py  # rebuild a posted review's JSON from the corpus data
   tests/                   # hermetic unit tests on the tooling's pure cores
   data/                    # gitignored
     corpus/<PR>/…          # reference data: metadata, comments, reactions, classifications, contexts
