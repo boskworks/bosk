@@ -27,7 +27,7 @@ the maintainer's reactions._
   reviewed commit, filtered by review round). Verified to make every gold-finding file reachable (24/24).
   A reachability guard excludes findings whose file is not in the snapshot.
 - Harness hardened: per-PR failures surface in the aggregate ("N of M PRs evaluated") instead of silently
-  producing 0/0; the matcher retries once; generation timeout is surfaced, not swallowed.
+  producing 0/0; a failed matcher call surfaces, not retried; generation timeout is surfaced, not swallowed.
 - All python-implemented judgments removed: `classify-comments.py` inference, `write-report.py` keyword
   clustering, and `validate.py` (deleted).
 - PRs whose base branch was changed (`base_ref_changed`) are excluded at fetch.
@@ -38,14 +38,15 @@ the maintainer's reactions._
 - The matcher (an LLM deciding whether a review comment captures a gold finding) is unvalidated: its
   numbers are reported as a matcher reading, not a measurement, until validated against the maintainer's
   reactions.
-- The judge (`eval/judge.md`) is built but uncalibrated; judge calibration and the refine loop both
-  require live review cycles — the seed corpus has no review-agent comments to react to.
+- The judge (`eval/judge.md`) is built and had an initial calibration on PR 439 (the "concessions are
+  not blanket stances" and acceptance-reasoning refinements), but it is not yet trusted as a measurement;
+  further calibration and the refine loop both require more reactions to the agent's posted reviews.
 
 **Next step — the maintainer produces reactions:**
 1. Review the agent's posted reviews in the normal GitHub flow: 👍/👎 reactions, "Question:"-prefixed
    replies, and their own review comments for anything missed.
 2. React on the unposted (virtual) review findings too, so the matcher can be validated.
-3. Then: validate the matcher, calibrate the judge, and run the first refinement step.
+3. Then: validate the matcher, continue calibrating the judge, and run the first refinement step.
 
 ## Roles
 
@@ -152,8 +153,9 @@ One run produces **one proposed patch** to `review-agent/review/reviewer.md`, wi
   semantic: an LLM matcher decides whether a review comment captures a gold finding, because string
   similarity misses reworded matches. The matcher's verdicts are not trusted as a measurement until
   validated against the expert's reactions; until then, recall is an unvalidated matcher
-  reading. Precision on virtual reviews would need the calibrated judge, since they have no expert
-  reactions, so it is deferred to the judge phase.
+  reading. Precision on virtual reviews is judged by the review judge (run-judge.py), since they have no
+  expert reactions; the judge has had an initial calibration on PR 439 and is not yet trusted as a
+  measurement.
 - **Attribution by marker.** The reviewer and the PR author both post under the reviewer account
   (`prdoyle-agent`), so the account alone cannot tell them apart. Review comments are the top-level ones
   `review-agent/review/post-review.py` stamps with the `[review]` marker; author comments carry no marker. Threaded
@@ -168,7 +170,8 @@ One run produces **one proposed patch** to `review-agent/review/reviewer.md`, wi
   PR's fork point at review time, and `git diff <that> <anchor>` reproduces the review-time diff for the
   comments made against that anchor. This works for merged, rebased, and squash-merged PRs alike, because
   `PR.base.sha` is GitHub's record of the base tip at review time. For a non-merged (open or closed-without-
-  merge) PR, there are no review anchors, and `gh pr diff` gives the change set. Known limitation: a
+  merge) PR, there are no review anchors, and the change set is the local clone's `git diff` from the fork
+  point to the reviewed head — the same commit the worktree is pinned to. Known limitation: a
   force-pushed `main` can confuse reconstruction — accepted as tolerable (rare, and the reachability guard
   contains the damage).
 - **Review packets.** The reviewer's inputs are a *review packet* built by `corpus/build-packet.py`: a
@@ -223,7 +226,7 @@ review-agent/
     show-log.py            # render a generation log as readable activity for monitoring
     write-report.py        # evidence report: per-PR counts, raw threads, wall-of-text flag
     refiner.md             # propose-step discipline (one focused change, evidence-cited, voice-preserving)
-    judge.md               # judge prompt — the instrument (uncalibrated)
+    judge.md               # judge prompt — the instrument (initially calibrated on PR 439)
     run-judge.py           # run the judge on a review JSON (triage)
     match_findings.py      # the recall matcher (imported by eval.py)
     analyze.py             # post hoc analysis: stats, run comparison, outside-packet audit, in-flight monitor
@@ -273,7 +276,7 @@ possible logic. This is the structural form of the CLAUDE.md principle "separate
 to facilitate unit testing". It applies where the logic is non-trivial and bug-prone:
 
 - `corpus/build-packet.py` — core `build_snapshot(comments, diffs, pr, boundary, reactions)`; shell reads the
-  corpus and runs git/gh.
+  corpus and runs git.
 - `corpus/classify-comments.py` — core `classify(comments, reactions, reviews, pr_meta)`; shell reads the corpus
   and writes `classification.json`.
 - `review/post-review.py`, `review/post-responses.py` — cores `validate_review(doc)` and `validate_responses(doc)`
@@ -323,7 +326,8 @@ repo (a merged PR, so no GitHub access is needed) is a possible future addition.
 - Draft `review-agent/review/reviewer.md` v1 from that signature (role, process, priorities, output format, anti-patterns,
   few-shot examples, boundary rule).
 - These PRs predate the review agent, so they supply gold *findings* (style + recall baseline) but no
-  dispute data; the judge accrues calibration data from the first live review cycles.
+  dispute data; the judge received its initial calibration on PR 439 and continues to accrue calibration
+  data from live review cycles.
 
 ### Phase 1 — The refinement runner (partly built)
 
@@ -366,7 +370,8 @@ by the expert, not a number.
   the error is undetectable at fetch time.
 - A dispute signaled neither by 👎 nor by a reply is lost signal, visible only in the raw threads.
 - A PR whose base branch changed is dropped entirely, not partially reconstructed.
-- The seed corpus cannot calibrate the judge until live review cycles accumulate.
+- The seed corpus cannot fully calibrate the judge; an initial calibration was done on PR 439, and further
+  calibration awaits more reactions to the agent's posted reviews.
 - Reviews the expert never reads (nor reacts to) contribute nothing — silence is genuinely ambiguous and is
   deliberately treated as unjudged rather than accepted.
 - Generation can be slow (a review is an agentic loop: the model reads the diff and the surrounding files).

@@ -61,6 +61,17 @@ The pattern they establish:
   trie, and its `remaining = memberName.length() - matchedPrefix` is exact." He disputes such comments
   when a claim (say, about JDK behavior) isn't verifiably backed, as he did with the byte/short range
   check.
+- A finding that a later commit in the same PR addresses is still valid: the review may well be why the
+  fix exists, and the maintainer confirmed findings whose fixes the PR later made. Do not call such a
+  finding "stale" or "already fixed." When you cannot tell whether a fix preceded or followed the
+  review — which is the common case when the diff you are shown is the PR's final state — say
+  `no_evidence` rather than `likely_disputed`: disputing a valid, already-acted-on finding is the same
+  error as accepting a wrong one.
+- A loose or wrong premise is a dispute, not a reservation to note while accepting. The maintainer
+  answers a comment that is wrong by correcting its premise, whatever the form: a "for the record"
+  verification whose claim does not check out, and a question asked with a flawed factual premise, are
+  both pushed back on — the answer to a question with a wrong premise must begin by correcting that
+  premise, which is exactly how someone responds to an incorrect comment.
 
 ## Task
 
@@ -97,6 +108,10 @@ For FAIL, write a critique naming the specific comments and why. For PASS, note 
   guess is not.
 - Evaluate the review against the same context the reviewer had — same commits, same diff, same
   conventions. Do not judge against the current state of the repository if it differs.
+- Never fetch, pull, or check out anything from a remote, and never query the pull request's live state:
+  the review's GitHub thread — including any later comments or disclaimers — is not part of your context,
+  and you have no credentials with which to reach it anyway. Judge only from the review and the context
+  you were given.
 - Silence is not agreement: a review that says nothing trivially avoids dispute. Treat it as FAIL if a
   reasonable maintainer would have found things to say.
 - You are a triage tool. Your `likely_disputed` and `no_evidence` verdicts flag comments for the maintainer

@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from match_findings import extract_json
@@ -22,6 +24,7 @@ from match_findings import extract_json
 sys.stdout.reconfigure(line_buffering=True)
 
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+_EMPTY_GH_DIR = tempfile.mkdtemp(prefix="review-gh-empty-")
 
 
 def context_text(snapshot: Path, pr_dir: Path) -> str:
@@ -59,10 +62,18 @@ def main():
     parser.add_argument("--out", help="write the judge's verdict to this path (default: stdout)")
     parser.add_argument("--packets", default=str(Path(__file__).resolve().parent.parent / "data" / "packets"),
                         help="where review packets live (default %(default)s)")
+    parser.add_argument("--packet", help="packet directory whose snapshot supplies the review-time "
+                        "context for the judge: the diff and comments the review was written from. "
+                        "A review packet holds what the reviewer saw (see build-packet.py). Defaults "
+                        "to <packets>/<PR>-r1, the packet for the first review round; the eval builds "
+                        "one packet per round, named <PR>-rN. Pass the directory explicitly when the "
+                        "review was written against the PR's current state instead, whose packet has "
+                        "no round suffix and lives at <packets>/<PR>")
     args = parser.parse_args()
 
     judge_prompt = (Path(__file__).resolve().parent / "judge.md").read_text()
-    default_snapshot = Path(args.packets) / f"{args.pr_dir.name}-r1" / "snapshot.json"
+    default_snapshot = (Path(args.packet) / "snapshot.json" if args.packet
+                        else Path(args.packets) / f"{args.pr_dir.name}-r1" / "snapshot.json")
     ctx_text = context_text(default_snapshot, args.pr_dir)
 
     instruction = (
@@ -76,7 +87,11 @@ def main():
         + "\n<<<END DATA>>>\n\nRender your verdict in the output format described above."
     )
     cmd = ["opencode", "run", "--auto", "--dir", str(args.repo_dir), "--model", args.model, instruction]
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=900)
+    env = dict(os.environ)
+    env["GH_TOKEN"] = ""
+    env["GITHUB_TOKEN"] = ""
+    env["GH_CONFIG_DIR"] = _EMPTY_GH_DIR
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=900, env=env)
     output = result.stdout.strip()
 
     if args.json:

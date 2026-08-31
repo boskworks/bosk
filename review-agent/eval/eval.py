@@ -19,11 +19,12 @@ snapshot — in particular it cannot read the PR's review thread, which contains
 the gold findings it is scored against. This matches the production review
 procedure, where the reviewer is given the same packet inputs.
 
-The matcher's verdicts are not trusted as a measurement until validated against
-the expert's reactions; recall is reported meanwhile as an
-unvalidated matcher reading. Precision is not measured here at all: a virtual
-review has no expert reactions, so "would the expert dispute this comment?"
-needs the calibrated judge, which is a later phase. See PLAN.md.
+Recall is reported: it is computed by the matcher, a bot that decides which
+of the expert's findings the review captured. Judge-based precision is not
+reported yet: the judge has only been checked against the expert's reactions
+once (PR 439), not enough to trust it. Until the judge is trusted, the only
+way to measure precision is to post the review and have the expert react to
+its comments. See PLAN.md.
 """
 from __future__ import annotations
 
@@ -121,9 +122,10 @@ def instruction_hash() -> str:
 def kill_generation(pid: int) -> None:
     """Kill the generation process and all its descendants.
 
-    killpg only reaches the process group, and opencode can spawn a child in its
-    own session that survives it and keeps running (and writing to the log). The
-    descendant pids are collected before the kill, since a killed parent
+    A descendant may have been started in its own session (its own process
+    group), which killpg on the parent's group would not reach; each descendant
+    is therefore killed by its own process group as well as directly. The
+    descendant pids are collected before any kill, since a killed parent
     reparents its children and a parent-walk afterwards would miss them.
     """
     tree = [pid]
@@ -135,10 +137,11 @@ def kill_generation(pid: int) -> None:
             if k.isdigit():
                 tree.append(int(k))
                 frontier.append(int(k))
-    try:
-        os.killpg(os.getpgid(pid), signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    for p in tree:
+        try:
+            os.killpg(os.getpgid(p), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
     for p in tree:
         try:
             os.kill(p, signal.SIGKILL)
@@ -160,7 +163,11 @@ def generate_review(worktree: Path, model: str, pr: int, snapshot: Path, prompt:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             kill_generation(proc.pid)
-            proc.wait()
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                print(f"PR {pr}: generation timed out and a descendant survived the kill; see {log}",
+                      file=sys.stderr)
             raise RuntimeError(f"generation timed out after {timeout}s (see {log})")
     if proc.returncode != 0:
         raise RuntimeError(f"generation failed (rc {proc.returncode}); see {log}")

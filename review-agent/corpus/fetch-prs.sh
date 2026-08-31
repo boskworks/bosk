@@ -48,8 +48,8 @@ fetch_pr() {
   gh api "repos/$REPO/pulls/$n" \
     --jq '{number,title,body,url,state,mergedAt,merged,merge_commit_sha,base:{ref:.base.ref,sha:.base.sha},head:{ref:.head.ref,sha:.head.sha},author:{login:.user.login},merged_by:(.merged_by.login // null)}' \
     > "$CORPUS_DIR/$n/pr.json"
-  gh api "repos/$REPO/pulls/$n/reviews" > "$CORPUS_DIR/$n/reviews.json"
-  gh api "repos/$REPO/pulls/$n/comments" > "$CORPUS_DIR/$n/comments.json"
+  gh api "repos/$REPO/pulls/$n/reviews" --paginate > "$CORPUS_DIR/$n/reviews.json"
+  gh api "repos/$REPO/pulls/$n/comments" --paginate > "$CORPUS_DIR/$n/comments.json"
   for id in $(jq -r '.[].id' "$CORPUS_DIR/$n/comments.json"); do
     gh api "repos/$REPO/pulls/comments/$id/reactions" > "$CORPUS_DIR/$n/reactions/$id.json"
   done
