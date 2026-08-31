@@ -36,7 +36,10 @@ def alive_pids(pids: list[int]) -> list[int]:
 
 class KillGenerationTest(unittest.TestCase):
     def test_terminates_the_whole_tree(self):
-        proc = subprocess.Popen(["bash", "-c", "sleep 60 & sleep 60 & sleep 60"],
+        # `wait` keeps the shell alive so the tree it spawned still exists when
+        # we walk it; without it, non-interactive bash exits and reparents its
+        # background jobs, making the test timing-dependent.
+        proc = subprocess.Popen(["bash", "-c", "sleep 60 & sleep 60 & sleep 60 & wait"],
                                 start_new_session=True)
         time.sleep(0.3)
         tree = descendant_pids(proc.pid)
