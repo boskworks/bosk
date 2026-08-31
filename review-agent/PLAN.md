@@ -157,9 +157,11 @@ One run produces **one proposed patch** to `review-agent/review/reviewer.md`, wi
   expert reactions; the judge has had an initial calibration on PR 439 and is not yet trusted as a
   measurement.
 - **Attribution by marker.** The reviewer and the PR author both post under the reviewer account
-  (`prdoyle-agent`), so the account alone cannot tell them apart. Review comments are the top-level ones
-  `review-agent/review/post-review.py` stamps with the `[review]` marker; author comments carry no marker. Threaded
-  replies are never review comments. The review JSON's `prompt` field records the prompt version that
+  (`prdoyle-agent`), so the account alone cannot tell them apart. The `[review]` marker is applied by
+  `review-agent/review/post-review.py` to review comments and by `review-agent/review/post-responses.py`
+  to replies, so it no longer distinguishes them: review comments are the top-level ones, and threaded
+  replies are never review comments, marked or not. Author comments carry no marker. The review JSON's
+  `prompt` field records the prompt version that
   produced the review at generation time — useful because a timestamp is unreliable: a long-lived
   opencode window may cache an older prompt, or a review may run against an edited-but-uncommitted prompt.
   It is not stamped into the posted comments, so a posted review's prompt version is not recoverable from
@@ -338,8 +340,8 @@ run on demand in an opencode window:
 1. **fetch** — closed agent PRs lacking corpus records, excluding any whose base branch changed: PR
    metadata, reviews, review comments (`original_commit_id`, reactions, `html_url`), and the maintainer's
    added review comments.
-2. **classify** — attribute comments by the `[review]` marker (the author and the reviewer share an
-   account); apply the label priority above.
+2. **classify** — attribute only the top-level comments as review comments: threaded replies, marked or
+   not, are never review comments; apply the label priority above.
 3. **report** — the evidence: per-PR disputed / confirmed / question / added / unjudged counts and the raw
    threads.
 4. **eval** (as needed) — regenerate virtual reviews against per-anchor review-time contexts; report

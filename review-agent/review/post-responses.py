@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Post a responses JSON as replies to, and resolutions of, PR review threads.
 
-The response cycle's output is a JSON document (see the pr-review skill): one
+The response cycle's output is a JSON document (see the pr-reviewer skill): one
 entry per thread, carrying the thread's root comment id, the reply text, and
 whether to resolve the thread. This script is the only path from that JSON to
 GitHub: it posts each reply and resolves each accepted thread. It is the
 response cycle's counterpart to post-review.py.
+
+Both the reviewer and the PR author post under the same account
+(`prdoyle-agent`), so replies are stamped with the `[review]` marker, mirroring
+post-review.py; author comments carry no marker. The marker is applied here,
+not in the responses JSON, so it cannot be forgotten.
 """
 from __future__ import annotations
 
@@ -16,6 +21,8 @@ import sys
 from pathlib import Path
 
 sys.stdout.reconfigure(line_buffering=True)
+
+MARK = "[review]"
 
 
 def gh(*args: str) -> str:
@@ -52,7 +59,8 @@ def review_threads(repo: str, pr: int) -> list:
     return nodes["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
 
 
-def reply_to(repo: str, pr: int, comment_id: int, body: str) -> None:
+def reply_to(repo: str, pr: int, comment_id: int, body: str, mark: bool) -> None:
+    body = f"{MARK} {body}" if mark else body
     gh(f"repos/{repo}/pulls/{pr}/comments/{comment_id}/replies", "--method", "POST",
        "-f", f"body={body}", "--jq", ".id")
 
@@ -69,6 +77,8 @@ def main():
     parser.add_argument("pr", type=int, help="pull request number")
     parser.add_argument("responses", type=Path, help="path to the responses JSON")
     parser.add_argument("--repo", default="boskworks/bosk")
+    parser.add_argument("--no-mark", action="store_true",
+                        help=f"don't prepend '{MARK}' to posted replies")
     args = parser.parse_args()
 
     try:
@@ -94,7 +104,7 @@ def main():
             print(f"WARN no review thread contains comment {e['comment_id']}; skipping", file=sys.stderr)
             continue
         if e["reply"]:
-            reply_to(args.repo, args.pr, e["comment_id"], e["reply"])
+            reply_to(args.repo, args.pr, e["comment_id"], e["reply"], not args.no_mark)
             print(f"replied on comment {e['comment_id']}")
         if e["resolve"] and not thread.get("isResolved"):
             resolve_thread(thread["id"])
