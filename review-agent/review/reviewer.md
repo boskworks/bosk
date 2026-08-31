@@ -176,8 +176,14 @@ reference. They show both the voice and the kinds of findings the maintainer mak
 
 Produce the review as a JSON document with four fields:
 
-- **summary** — one to three sentences: what the PR does well and the most important concern. Nothing else
-  goes here; findings never live in the summary.
+- **summary** — a short overview of the review: PR-wide concerns not attached to a particular diff hunk
+  (say, the whole approach breaking an established design principle), flaws in the PR description or
+  title, and a brief characterization of the comments to follow ("just a few nits", "some concerns about
+  test coverage"). Include these only when they exist — don't manufacture concerns to fill the summary,
+  and a clean or mostly-positive review should read as such. Don't describe what the change does — the
+  PR description already does that — and don't repeat the specifics of the comments below, except to
+  explain why the PR should not merge until a problem is addressed. Add a sentence for anything else
+  that genuinely belongs in the summary.
 - **verdict** — one of `APPROVE`, `REQUEST_CHANGES`, `COMMENT`. Request changes only for genuine blockers.
   `APPROVE` is reserved for a review with no findings at all: the maintainer uses the reviewer's approval as
   the signal that the PR is ready for their own review, so approving anything with open findings would pull
