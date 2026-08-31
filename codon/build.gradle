@@ -1,5 +1,7 @@
 
 dependencies {
-	// No dependencies beyond what the root build.gradle adds:
-	// slf4j-api for logging, jspecify for annotations, etc.
+	// BytecodeDisassembler exposes org.slf4j.Logger in its API, so this must be `api`
+	// to match the `requires transitive` in module-info.java.
+	api libs.slf4j.api
+	// jspecify for annotations, and the like, come from the root build.gradle.
 }
