@@ -12,6 +12,18 @@ Aims to reduce the behaviour gap between local development and production.
 - **Logging**: SLF4J. Tests use Logback
 - **Persistence and replication**: MongoDB (primary), SQL (experimental)
 
+## Temp files (read this first)
+
+Never write scratch files, logs, or downloads to `/tmp` or the workspace root. Create a
+session-specific directory once at the start of every session and keep ALL scratch artifacts inside it:
+
+- Base: `$TMPDIR/opencode`
+- Per session: `$TMPDIR/opencode/ses-<shortid>/`
+
+Do not write scratch files directly into the shared base dir or the workspace. If a long-running background
+job must survive past the session, log it inside the session dir but point it at the real destination, and
+record the PID + log path in your reply.
+
 ## Design grounding
 
 Before writing or reviewing substantial code in a module, ground yourself in its design principles. Start
