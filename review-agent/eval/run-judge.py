@@ -62,9 +62,13 @@ def main():
     parser.add_argument("--out", help="write the judge's verdict to this path (default: stdout)")
     parser.add_argument("--packets", default=str(Path(__file__).resolve().parent.parent / "data" / "packets"),
                         help="where review packets live (default %(default)s)")
-    parser.add_argument("--packet", help="packet directory for the PR's review-time context; "
-                        "defaults to <packets>/<PR>-r1 for the round-based packets, and must be "
-                        "given for PRs whose packet is the current-state one (no review rounds)")
+    parser.add_argument("--packet", help="packet directory whose snapshot supplies the review-time "
+                        "context for the judge: the diff and comments the review was written from. "
+                        "A review packet holds what the reviewer saw (see build-packet.py). Defaults "
+                        "to <packets>/<PR>-r1, the packet for the first review round; the eval builds "
+                        "one packet per round, named <PR>-rN. Pass the directory explicitly when the "
+                        "review was written against the PR's current state instead, whose packet has "
+                        "no round suffix and lives at <packets>/<PR>")
     args = parser.parse_args()
 
     judge_prompt = (Path(__file__).resolve().parent / "judge.md").read_text()
