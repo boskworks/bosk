@@ -45,6 +45,8 @@ reproducible and evaluable.
      threads. Post it with `review-agent/review/post-responses.py <PR> <path>`, which is the only thing
      that touches GitHub. The posting script stamps every reply with the `[review]` marker (the reviewer
      and the author share an account), so do not include the marker in the responses JSON yourself.
+     Thread resolution is yours alone: the author's skill leaves threads open, so set `resolve: true`
+     only after you have verified the response actually addresses the comment.
 4. **Fresh review.** When every thread is resolved, run the full review again at the new head — fixes can
    introduce new issues — and repeat the cycle. A clean pass posts `APPROVE` (handing off to the
    maintainer); anything else continues the cycle.

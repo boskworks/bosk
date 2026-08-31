@@ -33,5 +33,7 @@ Pay particular attention to comments from the maintainer (login `prdoyle`). They
 - Confirm success from the call itself: append `--jq '.id'` to the POST and check the printed id and exit status.
 - Gate on the exit status (`set -e`, or `if ! gh api ...; then`). A non-zero exit means the call failed; read the error.
 - After posting, verify the end state with a read-back (list the comments again and confirm each reply is on its thread). Only report success after that verification.
-- Resolve the threads your replies close out, via GraphQL (the REST API can't resolve threads). Query the thread IDs with `gh api graphql -f query='query { repository(owner: "{owner}", name: "{repo}") { pullRequest(number: {n}) { reviewThreads(first: 20) { nodes { id isResolved path } } } } }'`, then resolve each with `gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "..."}) { thread { isResolved } } }'`. Only resolve a thread once its comment is genuinely addressed; a thread you refuted or only partially addressed stays open.
+- Don't resolve threads. The threads you reply to are the review agent's, and it decides whether your
+  response is acceptable and resolves each thread itself after verifying; resolving a thread yourself
+  pre-empts that verification.
 - If a comment was posted by mistake, delete it: `gh api repos/{owner}/{repo}/pulls/comments/{comment_id} --method DELETE`.
