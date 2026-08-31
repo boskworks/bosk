@@ -19,13 +19,12 @@ snapshot — in particular it cannot read the PR's review thread, which contains
 the gold findings it is scored against. This matches the production review
 procedure, where the reviewer is given the same packet inputs.
 
-The matcher's verdicts are not trusted as a measurement until validated against
-the expert's reactions; recall is reported meanwhile as an
-unvalidated matcher reading. Precision is not measured here: virtual reviews
-have no expert reactions, so "would the expert dispute this comment?" is judged
-by the review judge (eval/judge.md, run by run-judge.py and scored by
-calibrate/measure-agreement.py), which has had an initial calibration on PR 439
-but is not yet trusted as a measurement. See PLAN.md.
+Recall is reported: it is computed by the matcher, a bot that decides which
+of the expert's findings the review captured. Judge-based precision is not
+reported yet: the judge has only been checked against the expert's reactions
+once (PR 439), not enough to trust it. Until the judge is trusted, the only
+way to measure precision is to post the review and have the expert react to
+its comments. See PLAN.md.
 """
 from __future__ import annotations
 
