@@ -1,6 +1,6 @@
 ---
-name: pr-review
-description: Review a pull request
+name: pr-reviewer
+description: Review a pull request on behalf of the maintainer as the review agent: build the review packet, produce and post the review, verify the author's responses, and re-review until clean. Use when asked to review a pull request.
 ---
 Review a pull request on behalf of the maintainer, and carry the review through the full cycle until the
 PR is clean or the maintainer takes over.
@@ -43,7 +43,8 @@ reproducible and evaluable.
      array with one entry per thread, each `{"comment_id": <int>, "reply": "<string>", "resolve": <bool>}`,
      where `comment_id` is the thread's root comment id from the snapshot and `resolve` marks accepted
      threads. Post it with `review-agent/review/post-responses.py <PR> <path>`, which is the only thing
-     that touches GitHub.
+     that touches GitHub. The posting script stamps every reply with the `[review]` marker (the reviewer
+     and the author share an account), so do not include the marker in the responses JSON yourself.
 4. **Fresh review.** When every thread is resolved, run the full review again at the new head — fixes can
    introduce new issues — and repeat the cycle. A clean pass posts `APPROVE` (handing off to the
    maintainer); anything else continues the cycle.

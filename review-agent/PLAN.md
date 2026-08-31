@@ -158,7 +158,8 @@ One run produces **one proposed patch** to `review-agent/review/reviewer.md`, wi
   measurement.
 - **Attribution by marker.** The reviewer and the PR author both post under the reviewer account
   (`prdoyle-agent`), so the account alone cannot tell them apart. Review comments are the top-level ones
-  `review-agent/review/post-review.py` stamps with the `[review]` marker; author comments carry no marker. Threaded
+  `review-agent/review/post-review.py` stamps with the `[review]` marker, and replies
+  `review-agent/review/post-responses.py` stamps the same way; author comments carry no marker. Threaded
   replies are never review comments. The review JSON's `prompt` field records the prompt version that
   produced the review at generation time — useful because a timestamp is unreliable: a long-lived
   opencode window may cache an older prompt, or a review may run against an edited-but-uncommitted prompt.
