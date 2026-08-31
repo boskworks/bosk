@@ -27,7 +27,7 @@ the maintainer's reactions._
   reviewed commit, filtered by review round). Verified to make every gold-finding file reachable (24/24).
   A reachability guard excludes findings whose file is not in the snapshot.
 - Harness hardened: per-PR failures surface in the aggregate ("N of M PRs evaluated") instead of silently
-  producing 0/0; the matcher retries once; generation timeout is surfaced, not swallowed.
+  producing 0/0; a failed matcher call surfaces, not retried; generation timeout is surfaced, not swallowed.
 - All python-implemented judgments removed: `classify-comments.py` inference, `write-report.py` keyword
   clustering, and `validate.py` (deleted).
 - PRs whose base branch was changed (`base_ref_changed`) are excluded at fetch.
@@ -170,7 +170,8 @@ One run produces **one proposed patch** to `review-agent/review/reviewer.md`, wi
   PR's fork point at review time, and `git diff <that> <anchor>` reproduces the review-time diff for the
   comments made against that anchor. This works for merged, rebased, and squash-merged PRs alike, because
   `PR.base.sha` is GitHub's record of the base tip at review time. For a non-merged (open or closed-without-
-  merge) PR, there are no review anchors, and `gh pr diff` gives the change set. Known limitation: a
+  merge) PR, there are no review anchors, and the change set is the local clone's `git diff` from the fork
+  point to the reviewed head — the same commit the worktree is pinned to. Known limitation: a
   force-pushed `main` can confuse reconstruction — accepted as tolerable (rare, and the reachability guard
   contains the damage).
 - **Review packets.** The reviewer's inputs are a *review packet* built by `corpus/build-packet.py`: a
@@ -275,7 +276,7 @@ possible logic. This is the structural form of the CLAUDE.md principle "separate
 to facilitate unit testing". It applies where the logic is non-trivial and bug-prone:
 
 - `corpus/build-packet.py` — core `build_snapshot(comments, diffs, pr, boundary, reactions)`; shell reads the
-  corpus and runs git/gh.
+  corpus and runs git.
 - `corpus/classify-comments.py` — core `classify(comments, reactions, reviews, pr_meta)`; shell reads the corpus
   and writes `classification.json`.
 - `review/post-review.py`, `review/post-responses.py` — cores `validate_review(doc)` and `validate_responses(doc)`
