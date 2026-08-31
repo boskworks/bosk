@@ -74,8 +74,8 @@ The usual Gradle commands, plus:
   - The overarching goal of Bosk is to reduce the behaviour gap between local development and production. If your code works, you probably did things right.
 
 ### Code ordering
-- Generally, in a class, instance fields come first, followed by shared mutable state (i.e. static fields, even if the reference is final), then constructors, then methods in use-before-declaration order
-- Internal constants (static final) and the logger go at the bottom
+- Generally, in a class, instance fields come first, followed by shared mutable state (i.e. static fields, even if the reference is final),
+  then constructors, then methods in use-before-declaration order, and finally internal constants (static final) and the logger.
 
 ### Formatting
 
@@ -85,8 +85,13 @@ The usual Gradle commands, plus:
   - Conditional guarded statements should be on their own line to facilitate breakpoints
 - Prefer if-then-else over early returns (to make subsequent refactoring easier) except in specific situations:
   - If there's an especially simple case, like errors or "already computed" one-liner cases, those can return early to avoid mixing with complex logic
+
+### Writing style
+
 - Documentation and comments should compose proper sentences with normal words and punctuation,
   rather than gluing together sentence fragments with em dashes.
+- Avoid the word "honest", including the filler "to be honest" (just drop it);
+  prefer more meaningful words like "accurate", "representative", "faithful", "realistic", etc.
 
 ### Modules
 
@@ -120,6 +125,14 @@ just be sure to add a brief comment explaining the situation.
 Don't delete unused constructors of Exception subclasses.
 We typically provide a suite of constructors so future maintainers won't need to wonder if they're
 breaking some implicit design rule by adding a new exception that wasn't there before.
+
+### Logging
+
+Pick the log level by its audience:
+- `error` and `warn` are read by the application's operators, who may not know what bosk is. Write them in plain language, to guide troubleshooting. As a library, prefer `warn`; use `error` only for malfunctions that will inevitably be fatal to an operation the application was trying to perform.
+- `info` targets knowledgeable Bosk users, and should explain what the library is doing in a way that helps them learn to use it more effectively.
+- `debug` targets Bosk developers. Can use some Bosk jargon, but should also help new Bosk developers climb the learning curve, and should allow developers to tell what code paths executed.
+- `trace` targets expert Bosk developers troubleshooting very tricky bugs. Can include information too voluminous to emit under most circumstances, such as stack traces for routine situations, dumps of entire data structures, or high-frequency messages, but do this cautiously, since even disabled log statements have nonzero overhead.
 
 ### Javadocs
 
