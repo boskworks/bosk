@@ -12,7 +12,8 @@ Respond to the review comments on a pull request on behalf of the maintainer.
    (group them into threads by `in_reply_to_id`; the top-level comment is each thread's root. Note that GitHub normalizes a reply to a reply so its `in_reply_to_id` points at the thread root, not the immediate parent — a reply to the maintainer's follow-up still groups under the original comment).
 2. For every comment, either make the requested change (or a better one) or refute the comment with specific reasoning. There is no third option, and no comment gets skipped.
 3. Reply to every comment — including the ones you addressed with a change. Say what you changed and where (commit hash), or why you're refuting.
-4. Push a new commit with the changes, then post the replies.
+4. Sweep for the same class of mistake. A finding usually names one instance of a mistake that recurs: if the reviewer flags a stale doc, a hardcoded path, or a test that doesn't exercise its behavior, look for the same mistake elsewhere and fix the siblings in the same pass, saying in the reply that you swept for it.
+5. Push a new commit with the changes, then post the replies.
 
 ## Which line a comment references
 
