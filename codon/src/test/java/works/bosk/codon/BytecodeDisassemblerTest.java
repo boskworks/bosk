@@ -6,7 +6,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
 import java.lang.classfile.Label;
+import java.lang.classfile.MethodModel;
 import java.lang.classfile.Opcode;
 import java.lang.classfile.TypeKind;
 import java.lang.classfile.instruction.SwitchCase;
@@ -16,6 +18,7 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import javax.tools.ForwardingJavaFileManager;
 import javax.tools.JavaCompiler;
@@ -140,6 +143,9 @@ public class BytecodeDisassemblerTest {
 		assertTrue(text.contains("     3: -2: invokestatic SomeClass.use:(J)V"), text);
 		assertTrue(text.contains("     0: +2: ldc2_w 3"), text);
 		assertTrue(text.contains("     2: -1: multianewarray [[I dims=2"), text);
+		assertTrue(text.contains("     1: +0: getfield SomeClass.fld:I"), text);
+		assertTrue(text.contains("     5: -2: putfield SomeClass.fld:I"), text);
+		assertTrue(text.contains("     9: -1: putstatic SomeClass.stat:I"), text);
 	}
 
 	@Test
@@ -209,6 +215,119 @@ public class BytecodeDisassemblerTest {
 			assertTrue(capture.formattedMessages().getFirst().contains("== sumUpTo(I)I =="),
 				"Disassembly should include the sumUpTo method");
 		}
+	}
+
+	@Test
+	void overloads_disassembleMethodAndCodeAndLogClassModel() {
+		ClassModel model = ClassFile.of().parse(loopClass());
+		MethodModel method = model.methods().getFirst();
+		assertTrue(BytecodeDisassembler.disassemble(method).contains("== sumUpTo(I)I =="),
+			"Method disassembly should include the method header");
+		assertTrue(BytecodeDisassembler.disassemble(method.code().orElseThrow()).contains("     0: +1: iconst_0"),
+			"Code disassembly should include the first instruction");
+		try (LogCapture capture = LogCapture.capture(BytecodeDisassembler.class)) {
+			Logger logger = LogCapture.logger(BytecodeDisassembler.class);
+			logger.setLevel(Level.TRACE);
+			BytecodeDisassembler.log(logger, org.slf4j.event.Level.TRACE, model);
+			assertEquals(1, capture.formattedMessages().size(), "Exactly one trace event expected");
+			assertTrue(capture.formattedMessages().getFirst().contains("class Example extends Object"),
+				"Disassembly should include the class header");
+		}
+	}
+
+	@Test
+	void lookupSwitch_rendersSparseCases() {
+		String text = BytecodeDisassembler.disassemble(lookupSwitchClass());
+		assertTrue(text.contains("lookupswitch"), text);
+		assertTrue(text.contains("default -> L"), text);
+		assertTrue(text.contains("case 1 -> L"), text);
+		assertTrue(text.contains("case 10 -> L"), text);
+	}
+
+	@Test
+	void objectCreation_rendersNewArrayAndCastOperands() {
+		String text = BytecodeDisassembler.disassemble(objectClass());
+		assertTrue(text.contains("newarray int"), text);
+		assertTrue(text.contains("anewarray java/lang/String"), text);
+		assertTrue(text.contains("new java/lang/Object"), text);
+		assertTrue(text.contains("checkcast java/lang/String"), text);
+	}
+
+	@Test
+	void catchAllHandler_rendersAsAny() {
+		String text = BytecodeDisassembler.disassemble(catchAnyClass());
+		assertTrue(text.contains("catch any (L"), text);
+	}
+
+	@Test
+	void abstractMethod_rendersNoCode() {
+		String text = BytecodeDisassembler.disassemble(abstractMethodClass());
+		assertTrue(text.contains("== doIt()V =="), text);
+		assertTrue(text.contains("  (no code)"), text);
+	}
+
+	@Test
+	void strings_escapeRemainingControlCharsAndSurrogates() {
+		assertEquals(disassembly(
+			"class ControlStrings extends Object",
+			"== pick(Ljava/lang/String;)Ljava/lang/String; ==",
+			"     0: +1: ldc \"x\\r\\b\\f\ud83d\ude00\\udc00\"",
+			"     2: -1: areturn"), BytecodeDisassembler.disassemble(controlStringClass()));
+	}
+
+	@Test
+	void javacClass_rendersFieldsInterfacesAndAllAnnotationValueTypes() {
+		String text = BytecodeDisassembler.disassemble(javacClass("""
+			@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+			@java.lang.annotation.Target({java.lang.annotation.ElementType.TYPE, java.lang.annotation.ElementType.METHOD, java.lang.annotation.ElementType.FIELD})
+			@interface Rich {
+				int intValue() default 0;
+				long longValue() default 0L;
+				short shortValue() default 0;
+				byte byteValue() default 0;
+				char charValue() default 0;
+				float floatValue() default 0f;
+				double doubleValue() default 0d;
+				boolean boolValue() default false;
+				Class<?> classValue() default Object.class;
+				Color color() default Color.RED;
+				Nested nested() default @Nested;
+				String[] names() default {};
+			}
+			enum Color { RED, GREEN }
+			@interface Nested { String value() default ""; }
+			@Rich(intValue = 1, longValue = 2L, shortValue = 3, byteValue = 4, charValue = 'c',
+				floatValue = 1.5f, doubleValue = 2.5, boolValue = true, classValue = String.class,
+				color = Color.GREEN, nested = @Nested(value = "deep"), names = {"a", "b"})
+			public class Sample implements Runnable, java.io.Serializable {
+				public static final int MAX = 42;
+				private String name;
+				protected volatile double ratio;
+				int count;
+				public Class<?> getType() { return String.class; }
+				public int sum(int a, int b, int c, int d, int e) { return a + b + c + d + e; }
+				public void run() { }
+			}
+			"""));
+		assertTrue(text.contains("class Sample extends Object implements Runnable, Serializable"), text);
+		assertTrue(text.contains("  public static final int MAX;"), text);
+		assertTrue(text.contains("  private String name;"), text);
+		assertTrue(text.contains("  protected volatile double ratio;"), text);
+		assertTrue(text.contains("  int count;"), text);
+		assertTrue(text.contains("ldc String.class"), text);
+		assertTrue(text.contains("iload 4"), text);
+		assertTrue(text.contains("@Rich(intValue = 1"), text);
+		assertTrue(text.contains("longValue = 2"), text);
+		assertTrue(text.contains("shortValue = 3"), text);
+		assertTrue(text.contains("byteValue = 4"), text);
+		assertTrue(text.contains("charValue = 'c'"), text);
+		assertTrue(text.contains("floatValue = 1.5"), text);
+		assertTrue(text.contains("doubleValue = 2.5"), text);
+		assertTrue(text.contains("boolValue = true"), text);
+		assertTrue(text.contains("classValue = String.class"), text);
+		assertTrue(text.contains("color = Color.GREEN"), text);
+		assertTrue(text.contains("nested = @Nested(value = \"deep\")"), text);
+		assertTrue(text.contains("names = {\"a\", \"b\"}"), text);
 	}
 
 	private static byte[] loopClass() {
@@ -308,6 +427,83 @@ public class BytecodeDisassemblerTest {
 		});
 	}
 
+	private static byte[] controlStringClass() {
+		return ClassFile.of().build(ClassDesc.of("ControlStrings"), cb -> {
+			cb.withMethodBody("pick", mtd(String.class, String.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.ldc("x\r\b\f\ud83d\ude00\udc00");
+					cob.areturn();
+				});
+		});
+	}
+
+	private static byte[] lookupSwitchClass() {
+		return ClassFile.of().build(ClassDesc.of("LookupSw"), cb -> {
+			cb.withMethodBody("dispatch", mtd(int.class, int.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					Label def = cob.newLabel();
+					Label c1 = cob.newLabel();
+					Label c10 = cob.newLabel();
+					cob.iload(0);
+					cob.lookupswitch(def, List.of(SwitchCase.of(1, c1), SwitchCase.of(10, c10)));
+					cob.labelBinding(c1);
+					cob.loadConstant(1);
+					cob.ireturn();
+					cob.labelBinding(c10);
+					cob.loadConstant(10);
+					cob.ireturn();
+					cob.labelBinding(def);
+					cob.loadConstant(0);
+					cob.ireturn();
+				});
+		});
+	}
+
+	private static byte[] objectClass() {
+		return ClassFile.of().build(ClassDesc.of("Objects"), cb -> {
+			cb.withMethodBody("make", mtd(Object.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.loadConstant(10);
+					cob.newarray(TypeKind.INT);
+					cob.loadConstant(3);
+					cob.anewarray(ClassDesc.of("java.lang.String"));
+					cob.new_(ClassDesc.of("java.lang.Object"));
+					cob.checkcast(ClassDesc.of("java.lang.String"));
+					cob.areturn();
+				});
+		});
+	}
+
+	private static byte[] catchAnyClass() {
+		return ClassFile.of().build(ClassDesc.of("CatchAny"), cb -> {
+			cb.withMethodBody("process", mtd(String.class, String.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					Label tryStart = cob.newLabel();
+					Label tryEnd = cob.newLabel();
+					Label handler = cob.newLabel();
+					Label after = cob.newLabel();
+					cob.labelBinding(tryStart);
+					cob.loadConstant(1);
+					cob.pop();
+					cob.goto_(after);
+					cob.labelBinding(tryEnd);
+					cob.labelBinding(handler);
+					cob.ldc("caught");
+					cob.areturn();
+					cob.labelBinding(after);
+					cob.ldc("ok");
+					cob.areturn();
+					cob.exceptionCatch(tryStart, tryEnd, handler, Optional.empty());
+				});
+		});
+	}
+
+	private static byte[] abstractMethodClass() {
+		return ClassFile.of().build(ClassDesc.of("AbstractExample"), cb -> {
+			cb.withMethod("doIt", mtd(void.class), ClassFile.ACC_PUBLIC | ClassFile.ACC_ABSTRACT, mb -> { });
+		});
+	}
+
 	private static byte[] netClass() {
 		return ClassFile.of().build(ClassDesc.of("Nets"), cb -> {
 			ClassDesc some = ClassDesc.of("SomeClass");
@@ -340,6 +536,15 @@ public class BytecodeDisassemblerTest {
 				cob.multianewarray(cob.constantPool().classEntry(ClassDesc.ofDescriptor("[[I")), 2);
 				cob.arraylength();
 				cob.ireturn();
+			});
+			cb.withMethodBody("fieldOps", mtd(void.class), ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+				cob.loadConstant(0);
+				cob.getfield(some, "fld", ClassDesc.ofDescriptor("I"));
+				cob.loadConstant(1);
+				cob.putfield(some, "fld", ClassDesc.ofDescriptor("I"));
+				cob.loadConstant(2);
+				cob.putstatic(some, "stat", ClassDesc.ofDescriptor("I"));
+				cob.return_();
 			});
 		});
 	}
