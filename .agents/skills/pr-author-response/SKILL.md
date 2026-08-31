@@ -13,7 +13,8 @@ Respond to the review comments on your own pull request as the PR author.
 2. For every comment, either make the requested change (or a better one) or refute the comment with specific reasoning. There is no third option, and no comment gets skipped.
 3. Reply to every comment — including the ones you addressed with a change. Say what you changed and where (commit hash), or why you're refuting. Never prefix a reply with `[review]`: that marker belongs to the reviewer, and since you and the reviewer post under the same account, an author reply tagged `[review]` would corrupt the attribution.
 4. Sweep for the same class of mistake. A finding usually names one instance of a mistake that recurs: if the reviewer flags a stale doc, a hardcoded path, or a test that doesn't exercise its behavior, look for the same mistake elsewhere and fix the siblings in the same pass, saying in the reply that you swept for it.
-5. Push a new commit with the changes, then post the replies.
+5. Push a new commit with the changes, then post the replies. Keep the PR description up to date: after
+   each push, update it if the new commit changes what the PR does.
 
 ## Which line a comment references
 
@@ -36,4 +37,7 @@ Pay particular attention to comments from the maintainer (login `prdoyle`). They
 - Don't resolve threads. The threads you reply to are the review agent's, and it decides whether your
   response is acceptable and resolves each thread itself after verifying; resolving a thread yourself
   pre-empts that verification.
+- Keep the PR description current. After each push, if the new commits change what the PR does or which
+  files it touches, update the description (`gh pr edit <PR> --body "..."`); the description should
+  describe the PR as it now stands, not as it was when it opened.
 - If a comment was posted by mistake, delete it: `gh api repos/{owner}/{repo}/pulls/comments/{comment_id} --method DELETE`.
