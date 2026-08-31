@@ -143,6 +143,22 @@ public class BytecodeDisassemblerTest {
 	}
 
 	@Test
+	void fixedNets_forLongAndDoubleOperands() {
+		String text = BytecodeDisassembler.disassemble(longDoubleClass());
+		assertTrue(text.contains("     2: +0: laload"), text);
+		assertTrue(text.contains("     3: -4: lastore"), text);
+		assertTrue(text.contains("     2: +0: daload"), text);
+		assertTrue(text.contains("     3: -4: dastore"), text);
+		assertTrue(text.contains("     2: -2: ladd"), text);
+		assertTrue(text.contains("     2: -2: dadd"), text);
+		assertTrue(text.contains("     2: -3: lcmp"), text);
+		assertTrue(text.contains("     2: -3: dcmpl"), text);
+		assertTrue(text.contains("     1: +1: i2l"), text);
+		assertTrue(text.contains("     1: -1: l2i"), text);
+		assertTrue(text.contains("     1: +0: d2l"), text);
+	}
+
+	@Test
 	void everyOpcode_hasANetEffect() {
 		Set<Opcode> operandDependent = Set.of(
 			LDC, LDC_W, LDC2_W,
@@ -325,6 +341,87 @@ public class BytecodeDisassemblerTest {
 				cob.arraylength();
 				cob.ireturn();
 			});
+		});
+	}
+
+	private static byte[] longDoubleClass() {
+		return ClassFile.of().build(ClassDesc.of("LongDouble"), cb -> {
+			cb.withMethodBody("loadLong", mtd(long.class, long[].class, int.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.aload(0);
+					cob.iload(1);
+					cob.laload();
+					cob.lreturn();
+				});
+			cb.withMethodBody("storeLong", mtd(void.class, long[].class, int.class, long.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.aload(0);
+					cob.iload(1);
+					cob.lload(2);
+					cob.lastore();
+					cob.return_();
+				});
+			cb.withMethodBody("loadDouble", mtd(double.class, double[].class, int.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.aload(0);
+					cob.iload(1);
+					cob.daload();
+					cob.dreturn();
+				});
+			cb.withMethodBody("storeDouble", mtd(void.class, double[].class, int.class, double.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.aload(0);
+					cob.iload(1);
+					cob.dload(2);
+					cob.dastore();
+					cob.return_();
+				});
+			cb.withMethodBody("addLongs", mtd(long.class, long.class, long.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.lload(0);
+					cob.lload(2);
+					cob.ladd();
+					cob.lreturn();
+				});
+			cb.withMethodBody("addDoubles", mtd(double.class, double.class, double.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.dload(0);
+					cob.dload(2);
+					cob.dadd();
+					cob.dreturn();
+				});
+			cb.withMethodBody("compareLongs", mtd(int.class, long.class, long.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.lload(0);
+					cob.lload(2);
+					cob.lcmp();
+					cob.ireturn();
+				});
+			cb.withMethodBody("compareDoubles", mtd(int.class, double.class, double.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.dload(0);
+					cob.dload(2);
+					cob.dcmpl();
+					cob.ireturn();
+				});
+			cb.withMethodBody("widen", mtd(long.class, int.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.iload(0);
+					cob.i2l();
+					cob.lreturn();
+				});
+			cb.withMethodBody("narrow", mtd(int.class, long.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.lload(0);
+					cob.l2i();
+					cob.ireturn();
+				});
+			cb.withMethodBody("doubleToLong", mtd(long.class, double.class),
+				ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, cob -> {
+					cob.dload(0);
+					cob.d2l();
+					cob.lreturn();
+				});
 		});
 	}
 

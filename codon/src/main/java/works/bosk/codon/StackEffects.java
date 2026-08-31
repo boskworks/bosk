@@ -79,17 +79,25 @@ final class StackEffects {
 		}
 		// Array loads (arrayref, index) -> value
 		for (Opcode opcode : new Opcode[] {
-			Opcode.IALOAD, Opcode.LALOAD, Opcode.FALOAD, Opcode.DALOAD, Opcode.AALOAD,
+			Opcode.IALOAD, Opcode.FALOAD, Opcode.AALOAD,
 			Opcode.BALOAD, Opcode.CALOAD, Opcode.SALOAD
 		}) {
 			net.put(opcode, -1);
 		}
+		// Array loads of two-slot values (arrayref, index) -> value
+		for (Opcode opcode : new Opcode[] {Opcode.LALOAD, Opcode.DALOAD}) {
+			net.put(opcode, 0);
+		}
 		// Array stores (arrayref, index, value) -> nothing
 		for (Opcode opcode : new Opcode[] {
-			Opcode.IASTORE, Opcode.LASTORE, Opcode.FASTORE, Opcode.DASTORE, Opcode.AASTORE,
+			Opcode.IASTORE, Opcode.FASTORE, Opcode.AASTORE,
 			Opcode.BASTORE, Opcode.CASTORE, Opcode.SASTORE
 		}) {
 			net.put(opcode, -3);
+		}
+		// Array stores of two-slot values (arrayref, index, value) -> nothing
+		for (Opcode opcode : new Opcode[] {Opcode.LASTORE, Opcode.DASTORE}) {
+			net.put(opcode, -4);
 		}
 		// Stack manipulation
 		net.put(Opcode.POP, -1);
@@ -101,35 +109,57 @@ final class StackEffects {
 		net.put(Opcode.DUP2_X1, +2);
 		net.put(Opcode.DUP2_X2, +2);
 		net.put(Opcode.SWAP, 0);
-		// Binary arithmetic (two operands -> one result)
+		// Binary arithmetic with one-slot operands (two operands -> one result),
+		// and shifts, whose net effect is the same whether or not the value is two slots
 		for (Opcode opcode : new Opcode[] {
-			Opcode.IADD, Opcode.LADD, Opcode.FADD, Opcode.DADD,
-			Opcode.ISUB, Opcode.LSUB, Opcode.FSUB, Opcode.DSUB,
-			Opcode.IMUL, Opcode.LMUL, Opcode.FMUL, Opcode.DMUL,
-			Opcode.IDIV, Opcode.LDIV, Opcode.FDIV, Opcode.DDIV,
-			Opcode.IREM, Opcode.LREM, Opcode.FREM, Opcode.DREM,
+			Opcode.IADD, Opcode.FADD,
+			Opcode.ISUB, Opcode.FSUB,
+			Opcode.IMUL, Opcode.FMUL,
+			Opcode.IDIV, Opcode.FDIV,
+			Opcode.IREM, Opcode.FREM,
 			Opcode.ISHL, Opcode.LSHL, Opcode.ISHR, Opcode.LSHR, Opcode.IUSHR, Opcode.LUSHR,
-			Opcode.IAND, Opcode.LAND, Opcode.IOR, Opcode.LOR, Opcode.IXOR, Opcode.LXOR
+			Opcode.IAND, Opcode.IOR, Opcode.IXOR
 		}) {
 			net.put(opcode, -1);
+		}
+		// Binary arithmetic with two-slot operands (two operands -> one result)
+		for (Opcode opcode : new Opcode[] {
+			Opcode.LADD, Opcode.DADD,
+			Opcode.LSUB, Opcode.DSUB,
+			Opcode.LMUL, Opcode.DMUL,
+			Opcode.LDIV, Opcode.DDIV,
+			Opcode.LREM, Opcode.DREM,
+			Opcode.LAND, Opcode.LOR, Opcode.LXOR
+		}) {
+			net.put(opcode, -2);
 		}
 		// Unary arithmetic
 		for (Opcode opcode : new Opcode[] {Opcode.INEG, Opcode.LNEG, Opcode.FNEG, Opcode.DNEG}) {
 			net.put(opcode, 0);
 		}
-		// Conversions
+		// Conversions that leave the stack depth unchanged
 		for (Opcode opcode : new Opcode[] {
-			Opcode.I2L, Opcode.I2F, Opcode.I2D, Opcode.L2I, Opcode.L2F, Opcode.L2D,
-			Opcode.F2I, Opcode.F2L, Opcode.F2D, Opcode.D2I, Opcode.D2L, Opcode.D2F,
-			Opcode.I2B, Opcode.I2C, Opcode.I2S
+			Opcode.I2F, Opcode.L2D, Opcode.F2I, Opcode.D2L, Opcode.I2B, Opcode.I2C, Opcode.I2S
 		}) {
 			net.put(opcode, 0);
 		}
+		// Conversions that widen a one-slot value to two slots
+		for (Opcode opcode : new Opcode[] {Opcode.I2L, Opcode.I2D, Opcode.F2L, Opcode.F2D}) {
+			net.put(opcode, +1);
+		}
+		// Conversions that narrow a two-slot value to one slot
+		for (Opcode opcode : new Opcode[] {Opcode.L2I, Opcode.L2F, Opcode.D2I, Opcode.D2F}) {
+			net.put(opcode, -1);
+		}
 		net.put(Opcode.IINC, 0);
 		net.put(Opcode.IINC_W, 0);
-		// Comparisons (two operands -> one result)
-		for (Opcode opcode : new Opcode[] {Opcode.LCMP, Opcode.FCMPL, Opcode.FCMPG, Opcode.DCMPL, Opcode.DCMPG}) {
+		// Comparisons with one-slot operands (two operands -> one result)
+		for (Opcode opcode : new Opcode[] {Opcode.FCMPL, Opcode.FCMPG}) {
 			net.put(opcode, -1);
+		}
+		// Comparisons with two-slot operands (two operands -> one result)
+		for (Opcode opcode : new Opcode[] {Opcode.LCMP, Opcode.DCMPL, Opcode.DCMPG}) {
+			net.put(opcode, -3);
 		}
 		// Conditional branches
 		for (Opcode opcode : new Opcode[] {
