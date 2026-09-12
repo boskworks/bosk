@@ -14,6 +14,7 @@
 module works.bosk.boson {
 	requires org.slf4j;
 	requires works.bosk.core;
+	requires works.bosk.codon;
 	requires static transitive org.jspecify;
 
 	exports works.bosk.boson.codec;
