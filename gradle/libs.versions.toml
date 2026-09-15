@@ -9,7 +9,7 @@ junit = "6.1.3"
 logback = "1.6.3"
 lombok = "1.18.48"
 pcollections = "5.0.0"
-slf4j = "2.0.18"
+slf4j = "2.0.19"
 spring-boot = "4.1.1"
 testcontainers = "2.0.5"
 
@@ -25,7 +25,7 @@ jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref="jet
 jmh-apt = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
-jooq = { module = "org.jooq:jooq", version = "3.21.7" }
+jooq = { module = "org.jooq:jooq", version = "3.21.8" }
 jsr305 = { module = "com.google.code.findbugs:jsr305", version = "3.0.2" }
 junit-api = { module = "org.junit.jupiter:junit-jupiter-api" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
