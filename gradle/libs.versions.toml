@@ -11,6 +11,7 @@ lombok = "1.18.48"
 pcollections = "5.0.0"
 slf4j = "2.0.19"
 spring-boot = "4.1.1"
+spring-security = "7.1.1"
 testcontainers = "2.0.5"
 
 [libraries]
@@ -42,10 +43,15 @@ postgresql = { module = "org.postgresql:postgresql", version = "42.7.13" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 spring-boot-annotation-processor = { module="org.springframework.boot:spring-boot-configuration-processor", version.ref="spring-boot" }
 spring-boot-mongodb = { module="org.springframework.boot:spring-boot-mongodb", version.ref="spring-boot" }
+spring-boot-starter-security = { module="org.springframework.boot:spring-boot-starter-security", version.ref="spring-boot" }
+spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
 spring-boot-starter-web = { module="org.springframework.boot:spring-boot-starter-web", version.ref="spring-boot" }
 spring-boot-starter-webmvc = { module="org.springframework.boot:spring-boot-starter-webmvc", version.ref="spring-boot" }
-spring-boot-starter-test = { module="org.springframework.boot:spring-boot-starter-test", version.ref="spring-boot" }
 spring-boot-starter-webmvc-test = { module="org.springframework.boot:spring-boot-starter-webmvc-test", version.ref="spring-boot" }
+spring-security-config = { module="org.springframework.security:spring-security-config", version.ref="spring-security" }
+spring-security-core = { module="org.springframework.security:spring-security-core", version.ref="spring-security" }
+spring-security-test = { module="org.springframework.security:spring-security-test", version.ref="spring-security" }
+spring-security-web = { module="org.springframework.security:spring-security-web", version.ref="spring-security" }
 sqlite = { module = "org.xerial:sqlite-jdbc", version = "3.53.4.0" }
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }

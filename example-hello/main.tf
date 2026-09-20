@@ -12,7 +12,7 @@ provider "bosk" {
 }
 
 resource "bosk_node" "targets" {
-	url = "http://localhost:1740/bosk/targets"
+	url = "http://localhost:1740/bosk/state/targets"
 	value_json = jsonencode([
 		{ "somebody" = { "id" = "somebody" } },
 		{ "anybody" = { "id" = "anybody" } }

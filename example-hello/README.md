@@ -1,7 +1,7 @@
 ### Hello World example project
 
 Ok, this app doesn't do much,
-but it does demonstrate how easy it is to get basic bosk functionality in a Spring Boot 3 project.
+but it does demonstrate how easy it is to get basic bosk functionality in a Spring Boot project.
 
 #### Jackson `ObjectMapper` configuration
 
@@ -19,6 +19,8 @@ using the `ReadSessionFilter` class.
 
 #### Maintenance endpoints
 
-By setting `bosk.web-api.maintenance-path=/bosk` in `application.properties`,
+By setting `bosk.web-api.maintenance.access=UNSECURED` in `application.properties`,
 the `bosk-spring-boot` module creates `GET`, `PUT`, and `DELETE` endpoints
-that allow users to view and modify the bosk contents over HTTP.
+under `/bosk/state` that allow users to view and modify the bosk contents over HTTP.
+The access must be set explicitly because these endpoints expose full access to the state tree.
+`UNSECURED` is intended for local development and is only permitted when Spring Security is absent.

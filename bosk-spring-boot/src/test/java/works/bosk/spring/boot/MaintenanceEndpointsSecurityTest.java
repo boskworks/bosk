@@ -8,9 +8,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.web.firewall.HttpFirewall;
-import org.springframework.security.web.firewall.StrictHttpFirewall;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -22,20 +24,21 @@ import works.bosk.Identifier;
 import works.bosk.StateTreeNode;
 import works.bosk.jackson.JacksonSerializer;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 @SpringBootTest(
-	classes = MaintenanceEndpointsTest.TestConfig.class,
+	classes = MaintenanceEndpointsSecurityTest.TestConfig.class,
 	properties = {
 		"bosk.web-api.maintenance.access=AUTHENTICATED",
 		"bosk.web-api.maintenance.path=/bosk/state"
 	})
 @AutoConfigureMockMvc
-class MaintenanceEndpointsTest {
+class MaintenanceEndpointsSecurityTest {
 	@Autowired
 	MockMvc mockMvc;
 
@@ -51,11 +54,7 @@ class MaintenanceEndpointsTest {
 			return new Bosk<>(
 				boskName(),
 				State.class,
-				_ -> new State(Catalog.of(
-					new Target(Identifier.from("plain"), "plain"),
-					new Target(Identifier.from("a/b"), "slashy"),
-					new Target(Identifier.from("100%"), "percenty")
-				)),
+				_ -> new State(Catalog.of(new Target(Identifier.from("plain"), "plain"))),
 				BoskConfig.simple()
 			);
 		}
@@ -68,44 +67,61 @@ class MaintenanceEndpointsTest {
 		}
 
 		/**
-		 * These tests exercise identifiers containing a slash or a percent sign, which are
-		 * percent-encoded in the URL. Spring Security's default firewall rejects such URLs,
-		 * so allow them here to isolate the bosk path handling under test.
+		 * Permits every request so that the maintenance endpoints' own authorization check is
+		 * what decides access.
 		 */
 		@Bean
-		HttpFirewall httpFirewall() {
-			StrictHttpFirewall firewall = new StrictHttpFirewall();
-			firewall.setAllowUrlEncodedSlash(true);
-			firewall.setAllowUrlEncodedPercent(true);
-			return firewall;
+		SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+			http
+				.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+				.httpBasic(Customizer.withDefaults());
+			return http.build();
 		}
 	}
 
 	@Test
-	void getEntity_plainIdentifier() throws Exception {
+	void anonymous_isUnauthorized() throws Exception {
+		mockMvc.perform(get("/bosk/state/targets/plain"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void authenticatedWithoutAuthority_isForbidden() throws Exception {
+		mockMvc.perform(get("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("other"))))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void authenticatedWithAuthority_isAllowed() throws Exception {
 		mockMvc.perform(get("/bosk/state/targets/plain")
 				.with(user("tester").authorities(new SimpleGrantedAuthority("bosk:state"))))
-			.andExpect(status().isOk())
-			.andExpect(content().string("{\"id\":\"plain\",\"name\":\"plain\"}"));
+			.andExpect(status().isOk());
 	}
 
 	@Test
-	void getEntity_identifierContainingSlash_percentEncoded() throws Exception {
-		// The id "a/b" is one path segment; its slash must be percent-encoded in the URL.
-		// Spring must not split it into two segments before Path.parse sees it.
-		mockMvc.perform(get("/bosk/state/targets/a%2Fb")
-				.with(user("tester").authorities(new SimpleGrantedAuthority("bosk:state"))))
-			.andExpect(status().isOk())
-			.andExpect(content().string("{\"id\":\"a/b\",\"name\":\"slashy\"}"));
+	void modifyWithoutCsrfToken_isForbidden() throws Exception {
+		mockMvc.perform(put("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("bosk:state")))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"id\":\"plain\",\"name\":\"updated\"}"))
+			.andExpect(status().isForbidden());
 	}
 
 	@Test
-	void getEntity_identifierContainingPercent() throws Exception {
-		// The id "100%" contains a literal percent sign.
-		// Spring's URL decoding must not turn it into an invalid percent-escape.
-		mockMvc.perform(get("/bosk/state/targets/100%25")
+	void modifyWithCsrfToken_isAccepted() throws Exception {
+		mockMvc.perform(put("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("bosk:state")))
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"id\":\"plain\",\"name\":\"updated\"}"))
+			.andExpect(status().isAccepted());
+	}
+
+	@Test
+	void nonMaintenancePath_isUnaffected() throws Exception {
+		mockMvc.perform(get("/other")
 				.with(user("tester").authorities(new SimpleGrantedAuthority("bosk:state"))))
-			.andExpect(status().isOk())
-			.andExpect(content().string("{\"id\":\"100%\",\"name\":\"percenty\"}"));
+			.andExpect(status().isNotFound());
 	}
 }

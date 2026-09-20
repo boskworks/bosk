@@ -32,20 +32,23 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @RestController
-@RequestMapping("${bosk.web-api.maintenance-path}")
+@RequestMapping("${bosk.web-api.maintenance.path:/bosk/state}")
 public class MaintenanceEndpoints {
 	private final Bosk<?> bosk;
 	private final ObjectMapper mapper;
 	private final JacksonSerializer jackson;
+	private final MaintenanceAuthorization authorization;
 
-	public MaintenanceEndpoints(
+	MaintenanceEndpoints(
 		Bosk<?> bosk,
 		ObjectMapper mapper,
-		JacksonSerializer jackson
+		JacksonSerializer jackson,
+		MaintenanceAuthorization authorization
 	) {
 		this.bosk = bosk;
 		this.mapper = mapper;
 		this.jackson = jackson;
+		this.authorization = authorization;
 	}
 
 	@GetMapping(produces = APPLICATION_JSON_VALUE, path = {"", "{*path}"})
@@ -53,6 +56,7 @@ public class MaintenanceEndpoints {
 		@PathVariable(value="path", required = false) String path,
 		HttpServletRequest req
 	) {
+		authorization.check(req);
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		Reference<?> ref = referenceForPath(path);
 		try {
@@ -69,6 +73,7 @@ public class MaintenanceEndpoints {
 		HttpServletRequest req,
 		HttpServletResponse rsp
 	) throws IOException, InvalidTypeException {
+		authorization.check(req);
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		@SuppressWarnings("unchecked")
 		Reference<T> ref = (Reference<T>) referenceForPath(path);
@@ -106,6 +111,7 @@ public class MaintenanceEndpoints {
 		HttpServletRequest req,
 		HttpServletResponse rsp
 	) {
+		authorization.check(req);
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		Reference<?> ref = referenceForPath(path);
 		discriminatePreconditionCases(req, new PreconditionDiscriminator() {

@@ -71,14 +71,14 @@ public class HelloMaintenanceEndpointsTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"/bosk","/bosk/"})
+	@ValueSource(strings = {"/bosk/state","/bosk/state/"})
 	void get_root_works(String uri) throws Exception {
 		assertGetReturns(INITIAL_STATE, uri);
 		assertHello("world");
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"/bosk","/bosk/"})
+	@ValueSource(strings = {"/bosk/state","/bosk/state/"})
 	void put_root_works(String uri) throws Exception {
 		var newValue = new BoskState(
 			INITIAL_STATE.targets().with(new Target(Identifier.from("everybody")))
@@ -92,7 +92,7 @@ public class HelloMaintenanceEndpointsTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"/bosk","/bosk/"})
+	@ValueSource(strings = {"/bosk/state","/bosk/state/"})
 	void delete_root_reportsError(String uri) throws Exception {
 		mvc.perform(delete(uri))
 			.andExpect(status().isBadRequest());
@@ -101,37 +101,37 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void get_targets_works() throws Exception {
-		assertGetReturns(INITIAL_STATE.targets(), "/bosk/targets");
+		assertGetReturns(INITIAL_STATE.targets(), "/bosk/state/targets");
 	}
 
 	@Test
 	void put_targets_works() throws Exception {
 		var newTargets = INITIAL_STATE.targets().with(new Target(Identifier.from("new target")));
-		mvc.perform(put("/bosk/targets")
+		mvc.perform(put("/bosk/state/targets")
 				.contentType(APPLICATION_JSON)
 				.content(mapper.writeValueAsString(newTargets)))
 			.andExpect(status().isAccepted());
-		assertGetReturns(newTargets, "/bosk/targets");
+		assertGetReturns(newTargets, "/bosk/state/targets");
 		assertHello("world", "new target");
 	}
 
 	@Test
 	@Disabled("Can be enabled once all bosk drivers validate that objects can be deleted")
 	void delete_targets_reportsError() throws Exception {
-		mvc.perform(delete("/bosk/targets"))
+		mvc.perform(delete("/bosk/state/targets"))
 			.andExpect(status().isBadRequest());
 		assertHello("world");
 	}
 
 	@Test
 	void get_existingTarget_works() throws Exception {
-		assertGetReturns(INITIAL_TARGET, "/bosk/targets/" + INITIAL_TARGET.id());
+		assertGetReturns(INITIAL_TARGET, "/bosk/state/targets/" + INITIAL_TARGET.id());
 	}
 
 	@Test
 	void get_nonexistentTarget_reportsError() throws Exception {
 		logController.setLogging(OFF, ReadSessionFilter.class);
-		mvc.perform(get("/bosk/targets/nonexistent"))
+		mvc.perform(get("/bosk/state/targets/nonexistent"))
 			.andExpect(status().isNotFound());
 	}
 
@@ -141,7 +141,7 @@ public class HelloMaintenanceEndpointsTest {
 	 */
 	@Test
 	void put_existingTarget_works() throws Exception {
-		String uri = "/bosk/targets/" + INITIAL_TARGET.id();
+		String uri = "/bosk/state/targets/" + INITIAL_TARGET.id();
 		mvc.perform(put(uri)
 				.contentType(APPLICATION_JSON)
 				.content(mapper.writeValueAsString(INITIAL_TARGET)))
@@ -153,7 +153,7 @@ public class HelloMaintenanceEndpointsTest {
 	@Test
 	void put_newTarget_works() throws Exception {
 		var newTarget = new Target(Identifier.from("new target"));
-		String uri = "/bosk/targets/" + newTarget.id();
+		String uri = "/bosk/state/targets/" + newTarget.id();
 		mvc.perform(put(uri)
 				.contentType(APPLICATION_JSON)
 				.content(mapper.writeValueAsString(newTarget)))
@@ -165,7 +165,7 @@ public class HelloMaintenanceEndpointsTest {
 	@Test
 	void put_wrongContentType_reportsError() throws Exception {
 		logController.setLogging(ERROR, DefaultHandlerExceptionResolver.class);
-		mvc.perform(put("/bosk/targets/" + INITIAL_TARGET.id())
+		mvc.perform(put("/bosk/state/targets/" + INITIAL_TARGET.id())
 				.contentType(APPLICATION_FORM_URLENCODED)
 				.content(mapper.writeValueAsString(INITIAL_TARGET)))
 			.andExpect(status().isUnsupportedMediaType());
@@ -173,9 +173,9 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void delete_existingTarget_works() throws Exception {
-		mvc.perform(delete("/bosk/targets/" + INITIAL_TARGET.id()))
+		mvc.perform(delete("/bosk/state/targets/" + INITIAL_TARGET.id()))
 			.andExpect(status().isAccepted());
-		mvc.perform(get("/bosk/targets/" + INITIAL_TARGET.id()).header(CACHE_CONTROL, "no-cache"))
+		mvc.perform(get("/bosk/state/targets/" + INITIAL_TARGET.id()).header(CACHE_CONTROL, "no-cache"))
 			.andExpect(status().isNotFound());
 		assertHello();
 	}

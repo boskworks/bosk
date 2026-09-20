@@ -775,6 +775,28 @@ javadoc), when `bosk-mongo` is on the classpath it auto-configures the beans nee
 build a MongoDB-backed bosk: a `MongoDriverSettings`, a `BsonSerializer`, and a
 `MongoDriverFactory`. Each backs off if the application defines its own.
 
+The maintenance endpoints give direct HTTP access to the state tree, so they are disabled
+unless `bosk.web-api.maintenance.access` selects an access:
+
+- `UNSECURED` requires no authorization, and is only permitted when Spring Security is absent.
+  It is intended for local development.
+- `BEARER` requires the authority named by `bosk.web-api.maintenance.authority` (default
+  `bosk:state`) and a bearer token in the `Authorization` header. Because a browser does
+  not attach a bearer token automatically, CSRF protection is not applied to the endpoints.
+  This is the mode for `curl`, the IntelliJ HTTP client, and service-to-service callers.
+- `AUTHENTICATED` requires the authority using whatever authentication the application has
+  configured. Spring Security's CSRF protection applies, so `PUT` and `DELETE` require a CSRF
+  token; prefer `BEARER` when the clients are machines.
+
+Both `BEARER` and `AUTHENTICATED` are secure. `AUTHENTICATED` accepts more forms of authentication,
+but clients that issue `PUT` or `DELETE` must supply a CSRF token. `BEARER` accepts only bearer
+tokens, but `PUT` and `DELETE` work without a CSRF token, which is more convenient for machine
+clients such as `curl` and the IntelliJ HTTP client.
+
+An access that disagrees with the presence of Spring Security fails application startup. The
+endpoints are served under `bosk.web-api.maintenance.path` (default `/bosk/state`). See the
+`bosk-spring-boot` module javadoc for the full description.
+
 The connection is composed the same way Spring's `MongoAutoConfiguration` composes its
 own client: the application's `MongoClientSettings` bean (or Spring's, when the
 application uses Spring Data) is taken as the base, and every
