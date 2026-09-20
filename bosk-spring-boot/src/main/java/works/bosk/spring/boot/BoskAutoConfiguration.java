@@ -12,11 +12,11 @@ import works.bosk.jackson.BoskJacksonModule;
 import works.bosk.jackson.JacksonSerializer;
 
 @Configuration
-@EnableConfigurationProperties(WebProperties.class)
+@EnableConfigurationProperties(WebApiProperties.class)
 public class BoskAutoConfiguration {
 	@Bean
 	@ConditionalOnProperty(
-		prefix = "bosk.web",
+		prefix = "bosk.web-api",
 		name = "read-session",
 		matchIfMissing = true)
 	@ConditionalOnBean(Bosk.class) // Because of matchIfMissing
@@ -27,7 +27,7 @@ public class BoskAutoConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnProperty(prefix = "bosk.web", name = "maintenance-path")
+	@ConditionalOnProperty(prefix = "bosk.web-api", name = "maintenance-path")
 	MaintenanceEndpoints maintenanceEndpoints(
 		Bosk<?> bosk,
 		ObjectMapper mapper,

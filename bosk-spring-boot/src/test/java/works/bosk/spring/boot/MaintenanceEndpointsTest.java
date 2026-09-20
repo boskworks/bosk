@@ -25,7 +25,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 
 @SpringBootTest(
 	classes = MaintenanceEndpointsTest.TestConfig.class,
-	properties = "bosk.web.maintenance-path=/bosk")
+	properties = "bosk.web-api.maintenance-path=/bosk")
 @AutoConfigureMockMvc
 class MaintenanceEndpointsTest {
 	@Autowired
