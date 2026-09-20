@@ -14,7 +14,7 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *     operations executed on a separate thread.
  *     <p>
  *     This feature is enabled by default and can be disabled with the Spring property
- *     {@code bosk.web.read-session} set to {@code false}.
+ *     {@code bosk.web-api.read-session} set to {@code false}.
  *     If you need finer control over sessions, consider using
  *     {@link works.bosk.Bosk#supersedingReadSession() Bosk.supersedingReadSession()} rather than disabling
  *     automatic read sessions globally.
@@ -23,7 +23,7 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *     <b>Maintenance endpoints</b> — The
  *     {@link works.bosk.spring.boot.MaintenanceEndpoints MaintenanceEndpoints} component registers HTTP
  *     endpoints providing direct {@code GET}, {@code PUT}, and {@code DELETE} access to Bosk state in JSON.
- *     Endpoints are prefixed by the value of the {@code bosk.web.maintenance-path} setting, followed by the
+ *     Endpoints are prefixed by the value of the {@code bosk.web-api.maintenance-path} setting, followed by the
  *     path of the node within the Bosk state. They are intended for troubleshooting, manual operations, or
  *     integration with external systems that need full control over the Bosk state.
  *     <p>

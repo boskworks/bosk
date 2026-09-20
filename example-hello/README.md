@@ -15,10 +15,10 @@ A bosk `ReadSession` provides a lightweight thread-local snapshot of the bosk st
 for the duration of an operation.
 The `bosk-spring-boot` module automatically establishes a `ReadSession` around every HTTP servlet method,
 using the `ReadSessionFilter` class.
-(This can be disabled by adding the line `bosk.web.read-session=false` to `application.properties`.)
+(This can be disabled by adding the line `bosk.web-api.read-session=false` to `application.properties`.)
 
 #### Maintenance endpoints
 
-By setting `bosk.web.maintenance-path=/bosk` in `application.properties`,
+By setting `bosk.web-api.maintenance-path=/bosk` in `application.properties`,
 the `bosk-spring-boot` module creates `GET`, `PUT`, and `DELETE` endpoints
 that allow users to view and modify the bosk contents over HTTP.
