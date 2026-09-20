@@ -19,8 +19,16 @@ using the `ReadSessionFilter` class.
 
 #### Maintenance endpoints
 
-By setting `bosk.web-api.maintenance.access=UNSECURED` in `application.properties`,
+By setting `bosk.web-api.maintenance.access=BEARER` in `application.properties`,
 the `bosk-spring-boot` module creates `GET`, `PUT`, and `DELETE` endpoints
 under `/bosk/state` that allow users to view and modify the bosk contents over HTTP.
 The access must be set explicitly because these endpoints expose full access to the state tree.
-`UNSECURED` is intended for local development and is only permitted when Spring Security is absent.
+`BEARER` requires the `bosk:state` authority and a bearer token, as described below.
+
+#### Security
+
+The maintenance endpoints run in `BEARER` mode, so they accept only requests that carry a bearer
+token granting the `bosk:state` authority. `HelloSecurityConfig` provides a minimal example: it
+checks the token against the `example.security.tokens` property and grants the authority. A real
+application would introspect the token against an authorization server, or validate a JWT. All
+other endpoints are left open, as they were before this class existed.
