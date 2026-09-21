@@ -35,6 +35,13 @@ class HelloSecurityConfig {
 			.toList();
 	}
 
+	/**
+	 * The first configured token, so tests can present a valid one.
+	 */
+	String token() {
+		return tokens.get(0);
+	}
+
 	@Bean
 	OpaqueTokenIntrospector helloTokenIntrospector() {
 		return token -> {

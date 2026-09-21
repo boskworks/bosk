@@ -11,7 +11,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
@@ -57,8 +56,8 @@ public class HelloMaintenanceEndpointsTest {
 	@Autowired
 	BoskLogFilter.LogController logController;
 
-	@Value("${example.security.tokens}")
-	String tokens;
+	@Autowired
+	HelloSecurityConfig securityConfig;
 
 	@BeforeEach
 	void setupBosk() throws IOException, InterruptedException {
@@ -143,6 +142,12 @@ public class HelloMaintenanceEndpointsTest {
 			.andExpect(status().isNotFound());
 	}
 
+	@Test
+	void get_withoutToken_isUnauthorized() throws Exception {
+		mvc.perform(get("/bosk/state/targets/plain"))
+			.andExpect(status().isUnauthorized());
+	}
+
 	/**
 	 * It's hard to tell whether this is doing anything, because
 	 * {@link Target} has no other fields besides its <code>id</code>.
@@ -199,9 +204,8 @@ public class HelloMaintenanceEndpointsTest {
 	}
 
 	private RequestPostProcessor bearer() {
-		String token = tokens.split(",")[0].trim();
 		return request -> {
-			request.addHeader("Authorization", "Bearer " + token);
+			request.addHeader("Authorization", "Bearer " + securityConfig.token());
 			return request;
 		};
 	}
