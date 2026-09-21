@@ -80,7 +80,7 @@ public class BoskMaintenanceAutoConfiguration {
 
 	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnProperty(prefix = "bosk.web-api.maintenance", name = "access", havingValue = "BEARER")
-	@ConditionalOnClass(RequestMatcher.class)
+	@ConditionalOnClass({RequestMatcher.class, HttpSecurity.class})
 	static class BearerMaintenanceConfiguration {
 		@Bean
 		MaintenanceAuthorization maintenanceAuthorization(WebApiProperties properties) {
@@ -114,6 +114,20 @@ public class BoskMaintenanceAutoConfiguration {
 				"bosk.web-api.maintenance.access=BEARER requires Spring Security on the classpath. "
 					+ "Add a Spring Security dependency, or set bosk.web-api.maintenance.access=UNSECURED for "
 					+ "local development without Spring Security.");
+		}
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@ConditionalOnProperty(prefix = "bosk.web-api.maintenance", name = "access", havingValue = "BEARER")
+	@ConditionalOnClass(RequestMatcher.class)
+	@ConditionalOnMissingClass("org.springframework.security.config.annotation.web.builders.HttpSecurity")
+	static class BearerWithoutConfigConfiguration {
+		@Bean
+		MaintenanceAuthorization maintenanceAuthorization() {
+			throw new IllegalStateException(
+				"bosk.web-api.maintenance.access=BEARER requires Spring Security's config module, because it "
+					+ "exempts the maintenance path from CSRF protection. Add it, or set "
+					+ "bosk.web-api.maintenance.access=UNSECURED for local development without Spring Security.");
 		}
 	}
 
