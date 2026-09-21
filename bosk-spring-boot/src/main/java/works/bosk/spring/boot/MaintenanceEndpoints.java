@@ -32,7 +32,7 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 @RestController
-@RequestMapping("${bosk.web-api.maintenance.path:/bosk/state}")
+@RequestMapping("${bosk.web-api.maintenance.path:" + WebApiProperties.DEFAULT_MAINTENANCE_PATH + "}")
 public class MaintenanceEndpoints {
 	private final Bosk<?> bosk;
 	private final ObjectMapper mapper;
