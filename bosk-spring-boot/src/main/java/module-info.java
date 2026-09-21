@@ -35,9 +35,11 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *       without Spring Security, and it is an error to select it when Spring Security is present.</li>
  *       <li>{@code BEARER} — access requires the authority named by
  *       {@code bosk.web-api.maintenance.authority} (default {@code bosk:state}) and a bearer token in
- *       the {@code Authorization} header. Other kinds of authentication, such as a browser session, are
- *       refused. Because a browser does not attach a bearer token automatically, CSRF protection is not
- *       applied to the endpoints in this mode. It is intended for {@code curl}, the IntelliJ HTTP client,
+ *       the {@code Authorization} header. Because a browser does not attach a bearer token
+ *       automatically, CSRF protection is not applied to the endpoints in this mode; the header
+ *       requirement is what makes that safe. The check is on the presence of the header rather than on
+ *       how the request was authenticated, so an application should make sure the mechanism that grants
+ *       the authority is the one it expects. It is intended for {@code curl}, the IntelliJ HTTP client,
  *       and service-to-service callers, and it requires the application to have a bearer-token
  *       authentication mechanism configured.</li>
  *       <li>{@code AUTHENTICATED} — access requires the authority, using whatever authentication the

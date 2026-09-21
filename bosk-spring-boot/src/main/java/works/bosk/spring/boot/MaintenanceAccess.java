@@ -37,14 +37,17 @@ public enum MaintenanceAccess {
 	/**
 	 * The maintenance endpoints are registered and require the configured
 	 * {@link WebApiProperties.Maintenance#authority() authority} as well as a bearer token in the
-	 * {@code Authorization} header. Other kinds of authentication, such as a browser session,
-	 * are not accepted.
+	 * {@code Authorization} header.
 	 * <p>
-	 * Because a browser does not attach a bearer token automatically, this mode does not need
-	 * CSRF protection, and none is applied to the maintenance endpoints. It is intended for
-	 * clients such as {@code curl}, the IntelliJ HTTP client, and service-to-service callers,
-	 * and it requires the application to have a bearer-token authentication mechanism
-	 * configured.
+	 * A browser does not attach a bearer token automatically, so this mode does not need CSRF
+	 * protection, and none is applied to the maintenance endpoints; the header requirement is
+	 * what makes that safe. The check is on the presence of the header rather than on how the
+	 * request was authenticated, so an application should make sure the mechanism that grants the
+	 * authority is the one it expects.
+	 * <p>
+	 * It is intended for clients such as {@code curl}, the IntelliJ HTTP client, and
+	 * service-to-service callers, and it requires the application to have a bearer-token
+	 * authentication mechanism configured.
 	 * <p>
 	 * It is a configuration error to select this mode when Spring Security is not present.
 	 */
