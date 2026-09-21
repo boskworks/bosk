@@ -154,15 +154,18 @@ public class BoskMaintenanceAutoConfiguration {
 	}
 
 	/**
-	 * Matches when the maintenance endpoints are enabled, that is, when the access is anything
-	 * other than {@link MaintenanceAccess#NONE}. An unrecognized access is treated as enabled
-	 * here so that property binding reports the problem.
+	 * Matches when the maintenance endpoints are enabled, that is, when the access is one of the
+	 * recognized values other than {@link MaintenanceAccess#NONE}. An unrecognized value does not
+	 * match, so binding {@link WebApiProperties} reports it with a clear error rather than the
+	 * endpoints failing later for want of an authorization bean.
 	 */
 	static class MaintenanceEnabledCondition implements Condition {
 		@Override
 		public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
-			String access = context.getEnvironment().getProperty("bosk.web-api.maintenance.access", "NONE");
-			return !MaintenanceAccess.NONE.name().equalsIgnoreCase(access);
+			String access = context.getEnvironment().getProperty("bosk.web-api.maintenance.access");
+			return MaintenanceAccess.UNSECURED.name().equalsIgnoreCase(access)
+				|| MaintenanceAccess.AUTHENTICATED.name().equalsIgnoreCase(access)
+				|| MaintenanceAccess.BEARER.name().equalsIgnoreCase(access);
 		}
 	}
 }

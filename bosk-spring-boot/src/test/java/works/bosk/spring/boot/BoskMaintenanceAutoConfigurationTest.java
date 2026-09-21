@@ -64,6 +64,18 @@ class BoskMaintenanceAutoConfigurationTest {
 	}
 
 	@Test
+	void unrecognizedAccess_reportsBindingError() {
+		// The condition matches only recognized values, so the endpoints aren't registered and
+		// binding WebApiProperties reports the bad value rather than a missing-bean error.
+		runner.withPropertyValues("bosk.web-api.maintenance.access=BEARERX")
+			.run(context -> {
+				assertThat(context).hasFailed();
+				assertThat(context.getStartupFailure())
+					.hasStackTraceContaining("BEARERX");
+			});
+	}
+
+	@Test
 	void unsecuredWithoutSecurity_registersEndpoints() {
 		runner.withPropertyValues("bosk.web-api.maintenance.access=UNSECURED")
 			.withClassLoader(new FilteredClassLoader(RequestMatcher.class))
