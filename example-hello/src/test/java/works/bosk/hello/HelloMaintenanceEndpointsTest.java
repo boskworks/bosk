@@ -148,6 +148,20 @@ public class HelloMaintenanceEndpointsTest {
 			.andExpect(status().isUnauthorized());
 	}
 
+	@Test
+	void put_withoutToken_isUnauthorized() throws Exception {
+		mvc.perform(put("/bosk/state/targets/plain")
+				.contentType(APPLICATION_JSON)
+				.content("{\"id\":\"plain\",\"name\":\"updated\"}"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void delete_withoutToken_isUnauthorized() throws Exception {
+		mvc.perform(delete("/bosk/state/targets/plain"))
+			.andExpect(status().isUnauthorized());
+	}
+
 	/**
 	 * It's hard to tell whether this is doing anything, because
 	 * {@link Target} has no other fields besides its <code>id</code>.

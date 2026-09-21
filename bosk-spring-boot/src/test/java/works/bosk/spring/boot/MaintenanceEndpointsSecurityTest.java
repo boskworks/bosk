@@ -26,6 +26,7 @@ import works.bosk.jackson.JacksonSerializer;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -116,6 +117,31 @@ class MaintenanceEndpointsSecurityTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"id\":\"plain\",\"name\":\"updated\"}"))
 			.andExpect(status().isAccepted());
+	}
+
+	@Test
+	void modifyWithoutAuthority_isForbidden() throws Exception {
+		mockMvc.perform(put("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("other")))
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"id\":\"plain\",\"name\":\"updated\"}"))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void deleteWithoutCsrfToken_isForbidden() throws Exception {
+		mockMvc.perform(delete("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("bosk:state"))))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void deleteWithoutAuthority_isForbidden() throws Exception {
+		mockMvc.perform(delete("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("other")))
+				.with(csrf()))
+			.andExpect(status().isForbidden());
 	}
 
 	@Test

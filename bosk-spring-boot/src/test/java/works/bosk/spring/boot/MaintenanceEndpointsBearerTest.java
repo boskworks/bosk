@@ -25,6 +25,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.jackson.JacksonSerializer;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -94,6 +95,31 @@ class MaintenanceEndpointsBearerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"id\":\"plain\",\"name\":\"updated\"}"))
 			.andExpect(status().isAccepted());
+	}
+
+	@Test
+	void bearerPutWithoutAuthority_isForbidden() throws Exception {
+		mockMvc.perform(put("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("other")))
+				.header("Authorization", "Bearer test-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"id\":\"plain\",\"name\":\"updated\"}"))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void bearerDeleteWithoutBearerToken_isForbidden() throws Exception {
+		mockMvc.perform(delete("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("bosk:state"))))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void bearerDeleteWithoutAuthority_isForbidden() throws Exception {
+		mockMvc.perform(delete("/bosk/state/targets/plain")
+				.with(user("tester").authorities(new SimpleGrantedAuthority("other")))
+				.header("Authorization", "Bearer test-token"))
+			.andExpect(status().isForbidden());
 	}
 
 	@Test
