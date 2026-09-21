@@ -23,6 +23,7 @@ dependencies {
 	compileOnly libs.spring.security.core
 	compileOnly libs.spring.security.web
 	testImplementation libs.spring.boot.starter.security
+	testImplementation libs.spring.boot.starter.oauth2.resource.server
 	testImplementation libs.spring.security.test
 
 	testImplementation libs.spring.boot.starter.test
