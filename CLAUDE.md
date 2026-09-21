@@ -146,6 +146,8 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 
 - Commits in a PR should ideally be rebased and massaged to follow these guidelines prior to committing, to give a clean history:
 
+- A PR is just a request to merge a body of work; it doesn't need a single theme, and work done at the same time can go in one PR. What matters is that each commit is a small, self-contained logical change.
+
 - **Exception while a PR is under review:** respond to review comments with new commits, one per logical change, and leave the existing commits alone. Don't squash review fixes into the commits that introduced the bugs, and don't rebase the branch, until the maintainer explicitly says it's time to tidy up the history. The guidelines below describe that final tidy-up, not the review process itself.
 
 - Each **logical change** gets its own commit: one commit per bug fix (fix + test), one per refactoring, one per feature.
@@ -155,9 +157,8 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
   2. Refactoring to make subsequent work easier
   3. The newly added functionality
 - **Arrange commits in dependency order**: no commit references anything that appears in a future commit.
-- When a bug is introduced **within the same branch**, squash the fix into the commit that introduced the bug. The history should read as if the code was correct from the start.
+- If a commit introduces a bug and a later commit fixes it, squash the fix into the commit that introduced the bug, so the history reads as if the code was correct from the start.
 - Mechanical refactorings (eg. using an IDE) should be in their own commit describing what they do in enough detail that they could be repeated if necessary.
-- Avoid merging a bug and its fix in the same PR. Prefer squashing the fix into the commit with the bug so it looks like the bug was never there.
 - Each commit should have correct spotless formatting.
 - Each commit should pass all tests unless it's marked as WIP or is explicitly doing test-driven development.
 - For multi-line commit messages, the first line (the summary) should end with a period.
