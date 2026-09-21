@@ -31,4 +31,5 @@ The maintenance endpoints run in `BEARER` mode, so they accept only requests tha
 token granting the `bosk:state` authority. `HelloSecurityConfig` provides a minimal example: it
 checks the token against the `example.security.tokens` property and grants the authority. A real
 application would introspect the token against an authorization server, or validate a JWT. All
-other endpoints are left open, as they were before this class existed.
+other endpoints are left open, as they were before this class existed. The `main.tf` example
+talks to these endpoints, so its provider must send a bearer token too.
