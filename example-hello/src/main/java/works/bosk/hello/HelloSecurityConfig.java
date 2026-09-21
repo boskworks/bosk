@@ -60,7 +60,10 @@ class HelloSecurityConfig {
 		HttpSecurity http,
 		OpaqueTokenIntrospector introspector
 	) throws Exception {
+		// This example has no browser session: the maintenance endpoints use bearer tokens and
+		// the other endpoints are public, so there are no ambient credentials to forge.
 		http
+			.csrf(csrf -> csrf.disable())
 			.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
 			.oauth2ResourceServer(oauth2 -> oauth2.opaqueToken(
 				opaque -> opaque.introspector(introspector)));

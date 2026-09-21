@@ -29,7 +29,6 @@ import static ch.qos.logback.classic.Level.OFF;
 import static org.springframework.http.HttpHeaders.CACHE_CONTROL;
 import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -213,7 +212,7 @@ public class HelloMaintenanceEndpointsTest {
 	@Test
 	void postWithoutReadSession_reportsError() throws Exception {
 		logController.setLogging(OFF, ReadSessionFilter.class);
-		mvc.perform(post("/api/noReadSession").with(csrf()))
+		mvc.perform(post("/api/noReadSession"))
 			.andExpect(status().isInternalServerError());
 	}
 
