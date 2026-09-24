@@ -10,6 +10,7 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
+import com.mongodb.connection.ServerDescription;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -51,6 +52,7 @@ import works.bosk.logging.MappedDiagnosticContext.MDCScope;
 import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static com.mongodb.client.model.Sorts.ascending;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.DISCONNECT;
 import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
@@ -73,11 +75,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BoskDriver downstream;
 	private final Deque<Closeable> closeables = new ArrayDeque<>();
 	private final TransactionalCollection queryCollection;
+	private final MongoClient queryClient;
 	private final Listener listener;
+	private final AtomicBoolean loggedConnectionDiagnostics = new AtomicBoolean(false);
 	final Formatter formatter;
 
+	final long timescaleMS;
 	final long flushTimeout;
-	final long initializeTimeout;
+	final long queryTimeout;
 	final long reinitializationTimeout;
 
 	/**
@@ -160,24 +165,42 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			this.bsonSerializer = bsonSerializer;
 			this.downstream = downstream;
 
-			// Flushes work by waiting for the latest version to arrive on the change stream.
-			// If we wait for two heartbeats and don't see the update, something has gone wrong.
+			// The timescale on which the system notices outages.
+			// Everything below is derived from it.
+			timescaleMS = driverSettings.timescaleMS();
+
+			// A flush waits for the revision to be applied. Normally that's just
+			// one event delivery, but a flush that failed during a disconnect and
+			// is retrying has to wait out the reconnect and the state application
+			// as well, so its wait is a whole recovery budget.
+			// (The flush retries once, so it can take twice this long before
+			// throwing a FlushFailureException.)
+			flushTimeout = 2L * timescaleMS;
+
+			// The query client uses the driver's "client-side operation timeout",
+			// which bounds each database operation as a whole rather than each
+			// phase: server selection, connection checkout, connecting, and reading
+			// the response all draw on this single budget, and the driver derives
+			// each command's server-side maxTimeMS from whatever remains. Setting
+			// it overrides the per-phase socket timeouts, so the query client
+			// doesn't set those.
+			queryTimeout = 2L * timescaleMS;
+
+			// How long an operation waits for the change stream to recover and
+			// publish a new FormatDriver. This is the sum of the steps of one
+			// recovery cycle:
 			//
-			// (Note that flush does a retry, so it will actually take
-			// twice as long as this before throwing a FlushFailureException.)
-			flushTimeout = 2L * driverSettings.timescaleMS();
+			//   timescaleMS          the connectionLoop's poll interval before it retries
+			//   + 3 * timescaleMS    opening the change-stream cursor
+			//                        (serverSelectionTimeout plus connectTimeout)
+			//   + 2 * timescaleMS    reloading the state (one query, bounded by queryTimeout)
+			//
+			// = 6 * timescaleMS, plus a little extra so we don't cut off a cycle
+			// that is about to succeed.
+			reinitializationTimeout = 7L * timescaleMS;
 
-			// Initialization must wait for a heartbeat to succeed, so we wait twice that long,
-			// plus one more for the network connection and initial query.
-			initializeTimeout = 3L * driverSettings.timescaleMS();
-
-			// The sum of the steps required to reinitialize after a disconnect,
-			// plus a little extra to make sure we don't cut it off when it's about to succeed.
-			reinitializationTimeout =
-				2L * driverSettings.timescaleMS() // ChangeStream reconnect
-					+ initializeTimeout // Initialize after reconnecting
-					+ driverSettings.timescaleMS() // Extra buffer
-			;
+			LOGGER.debug("Timeouts: timescale={}ms flushTimeout={}ms queryTimeout={}ms reinitializationTimeout={}ms",
+				timescaleMS, flushTimeout, queryTimeout, reinitializationTimeout);
 
 			Builder commonSettingsBuilder = MongoClientSettings
 				.builder(clientSettings)
@@ -208,12 +231,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				.readConcern(ReadConcern.MAJORITY)
 				.writeConcern(WriteConcern.MAJORITY);
 
+			// The change-stream client is bounded per phase, because it can't use
+			// the driver's operation timeout: an idle change-stream cursor may
+			// legitimately wait a long time between events, so its socket read
+			// timeout must be 0, and that is a per-client setting.
+			//
+			// Server selection needs a budget larger than minHeartbeatFrequency
+			// (see above): when it finds no server it waits that long before
+			// re-checking, so its timeout must exceed it by at least a round trip,
+			// or the re-check it triggers can never be observed. Two timescaleMS
+			// allows two re-checks.
 			var changeStreamSettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build())
 				.applyToClusterSettings(c ->
-					c.serverSelectionTimeout(initializeTimeout, MILLISECONDS))
+					c.serverSelectionTimeout(2 * timescaleMS, MILLISECONDS))
 				.applyToSocketSettings(s ->
-					s.connectTimeout(initializeTimeout, MILLISECONDS)
-						// No read timeout for change streams; they can be idle indefinitely
+					s.connectTimeout(timescaleMS, MILLISECONDS)
 						.readTimeout(0, MILLISECONDS))
 				;
 
@@ -224,14 +256,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				closeables.addFirst(changeStreamClient);
 			}
 
-			// Override timeouts to make them compatible with driverSettings.timescaleMS()
-			var querySettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build());
-			querySettingsBuilder
-				.timeout(flushTimeout, MILLISECONDS);
+			// Queries must not hang indefinitely, so they use the driver's
+			// operation timeout (see queryTimeout above).
+			var querySettingsBuilder = MongoClientSettings.builder(commonSettingsBuilder.build())
+				.timeout(queryTimeout, MILLISECONDS)
+				;
 
-			var queryClient = clientFactory.function.apply(querySettingsBuilder.build());
+			this.queryClient = clientFactory.function.apply(querySettingsBuilder.build());
 			if (clientFactory.shouldClose) {
-				closeables.addFirst(queryClient);
+				closeables.addFirst(this.queryClient);
 			}
 
 			this.queryCollection = TransactionalCollection.of(queryClient
@@ -555,6 +588,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			InvalidCollectionContentsException
 		{
 			LOGGER.debug("onConnectionSucceeded");
+			logConnectionDiagnostics();
 			if (initialStateTask.isDone()) {
 				FormatDriver<R> newDriver;
 				StateAndMetadata<R> allState;
@@ -843,6 +877,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 							}
 						} else {
 							LOGGER.debug("MongoException is not recoverable; disconnecting", e);
+							logTimeoutDiagnostics(description, e);
 							setDisconnectedDriver(e, driverInUse);
 							throw new DisconnectedException(e);
 						}
@@ -866,6 +901,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					waitAndRetry(operationInSession, description, args);
 				} else {
 					LOGGER.debug("Unexpected exception; will disconnect and retry operation", e);
+					logTimeoutDiagnostics(description, e);
 					setDisconnectedDriver(e, driverInUse);
 					waitAndRetry(operationInSession, description, args);
 				}
@@ -894,6 +930,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				boolean success = formatDriverChanged.await(reinitializationTimeout, MILLISECONDS);
 				if (!success) {
 					LOGGER.warn("Timed out waiting for MongoDB to recover; will retry anyway, but the operation may fail");
+					logTimeoutDiagnostics(description, null);
 				}
 			} else {
 				LOGGER.debug("FormatDriver is already {}; no need to wait", formatDriver.getClass().getSimpleName());
@@ -920,6 +957,70 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 		LOGGER.debug("Retrying " + description + " w/" + this.formatDriver.getClass().getSimpleName(), args);
 		operation.run();
+	}
+
+	/**
+	 * Logs information to help diagnose a timeout, in particular to show whether
+	 * {@code timescaleMS} is too small relative to the network round trip.
+	 */
+	private void logTimeoutDiagnostics(String phase, Throwable cause) {
+		if (LOGGER.isDebugEnabled()) {
+			LOGGER.debug("Timeout diagnostics ({}): {}", phase, diagnosticSummary(), cause);
+		}
+	}
+
+	/**
+	 * Logs the measured round trip the first time we connect, so that a timescale
+	 * that is too small relative to the network shows up before it causes a
+	 * failure.
+	 */
+	private void logConnectionDiagnostics() {
+		if (loggedConnectionDiagnostics.compareAndSet(false, true) && LOGGER.isDebugEnabled()) {
+			LOGGER.debug("Connection diagnostics: {}", diagnosticSummary());
+		}
+	}
+
+	/**
+	 * A summary of the timeout settings and the measured network round trip,
+	 * suitable for inclusion in a log message. When the round trip is a large
+	 * fraction of the timescale, this suggests a larger timescale.
+	 */
+	private String diagnosticSummary() {
+		StringBuilder result = new StringBuilder()
+			.append("timescaleMS=").append(timescaleMS)
+			.append(", flushTimeoutMS=").append(flushTimeout)
+			.append(", queryTimeoutMS=").append(queryTimeout)
+			.append(", reinitializationTimeoutMS=").append(reinitializationTimeout);
+		long minRoundTripMS = measuredMinRoundTripMS();
+		if (minRoundTripMS < 0) {
+			result.append(", roundTrip=not measured yet");
+		} else {
+			result.append(", minRoundTrip=").append(minRoundTripMS).append("ms");
+			if (minRoundTripMS * 10 > timescaleMS) {
+				result.append(", suggestedTimescaleMS=").append(minRoundTripMS * 10);
+			}
+		}
+		return result.toString();
+	}
+
+	/**
+	 * @return the smallest recent round-trip time the driver has measured for any
+	 * server, in milliseconds, or -1 if it hasn't measured one yet.
+	 */
+	private long measuredMinRoundTripMS() {
+		try {
+			long minNanos = -1;
+			for (ServerDescription server : queryClient.getClusterDescription().getServerDescriptions()) {
+				long nanos = server.getMinRoundTripTimeNanos();
+				if (nanos > 0 && (minNanos < 0 || nanos < minNanos)) {
+					minNanos = nanos;
+				}
+			}
+			return minNanos < 0 ? -1 : MILLISECONDS.convert(minNanos, NANOSECONDS);
+		} catch (RuntimeException e) {
+			LOGGER.debug("Unable to read the measured round trip time", e);
+			return -1;
+		}
 	}
 
 	/**
