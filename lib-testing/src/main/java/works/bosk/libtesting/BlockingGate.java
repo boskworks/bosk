@@ -15,6 +15,12 @@ import java.util.concurrent.TimeUnit;
  * concurrent change), and then calls {@link #release()} to let the operation
  * proceed.
  * <p>
+ * Waiting ignores interrupts: a gate exists to hold an operation until the test
+ * releases it, and an interrupt aimed at that operation (for example, the Mongo
+ * driver's habit of interrupting its change-receiver thread) must not defeat
+ * that. The interrupt status is restored before returning, so callers can still
+ * observe the interrupt afterwards.
+ * <p>
  * The {@code description} names the operation in failure messages, so a test
  * that hangs fails with an informative error rather than a naked timeout.
  */
@@ -48,13 +54,27 @@ public final class BlockingGate {
 	}
 
 	private void await(CountDownLatch latch, Duration timeout, String state) {
+		long deadline = System.nanoTime() + timeout.toNanos();
+		boolean interrupted = false;
 		try {
-			if (!latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-				throw new AssertionError("Timed out waiting for " + description + " " + state);
+			while (true) {
+				long remainingNanos = deadline - System.nanoTime();
+				if (remainingNanos <= 0) {
+					throw new AssertionError("Timed out waiting for " + description + " " + state);
+				}
+				try {
+					if (latch.await(remainingNanos, TimeUnit.NANOSECONDS)) {
+						return;
+					}
+				} catch (InterruptedException e) {
+					// Keep waiting; see the class javadoc.
+					interrupted = true;
+				}
 			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			throw new AssertionError("Interrupted while waiting for " + description + " " + state, e);
+		} finally {
+			if (interrupted) {
+				Thread.currentThread().interrupt();
+			}
 		}
 	}
 }
