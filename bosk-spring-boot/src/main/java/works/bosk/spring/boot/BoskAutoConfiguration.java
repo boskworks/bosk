@@ -3,16 +3,13 @@ package works.bosk.spring.boot;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import tools.jackson.databind.ObjectMapper;
 import works.bosk.Bosk;
 import works.bosk.jackson.BoskJacksonModule;
 import works.bosk.jackson.JacksonSerializer;
 
 @Configuration
-@EnableConfigurationProperties(WebApiProperties.class)
 public class BoskAutoConfiguration {
 	@Bean
 	@ConditionalOnProperty(
@@ -24,16 +21,6 @@ public class BoskAutoConfiguration {
 		Bosk<?> bosk
 	) {
 		return new ReadSessionFilter(bosk);
-	}
-
-	@Bean
-	@ConditionalOnProperty(prefix = "bosk.web-api", name = "maintenance-path")
-	MaintenanceEndpoints maintenanceEndpoints(
-		Bosk<?> bosk,
-		ObjectMapper mapper,
-		JacksonSerializer jackson
-	) {
-		return new MaintenanceEndpoints(bosk, mapper, jackson);
 	}
 
 	@Bean

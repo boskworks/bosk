@@ -23,9 +23,30 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *     <b>Maintenance endpoints</b> — The
  *     {@link works.bosk.spring.boot.MaintenanceEndpoints MaintenanceEndpoints} component registers HTTP
  *     endpoints providing direct {@code GET}, {@code PUT}, and {@code DELETE} access to Bosk state in JSON.
- *     Endpoints are prefixed by the value of the {@code bosk.web-api.maintenance-path} setting, followed by the
- *     path of the node within the Bosk state. They are intended for troubleshooting, manual operations, or
- *     integration with external systems that need full control over the Bosk state.
+ *     Endpoints are prefixed by the value of the {@code bosk.web-api.maintenance.path} setting (default
+ *     {@code /bosk/state}), followed by the path of the node within the Bosk state. They are intended for
+ *     troubleshooting, manual operations, or integration with external systems that need full control over
+ *     the Bosk state.
+ *     <p>
+ *     Because these endpoints expose full read and write access to the state tree, they are disabled unless
+ *     {@code bosk.web-api.maintenance.access} explicitly selects a
+ *     {@link works.bosk.spring.boot.MaintenanceAccess MaintenanceAccess}:
+ *     <ul>
+ *       <li>{@code UNSECURED} — access requires no authorization. This mode is for local development
+ *       without Spring Security, and it is an error to select it when Spring Security is present.</li>
+ *       <li>{@code AUTHENTICATED} — access requires the authority named by
+ *       {@code bosk.web-api.maintenance.authority} (default {@code bosk:state}), using whatever
+ *       authentication the application has configured. It is an error to select this mode when Spring
+ *       Security is not present. See {@link works.bosk.spring.boot.MaintenanceAccess#AUTHENTICATED
+ *       MaintenanceAccess.AUTHENTICATED} for how to secure it.</li>
+ *       <li>{@code NONE} — the endpoints are not registered. This is the default.</li>
+ *     </ul>
+ *     <p>
+ *     The authorization check runs in the endpoints themselves and throws {@code AccessDeniedException},
+ *     so Spring Security produces the usual {@code 401} or {@code 403} responses. The
+ *     {@link works.bosk.spring.boot.BoskMaintenanceRequestMatcher BoskMaintenanceRequestMatcher} bean
+ *     matches the endpoints for applications that prefer to write declarative rules in their own
+ *     {@code SecurityFilterChain}; such rules are additive to the check in the endpoints.
  *     <p>
  *     These endpoints support ETags via the {@code If-Match} and {@code If-None-Match} headers, exposing a
  *     limited ability to do conditional updates. Nodes participating in this feature must have a field named
@@ -36,6 +57,9 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *       <li>{@code If-Match: {ID}} — if the node does not exist, or its {@code revision} field has a different
  *       value, no action is taken.</li>
  *     </ul>
+ *     Spring Security's default {@code StrictHttpFirewall} rejects URLs containing percent-encoded slashes
+ *     or percent signs, so identifiers containing those characters are unreachable through the endpoints
+ *     while Spring Security is present unless the application customizes its {@code HttpFirewall}.
  *   </li>
  *   <li>
  *     <b>MongoDB-backed bosks</b> — When the {@code bosk-mongo} library is on the
@@ -59,6 +83,10 @@ module works.bosk.spring.boot {
 	// Support MongoDB if it's present, but don't require it
 	requires static works.bosk.mongo;
 	requires static spring.boot.mongodb;
+
+	// Support Spring Security if it's present, but don't require it
+	requires static spring.security.core;
+	requires static spring.security.web;
 
 	requires static lombok;
 

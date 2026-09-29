@@ -769,9 +769,7 @@ static DriverFactory<ExampleState> driverFactory() {
 
 ##### Spring Boot auto-configuration
 
-`bosk-spring-boot` integrates bosk with Spring Boot. Alongside the automatic read
-session and maintenance endpoints it provides (see the `bosk-spring-boot` module
-javadoc), when `bosk-mongo` is on the classpath it auto-configures the beans needed to
+When `bosk-mongo` is on the classpath, `bosk-spring-boot` auto-configures the beans needed to
 build a MongoDB-backed bosk: a `MongoDriverSettings`, a `BsonSerializer`, and a
 `MongoDriverFactory`. Each backs off if the application defines its own.
 
@@ -950,6 +948,35 @@ there is a brief window (before the change events arrive) when writes to the old
 be silently ignored. While refurbishing from Sequoia to a different format,
 ensure the bosk is quiescent (not performing any updates), or is performing a `flush()` before each update.
 This is a consequence of Sequoia's design simplicity; specifically, its avoidance of multi-document transactions.
+
+### Spring Boot integration
+
+`bosk-spring-boot` integrates bosk with Spring Boot. It opens a read session automatically for
+each HTTP request (see the `bosk-spring-boot` module javadoc), and provides the maintenance
+endpoints described below.
+
+#### Maintenance endpoints
+
+The maintenance endpoints give direct HTTP access to the state tree, so they are disabled
+unless `bosk.web-api.maintenance.access` selects an access:
+
+- `UNSECURED` requires no authorization, and is only permitted when Spring Security is absent.
+  It is intended for local development.
+- `AUTHENTICATED` requires an authenticated request carrying the `bosk:state` authority, using
+  whatever authentication the application has configured. It is only permitted when Spring
+  Security is present.
+
+##### Securing `AUTHENTICATED`
+
+Requests must be authenticated by Spring Security and carry the `bosk:state` authority, which your
+application grants to the users and clients that should reach the endpoints. `PUT` and `DELETE`
+require a CSRF token. See the `bosk-spring-boot` module javadoc, and `MaintenanceAccess` in
+particular, for how to secure this mode.
+
+The required authority is configurable with `bosk.web-api.maintenance.authority`. An access that
+disagrees with the presence of Spring Security fails application startup. The endpoints are served
+under `bosk.web-api.maintenance.path` (default `/bosk/state`). See the `bosk-spring-boot` module
+javadoc for the full description.
 
 ### Serialization: `bosk-jackson`
 

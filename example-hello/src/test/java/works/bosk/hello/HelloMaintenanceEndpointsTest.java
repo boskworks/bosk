@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver;
 import tools.jackson.databind.ObjectMapper;
 import works.bosk.Catalog;
@@ -54,6 +55,9 @@ public class HelloMaintenanceEndpointsTest {
 	@Autowired
 	BoskLogFilter.LogController logController;
 
+	@Autowired
+	HelloSecurityConfig securityConfig;
+
 	@BeforeEach
 	void setupBosk() throws IOException, InterruptedException {
 		bosk.driver().submitReplacement(bosk.rootReference(), INITIAL_STATE);
@@ -71,19 +75,20 @@ public class HelloMaintenanceEndpointsTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"/bosk","/bosk/"})
+	@ValueSource(strings = {"/bosk/state","/bosk/state/"})
 	void get_root_works(String uri) throws Exception {
 		assertGetReturns(INITIAL_STATE, uri);
 		assertHello("world");
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"/bosk","/bosk/"})
+	@ValueSource(strings = {"/bosk/state","/bosk/state/"})
 	void put_root_works(String uri) throws Exception {
 		var newValue = new BoskState(
 			INITIAL_STATE.targets().with(new Target(Identifier.from("everybody")))
 		);
 		mvc.perform(put(uri)
+				.with(bearer())
 				.contentType(APPLICATION_JSON)
 				.content(mapper.writeValueAsString(newValue)))
 			.andExpect(status().isAccepted());
@@ -92,47 +97,68 @@ public class HelloMaintenanceEndpointsTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"/bosk","/bosk/"})
+	@ValueSource(strings = {"/bosk/state","/bosk/state/"})
 	void delete_root_reportsError(String uri) throws Exception {
-		mvc.perform(delete(uri))
+		mvc.perform(delete(uri).with(bearer()))
 			.andExpect(status().isBadRequest());
 		assertHello("world");
 	}
 
 	@Test
 	void get_targets_works() throws Exception {
-		assertGetReturns(INITIAL_STATE.targets(), "/bosk/targets");
+		assertGetReturns(INITIAL_STATE.targets(), "/bosk/state/targets");
 	}
 
 	@Test
 	void put_targets_works() throws Exception {
 		var newTargets = INITIAL_STATE.targets().with(new Target(Identifier.from("new target")));
-		mvc.perform(put("/bosk/targets")
+		mvc.perform(put("/bosk/state/targets")
+				.with(bearer())
 				.contentType(APPLICATION_JSON)
 				.content(mapper.writeValueAsString(newTargets)))
 			.andExpect(status().isAccepted());
-		assertGetReturns(newTargets, "/bosk/targets");
+		assertGetReturns(newTargets, "/bosk/state/targets");
 		assertHello("world", "new target");
 	}
 
 	@Test
 	@Disabled("Can be enabled once all bosk drivers validate that objects can be deleted")
 	void delete_targets_reportsError() throws Exception {
-		mvc.perform(delete("/bosk/targets"))
+		mvc.perform(delete("/bosk/state/targets"))
 			.andExpect(status().isBadRequest());
 		assertHello("world");
 	}
 
 	@Test
 	void get_existingTarget_works() throws Exception {
-		assertGetReturns(INITIAL_TARGET, "/bosk/targets/" + INITIAL_TARGET.id());
+		assertGetReturns(INITIAL_TARGET, "/bosk/state/targets/" + INITIAL_TARGET.id());
 	}
 
 	@Test
 	void get_nonexistentTarget_reportsError() throws Exception {
 		logController.setLogging(OFF, ReadSessionFilter.class);
-		mvc.perform(get("/bosk/targets/nonexistent"))
+		mvc.perform(get("/bosk/state/targets/nonexistent").with(bearer()))
 			.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void get_withoutToken_isUnauthorized() throws Exception {
+		mvc.perform(get("/bosk/state/targets/plain"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void put_withoutToken_isUnauthorized() throws Exception {
+		mvc.perform(put("/bosk/state/targets/plain")
+				.contentType(APPLICATION_JSON)
+				.content("{\"id\":\"plain\",\"name\":\"updated\"}"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void delete_withoutToken_isUnauthorized() throws Exception {
+		mvc.perform(delete("/bosk/state/targets/plain"))
+			.andExpect(status().isUnauthorized());
 	}
 
 	/**
@@ -141,8 +167,9 @@ public class HelloMaintenanceEndpointsTest {
 	 */
 	@Test
 	void put_existingTarget_works() throws Exception {
-		String uri = "/bosk/targets/" + INITIAL_TARGET.id();
+		String uri = "/bosk/state/targets/" + INITIAL_TARGET.id();
 		mvc.perform(put(uri)
+				.with(bearer())
 				.contentType(APPLICATION_JSON)
 				.content(mapper.writeValueAsString(INITIAL_TARGET)))
 			.andExpect(status().isAccepted());
@@ -153,8 +180,9 @@ public class HelloMaintenanceEndpointsTest {
 	@Test
 	void put_newTarget_works() throws Exception {
 		var newTarget = new Target(Identifier.from("new target"));
-		String uri = "/bosk/targets/" + newTarget.id();
+		String uri = "/bosk/state/targets/" + newTarget.id();
 		mvc.perform(put(uri)
+				.with(bearer())
 				.contentType(APPLICATION_JSON)
 				.content(mapper.writeValueAsString(newTarget)))
 			.andExpect(status().isAccepted());
@@ -165,7 +193,8 @@ public class HelloMaintenanceEndpointsTest {
 	@Test
 	void put_wrongContentType_reportsError() throws Exception {
 		logController.setLogging(ERROR, DefaultHandlerExceptionResolver.class);
-		mvc.perform(put("/bosk/targets/" + INITIAL_TARGET.id())
+		mvc.perform(put("/bosk/state/targets/" + INITIAL_TARGET.id())
+				.with(bearer())
 				.contentType(APPLICATION_FORM_URLENCODED)
 				.content(mapper.writeValueAsString(INITIAL_TARGET)))
 			.andExpect(status().isUnsupportedMediaType());
@@ -173,9 +202,9 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void delete_existingTarget_works() throws Exception {
-		mvc.perform(delete("/bosk/targets/" + INITIAL_TARGET.id()))
+		mvc.perform(delete("/bosk/state/targets/" + INITIAL_TARGET.id()).with(bearer()))
 			.andExpect(status().isAccepted());
-		mvc.perform(get("/bosk/targets/" + INITIAL_TARGET.id()).header(CACHE_CONTROL, "no-cache"))
+		mvc.perform(get("/bosk/state/targets/" + INITIAL_TARGET.id()).header(CACHE_CONTROL, "no-cache").with(bearer()))
 			.andExpect(status().isNotFound());
 		assertHello();
 	}
@@ -187,9 +216,16 @@ public class HelloMaintenanceEndpointsTest {
 			.andExpect(status().isInternalServerError());
 	}
 
+	private RequestPostProcessor bearer() {
+		return request -> {
+			request.addHeader("Authorization", "Bearer " + securityConfig.token());
+			return request;
+		};
+	}
+
 	private void assertGetReturns(Object object, String uri) throws Exception {
 		String expected = mapper.writeValueAsString(object);
-		mvc.perform(get(uri).header(CACHE_CONTROL, "no-cache"))
+		mvc.perform(get(uri).header(CACHE_CONTROL, "no-cache").with(bearer()))
 			.andExpect(status().isOk())
 			.andExpect(content().json(expected));
 	}
