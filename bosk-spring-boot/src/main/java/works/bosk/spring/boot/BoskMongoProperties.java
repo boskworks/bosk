@@ -4,9 +4,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode;
 
-import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.DISCONNECT;
-import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL_FAST;
-
 /**
  * Configuration for the auto-configured MongoDB driver.
  * <p>
@@ -23,9 +20,10 @@ import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavai
  * database; defaults to {@code boskCollection}, so a bosk can coexist in a database
  * alongside the application's own collections
  * @param initialDatabaseUnavailableMode how to behave if the database state can't be
- * loaded during initialization; defaults to bosk's own default of {@link DISCONNECT},
- * but you may prefer {@link FAIL_FAST} during development to get helpful errors when the
- * database is misconfigured
+ * loaded during initialization; defaults to bosk's own default of
+ * {@link InitialDatabaseUnavailableMode#DISCONNECT DISCONNECT},
+ * but you may prefer {@link InitialDatabaseUnavailableMode#FAIL_FAST FAIL_FAST} during
+ * development to get helpful errors when the database is misconfigured
  */
 @ConfigurationProperties("bosk.mongodb")
 @SuppressWarnings("exports") // for InitialDatabaseUnavailable
