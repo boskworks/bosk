@@ -31,6 +31,20 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
+/**
+ * HTTP {@code GET}, {@code PUT}, and {@code DELETE} access to the Bosk state tree as JSON.
+ * <p>
+ * Every request is authorized in the handler before the state is touched, so access is enforced
+ * here regardless of whether, or how, the application's security filter chains cover this path.
+ * See {@link MaintenanceAccess} for the available access modes.
+ * <p>
+ * A {@code PUT} or {@code DELETE} is submitted through {@code bosk.driver()}, so it fires hooks and
+ * any downstream replication or persistence: treat it as a change to production state. Auditing that
+ * activity is the application's responsibility; Spring Boot Actuator's audit framework
+ * ({@code AuditEventRepository}, exposed at {@code auditevents}) records authentication and
+ * authorization decisions, HTTP access logs record requests, and Bosk hooks observe the resulting
+ * state changes.
+ */
 @RestController
 @RequestMapping("${bosk.web-api.maintenance.path:" + WebApiProperties.DEFAULT_MAINTENANCE_PATH + "}")
 public class MaintenanceEndpoints {

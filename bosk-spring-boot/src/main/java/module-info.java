@@ -29,24 +29,18 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *     the Bosk state.
  *     <p>
  *     Because these endpoints expose full read and write access to the state tree, they are disabled unless
- *     {@code bosk.web-api.maintenance.access} explicitly selects one of:
+ *     {@code bosk.web-api.maintenance.access} explicitly selects a
+ *     {@link works.bosk.spring.boot.MaintenanceAccess MaintenanceAccess}:
  *     <ul>
  *       <li>{@code UNSECURED} — access requires no authorization. This mode is for local development
  *       without Spring Security, and it is an error to select it when Spring Security is present.</li>
  *       <li>{@code AUTHENTICATED} — access requires the authority named by
  *       {@code bosk.web-api.maintenance.authority} (default {@code bosk:state}), using whatever
- *       authentication the application has configured. Spring Security's CSRF protection applies, so
- *       clients that issue {@code PUT} or {@code DELETE} must supply a CSRF token. It is an error to
- *       select this mode when Spring Security is not present.</li>
+ *       authentication the application has configured. It is an error to select this mode when Spring
+ *       Security is not present. See {@link works.bosk.spring.boot.MaintenanceAccess#AUTHENTICATED
+ *       MaintenanceAccess.AUTHENTICATED} for how to secure it.</li>
  *       <li>{@code NONE} — the endpoints are not registered. This is the default.</li>
  *     </ul>
- *     <p>
- *     With {@code AUTHENTICATED}, a request must be authenticated by Spring Security and carry the
- *     {@code bosk:state} authority, which the application grants to the users and clients that should
- *     reach the endpoints. The endpoints enforce this themselves, so an application does not need a rule
- *     of its own. {@code PUT} and {@code DELETE} require a CSRF token, so keep CSRF protection on for the
- *     path and exempt it only when the endpoint cannot be reached with ambient credentials; if in doubt,
- *     keep it on and give clients a token. See Spring Security's CSRF documentation for details.
  *     <p>
  *     The authorization check runs in the endpoints themselves and throws {@code AccessDeniedException},
  *     so Spring Security produces the usual {@code 401} or {@code 403} responses. The

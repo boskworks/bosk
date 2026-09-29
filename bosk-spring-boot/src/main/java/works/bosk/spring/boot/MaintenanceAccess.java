@@ -26,10 +26,18 @@ public enum MaintenanceAccess {
 	/**
 	 * The maintenance endpoints are registered and require the configured
 	 * {@link WebApiProperties.Maintenance#authority() authority}, using whatever authentication
-	 * the application has configured. Spring Security's CSRF protection applies as usual, so
-	 * clients that issue {@code PUT} or {@code DELETE} must supply a CSRF token.
+	 * the application has configured. It is a configuration error to select this mode when
+	 * Spring Security is not present.
 	 * <p>
-	 * It is a configuration error to select this mode when Spring Security is not present.
+	 * A request must be authenticated by Spring Security and carry the {@code bosk:state}
+	 * authority, which the application grants to the users and clients that should reach the
+	 * endpoints. The endpoints enforce this themselves, so no application rule is needed.
+	 * <p>
+	 * {@code PUT} and {@code DELETE} require a CSRF token, so keep Spring Security's CSRF
+	 * protection on for the path and exempt it only when the endpoint cannot be reached with
+	 * ambient credentials; if in doubt, keep it on and give clients a token. See Spring Security's
+	 * <a href="https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html">CSRF
+	 * reference</a> for details.
 	 */
 	AUTHENTICATED
 }

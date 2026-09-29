@@ -968,16 +968,10 @@ unless `bosk.web-api.maintenance.access` selects an access:
 
 ##### Securing `AUTHENTICATED`
 
-With `AUTHENTICATED`, requests must be authenticated by Spring Security and carry the `bosk:state`
-authority, which your application grants to the users and clients that should reach the endpoints.
-The endpoints enforce this themselves, so you don't need a rule of your own.
-
-`PUT` and `DELETE` require a CSRF token, so keep CSRF protection on for the path. Exempt it only
-when the endpoint cannot be reached with ambient credentials; if you're unsure, keep CSRF protection
-on and give clients a token. See Spring Security's
-[CSRF reference](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html).
-
-Writes go through `bosk.driver()`, so hooks run: treat them as changes to production state.
+Requests must be authenticated by Spring Security and carry the `bosk:state` authority, which your
+application grants to the users and clients that should reach the endpoints. `PUT` and `DELETE`
+require a CSRF token. See the `bosk-spring-boot` module javadoc, and `MaintenanceAccess` in
+particular, for how to secure this mode.
 
 The required authority is configurable with `bosk.web-api.maintenance.authority`. An access that
 disagrees with the presence of Spring Security fails application startup. The endpoints are served

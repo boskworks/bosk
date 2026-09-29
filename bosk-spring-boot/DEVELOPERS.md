@@ -1,7 +1,8 @@
 ## Bosk-spring-boot developer's guide
 
 This guide is for those interested in contributing to the development of the `bosk-spring-boot` module.
-(The guide for developers _using_ the module is [USERS.md](../docs/USERS.md).)
+(The guide for developers _using_ the module is [USERS.md](../docs/USERS.md) and the
+`bosk-spring-boot` javadoc, especially `MaintenanceAccess`.)
 
 ### Maintenance endpoint security
 
@@ -75,9 +76,8 @@ from the ambient cookie; with permissive CORS, a cross-site request could exploi
 Spring Security offers no reliable predicate for "was this credential ambient?"
 (the `Authentication` hierarchy conflates OAuth2 login tokens with resource-server tokens),
 so the mode could not be made sound in general.
-Rather than ship a control that works sometimes and fails silently otherwise, we removed it,
-leaving the machine-client case to the application, which can give clients a CSRF token
-or, if the endpoint cannot be reached with ambient credentials, exempt the path.
+Rather than ship a control that works sometimes and fails silently otherwise, we removed it
+and left the machine-client case to the application.
 
 #### Residual risks
 
@@ -95,8 +95,8 @@ or, if the endpoint cannot be reached with ambient credentials, exempt the path.
   the mode is loud and opt-in, but it cannot be enforced.
 - **Writes fire hooks.** A maintenance write can have effects far beyond the state tree.
 - **CSRF friction for machine clients.**
-  With no bearer mode, a machine client behind CSRF-protected authentication must be given a token,
-  or the application must exempt the path while ensuring it is not reachable with ambient credentials.
+  With no bearer mode, a machine client behind CSRF-protected authentication cannot call the
+  endpoints without a CSRF token, so the application owns that trade-off.
 
 #### Naming
 
