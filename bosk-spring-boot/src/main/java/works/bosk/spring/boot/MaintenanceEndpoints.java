@@ -35,11 +35,11 @@ import static works.bosk.spring.boot.WebApiProperties.DEFAULT_MAINTENANCE_PATH;
 /**
  * HTTP {@code GET}, {@code PUT}, and {@code DELETE} access to the Bosk state tree as JSON.
  * <p>
- * Every request is authorized in the handler before the state is touched, so access is enforced
- * here regardless of whether, or how, the application's security filter chains cover this path.
- * See {@link MaintenanceAccess} for the available access modes. A {@code PUT} or {@code DELETE}
- * is submitted through {@code bosk.driver()}, so it fires hooks and any downstream replication
- * or persistence.
+ * When the access mode requires authorization, it is enforced here, in the handler, before the
+ * state is touched, so access is enforced regardless of whether, or how, the application's security
+ * filter chains cover this path. See {@link MaintenanceAccess} for the available access modes.
+ * A {@code PUT} or {@code DELETE} is submitted through {@code bosk.driver()}, so it fires hooks and
+ * any downstream replication or persistence.
  */
 @RestController
 @RequestMapping("${bosk.web-api.maintenance.path:" + DEFAULT_MAINTENANCE_PATH + "}")
@@ -47,6 +47,11 @@ public class MaintenanceEndpoints {
 	private final Bosk<?> bosk;
 	private final ObjectMapper mapper;
 	private final JacksonSerializer jackson;
+
+	/**
+	 * The authorization to enforce, or {@code null} when the access mode requires none, as in
+	 * {@link MaintenanceAccess#UNSECURED}.
+	 */
 	private final MaintenanceAuthorization authorization;
 
 	MaintenanceEndpoints(
@@ -66,7 +71,7 @@ public class MaintenanceEndpoints {
 		@PathVariable(value="path", required = false) String path,
 		HttpServletRequest req
 	) {
-		authorization.check(req);
+		authorize(req);
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		Reference<?> ref = referenceForPath(path);
 		try {
@@ -83,7 +88,7 @@ public class MaintenanceEndpoints {
 		HttpServletRequest req,
 		HttpServletResponse rsp
 	) throws IOException, InvalidTypeException {
-		authorization.check(req);
+		authorize(req);
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		@SuppressWarnings("unchecked")
 		Reference<T> ref = (Reference<T>) referenceForPath(path);
@@ -121,7 +126,7 @@ public class MaintenanceEndpoints {
 		HttpServletRequest req,
 		HttpServletResponse rsp
 	) {
-		authorization.check(req);
+		authorize(req);
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		Reference<?> ref = referenceForPath(path);
 		discriminatePreconditionCases(req, new PreconditionDiscriminator() {
@@ -142,6 +147,17 @@ public class MaintenanceEndpoints {
 			}
 		});
 		rsp.setStatus(ACCEPTED.value());
+	}
+
+	/**
+	 * Enforces the configured authorization, if the access mode asks for one. There is none in
+	 * {@link MaintenanceAccess#UNSECURED} mode, where the endpoints are deliberately reachable
+	 * without authentication.
+	 */
+	private void authorize(HttpServletRequest req) {
+		if (authorization != null) {
+			authorization.check(req);
+		}
 	}
 
 	private Reference<?> referenceForPath(String path) {

@@ -3,6 +3,7 @@ package works.bosk.spring.boot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
@@ -40,9 +41,9 @@ class BoskMaintenanceAutoConfiguration {
 		Bosk<?> bosk,
 		ObjectMapper mapper,
 		JacksonSerializer jackson,
-		MaintenanceAuthorization authorization
+		ObjectProvider<MaintenanceAuthorization> authorization
 	) {
-		return new MaintenanceEndpoints(bosk, mapper, jackson, authorization);
+		return new MaintenanceEndpoints(bosk, mapper, jackson, authorization.getIfAvailable());
 	}
 
 	/**
@@ -102,16 +103,6 @@ class BoskMaintenanceAutoConfiguration {
 			throw new IllegalStateException(
 				"bosk.web-api.maintenance.access=UNSECURED is not permitted because Spring Security is present. "
 					+ "Set bosk.web-api.maintenance.access to AUTHENTICATED and grant the configured authority.");
-		}
-	}
-
-	@Configuration(proxyBeanMethods = false)
-	@ConditionalOnProperty(prefix = "bosk.web-api.maintenance", name = "access", havingValue = "UNSECURED")
-	@ConditionalOnMissingClass("org.springframework.security.web.util.matcher.RequestMatcher")
-	static class UnsecuredMaintenanceConfiguration {
-		@Bean
-		MaintenanceAuthorization maintenanceAuthorization() {
-			return request -> { };
 		}
 	}
 
