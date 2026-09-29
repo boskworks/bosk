@@ -6,7 +6,6 @@ import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -67,11 +66,11 @@ class BoskMaintenanceAutoConfigurationTest {
 	void unrecognizedAccess_reportsBindingError() {
 		// The condition matches only recognized values, so the endpoints aren't registered and
 		// binding WebApiProperties reports the bad value rather than a missing-bean error.
-		runner.withPropertyValues("bosk.web-api.maintenance.access=BEARERX")
+		runner.withPropertyValues("bosk.web-api.maintenance.access=UNRECOGNIZED")
 			.run(context -> {
 				assertThat(context).hasFailed();
 				assertThat(context.getStartupFailure())
-					.hasStackTraceContaining("BEARERX");
+					.hasStackTraceContaining("UNRECOGNIZED");
 			});
 	}
 
@@ -120,41 +119,4 @@ class BoskMaintenanceAutoConfigurationTest {
 			});
 	}
 
-	@Test
-	void bearerWithSecurity_registersEndpointsMatcherAndCsrfCustomizer() {
-		runner.withPropertyValues("bosk.web-api.maintenance.access=BEARER")
-			.run(context -> {
-				assertThat(context).hasSingleBean(MaintenanceEndpoints.class);
-				assertThat(context).hasSingleBean(BoskMaintenanceRequestMatcher.class);
-				assertThat(context).hasBean("boskMaintenanceCsrfCustomizer");
-				assertThat(context.getBean(MaintenanceAuthorization.class))
-					.isInstanceOf(BearerMaintenanceAuthorization.class);
-			});
-	}
-
-	@Test
-	void bearerWithoutSecurity_failsFast() {
-		runner.withPropertyValues("bosk.web-api.maintenance.access=BEARER")
-			.withClassLoader(new FilteredClassLoader(RequestMatcher.class))
-			.run(context -> {
-				assertThat(context).hasFailed();
-				assertThat(context.getStartupFailure())
-					.hasRootCauseInstanceOf(IllegalStateException.class)
-					.hasStackTraceContaining("requires Spring Security");
-			});
-	}
-
-	@Test
-	void bearerWithoutConfig_failsFast() {
-		// spring-security-web does not depend on spring-security-config, so BEARER must
-		// require both: the matcher needs web, and the CSRF exemption needs config.
-		runner.withPropertyValues("bosk.web-api.maintenance.access=BEARER")
-			.withClassLoader(new FilteredClassLoader(HttpSecurity.class))
-			.run(context -> {
-				assertThat(context).hasFailed();
-				assertThat(context.getStartupFailure())
-					.hasRootCauseInstanceOf(IllegalStateException.class)
-					.hasStackTraceContaining("requires Spring Security's config module");
-			});
-	}
 }

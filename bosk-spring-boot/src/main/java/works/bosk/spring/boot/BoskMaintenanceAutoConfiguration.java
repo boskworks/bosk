@@ -13,8 +13,6 @@ import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotatedTypeMetadata;
-import org.springframework.security.config.Customizer;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import tools.jackson.databind.ObjectMapper;
 import works.bosk.Bosk;
@@ -79,59 +77,6 @@ public class BoskMaintenanceAutoConfiguration {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	@ConditionalOnProperty(prefix = "bosk.web-api.maintenance", name = "access", havingValue = "BEARER")
-	@ConditionalOnClass({RequestMatcher.class, HttpSecurity.class})
-	static class BearerMaintenanceConfiguration {
-		@Bean
-		MaintenanceAuthorization maintenanceAuthorization(WebApiProperties properties) {
-			return new BearerMaintenanceAuthorization(properties.maintenance().authority());
-		}
-
-		@Bean
-		BoskMaintenanceRequestMatcher boskMaintenanceRequestMatcher(WebApiProperties properties) {
-			return new BoskMaintenanceRequestMatcher(properties.maintenance().path());
-		}
-
-		/**
-		 * A browser does not attach a bearer token automatically, so the maintenance endpoints
-		 * do not need CSRF protection in this mode. This customizer applies to every security
-		 * filter chain, including Boot's default one, and only exempts the maintenance path;
-		 * an application that configures CSRF itself can override it.
-		 */
-		@Bean
-		Customizer<HttpSecurity> boskMaintenanceCsrfCustomizer(BoskMaintenanceRequestMatcher matcher) {
-			return http -> http.csrf(csrf -> csrf.ignoringRequestMatchers(matcher));
-		}
-	}
-
-	@Configuration(proxyBeanMethods = false)
-	@ConditionalOnProperty(prefix = "bosk.web-api.maintenance", name = "access", havingValue = "BEARER")
-	@ConditionalOnMissingClass("org.springframework.security.web.util.matcher.RequestMatcher")
-	static class BearerWithoutSecurityConfiguration {
-		@Bean
-		MaintenanceAuthorization maintenanceAuthorization() {
-			throw new IllegalStateException(
-				"bosk.web-api.maintenance.access=BEARER requires Spring Security on the classpath. "
-					+ "Add a Spring Security dependency, or set bosk.web-api.maintenance.access=UNSECURED for "
-					+ "local development without Spring Security.");
-		}
-	}
-
-	@Configuration(proxyBeanMethods = false)
-	@ConditionalOnProperty(prefix = "bosk.web-api.maintenance", name = "access", havingValue = "BEARER")
-	@ConditionalOnClass(RequestMatcher.class)
-	@ConditionalOnMissingClass("org.springframework.security.config.annotation.web.builders.HttpSecurity")
-	static class BearerWithoutConfigConfiguration {
-		@Bean
-		MaintenanceAuthorization maintenanceAuthorization() {
-			throw new IllegalStateException(
-				"bosk.web-api.maintenance.access=BEARER requires Spring Security's config module, because it "
-					+ "exempts the maintenance path from CSRF protection. Add it, or set "
-					+ "bosk.web-api.maintenance.access=UNSECURED for local development without Spring Security.");
-		}
-	}
-
-	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnProperty(prefix = "bosk.web-api.maintenance", name = "access", havingValue = "UNSECURED")
 	@ConditionalOnClass(RequestMatcher.class)
 	static class UnsecuredWithSecurityConfiguration {
@@ -139,7 +84,7 @@ public class BoskMaintenanceAutoConfiguration {
 		MaintenanceAuthorization maintenanceAuthorization() {
 			throw new IllegalStateException(
 				"bosk.web-api.maintenance.access=UNSECURED is not permitted because Spring Security is present. "
-					+ "Set bosk.web-api.maintenance.access to BEARER or AUTHENTICATED and grant the configured authority.");
+					+ "Set bosk.web-api.maintenance.access to AUTHENTICATED and grant the configured authority.");
 		}
 	}
 
@@ -164,8 +109,7 @@ public class BoskMaintenanceAutoConfiguration {
 		public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
 			String access = context.getEnvironment().getProperty("bosk.web-api.maintenance.access");
 			return MaintenanceAccess.UNSECURED.name().equalsIgnoreCase(access)
-				|| MaintenanceAccess.AUTHENTICATED.name().equalsIgnoreCase(access)
-				|| MaintenanceAccess.BEARER.name().equalsIgnoreCase(access);
+				|| MaintenanceAccess.AUTHENTICATED.name().equalsIgnoreCase(access);
 		}
 	}
 }

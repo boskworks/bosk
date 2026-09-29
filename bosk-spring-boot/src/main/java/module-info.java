@@ -33,31 +33,20 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *     <ul>
  *       <li>{@code UNSECURED} — access requires no authorization. This mode is for local development
  *       without Spring Security, and it is an error to select it when Spring Security is present.</li>
- *       <li>{@code BEARER} — access requires the authority named by
- *       {@code bosk.web-api.maintenance.authority} (default {@code bosk:state}) and a bearer token in
- *       the {@code Authorization} header. Because a browser does not attach a bearer token
- *       automatically, CSRF protection is not applied to the endpoints in this mode; the header
- *       requirement is what makes that safe. The check is on the presence of the header rather than on
- *       how the request was authenticated, so an application should make sure the mechanism that grants
- *       the authority is the one it expects. It is intended for {@code curl}, the IntelliJ HTTP client,
- *       and service-to-service callers, and it requires the application to have a bearer-token
- *       authentication mechanism configured.</li>
- *       <li>{@code AUTHENTICATED} — access requires the authority, using whatever authentication the
- *       application has configured. Spring Security's CSRF protection applies, so clients that issue
- *       {@code PUT} or {@code DELETE} must supply a CSRF token (an anti-forgery value, not an
- *       authentication credential); this generally means a browser client, or a machine client for which
- *       the application has exposed a token (for example using a {@code CookieCsrfTokenRepository}).
- *       Applications whose clients are machines should prefer {@code BEARER}.</li>
+ *       <li>{@code AUTHENTICATED} — access requires the authority named by
+ *       {@code bosk.web-api.maintenance.authority} (default {@code bosk:state}), using whatever
+ *       authentication the application has configured. Spring Security's CSRF protection applies, so
+ *       clients that issue {@code PUT} or {@code DELETE} must supply a CSRF token. It is an error to
+ *       select this mode when Spring Security is not present.</li>
  *       <li>{@code NONE} — the endpoints are not registered. This is the default.</li>
  *     </ul>
- *     {@code BEARER} and {@code AUTHENTICATED} require Spring Security, and it is an error to select them
- *     without it on the classpath.
  *     <p>
- *     Both {@code BEARER} and {@code AUTHENTICATED} are secure. {@code AUTHENTICATED} accepts more forms
- *     of authentication, but clients that issue {@code PUT} or {@code DELETE} must supply a CSRF token.
- *     {@code BEARER} accepts only bearer tokens, but {@code PUT} and {@code DELETE} work without a CSRF
- *     token, which is more convenient for machine clients such as {@code curl} and the IntelliJ HTTP
- *     client.
+ *     With {@code AUTHENTICATED}, a request must be authenticated by Spring Security and carry the
+ *     {@code bosk:state} authority, which the application grants to the users and clients that should
+ *     reach the endpoints. The endpoints enforce this themselves, so an application does not need a rule
+ *     of its own. {@code PUT} and {@code DELETE} require a CSRF token, so keep CSRF protection on for the
+ *     path and exempt it only when the endpoint cannot be reached with ambient credentials; if in doubt,
+ *     keep it on and give clients a token. See Spring Security's CSRF documentation for details.
  *     <p>
  *     The authorization check runs in the endpoints themselves and throws {@code AccessDeniedException},
  *     so Spring Security produces the usual {@code 401} or {@code 403} responses. The
@@ -102,7 +91,6 @@ module works.bosk.spring.boot {
 	requires static spring.boot.mongodb;
 
 	// Support Spring Security if it's present, but don't require it
-	requires static spring.security.config;
 	requires static spring.security.core;
 	requires static spring.security.web;
 

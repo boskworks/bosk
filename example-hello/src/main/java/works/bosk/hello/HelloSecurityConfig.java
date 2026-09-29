@@ -16,11 +16,11 @@ import org.springframework.security.web.SecurityFilterChain;
 /**
  * Minimal example security.
  * <p>
- * The maintenance endpoints run in {@code BEARER} mode, so they accept only requests that carry
- * a bearer token whose introspection yields the {@code bosk:state} authority. This class stands
- * in for a real application's security configuration: the introspector here simply checks the
- * token against a configured list, whereas a real application would introspect it against an
- * authorization server, or validate a JWT. Nothing else in this example depends on this class.
+ * The maintenance endpoints run in {@code AUTHENTICATED} mode, so they require an authenticated
+ * request carrying the {@code bosk:state} authority. Here a bearer token authenticates the caller:
+ * the introspector checks the token against a configured list and grants {@code bosk:state}, whereas
+ * a real application would introspect it against an authorization server, or validate a JWT.
+ * Nothing else in this example depends on this class.
  * <p>
  * All other endpoints are left open, as they were before this class existed.
  */
@@ -60,8 +60,9 @@ class HelloSecurityConfig {
 		HttpSecurity http,
 		OpaqueTokenIntrospector introspector
 	) throws Exception {
-		// This example has no browser session: the maintenance endpoints use bearer tokens and
-		// the other endpoints are public, so there are no ambient credentials to forge.
+		// This example has no browser session: the maintenance endpoints authenticate with a bearer
+		// token and the other endpoints are public, so there are no ambient credentials to forge.
+		// That is why CSRF protection is disabled here; see the README for the general guidance.
 		http
 			.csrf(csrf -> csrf.disable())
 			.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())

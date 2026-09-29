@@ -22,7 +22,7 @@ final class MaintenancePropertiesValidator implements InitializingBean {
 			LOGGER.warn(
 				"bosk.web-api.maintenance.path or bosk.web-api.maintenance.authority is set, but "
 					+ "bosk.web-api.maintenance.access is NONE, so the maintenance endpoints will not be "
-					+ "registered. Set bosk.web-api.maintenance.access to UNSECURED, BEARER, or AUTHENTICATED to enable them.");
+					+ "registered. Set bosk.web-api.maintenance.access to UNSECURED or AUTHENTICATED to enable them.");
 		}
 	}
 

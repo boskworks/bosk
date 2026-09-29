@@ -1,8 +1,8 @@
 
-# These resources target the example's maintenance endpoints, which run in BEARER mode,
-# so the provider must send a bearer token (one of the values of `example.security.tokens`)
-# in the Authorization header, or the requests are rejected with 401. If the provider
-# cannot send headers, use a different `bosk.web-api.maintenance.access` setting.
+# These resources target the example's maintenance endpoints. The example authenticates them
+# with a bearer token (one of the values of `example.security.tokens`) granting `bosk:state`,
+# so the provider must send that token in the Authorization header, or the requests are
+# rejected with 401.
 
 terraform {
 	required_providers {

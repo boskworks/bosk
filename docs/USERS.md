@@ -962,18 +962,22 @@ unless `bosk.web-api.maintenance.access` selects an access:
 
 - `UNSECURED` requires no authorization, and is only permitted when Spring Security is absent.
   It is intended for local development.
-- `BEARER` requires the `bosk:state` authority and a bearer token in the `Authorization`
-  header. Because a browser does not attach a bearer token automatically, CSRF protection is
-  not applied to the endpoints. This is the mode for `curl`, the IntelliJ HTTP client, and
-  service-to-service callers.
-- `AUTHENTICATED` requires the `bosk:state` authority using whatever authentication the
-  application has configured. Spring Security's CSRF protection applies, so `PUT` and `DELETE`
-  require a CSRF token; prefer `BEARER` when the clients are machines.
+- `AUTHENTICATED` requires an authenticated request carrying the `bosk:state` authority, using
+  whatever authentication the application has configured. It is only permitted when Spring
+  Security is present.
 
-Both `BEARER` and `AUTHENTICATED` are secure. `AUTHENTICATED` accepts more forms of authentication,
-but clients that issue `PUT` or `DELETE` must supply a CSRF token. `BEARER` accepts only bearer
-tokens, but `PUT` and `DELETE` work without a CSRF token, which is more convenient for machine
-clients such as `curl` and the IntelliJ HTTP client.
+##### Securing `AUTHENTICATED`
+
+With `AUTHENTICATED`, requests must be authenticated by Spring Security and carry the `bosk:state`
+authority, which your application grants to the users and clients that should reach the endpoints.
+The endpoints enforce this themselves, so you don't need a rule of your own.
+
+`PUT` and `DELETE` require a CSRF token, so keep CSRF protection on for the path. Exempt it only
+when the endpoint cannot be reached with ambient credentials; if you're unsure, keep CSRF protection
+on and give clients a token. See Spring Security's
+[CSRF reference](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html).
+
+Writes go through `bosk.driver()`, so hooks run: treat them as changes to production state.
 
 The required authority is configurable with `bosk.web-api.maintenance.authority`. An access that
 disagrees with the presence of Spring Security fails application startup. The endpoints are served
