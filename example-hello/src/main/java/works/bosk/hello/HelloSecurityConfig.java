@@ -1,0 +1,76 @@
+package works.bosk.hello;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.DefaultOAuth2AuthenticatedPrincipal;
+import org.springframework.security.oauth2.server.resource.introspection.BadOpaqueTokenException;
+import org.springframework.security.oauth2.server.resource.introspection.OpaqueTokenIntrospector;
+import org.springframework.security.web.SecurityFilterChain;
+
+/**
+ * Minimal example security.
+ * <p>
+ * The maintenance endpoints run in {@code AUTHENTICATED} mode, so the application must authenticate
+ * requests to their path. Here a bearer token authenticates the caller: the introspector checks it
+ * against a configured list and grants {@code bosk:state}, and the filter chain requires that
+ * authority for the maintenance path. A real application would introspect the token against an
+ * authorization server, or validate a JWT. Nothing else in this example depends on this class.
+ * <p>
+ * All other endpoints are left open, as they were before this class existed.
+ */
+@Configuration
+class HelloSecurityConfig {
+	private final List<String> tokens;
+
+	HelloSecurityConfig(@Value("${example.security.tokens}") String tokens) {
+		this.tokens = Arrays.stream(tokens.split(","))
+			.map(String::trim)
+			.filter(token -> !token.isEmpty())
+			.toList();
+	}
+
+	/**
+	 * The first configured token, so tests can present a valid one.
+	 */
+	String token() {
+		return tokens.get(0);
+	}
+
+	@Bean
+	OpaqueTokenIntrospector helloTokenIntrospector() {
+		return token -> {
+			if (!tokens.contains(token)) {
+				throw new BadOpaqueTokenException("Unknown token");
+			}
+			return new DefaultOAuth2AuthenticatedPrincipal(
+				"example",
+				Map.of("sub", "example"),
+				List.of(new SimpleGrantedAuthority("bosk:state")));
+		};
+	}
+
+	@Bean
+	SecurityFilterChain helloSecurityFilterChain(
+		HttpSecurity http,
+		OpaqueTokenIntrospector introspector,
+		@Value("${bosk.web.maintenance.path:/bosk/state}") String maintenancePath
+	) throws Exception {
+		// This example has no browser session: the maintenance endpoints authenticate with a bearer
+		// token and the other endpoints are public, so there are no ambient credentials to forge.
+		// That is why CSRF protection is disabled here.
+		http
+			.csrf(csrf -> csrf.disable())
+			.authorizeHttpRequests(auth -> auth
+				.requestMatchers(maintenancePath + "/**").hasAuthority("bosk:state")
+				.anyRequest().permitAll())
+			.oauth2ResourceServer(oauth2 -> oauth2.opaqueToken(
+				opaque -> opaque.introspector(introspector)));
+		return http.build();
+	}
+}

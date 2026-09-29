@@ -30,15 +30,25 @@ import static org.springframework.http.HttpStatus.ACCEPTED;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
+import static works.bosk.spring.boot.WebProperties.DEFAULT_MAINTENANCE_PATH;
 
+/**
+ * HTTP {@code GET}, {@code PUT}, and {@code DELETE} access to the Bosk state tree as JSON.
+ * <p>
+ * These endpoints are registered only when {@code bosk.web.maintenance.access} selects an
+ * access. In {@link MaintenanceAccess#AUTHENTICATED} mode, the application must authenticate
+ * requests to the maintenance path; see {@link MaintenanceAccess}. A {@code PUT} or {@code DELETE}
+ * is submitted through {@code bosk.driver()}, so it fires hooks and any downstream replication
+ * or persistence.
+ */
 @RestController
-@RequestMapping("${bosk.web.maintenance-path}")
+@RequestMapping("${bosk.web.maintenance.path:" + DEFAULT_MAINTENANCE_PATH + "}")
 public class MaintenanceEndpoints {
 	private final Bosk<?> bosk;
 	private final ObjectMapper mapper;
 	private final JacksonSerializer jackson;
 
-	public MaintenanceEndpoints(
+	MaintenanceEndpoints(
 		Bosk<?> bosk,
 		ObjectMapper mapper,
 		JacksonSerializer jackson

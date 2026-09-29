@@ -1,2 +1,3 @@
 works.bosk.spring.boot.BoskAutoConfiguration
+works.bosk.spring.boot.BoskMaintenanceAutoConfiguration
 works.bosk.spring.boot.MongoDriverAutoConfiguration

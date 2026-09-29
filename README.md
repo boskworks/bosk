@@ -104,7 +104,7 @@ giving you "snapshot-at-start" semantics and protecting you from race conditions
 It is an antipattern to use many small sessions during the course of a single operation.
 
 This part is done automatically for you in Spring Boot if you bring in the `bosk-spring-boot` library.
-You can also set the `bosk.web.maintenance-path` property to get an immediate HTTP REST API to view and edit your state tree.
+You can also set `bosk.web.maintenance.access` to `UNSECURED` for local development to get an immediate HTTP REST API to view and edit your state tree; with Spring Security present, use `AUTHENTICATED` and a filter-chain rule instead. See the [Spring Boot integration](docs/USERS.md#spring-boot-integration) section of the user guide.
 
 To modify state programmatically, use the `BoskDriver` interface:
 
