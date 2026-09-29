@@ -1,5 +1,8 @@
 package works.bosk.spring.boot;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
@@ -29,8 +32,7 @@ import works.bosk.jackson.JacksonSerializer;
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableConfigurationProperties(WebApiProperties.class)
-@SuppressWarnings("exports") // because this public API is annotated with types from the non-transitive spring.boot.autoconfigure module
-public class BoskMaintenanceAutoConfiguration {
+class BoskMaintenanceAutoConfiguration {
 
 	@Bean
 	@Conditional(MaintenanceEnabledCondition.class)
@@ -43,9 +45,24 @@ public class BoskMaintenanceAutoConfiguration {
 		return new MaintenanceEndpoints(bosk, mapper, jackson, authorization);
 	}
 
+	/**
+	 * Warns when maintenance settings are set but no access is selected, so an unregistered set of
+	 * endpoints is not a silent surprise.
+	 */
 	@Bean
-	MaintenancePropertiesValidator boskMaintenancePropertiesValidator(Environment environment) {
-		return new MaintenancePropertiesValidator(environment);
+	InitializingBean boskMaintenanceSettingsWarning(Environment environment) {
+		return () -> {
+			String access = environment.getProperty("bosk.web-api.maintenance.access", MaintenanceAccess.NONE.name());
+			boolean endpointsDisabled = MaintenanceAccess.NONE.name().equalsIgnoreCase(access);
+			boolean settingsPresent = environment.containsProperty("bosk.web-api.maintenance.path")
+				|| environment.containsProperty("bosk.web-api.maintenance.authority");
+			if (endpointsDisabled && settingsPresent) {
+				LOGGER.warn(
+					"bosk.web-api.maintenance.path or bosk.web-api.maintenance.authority is set, but "
+						+ "bosk.web-api.maintenance.access is NONE, so the maintenance endpoints will not be "
+						+ "registered. Set bosk.web-api.maintenance.access to UNSECURED or AUTHENTICATED to enable them.");
+			}
+		};
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -94,7 +111,7 @@ public class BoskMaintenanceAutoConfiguration {
 	static class UnsecuredMaintenanceConfiguration {
 		@Bean
 		MaintenanceAuthorization maintenanceAuthorization() {
-			return PermitAllMaintenanceAuthorization.INSTANCE;
+			return request -> { };
 		}
 	}
 
@@ -112,4 +129,6 @@ public class BoskMaintenanceAutoConfiguration {
 				|| MaintenanceAccess.AUTHENTICATED.name().equalsIgnoreCase(access);
 		}
 	}
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(BoskMaintenanceAutoConfiguration.class);
 }

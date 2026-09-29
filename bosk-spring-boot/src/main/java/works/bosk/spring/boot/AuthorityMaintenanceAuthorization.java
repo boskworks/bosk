@@ -11,12 +11,11 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Requires that the current authentication carries a particular authority.
  * <p>
- * When the request was processed by Spring Security, throwing {@link AccessDeniedException}
- * lets {@code ExceptionTranslationFilter} produce the usual responses: anonymous callers are
- * sent to the configured authentication entry point, and authenticated callers without the
- * authority receive a 403. If there is no authentication at all, the request did not pass
- * through Spring Security (for example, the maintenance path was ignored), so there is no
- * entry point to challenge the caller and we deny directly.
+ * Because the check runs in the endpoint rather than in a filter chain, it can be reached by a
+ * request that Spring Security never processed, for example when no chain matches the maintenance
+ * path. Such a request has no authentication and no entry point to challenge the caller, so it is
+ * denied directly; otherwise the usual {@link AccessDeniedException} lets Spring Security's
+ * {@code ExceptionTranslationFilter} produce the challenge or 403.
  */
 class AuthorityMaintenanceAuthorization implements MaintenanceAuthorization {
 	private final String authority;

@@ -963,15 +963,8 @@ unless `bosk.web-api.maintenance.access` selects an access:
 - `UNSECURED` requires no authorization, and is only permitted when Spring Security is absent.
   It is intended for local development.
 - `AUTHENTICATED` requires an authenticated request carrying the `bosk:state` authority, using
-  whatever authentication the application has configured. It is only permitted when Spring
-  Security is present.
-
-##### Securing `AUTHENTICATED`
-
-Requests must be authenticated by Spring Security and carry the `bosk:state` authority, which your
-application grants to the users and clients that should reach the endpoints. `PUT` and `DELETE`
-require a CSRF token. See the `bosk-spring-boot` module javadoc, and `MaintenanceAccess` in
-particular, for how to secure this mode.
+  whatever authentication the application has configured, and is only permitted when Spring
+  Security is present. `PUT` and `DELETE` require a CSRF token.
 
 The required authority is configurable with `bosk.web-api.maintenance.authority`. An access that
 disagrees with the presence of Spring Security fails application startup. The endpoints are served

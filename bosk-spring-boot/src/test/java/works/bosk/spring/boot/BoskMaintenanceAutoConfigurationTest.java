@@ -80,8 +80,7 @@ class BoskMaintenanceAutoConfigurationTest {
 			.withClassLoader(new FilteredClassLoader(RequestMatcher.class))
 			.run(context -> {
 				assertThat(context).hasSingleBean(MaintenanceEndpoints.class);
-				assertThat(context.getBean(MaintenanceAuthorization.class))
-					.isInstanceOf(PermitAllMaintenanceAuthorization.class);
+				assertThat(context).hasSingleBean(MaintenanceAuthorization.class);
 			});
 	}
 

@@ -1,6 +1,7 @@
 package works.bosk.spring.boot;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
  * Configuration for the {@code bosk-spring-boot} web integration, under the {@code bosk.web-api}
@@ -10,7 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "bosk.web-api")
 public record WebApiProperties(
 	Boolean readSession,
-	Maintenance maintenance
+	@DefaultValue Maintenance maintenance
 ) {
 	/**
 	 * The default path for the maintenance endpoints. Shared by these properties, the endpoint
@@ -18,27 +19,9 @@ public record WebApiProperties(
 	 */
 	static final String DEFAULT_MAINTENANCE_PATH = "/bosk/state";
 
-	public WebApiProperties {
-		if (maintenance == null) {
-			maintenance = new Maintenance(null, null, null);
-		}
-	}
-
 	public record Maintenance(
-		MaintenanceAccess access,
-		String path,
-		String authority
-	) {
-		public Maintenance {
-			if (access == null) {
-				access = MaintenanceAccess.NONE;
-			}
-			if (path == null || path.isBlank()) {
-				path = DEFAULT_MAINTENANCE_PATH;
-			}
-			if (authority == null) {
-				authority = "bosk:state";
-			}
-		}
-	}
+		@DefaultValue("NONE") MaintenanceAccess access,
+		@DefaultValue(DEFAULT_MAINTENANCE_PATH) String path,
+		@DefaultValue("bosk:state") String authority
+	) {}
 }

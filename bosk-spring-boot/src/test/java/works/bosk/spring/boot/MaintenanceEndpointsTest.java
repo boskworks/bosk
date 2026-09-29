@@ -43,6 +43,7 @@ class MaintenanceEndpointsTest {
 
 	public record State(Catalog<Target> targets) implements StateTreeNode {}
 
+	// Excludes Boot's generated default user, which these tests don't use.
 	@Configuration
 	@EnableAutoConfiguration(exclude = UserDetailsServiceAutoConfiguration.class)
 	static class TestConfig {
