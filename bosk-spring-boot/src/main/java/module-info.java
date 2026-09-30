@@ -23,9 +23,24 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *     <b>Maintenance endpoints</b> — The
  *     {@link works.bosk.spring.boot.MaintenanceEndpoints MaintenanceEndpoints} component registers HTTP
  *     endpoints providing direct {@code GET}, {@code PUT}, and {@code DELETE} access to Bosk state in JSON.
- *     Endpoints are prefixed by the value of the {@code bosk.web.maintenance-path} setting, followed by the
- *     path of the node within the Bosk state. They are intended for troubleshooting, manual operations, or
- *     integration with external systems that need full control over the Bosk state.
+ *     Endpoints are prefixed by the value of the {@code bosk.web.maintenance.path} setting (default
+ *     {@code /bosk/state}), followed by the path of the node within the Bosk state. They are intended for
+ *     troubleshooting, manual operations, or integration with external systems that need full control over
+ *     the Bosk state.
+ *     <p>
+ *     Because these endpoints expose full read and write access to the state tree, they are disabled unless
+ *     {@code bosk.web.maintenance.access} explicitly selects a
+ *     {@link works.bosk.spring.boot.MaintenanceAccess MaintenanceAccess}:
+ *     <ul>
+ *       <li>{@code UNSECURED} — the endpoints are registered with no authorization of their own. This mode is
+ *       for local development, and it is an error to select it when Spring Security is present.</li>
+ *       <li>{@code AUTHENTICATED} — the endpoints are registered and must be authenticated by the
+ *       application. It is an error to select this mode when Spring Security is not present, and the
+ *       application fails to start if an unauthenticated request could reach the endpoints. The application
+ *       chooses its own policy; for example,
+ *       {@code requestMatchers(path + "/**").hasAuthority("bosk:state")}.</li>
+ *       <li>{@code NONE} — the endpoints are not registered. This is the default.</li>
+ *     </ul>
  *     <p>
  *     These endpoints support ETags via the {@code If-Match} and {@code If-None-Match} headers, exposing a
  *     limited ability to do conditional updates. Nodes participating in this feature must have a field named
@@ -36,6 +51,9 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *       <li>{@code If-Match: {ID}} — if the node does not exist, or its {@code revision} field has a different
  *       value, no action is taken.</li>
  *     </ul>
+ *     Spring Security's default {@code StrictHttpFirewall} rejects URLs containing percent-encoded slashes
+ *     or percent signs, so identifiers containing those characters are unreachable through the endpoints
+ *     while Spring Security is present unless the application customizes its {@code HttpFirewall}.
  *   </li>
  *   <li>
  *     <b>MongoDB-backed bosks</b> — When the {@code bosk-mongo} library is on the
@@ -59,6 +77,10 @@ module works.bosk.spring.boot {
 	// Support MongoDB if it's present, but don't require it
 	requires static works.bosk.mongo;
 	requires static spring.boot.mongodb;
+
+	// Support Spring Security if it's present, but don't require it
+	requires static spring.security.core;
+	requires static spring.security.web;
 
 	requires static lombok;
 

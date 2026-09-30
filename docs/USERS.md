@@ -951,6 +951,39 @@ be silently ignored. While refurbishing from Sequoia to a different format,
 ensure the bosk is quiescent (not performing any updates), or is performing a `flush()` before each update.
 This is a consequence of Sequoia's design simplicity; specifically, its avoidance of multi-document transactions.
 
+### Spring Boot integration
+
+`bosk-spring-boot` integrates bosk with Spring Boot. It opens a read session automatically for
+each HTTP request (see the `bosk-spring-boot` module javadoc), and provides the maintenance
+endpoints described below.
+
+#### Maintenance endpoints
+
+The maintenance endpoints give direct HTTP access to the state tree. Because they expose full read
+and write access, they are disabled unless `bosk.web.maintenance.access` selects an access:
+
+- `UNSECURED` requires no authorization of its own, and is only permitted when Spring Security is
+  absent. It is intended for local development.
+- `AUTHENTICATED` requires the application to authenticate requests to the maintenance path. It is
+  only permitted when Spring Security is present, and the application fails to start if an
+  unauthenticated request could reach the endpoints.
+
+For example, with Spring Security:
+
+``` java
+@Bean
+SecurityFilterChain maintenanceEndpoints(HttpSecurity http,
+        @Value("${bosk.web.maintenance.path:/bosk/state}") String maintenancePath) throws Exception {
+    http.authorizeHttpRequests(auth -> auth
+        .requestMatchers(maintenancePath + "/**").hasAuthority("bosk:state"));
+    return http.build();
+}
+```
+
+The authority is the application's choice; `bosk:state` is just an example. The endpoints are served
+under `bosk.web.maintenance.path` (default `/bosk/state`). See the `bosk-spring-boot` module
+javadoc for the full description.
+
 ### Serialization: `bosk-jackson`
 
 The `bosk-jackson` module uses the Jackson library to support JSON serialization and deserialization.

@@ -11,7 +11,7 @@ Respond to the review comments on your own pull request as the PR author.
    `gh api repos/{owner}/{repo}/pulls/{pull_number}/comments --paginate --jq '.[] | {id, in_reply_to_id, user: .user.login, path, line, original_line, original_start_line, diff_hunk, body}'`
    (group them into threads by `in_reply_to_id`; the top-level comment is each thread's root. Note that GitHub normalizes a reply to a reply so its `in_reply_to_id` points at the thread root, not the immediate parent — a reply to the maintainer's follow-up still groups under the original comment).
 2. For every comment, either make the requested change (or a better one) or refute the comment with specific reasoning. There is no third option, and no comment gets skipped.
-3. Reply to every comment — including the ones you addressed with a change. Say what you changed and where (commit hash), or why you're refuting. Never prefix a reply with `[review]`: that marker belongs to the reviewer, and since you and the reviewer post under the same account, an author reply tagged `[review]` would corrupt the attribution.
+3. Reply once per thread, not once per comment. A thread can hold several comments — the reviewer's original, the maintainer's follow-up, further exchanges — and replying to each separately fragments your answer and makes the thread hard to follow. Read the entire thread and post a single reply that addresses all of it, including the comments you addressed with a change. Say what you changed and where (commit hash), or why you're refuting each point. Never prefix a reply with `[review]`: that marker belongs to the reviewer, and since you and the reviewer post under the same account, an author reply tagged `[review]` would corrupt the attribution.
 4. Sweep for the same class of mistake. A finding usually names one instance of a mistake that recurs: if the reviewer flags a stale doc, a hardcoded path, or a test that doesn't exercise its behavior, look for the same mistake elsewhere and fix the siblings in the same pass, saying in the reply that you swept for it.
 5. Push a new commit with the changes, then post the replies. Keep the PR description up to date: after
    each push, update it if the new commit changes what the PR does.
@@ -31,6 +31,9 @@ Pay particular attention to comments from the maintainer (login `prdoyle`). They
   `gh api repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies --method POST -f body="..."`.
   Do not prefix your reply with `[review]` — that marker is the reviewer's, and you post under the same
   account; your replies must stay distinguishable from the reviewer's.
+- Post one reply per thread. A thread may contain several comments from the other side; address them all
+  in a single reply rather than replying to each comment in turn. Since the API attaches every reply to
+  the thread root, multiple replies just stack up and split your response across the thread.
 - Confirm success from the call itself: append `--jq '.id'` to the POST and check the printed id and exit status.
 - Gate on the exit status (`set -e`, or `if ! gh api ...; then`). A non-zero exit means the call failed; read the error.
 - After posting, verify the end state with a read-back (list the comments again and confirm each reply is on its thread). Only report success after that verification.
