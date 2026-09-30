@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.parallel.ResourceAccessMode.READ_WRITE;
 
 /**
  * Indicates that a test is going to use {@link MongoService},
- * and that it will use {@link MongoService#proxy()} to test
+ * and that it will use {@link MongoService#cutConnection()} to test
  * network outages and other errors.
  * Only one {@link DisruptsMongoProxy} test will run at a time.
  *
@@ -28,5 +28,5 @@ import static org.junit.jupiter.api.parallel.ResourceAccessMode.READ_WRITE;
 @ResourceLock(value="mongoContainer", mode=READ_WRITE)
 @Tag(DisruptsMongoProxy.TAG)
 public @interface DisruptsMongoProxy {
-	public static final String TAG = "disruptsMongoProxy";
+	String TAG = "disruptsMongoProxy";
 }

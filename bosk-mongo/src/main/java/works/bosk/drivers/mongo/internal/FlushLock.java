@@ -109,7 +109,10 @@ class FlushLock {
 				throw new FlushFailureException("Timed out waiting for revision " + revisionValue + " > " + alreadySeen);
 			}
 			if (isClosed) {
-				// Can't simply return and pretend this worked
+				// This happens if the FormatDriver is defunct already,
+				// so DisconnectedException is more appropriate than FlushFailureException
+				// because it won't provoke a bunch of error handling (including disconnection)
+				// that is evidently already happening.
 				throw new DisconnectedException("FlushLock was closed while waiting");
 			}
 			LOGGER.debug("Done awaiting revision {} [{}]", revisionValue, identityHashCode(this));

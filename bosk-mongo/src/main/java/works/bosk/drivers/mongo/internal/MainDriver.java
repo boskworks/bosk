@@ -66,7 +66,7 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
  * The actual database interactions used to implement the {@link BoskDriver} methods,
  * as well as most interactions with the downstream driver,
  * are delegated to a {@link FormatDriver} object that can be swapped out dynamically
- * as the database evolves.
+ * as the database format evolves.
  */
 public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BoskInfo<R> boskInfo;
@@ -79,12 +79,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final MongoClient queryClient;
 	private final Listener listener;
 	private final AtomicBoolean loggedConnectionDiagnostics = new AtomicBoolean(false);
-	final Formatter formatter;
+	private final Formatter formatter;
 
-	final long timescaleMS;
-	final long flushTimeout;
-	final long queryTimeout;
-	final long reinitializationTimeout;
+	private final long timescaleMS;
+	private final long flushTimeout;
+	private final long queryTimeout;
+	private final long reinitializationTimeout;
 
 	/**
 	 * {@link MongoClient#close()} throws if called more than once.
@@ -381,7 +381,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// by other processes.
 
 		R entireState;
-		@Nullable Throwable fallbackReason = null;
+		Throwable fallbackReason = null;
 		try (var _ = queryCollection.newReadOnlySession()){
 			// The load must read a consistent snapshot, so run it inside a
 			// read-only transaction. (Refurbish runs its load inside its own

@@ -82,7 +82,6 @@ public class MongoDriverSettings {
 	@Value
 	@Builder
 	public static class Experimental {
-		@Default long changeStreamInitialWaitMS = 20;
 		@Default OrphanDocumentMode orphanDocumentMode = HASTY;
 	}
 
