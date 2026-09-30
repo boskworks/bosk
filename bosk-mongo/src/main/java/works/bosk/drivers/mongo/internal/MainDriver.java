@@ -1024,7 +1024,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		try {
 			long minNanos = -1;
 			for (ServerDescription server : queryClient.getClusterDescription().getServerDescriptions()) {
-				long nanos = server.getMinRoundTripTimeNanos();
+				long nanos = server.getRoundTripTimeNanos();
 				if (nanos > 0 && (minNanos < 0 || nanos < minNanos)) {
 					minNanos = nanos;
 				}
