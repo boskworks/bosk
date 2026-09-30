@@ -8,6 +8,7 @@ import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -29,6 +30,8 @@ class TransactionalCollectionTest {
 	private static MongoService mongoService;
 	private static final String DB_NAME = "TransactionalCollectionTest";
 	private static final String COLLECTION_NAME = "testCollection";
+	private MongoClient client;
+	private MongoCollection<BsonDocument> raw;
 	private TransactionalCollection collection;
 
 	@BeforeAll
@@ -38,8 +41,8 @@ class TransactionalCollectionTest {
 
 	@BeforeEach
 	void setupCollection() {
-		MongoClient client = mongoService.client();
-		MongoCollection<BsonDocument> raw = client
+		client = mongoService.client();
+		raw = client
 			.getDatabase(DB_NAME)
 			.getCollection(COLLECTION_NAME, BsonDocument.class);
 		raw.drop();
@@ -121,6 +124,48 @@ class TransactionalCollectionTest {
 		assertDoesNotThrow(() -> {
 			try (Session _ = collection.newSession()) { }
 		});
+	}
+
+	@Test
+	void close_whenAbortFails_stillClosesClientSession() throws FailedMongoClientSessionException {
+		collection = TransactionalCollection.of(raw, client,
+			FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(),
+			() -> { throw new MongoException("simulated abort failure"); });
+
+		Session session = collection.newSession();
+		collection.ensureTransactionStarted();
+		collection.insertOne(new BsonDocument("_id", new BsonString("doc1")));
+
+		assertThrows(MongoException.class, session::close);
+
+		// The client session must be closed even though the explicit abort failed,
+		// which leaves the thread-local clear for a subsequent session.
+		assertDoesNotThrow(() -> {
+			try (Session _ = collection.newSession()) { }
+		});
+	}
+
+	@Test
+	void close_clearsInterruptWhileAborting_andRestoresIt() throws FailedMongoClientSessionException {
+		AtomicBoolean interruptedDuringAbort = new AtomicBoolean();
+		collection = TransactionalCollection.of(raw, client,
+			FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(),
+			() -> interruptedDuringAbort.set(Thread.currentThread().isInterrupted()));
+
+		Session session = collection.newSession();
+		collection.ensureTransactionStarted();
+		collection.insertOne(new BsonDocument("_id", new BsonString("doc1")));
+
+		Thread.currentThread().interrupt();
+		try {
+			session.close();
+			assertFalse(interruptedDuringAbort.get(),
+				"The interrupt must be cleared while the transaction is aborted");
+			assertTrue(Thread.currentThread().isInterrupted(),
+				"The interrupt must be restored after the session is closed");
+		} finally {
+			Thread.interrupted();
+		}
 	}
 
 	@Test
@@ -539,7 +584,7 @@ class TransactionalCollectionTest {
 		MongoCollection<BsonDocument> raw = client
 			.getDatabase(DB_NAME)
 			.getCollection(COLLECTION_NAME, BsonDocument.class);
-		return TransactionalCollection.of(raw, client, FindInterceptor.identity(), WriteInterceptor.identity(), interceptor);
+		return TransactionalCollection.of(raw, client, FindInterceptor.identity(), WriteInterceptor.identity(), interceptor, SessionInterceptor.identity());
 	}
 
 	private static MongoException unknownCommitResult() {

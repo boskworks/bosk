@@ -47,6 +47,8 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * {@link WriteInterceptor}.</li>
  * <li>{@code commitInterceptor}: interposes on transaction commits; see
  * {@link CommitInterceptor}.</li>
+ * <li>{@code sessionInterceptor}: interposes on session close; see
+ * {@link SessionInterceptor}.</li>
  * </ul>
  */
 @With
@@ -59,10 +61,11 @@ record TestProbes(
 	FindInterceptor findInterceptor,
 	WriteInterceptor writeInterceptor,
 	CommitInterceptor commitInterceptor,
+	SessionInterceptor sessionInterceptor,
 	Consumer<Throwable> onDisruption
 ) {
 	static TestProbes noop() {
-		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), NOOP_DISRUPTION);
+		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), SessionInterceptor.identity(), NOOP_DISRUPTION);
 	}
 
 	/**

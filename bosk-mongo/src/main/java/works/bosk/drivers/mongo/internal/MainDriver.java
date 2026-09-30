@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -282,7 +283,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(driverSettings.collection(), BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor());
+				.getCollection(driverSettings.collection(), BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor(), testProbes.sessionInterceptor());
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), driverSettings.collection());
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -560,23 +561,33 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public void close() {
-		receiver.close();
-		formatDriver.close();
-		var suppressedExceptions = new ArrayList<IOException>();
+		// Each step is attempted even if an earlier one fails, because closing the
+		// MongoClients is what aborts any transaction the session's own close missed.
+		var suppressedExceptions = new ArrayList<Exception>();
+		closeQuietly(receiver::close, suppressedExceptions);
+		closeQuietly(formatDriver::close, suppressedExceptions);
 		if (!isClosed.getAndSet(true)) {
 			// It's important we don't call these twice, or else they will throw
-			closeables.forEach(closeable -> {
-				try {
-					closeable.close();
-				} catch (IOException e) {
-					suppressedExceptions.add(e);
-				}
-			});
+			closeables.forEach(closeable -> closeQuietly(closeable::close, suppressedExceptions));
 		}
 		if (!suppressedExceptions.isEmpty()) {
 			var e = new IllegalStateException("Exceptions occurred while closing MainDriver");
 			suppressedExceptions.forEach(e::addSuppressed);
 			throw e;
+		}
+	}
+
+	@FunctionalInterface
+	private interface CloseAction {
+		void close() throws Exception;
+	}
+
+	private static void closeQuietly(CloseAction action, List<Exception> suppressedExceptions) {
+		try {
+			action.close();
+		} catch (Exception e) {
+			LOGGER.warn("Exception while closing; will be reported together with any others", e);
+			suppressedExceptions.add(e);
 		}
 	}
 
