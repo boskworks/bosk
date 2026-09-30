@@ -19,7 +19,7 @@ import works.bosk.exceptions.FlushFailureException;
  * {@link FlushFailureException} anyway, so this subclass is more of
  * an implementation detail.
  */
-class RevisionFieldDisruptedException extends FlushFailureException {
+class RevisionFieldDisruptedException extends RevisionDisruptedException {
 	public RevisionFieldDisruptedException(String message) {
 		super(message);
 	}
