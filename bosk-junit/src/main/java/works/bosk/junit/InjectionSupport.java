@@ -43,9 +43,23 @@ class InjectionSupport {
 	 * Compute branches for class-level injected fields.
 	 */
 	static List<Branch> computeBranchesForFields(ExtensionContext context) {
-		Branch startingBranch = Branch.empty(); // Class-level injection starts from scratch
+		Branch enclosing = enclosingBranch(context);
+		Branch startingBranch = enclosing == null ? Branch.empty() : enclosing;
 		return computeBranches(context, getInjectedFields(context), startingBranch, (branch, element) ->
 			branch.keyForField((Field) element));
+	}
+
+	/**
+	 * The injection branch established by the closest enclosing class template
+	 * invocation, or {@code null} if this test is not enclosed by one.
+	 * <p>
+	 * The context store is hierarchical, so looking up the branch in the current
+	 * context finds the one stored by the invocation that encloses this test.
+	 * That is what allows a nested test class to share dimensions with the class
+	 * that encloses it rather than expanding them from scratch.
+	 */
+	static @Nullable Branch enclosingBranch(ExtensionContext context) {
+		return context.getStore(NAMESPACE).get(BRANCH_KEY, Branch.class);
 	}
 
 	/**
@@ -71,7 +85,9 @@ class InjectionSupport {
 	 *
 	 * @param context the JUnit extension context for the current test
 	 * @param requiredElements the annotated elements (parameters or fields) to be injected
-	 * @param startingBranch the branch to start from; for field-level use {@link Branch#empty()}
+	 * @param startingBranch the branch to start from; for a nested class, this is the
+	 *                       enclosing invocation's branch, so that shared dimensions are
+	 *                       inherited rather than re-expanded
 	 * @param keyResolver a function that returns the {@link InjectionKey} for an element on a branch
 	 * @return the list of branches that need to be executed to satisfy the elements
 	 * @throws ParameterResolutionException if a required injector or dependency is not present

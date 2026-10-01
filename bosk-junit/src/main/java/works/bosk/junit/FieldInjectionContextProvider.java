@@ -44,6 +44,10 @@ public class FieldInjectionContextProvider implements ClassTemplateInvocationCon
 	@Override
 	public Stream<ClassTemplateInvocationContext> provideClassTemplateInvocationContexts(ExtensionContext context) {
 		List<Field> injectedFields = getInjectedFields(context);
+		// The class this invocation was created for. When a nested test runs, the
+		// class template that injects its fields is the enclosing class, and these
+		// fields belong to that enclosing class's own instance.
+		Class<?> testClass = context.getRequiredTestClass();
 
 		List<Branch> branches = computeBranchesForFields(context);
 		return branches.stream().flatMap(branch -> {
@@ -83,8 +87,19 @@ public class FieldInjectionContextProvider implements ClassTemplateInvocationCon
 
 					@Override
 					public List<Extension> getAdditionalExtensions() {
-						return List.of((TestInstancePostProcessor) (testInstance, _) ->
-							setInjectedFields(testInstance, fieldValueMap, injectedFields));
+						return List.of((TestInstancePostProcessor) (testInstance, _) -> {
+							// JUnit also invokes this post-processor, as an inherited
+							// extension, on any nested test classes. Those instances
+							// belong to a different class template, and writing the
+							// enclosing class's fields to them would either throw or
+							// clobber the nested instance's own injected fields.
+							if (testInstance.getClass() == testClass) {
+								setInjectedFields(testInstance, fieldValueMap, injectedFields);
+							} else {
+								LOGGER.debug("Skipping field injection for {} into {}",
+									testClass.getSimpleName(), testInstance.getClass().getSimpleName());
+							}
+						});
 					}
 
 					@Override

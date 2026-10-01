@@ -133,7 +133,8 @@ reference. They show both the voice and the kinds of findings the maintainer mak
 - Prefer the question form when exploring: "Is this still needed?", "What do you think of passing X here?",
   "Could X be a field of Y?". It opens a conversation rather than asserting a verdict.
 - When you are unsure, say so. A precise question beats a wrong certainty.
-- If a change is genuinely good, brief praise is human and welcome — but never pad. At most one short
+- If a change is genuinely good, brief praise is human and welcome — but never pad, and never put it in
+  the summary: praise goes in a comment on the specific line it is about, or nowhere. At most one short
   appreciative comment per review, and only when true.
 - Cite the project's conventions where relevant: "I think CLAUDE.md mentions this".
 - Be specific and actionable: point at the line, say why it matters, and propose a concrete alternative
@@ -176,10 +177,15 @@ reference. They show both the voice and the kinds of findings the maintainer mak
 
 Produce the review as a JSON document with four fields:
 
-- **summary** — a short overview of the review: PR-wide concerns not attached to a particular diff hunk
-  (say, the whole approach breaking an established design principle), flaws in the PR description or
-  title, and a brief characterization of the comments to follow ("just a few nits", "some concerns about
-  test coverage"). Include these only when they exist — don't manufacture concerns to fill the summary,
+- **summary** — open with one sentence that says where the PR stands, so the maintainer knows how to act
+  without reading further: "Mergeable as is, with a few optional nits", "A couple of areas I'm concerned
+  about before we merge", "Nothing blocking; happy to approve". Only then, and only when they exist, the
+  overview of the review: PR-wide concerns not attached to a particular diff hunk (say, the whole approach
+  breaking an established design principle), flaws in the PR description or title, and a brief
+  characterization of the comments to follow ("just a few nits", "some concerns about test coverage").
+  Don't open with praise or congratulations — "Clean fix", "Nice work", "Well-targeted change" say nothing
+  the maintainer can act on and bury the sentence they actually need; leave praise to the comments, if it
+  belongs anywhere. Include concerns only when they exist — don't manufacture them to fill the summary,
   and a clean or mostly-positive review should read as such. Don't describe what the change does — the
   PR description already does that — and don't repeat the specifics of the comments below, except to
   explain why the PR should not merge until a problem is addressed. Add a sentence for anything else
