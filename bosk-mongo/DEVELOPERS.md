@@ -209,11 +209,14 @@ is that `FormatDriver` is expected to respond to change stream events.
 The `onEvent` method is called by the `ChangeReceiver` (described below)
 for each event received.
 The `FormatDriver` is expected to perform the appropriate operations in order to communicate the change to the downstream driver;
-or else it can throw `UnprocessableEventException` which causes the `ChangeReceiver` to reset
+or else it can throw `UnprocessableEventException`, which causes the `ChangeReceiver` to reset
 and reinitialize from scratch with a new `FormatDriver`.
-In particular, this occurs when any bosk performs a `refurbish` operation,
-since the database contents are changed in a manner so disruptive that
-`onEvent` will naturally throw `UnprocessableEventException`.
+
+If instead the collection's manifest now describes a different format than the one this driver loaded,
+`onEvent` throws `FormatChangedException`.
+This is expected rather than exceptional;
+it happens in particular when another bosk performs a `refurbish` to a different format.
+The `ChangeReceiver` reloads the state and continues without treating it as a problem.
 
 The `onRevisionToSkip` method is called whenever the state is loaded via `loadAllState`.
 This communicates to the `FormatDriver` that subsequent events should be ignored if they are older than
@@ -242,7 +245,8 @@ Here is a summary of the responsibilities of `MainDriver` and `FormatDriver`.
 - Implements revisions, and ignores revisions older than the current one
 - Ignores events on unrelated documents within the bosk collection (like the manifest)
 - Processes updates to the manifest itself
-	- Can throw `UnprocessableEventException` at its discretion,
+	- Throws `FormatChangedException` if the manifest describes a different format than the one loaded
+	- Can otherwise throw `UnprocessableEventException` at its discretion,
 	  but must not do so for any changes from its own `writeAllState`
 	  method (or the manifest written by `MainDriver` during initialization),
 	  since this could lead to an endless loop of reinitialization.
