@@ -17,8 +17,6 @@ import works.bosk.junit.InjectionSupport.Branch;
 import works.bosk.junit.InjectionSupport.InjectionKey;
 
 import static java.util.Arrays.asList;
-import static works.bosk.junit.InjectionSupport.BRANCH_KEY;
-import static works.bosk.junit.InjectionSupport.NAMESPACE;
 import static works.bosk.junit.InjectionSupport.cartesianProduct;
 import static works.bosk.junit.InjectionSupport.computeBranchesForParameters;
 
@@ -101,7 +99,7 @@ public class ParameterInjectionContextProvider implements TestTemplateInvocation
 	private Branch getClassLevelBranch(ExtensionContext context) {
 		// Store.get() automatically walks up the context hierarchy,
 		// so the branch stored in ClassTemplateInvocationContext will be found
-		var branch = context.getStore(NAMESPACE).get(BRANCH_KEY, Branch.class);
+		Branch branch = InjectionSupport.enclosingBranch(context);
 		if (branch == null) {
 			LOGGER.debug("No field injection detected; starting with empty branch");
 			return Branch.empty();
