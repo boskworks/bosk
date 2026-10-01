@@ -60,6 +60,42 @@ When anything goes awry, `MainDriver` can discard and replace the `FormatDriver`
 which allows `FormatDriver` to be largely ignorant of fault tolerance concerns:
 `FormatDriver` can simply throw exceptions when errors occur, and let `MainDriver` handle the recovery operations.
 
+### Operational resilience
+
+Bosk-mongo aims to have no significant operational shortcomings relative to using MongoDB directly.
+A service that talks to MongoDB through a regular client library gets certain properties for free;
+in particular, if the database is damaged and later repaired,
+the application is expected to recover without being rebooted,
+without a special startup sequence, and without an operator doing anything beyond repairing the database.
+`MongoDriver` should behave the same way.
+
+We can state this as a set of properties that a running `MongoDriver` is expected to maintain:
+
+- **Detection**: the driver notices when its understanding of the database is no longer valid,
+  whether that arrives as a disruptive change stream event, a cursor error, or a failed database operation.
+- **Recovery**: the driver reloads the state, re-detects the format, re-establishes the change stream,
+  and resumes both change propagation and update submission, without operator or developer intervention.
+- **Convergence without a flush ritual**: an application that never calls `BoskDriver.flush()` still converges;
+  updates made elsewhere eventually appear, and repairs to a damaged database eventually take effect.
+  `flush()` is a genuine synchronization tool for callers that need to wait for pending updates,
+  but the driver itself must not quietly depend on anyone calling it.
+  The corollary is the same one that motivates the rest of bosk:
+  if the application appears to work, the developer wrote it correctly.
+- **No restart required**: recovery is a property of a running driver,
+  not of constructing a new `Bosk`.
+
+One subtlety is worth calling out because it is easy to get wrong:
+`flush()` is the only driver operation that reads the revision number,
+so some problems (for example, a missing revision field or a changed epoch)
+are naturally noticed there first.
+The same problems must also be detected asynchronously,
+by change stream processing or when the state is reloaded,
+so that a driver whose application never flushes still recovers.
+
+A consequence for tests:
+the driver's behaviour when `flush()` is never called is the ordinary case, not an exotic one,
+so it deserves explicit coverage.
+
 ### Major components
 
 A `MongoDriver` instance comprises a small cluster of objects that cooperate to deliver the desired functionality.
