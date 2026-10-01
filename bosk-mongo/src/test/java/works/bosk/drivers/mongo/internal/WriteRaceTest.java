@@ -270,7 +270,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 		}
 
 		@Override
-		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
 			boolean finalEvent = isFinalTreeEvent(event);
 			if (finalEvent && eventReached.getCount() > 0) {
 				eventReached.countDown();

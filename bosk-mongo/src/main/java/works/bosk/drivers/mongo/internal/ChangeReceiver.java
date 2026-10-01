@@ -179,6 +179,11 @@ class ChangeReceiver implements Closeable {
 									return;
 								}
 							}
+						} catch (FormatChangedException e) {
+							// An expected consequence of a refurbish to a different format,
+							// so a reload is all that's required, not a warning.
+							disconnectExpected("Database format changed", REMEDY_CONTINUE, e);
+							continue;
 						} catch (UnprocessableEventException | UnexpectedEventProcessingException e) {
 							disconnect("Unable to process MongoDB change event", REMEDY_CONTINUE, e);
 							// Reconnection will skip this event, so it's safe to try it right away
@@ -204,7 +209,7 @@ class ChangeReceiver implements Closeable {
 						} catch (ImmediateReconnectException e) {
 							// Don't call disconnect: we're already disconnected
 							addContextToException(e);
-							LOGGER.warn("Driver is disconnected; will retry immediately", e);
+							LOGGER.info("Driver is disconnected; will retry immediately", e);
 							continue;
 						} catch (DisconnectedException e) {
 							// Don't call disconnect: we're already disconnected
@@ -248,6 +253,16 @@ class ChangeReceiver implements Closeable {
 		listener.onDisconnect(e);
 	}
 
+	private void disconnectExpected(String description, String remedy, Throwable e) {
+		addContextToException(e);
+		if (isClosed) {
+			LOGGER.debug("(Driver is already closed) {}", description, e);
+		} else {
+			LOGGER.info("{}; {}", description, remedy, e);
+		}
+		listener.onDisconnect(e);
+	}
+
 	private void addContextToException(Throwable x) {
 		x.addSuppressed(creationPoint);
 	}
@@ -261,7 +276,7 @@ class ChangeReceiver implements Closeable {
 	/**
 	 * Should not throw RuntimeException, or else {@link #connectionLoop()} is likely to overreact.
 	 */
-	private void eventLoop(MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> cursor) throws UnprocessableEventException, UnexpectedEventProcessingException {
+	private void eventLoop(MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> cursor) throws UnprocessableEventException, UnexpectedEventProcessingException, FormatChangedException {
 		if (isClosed) {
 			LOGGER.debug("Receiver is closed");
 			return;
@@ -297,7 +312,7 @@ class ChangeReceiver implements Closeable {
 		}
 	}
 
-	private void processEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+	private void processEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
 		if (settings.testing().eventDelayMS() > 0) {
 			LOGGER.debug("| eventDelayMS {}ms ", settings.testing().eventDelayMS());
 			try {

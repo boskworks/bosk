@@ -266,7 +266,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * {@link MainDriver} writes).
 	 */
 	@Override
-	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
 		fieldTracker.processEvent(event);
 		assert event.getDocumentKey() != null;
 		BsonValue bsonDocumentID = event.getDocumentKey().get("_id");
