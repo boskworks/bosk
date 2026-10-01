@@ -11,6 +11,7 @@ module works.bosk.core {
 	requires static transitive org.jspecify;
 	requires org.pcollections;
 	requires org.slf4j;
+	requires works.bosk.codon;
 	requires transitive works.bosk.annotations;
 
 	requires static lombok;

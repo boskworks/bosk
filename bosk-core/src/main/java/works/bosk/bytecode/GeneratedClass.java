@@ -13,6 +13,7 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.codon.BytecodeDisassembler;
 import works.bosk.exceptions.NotYetImplementedException;
 
 import static java.lang.classfile.TypeKind.REFERENCE;
@@ -87,6 +88,9 @@ public final class GeneratedClass {
 				currier.emitStaticsAndClinit(classBuilder, curryKey);
 			}
 		});
+		if (LOGGER.isTraceEnabled()) {
+			LOGGER.trace(renderDisassembly(bytes));
+		}
 		if (VERIFY_BYTECODE) {
 			verify(bytes);
 		}
@@ -100,7 +104,10 @@ public final class GeneratedClass {
 		try {
 			Constructor<?> ctor = new CustomClassLoader(parentClassLoader).loadThemBytes(dottyName, bytes).getConstructor();
 			return supertype.cast(ctor.newInstance());
-		} catch (NoSuchMethodException | InstantiationException | IllegalAccessException | VerifyError | InvocationTargetException e) {
+		} catch (VerifyError e) {
+			LOGGER.warn("Generated class {} failed verification:\n{}", dottyName, renderDisassembly(bytes));
+			throw new AssertionError("Should be able to instantiate the generated class", e);
+		} catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
 			throw new AssertionError("Should be able to instantiate the generated class", e);
 		}
 	}
@@ -145,7 +152,21 @@ public final class GeneratedClass {
 		if (!errors.isEmpty()) {
 			String message = errors.stream().map(Throwable::getMessage).collect(
 				joining("\n\t", "Generated class failed verification:\n\t", ""));
+			LOGGER.warn("Generated class failed verification:\n{}", renderDisassembly(bytes));
 			throw new AssertionError(message, errors.getFirst());
+		}
+	}
+
+	/**
+	 * The disassembly of the given bytes, or an empty string if it cannot be produced.
+	 * A disassembly failure must not mask the verification failure that motivated the log.
+	 */
+	private static String renderDisassembly(byte[] bytes) {
+		try {
+			return BytecodeDisassembler.disassemble(bytes);
+		} catch (RuntimeException e) {
+			LOGGER.debug("Unable to disassemble generated class", e);
+			return "";
 		}
 	}
 

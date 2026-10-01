@@ -1,6 +1,7 @@
 
 dependencies {
 	api project(":bosk-core")
+	implementation project(":codon")
 
 	testImplementation project(":bosk-junit")
 	testImplementation project(":bosk-testing")

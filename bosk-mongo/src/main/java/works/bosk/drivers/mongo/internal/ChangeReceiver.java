@@ -144,24 +144,7 @@ class ChangeReceiver implements Closeable {
 					// while a `return` causes us to wait for the "recovery polling" interval to elapse first.
 					// When in doubt, `return` is a bit safer because it's unlikely to cause a spin-loop of rapid reconnections.
 					//
-					// Log `warn` and `error` levels are likely to be logged by applications in production,
-					// and so they will be visible to whatever team is operating the application that uses Bosk.
-					// They should be written with a reader in mind who is not a Bosk expert, perhaps not even
-					// knowing what bosk is, and should contain enough information to guide their troubleshooting efforts.
-					//
-					// Logs at `info` levels can target knowledgeable Bosk users, and should aim to explain what
-					// the library is doing in a way that helps them learn to use it more effectively.
-					//
-					// Logs at the `debug` level target Bosk developers. They can use some Bosk jargon, though
-					// they should also be helping new Bosk developers climb the learning curve. They should
-					// allow developers to tell what code paths executed.
-					//
-					// Logs at the `trace` level target expert Bosk developers troubleshooting very tricky bugs,
-					// and can include information that would be too voluminous to emit under most circumstances.
-					// Examples include stack traces for routine situations, or dumps of entire data structures,
-					// neither of which should be done at the `debug` level. It can also include high-frequency messages
-					// emitted many times for a single user action (again, not recommended at the `debug` level),
-					// though this must be done cautiously, since even disabled log statements still have nonzero overhead.
+					// Log level conventions: see the "Logging" section of CLAUDE.md.
 					//
 					LOGGER.debug("Opening cursor");
 					try (var cursor = openCursor()) {

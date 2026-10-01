@@ -1,6 +1,7 @@
 
 dependencies {
 	api project(":bosk-annotations")
+	implementation project(":codon")
 	implementation libs.pcollections
 	testImplementation project(':bosk-testing')
 }

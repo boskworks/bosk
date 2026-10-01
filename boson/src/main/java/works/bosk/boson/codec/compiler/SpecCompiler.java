@@ -61,6 +61,7 @@ import works.bosk.boson.mapping.spec.UniformMapNode;
 import works.bosk.boson.types.DataType;
 import works.bosk.boson.types.KnownType;
 import works.bosk.boson.types.PrimitiveType;
+import works.bosk.codon.BytecodeDisassembler;
 
 import static java.lang.StackWalker.Option.RETAIN_CLASS_REFERENCE;
 import static java.lang.classfile.Opcode.IFEQ;
@@ -175,6 +176,9 @@ public class SpecCompiler {
 				);
 			});
 
+		if (LOGGER.isTraceEnabled()) {
+			LOGGER.trace(renderDisassembly(bytecode));
+		}
 		if (VERIFY_BYTECODE) {
 			verify(bytecode);
 		}
@@ -189,7 +193,13 @@ public class SpecCompiler {
 		}
 
 		var classLoader = new OneOffClassLoader();
-		var generatedClass = classLoader.defineClass(className, bytecode);
+		Class<?> generatedClass;
+		try {
+			generatedClass = classLoader.defineClass(className, bytecode);
+		} catch (VerifyError e) {
+			LOGGER.warn("Generated class {} failed verification:\n{}", className, renderDisassembly(bytecode));
+			throw e;
+		}
 
 		MethodHandle ctor;
 		try {
@@ -1041,7 +1051,21 @@ public class SpecCompiler {
 		if (errors.stream().anyMatch(e -> !e.getMessage().contains(RESOLUTION_FAILURE))) {
 			String message = errors.stream().map(Throwable::getMessage).collect(
 				joining("\n\t", "Generated class failed verification:\n\t", ""));
+			LOGGER.warn("Generated class failed verification:\n{}", renderDisassembly(bytecode));
 			throw new AssertionError(message, errors.getFirst());
+		}
+	}
+
+	/**
+	 * The disassembly of the given bytes, or an empty string if it cannot be produced.
+	 * A disassembly failure must not mask the verification failure that motivated the log.
+	 */
+	private static String renderDisassembly(byte[] bytecode) {
+		try {
+			return BytecodeDisassembler.disassemble(bytecode);
+		} catch (RuntimeException e) {
+			LOGGER.debug("Unable to disassemble generated class", e);
+			return "";
 		}
 	}
 
