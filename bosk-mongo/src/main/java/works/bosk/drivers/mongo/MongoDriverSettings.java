@@ -107,7 +107,7 @@ public class MongoDriverSettings {
 
 		/**
 		 * Simple format that stores the entire bosk state in a single document,
-		 * and (except for {@link MongoDriver#refurbish() refirbish})
+		 * and (except for {@link MongoDriver#refurbish() refurbish})
 		 * doesn't require any multi-document transactions.
 		 *
 		 * <p>
