@@ -185,7 +185,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * manifest that {@link MainDriver} writes), but outside that, we want to be as
 	 * strict as possible so incompatible database changes don't go unnoticed.
 	 */
-	protected void validateManifestEvent(ChangeStreamDocument<BsonDocument> event, Manifest effectiveManifest) throws UnprocessableEventException {
+	protected void validateManifestEvent(ChangeStreamDocument<BsonDocument> event, Manifest effectiveManifest) throws UnprocessableEventException, FormatChangedException {
 		LOGGER.debug("onManifestEvent({})", event.getOperationType().name());
 		if (event.getOperationType() == INSERT || event.getOperationType() == REPLACE) {
 			BsonDocument manifestDoc = requireNonNull(event.getFullDocument());
@@ -196,7 +196,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 				throw new UnprocessableEventException("Invalid manifest", e, event.getOperationType());
 			}
 			if (!manifest.equals(effectiveManifest)) {
-				throw new UnprocessableEventException("Manifest indicates format has changed", event.getOperationType());
+				throw new FormatChangedException("Manifest indicates format has changed", event.getOperationType());
 			}
 		} else {
 			// We always use INSERT/REPLACE to update the manifest;

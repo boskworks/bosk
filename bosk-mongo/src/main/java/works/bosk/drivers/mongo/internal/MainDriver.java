@@ -684,7 +684,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 
 		@Override
-		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
 			LOGGER.debug("onEvent({}:{})", event.getOperationType().getValue(), getDocumentKeyValue(event));
 			LOGGER.trace("Event details: {}", event);
 			formatDriver.onEvent(event);

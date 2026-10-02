@@ -152,7 +152,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	 * {@link MainDriver} writes).
 	 */
 	@Override
-	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
 		fieldTracker.processEvent(event);
 		assert event.getDocumentKey() != null;
 		if (isManifestID(event.getDocumentKey().get("_id"))) {

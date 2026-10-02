@@ -35,7 +35,7 @@ import works.bosk.drivers.mongo.MongoDriver;
 sealed public interface FormatDriver<R extends StateTreeNode>
 	extends MongoDriver
 	permits AbstractFormatDriver, DisconnectedDriver {
-	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException;
+	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException;
 
 	/**
 	 * Reads all state documents in the entire collection and, as a side effect,

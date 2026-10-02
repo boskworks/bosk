@@ -33,7 +33,7 @@ interface ChangeListener {
 	/**
 	 * @param event is a document-specific event, with a non-null {@link ChangeStreamDocument#getDocumentKey() document key}.
 	 */
-	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException;
+	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException;
 
 	/**
 	 * @throws DownstreamInitialStateException if {@link BoskDriver#initialState(Class)}

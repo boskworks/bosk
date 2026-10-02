@@ -1,10 +1,15 @@
 package works.bosk.drivers.mongo.internal;
 
 import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 import java.io.IOException;
 import java.lang.reflect.AnnotatedElement;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -30,9 +35,13 @@ import works.bosk.junit.InjectFrom;
 import works.bosk.junit.Injected;
 import works.bosk.junit.Injector;
 import works.bosk.logback.ReplayLogsOnFailure;
+import works.bosk.logging.MdcKeys;
 import works.bosk.testing.drivers.state.TestEntity;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.testing.BoskTestUtils.boskName;
@@ -184,6 +193,74 @@ public class SchemaEvolutionTest {
 		}
 
 //		System.out.println("Status: " + ((MongoDriver<?>)toBosk.driver()).readStatus());
+	}
+
+	@Test
+	void refurbishToDifferentFormat_observerReloadsQuietly() throws Exception {
+		assumeFalse(fromConfig.preferredFormat().equals(toConfig.preferredFormat()),
+			"This test concerns a change to a different format");
+		assumeFalse(SEQUOIA == fromConfig.preferredFormat(),
+			"Sequoia cannot reliably handle writes during a format change");
+
+		// Signal when the observer's receiver processes the new manifest.
+		CountDownLatch observerDisconnected = new CountDownLatch(1);
+		MainDriver.setProbes(TestProbes.noop().withListenerFactory(listener ->
+			new ForwardingChangeListener(listener) {
+				@Override
+				public void onDisconnect(Throwable e) {
+					observerDisconnected.countDown();
+					super.onDisconnect(e);
+				}
+			}));
+		Bosk<TestEntity> fromBosk = newBosk(fromHelper);
+		Refs fromRefs = fromBosk.buildReferences(Refs.class);
+		MainDriver.resetProbes();
+
+		// Capture warnings from the observer's ChangeReceiver.
+		// The MDC is read inside append() so that it reflects the logging thread.
+		String observerID = fromBosk.instanceID().toString();
+		List<String> observerWarnings = Collections.synchronizedList(new ArrayList<>());
+		ch.qos.logback.classic.Logger changeReceiverLogger =
+			(ch.qos.logback.classic.Logger) LoggerFactory.getLogger(ChangeReceiver.class);
+		AppenderBase<ILoggingEvent> warningRecorder = new AppenderBase<>() {
+			@Override
+			protected void append(ILoggingEvent event) {
+				if (observerID.equals(event.getMDCPropertyMap().get(MdcKeys.BOSK_INSTANCE_ID))) {
+					observerWarnings.add(event.getFormattedMessage());
+				}
+			}
+		};
+		warningRecorder.setContext(changeReceiverLogger.getLoggerContext());
+		warningRecorder.setName("observerWarnings");
+		warningRecorder.start();
+		changeReceiverLogger.addAppender(warningRecorder);
+		try {
+			// The class-level setup suppresses these; allow warnings through so we can detect them.
+			fromHelper.setLogging(Level.INFO, ChangeReceiver.class);
+
+			LOGGER.debug("Refurbish toBosk to a different format ({})", toConfig);
+			newBosk(toHelper).getDriver(MongoDriver.class).refurbish();
+
+			assertTrue(observerDisconnected.await(30, SECONDS),
+				"The observer must notice the format change");
+
+			// The observer is now reloading; a write must wait for it and then succeed.
+			LOGGER.debug("Write from fromBosk ({}) while it reloads the new format", fromBosk.name());
+			fromBosk.driver().submitReplacement(fromRefs.string(), "Distinctive String");
+			fromBosk.driver().flush();
+
+			try (var _ = fromBosk.readSession()) {
+				assertEquals("Distinctive String", fromRefs.string().value(),
+					"The write must survive the format change");
+			}
+
+			assertEquals(List.of(), observerWarnings,
+				"A format change on another replica must not log a warning");
+		} finally {
+			MainDriver.resetProbes();
+			changeReceiverLogger.detachAppender(warningRecorder);
+			warningRecorder.stop();
+		}
 	}
 
 	/**
