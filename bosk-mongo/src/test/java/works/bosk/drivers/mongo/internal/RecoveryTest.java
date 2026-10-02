@@ -2,9 +2,11 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.MongoCollection;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
@@ -159,28 +161,41 @@ class RecoveryTest {
 	abstract static class DisruptionRecoveryTestBase extends RecoveryTestBase {
 		@Injected FlushOrWait flushOrWait;
 
-		void waitFor(BoskDriver driver) throws IOException, InterruptedException {
-			switch (flushOrWait) {
-				case FLUSH:
-					driver.flush();
-					break;
-				case WAIT:
-					// The user really has no business expecting updates to occur promptly.
-					//
-					// This is used in two circumstances:
-					// 1. If the operation is expected to succeed, then the worst-case
-					// delay is the delay time for the connection loop, plus the time
-					// to detect and publish the new format driver,
-					// plus the time to execute the operation itself.
-					// 4*timescaleMS ought to be plenty for all that.
-					// 2. If the operation is expected to fail, no amount of waiting
-					// will make it succeed, so we can ignore this case.
-					//
-					long sleepTime = 4L * driverSettings.timescaleMS();
-					LOGGER.debug("Waiting for {} ms", sleepTime);
-					Thread.sleep(sleepTime);
-					LOGGER.debug("...done waiting");
-					break;
+		/**
+		 * Asserts that {@code actual} eventually equals {@code expected}.
+		 * In FLUSH mode, the driver is flushed and {@code actual} is evaluated once.
+		 * In WAIT mode, it is evaluated repeatedly with exponential backoff
+		 * until it matches or the {@link #WAIT_BUDGET} elapses,
+		 * so the test asserts that the driver eventually recovers on its own
+		 * rather than sleeping for a fixed time and hoping.
+		 * <p>
+		 * {@code actual} is evaluated with a read session open on the current thread.
+		 */
+		<T> void assertEventuallyEquals(Bosk<?> bosk, T expected, Supplier<T> actual) throws IOException, InterruptedException {
+			T value;
+			if (flushOrWait == FlushOrWait.FLUSH) {
+				bosk.driver().flush();
+				value = readUnderSession(bosk, actual);
+			} else {
+				long deadline = System.nanoTime() + WAIT_BUDGET.toNanos();
+				long intervalNanos = WAIT_INITIAL_POLL.toNanos();
+				value = readUnderSession(bosk, actual);
+				while (!expected.equals(value)) {
+					long remainingNanos = deadline - System.nanoTime();
+					if (remainingNanos <= 0) {
+						break;
+					}
+					Thread.sleep(Duration.ofNanos(Math.min(intervalNanos, remainingNanos)));
+					intervalNanos = Math.min(intervalNanos * 2, WAIT_MAX_POLL.toNanos());
+					value = readUnderSession(bosk, actual);
+				}
+			}
+			assertEquals(expected, value);
+		}
+
+		private static <T> T readUnderSession(Bosk<?> bosk, Supplier<T> actual) {
+			try (var _ = bosk.readSession()) {
+				return actual.get();
 			}
 		}
 
@@ -210,11 +225,14 @@ class RecoveryTest {
 			LOGGER.debug("Run recovery action");
 			TestEntity afterState = recoveryAction.apply(beforeState);
 
-			LOGGER.debug("Ensure flush works");
-			waitFor(bosk.driver());
-			try (var _ = bosk.readSession()) {
-				assertEquals(afterState, bosk.rootReference().value());
-			}
+			LOGGER.debug("Ensure the driver recovers");
+			assertEventuallyEquals(bosk, afterState, () -> bosk.rootReference().value());
+
+			// Prove the driver is really back: make it do some work.
+			LOGGER.debug("Ensure the driver accepts updates again");
+			TestEntity updated = afterState.withString("after recovery");
+			bosk.driver().submitReplacement(bosk.rootReference(), updated);
+			assertEventuallyEquals(bosk, updated, () -> bosk.rootReference().value());
 		}
 	}
 
@@ -265,23 +283,14 @@ class RecoveryTest {
 			mongoService.restoreConnection();
 
 			LOGGER.debug("Wait and check that the state updates");
-			// With FLUSH this succeeds almost immediately.
-			// With WAIT, it is artificially delayed.
-			waitFor(driver);
-			try (var _ = bosk.readSession()) {
-				assertEquals(initialState, bosk.rootReference().value(),
-					"Updates to database state once it reconnects");
-			}
+			assertEventuallyEquals(bosk, initialState, () -> bosk.rootReference().value());
 
 			LOGGER.debug("Make a change to the bosk and verify that it gets through");
 			driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
 			TestEntity expected = initialState
 				.withListing(Listing.of(refs.catalog(), entity123));
 
-			waitFor(driver);
-			try (@SuppressWarnings("unused") Bosk<?>.ReadSession readSession = bosk.readSession()) {
-				assertEquals(expected, bosk.rootReference().value());
-			}
+			assertEventuallyEquals(bosk, expected, () -> bosk.rootReference().value());
 		}
 
 		@Test
@@ -489,20 +498,14 @@ class RecoveryTest {
 					new BsonDocument("$unset", new BsonDocument(Formatter.DocumentFields.revision.name(), BsonNull.VALUE)) // Value is ignored
 				);
 
-			LOGGER.debug("Ensure flush works");
-			waitFor(bosk.driver());
-			try (var _ = bosk.readSession()) {
-				assertEquals(beforeState, bosk.rootReference().value());
-			}
+			LOGGER.debug("Ensure the driver recovers");
+			assertEventuallyEquals(bosk, beforeState, () -> bosk.rootReference().value());
 
 			LOGGER.debug("Repair by setting revision in the far future");
 			setRevision(1000L);
 
-			LOGGER.debug("Ensure flush works again");
-			waitFor(bosk.driver());
-			try (var _ = bosk.readSession()) {
-				assertEquals(beforeState, bosk.rootReference().value());
-			}
+			LOGGER.debug("Ensure the driver recovers again");
+			assertEventuallyEquals(bosk, beforeState, () -> bosk.rootReference().value());
 		}
 	}
 
@@ -514,8 +517,8 @@ class RecoveryTest {
 		 * but we also want to exhibit some "liveness" so that users who don't
 		 * call {@code flush} eventually see updates anyway.
 		 * <p>
-		 * This test mode inserts a delay instead of {@code flush} to ensure
-		 * updates eventually arrive.
+		 * This test mode waits for the state to converge without flushing, so it
+		 * fails if the driver needs a flush to make progress.
 		 */
 		WAIT,
 	}
@@ -528,6 +531,15 @@ class RecoveryTest {
 		}
 		return false;
 	}
+
+	/**
+	 * How long a WAIT-mode test gives the driver to converge on its own.
+	 * This is comfortably longer than a reconnection-and-reload cycle, and it
+	 * returns as soon as the state converges.
+	 */
+	private static final Duration WAIT_BUDGET = Duration.ofMillis(20L * SHORT_TIMESCALE);
+	private static final Duration WAIT_INITIAL_POLL = Duration.ofMillis(10);
+	private static final Duration WAIT_MAX_POLL = Duration.ofMillis(100);
 
 	private static final AtomicInteger boskCounter = new AtomicInteger(0);
 
