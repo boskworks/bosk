@@ -42,13 +42,14 @@ class TransactionalCollection {
 	private final FindInterceptor findInterceptor;
 	private final WriteInterceptor writeInterceptor;
 	private final CommitInterceptor commitInterceptor;
+	private final SessionInterceptor sessionInterceptor;
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
 
 	/**
 	 * A {@code TransactionalCollection} with no read, write, or commit interposition.
 	 */
 	static TransactionalCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient) {
-		return of(downstream, mongoClient, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity());
+		return of(downstream, mongoClient, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), SessionInterceptor.identity());
 	}
 
 	public Session newSession() throws FailedMongoClientSessionException {
@@ -99,7 +100,7 @@ class TransactionalCollection {
 			}
 			currentSession.set(this);
 			MDC.put(MdcKeys.TRANSACTION, name);
-			LOGGER.debug("Begin session");
+			LOGGER.debug("Begin session {} lsid={}", name, lsid());
 		}
 
 		/**
@@ -121,7 +122,7 @@ class TransactionalCollection {
 			if (clientSession.hasActiveTransaction()) {
 				int retriesRemaining = 2;
 				while (true) {
-					LOGGER.debug("Commit transaction");
+					LOGGER.debug("Commit transaction {} lsid={} txnNumber={}", name, lsid(), txnNumber());
 					try {
 						clientSession.commitTransaction();
 						commitInterceptor.afterCommitAttempt();
@@ -146,14 +147,56 @@ class TransactionalCollection {
 
 		@Override
 		public void close() {
-			if (clientSession.hasActiveTransaction()) {
-				LOGGER.debug("Unsuccessful session; aborting transaction");
-				clientSession.abortTransaction();
+			// Cleanup must not be defeated by an interrupt: the MongoDB driver's
+			// abortTransaction() silently gives up if it can't reach the server,
+			// which would leave the transaction open until the connection or the
+			// server reaps it. Interrupts are expected here (shutdown and test
+			// timeouts interrupt threads), so clear the flag while we abort and
+			// close, then restore it.
+			boolean interrupted = Thread.interrupted();
+			try {
+				boolean hadActiveTransaction = clientSession.hasActiveTransaction();
+				try {
+					if (hadActiveTransaction) {
+						LOGGER.debug("Unsuccessful session; aborting transaction");
+						sessionInterceptor.beforeAbortAttempt();
+						clientSession.abortTransaction();
+					}
+				} finally {
+					// The MongoDB driver's own ClientSession.close() aborts any active
+					// transaction, so we must close it even if the explicit abort above
+					// failed.
+					LOGGER.debug("Close session {} active={} interrupted={} lsid={}",
+						name, hadActiveTransaction, interrupted, lsid());
+					try {
+						clientSession.close();
+					} finally {
+						currentSession.remove();
+						MDC.put(MdcKeys.TRANSACTION, oldMDC);
+					}
+				}
+			} finally {
+				if (interrupted) {
+					Thread.currentThread().interrupt();
+				}
 			}
-			LOGGER.debug("Close session");
-			clientSession.close();
-			currentSession.remove();
-			MDC.put(MdcKeys.TRANSACTION, oldMDC);
+		}
+
+		/**
+		 * The MongoDB server session id, for correlating this session with
+		 * the database's own view (for example, the transactions reported by
+		 * {@code currentOp}). Intended for {@code debug} logs.
+		 */
+		private String lsid() {
+			return String.valueOf(clientSession.getServerSession().getIdentifier());
+		}
+
+		/**
+		 * The current transaction number, for correlating this session's
+		 * transactions with the database's own view. Intended for {@code debug} logs.
+		 */
+		private long txnNumber() {
+			return clientSession.getServerSession().getTransactionNumber();
 		}
 
 		private static final Logger LOGGER = LoggerFactory.getLogger(Session.class);
@@ -178,7 +221,7 @@ class TransactionalCollection {
 			throw new IllegalStateException("No active session");
 		} else if (!session.clientSession.hasActiveTransaction()) {
 			session.clientSession.startTransaction();
-			LOGGER.debug("Start transaction");
+			LOGGER.debug("Start transaction {} lsid={} txnNumber={}", session.name, session.lsid(), session.txnNumber());
 		}
 	}
 

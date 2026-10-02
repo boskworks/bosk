@@ -201,6 +201,11 @@ class ChangeReceiver implements Closeable {
 						} catch (TimeoutException e) {
 							disconnect("Timed out waiting for bosk state to initialize", REMEDY_RETURN, e);
 							return;
+						} catch (ImmediateReconnectException e) {
+							// Don't call disconnect: we're already disconnected
+							addContextToException(e);
+							LOGGER.warn("Driver is disconnected; will retry immediately", e);
+							continue;
 						} catch (DisconnectedException e) {
 							// Don't call disconnect: we're already disconnected
 							addContextToException(e);

@@ -10,7 +10,7 @@ import works.bosk.exceptions.FlushFailureException;
  * This makes the {@link FlushLock} unreliable, and so we need to reload
  * the state from the database and reinitialize the {@link ChangeReceiver}.
  */
-class EpochMismatchException extends FlushFailureException {
+class EpochMismatchException extends RevisionDisruptedException {
 	public EpochMismatchException(String message) {
 		super(message);
 	}

@@ -87,7 +87,9 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 	}
 
 	private DisconnectedException disconnected() {
-		return new DisconnectedException(reason);
+		return (reason instanceof RevisionDisruptedException e)
+			? new ImmediateReconnectException(e)
+			: new DisconnectedException(reason);
 	}
 
 }

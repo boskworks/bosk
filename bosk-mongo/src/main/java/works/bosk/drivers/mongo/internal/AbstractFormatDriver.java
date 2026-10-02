@@ -276,7 +276,11 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	@Override
 	public void close() {
 		LOGGER.debug("+ close()");
-		flushLock.get().close();
+		FlushLock lock = flushLock.get();
+		if (lock != null) {
+			// A driver that was created but never loaded its state has no FlushLock.
+			lock.close();
+		}
 	}
 
 	protected BsonDocument initialDocument(BsonValue initialState, BsonString epoch, BsonInt64 revision, BsonString documentId) {

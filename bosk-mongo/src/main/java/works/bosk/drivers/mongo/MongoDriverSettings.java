@@ -82,7 +82,6 @@ public class MongoDriverSettings {
 	@Value
 	@Builder
 	public static class Experimental {
-		@Default long changeStreamInitialWaitMS = 20;
 		@Default OrphanDocumentMode orphanDocumentMode = HASTY;
 	}
 
@@ -107,7 +106,7 @@ public class MongoDriverSettings {
 
 		/**
 		 * Simple format that stores the entire bosk state in a single document,
-		 * and (except for {@link MongoDriver#refurbish() refirbish})
+		 * and (except for {@link MongoDriver#refurbish() refurbish})
 		 * doesn't require any multi-document transactions.
 		 *
 		 * <p>

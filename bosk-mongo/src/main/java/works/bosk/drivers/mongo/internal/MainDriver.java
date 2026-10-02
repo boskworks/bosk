@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -65,7 +66,7 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
  * The actual database interactions used to implement the {@link BoskDriver} methods,
  * as well as most interactions with the downstream driver,
  * are delegated to a {@link FormatDriver} object that can be swapped out dynamically
- * as the database evolves.
+ * as the database format evolves.
  */
 public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BoskInfo<R> boskInfo;
@@ -78,12 +79,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final MongoClient queryClient;
 	private final Listener listener;
 	private final AtomicBoolean loggedConnectionDiagnostics = new AtomicBoolean(false);
-	final Formatter formatter;
+	private final Formatter formatter;
 
-	final long timescaleMS;
-	final long flushTimeout;
-	final long queryTimeout;
-	final long reinitializationTimeout;
+	private final long timescaleMS;
+	private final long flushTimeout;
+	private final long queryTimeout;
+	private final long reinitializationTimeout;
 
 	/**
 	 * {@link MongoClient#close()} throws if called more than once.
@@ -282,7 +283,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 			this.queryCollection = TransactionalCollection.of(queryClient
 				.getDatabase(driverSettings.database())
-				.getCollection(driverSettings.collection(), BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor());
+				.getCollection(driverSettings.collection(), BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor(), testProbes.sessionInterceptor());
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), driverSettings.collection());
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -380,7 +381,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// by other processes.
 
 		R entireState;
-		@Nullable Throwable fallbackReason = null;
+		Throwable fallbackReason = null;
 		try (var _ = queryCollection.newReadOnlySession()){
 			// The load must read a consistent snapshot, so run it inside a
 			// read-only transaction. (Refurbish runs its load inside its own
@@ -560,23 +561,33 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public void close() {
-		receiver.close();
-		formatDriver.close();
-		var suppressedExceptions = new ArrayList<IOException>();
+		// Each step is attempted even if an earlier one fails, because closing the
+		// MongoClients is what aborts any transaction the session's own close missed.
+		var suppressedExceptions = new ArrayList<Exception>();
+		closeQuietly(receiver::close, suppressedExceptions);
+		closeQuietly(formatDriver::close, suppressedExceptions);
 		if (!isClosed.getAndSet(true)) {
 			// It's important we don't call these twice, or else they will throw
-			closeables.forEach(closeable -> {
-				try {
-					closeable.close();
-				} catch (IOException e) {
-					suppressedExceptions.add(e);
-				}
-			});
+			closeables.forEach(closeable -> closeQuietly(closeable::close, suppressedExceptions));
 		}
 		if (!suppressedExceptions.isEmpty()) {
 			var e = new IllegalStateException("Exceptions occurred while closing MainDriver");
 			suppressedExceptions.forEach(e::addSuppressed);
 			throw e;
+		}
+	}
+
+	@FunctionalInterface
+	private interface CloseAction {
+		void close() throws Exception;
+	}
+
+	private static void closeQuietly(CloseAction action, List<Exception> suppressedExceptions) {
+		try {
+			action.close();
+		} catch (Exception e) {
+			LOGGER.warn("Exception while closing; will be reported together with any others", e);
+			suppressedExceptions.add(e);
 		}
 	}
 
@@ -1024,7 +1035,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		try {
 			long minNanos = -1;
 			for (ServerDescription server : queryClient.getClusterDescription().getServerDescriptions()) {
-				long nanos = server.getMinRoundTripTimeNanos();
+				long nanos = server.getRoundTripTimeNanos();
 				if (nanos > 0 && (minNanos < 0 || nanos < minNanos)) {
 					minNanos = nanos;
 				}

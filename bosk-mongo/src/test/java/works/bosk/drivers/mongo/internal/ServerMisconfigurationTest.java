@@ -4,6 +4,7 @@ import com.mongodb.MongoClientSettings;
 import com.mongodb.ServerAddress;
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
@@ -34,9 +35,9 @@ public class ServerMisconfigurationTest {
 		try (var socket = new ServerSocket(0)) {
 			port = socket.getLocalPort();
 		}
-		MongoClientSettings clientSettings = MongoService.mongoClientSettings(
-			new ServerAddress("localhost", port)
-		);
+		MongoClientSettings clientSettings = MongoClientSettings.builder()
+			.applyToClusterSettings(builder -> builder.hosts(List.of(new ServerAddress("localhost", port))))
+			.build();
 		assertThrows(InitialCursorTimeoutException.class, () -> createBosk(clientSettings));
 	}
 

@@ -87,6 +87,12 @@ The usual Gradle commands, plus:
   - If there's an especially simple case, like errors or "already computed" one-liner cases, those can return early to avoid mixing with complex logic
 - Documentation and comments should compose proper sentences with normal words and punctuation,
   rather than gluing together sentence fragments with em dashes.
+- When wrapping text whose rendered form ignores newlines (Markdown, javadocs, and raw HTML),
+  prefer to break at phrase and sentence boundaries rather than at a fixed column,
+  accepting somewhat shorter or longer lines to land on a boundary,
+  so that editing or rearranging one part doesn't force a reflow of the rest
+  and diffs stay small.
+  Don't, though, produce inordinately short or long lines.
 
 ### Modules
 
