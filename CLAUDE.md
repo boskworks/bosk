@@ -127,6 +127,13 @@ Don't delete unused constructors of Exception subclasses.
 We typically provide a suite of constructors so future maintainers won't need to wonder if they're
 breaking some implicit design rule by adding a new exception that wasn't there before.
 
+### Log messages
+
+A log message, especially at warning or error level, should describe a single, specific failure mode.
+Never mix two possibilities, as in "user name not specified or invalid":
+work out which one actually happened and say so,
+so the reader can tell what went wrong and what to look for.
+
 ### Javadocs
 
 We use javadocs extensively, including in `module-info.java` and `package-info.java` files.
