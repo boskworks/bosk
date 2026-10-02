@@ -61,9 +61,10 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * <p>
  * The disruptions are split into groups.
  * {@link FormatAgnosticRecovery} covers disruptions whose detection and recovery
- * do not depend on how the state is laid out in the database.
+ * do not depend on how the state is laid out in the database, so one format suffices.
  * {@link FormatSpecificRecovery} covers disruptions that exercise format-specific
- * event handling and state layout.
+ * event handling and state layout, so it runs both for Sequoia (the whole state is one
+ * document) and for a Pando format whose state is scattered across graft points.
  * {@link StartupFailures} covers starting up against a damaged collection.
  * <p>
  * The disruption-recovery tests run in both {@link FlushOrWait} modes:
@@ -224,15 +225,10 @@ class RecoveryTest {
 		@InjectorMethod
 		static Stream<ParameterSet> parameterSets() {
 			return TestParameters.driverSettings(
-				Stream.of(
-					MongoDriverSettings.DatabaseFormat.SEQUOIA,
-					PandoFormat.oneBigDocument(),
-					PandoFormat.withGraftPoints("/catalog", "/sideTable"),
-					PandoFormat.withGraftPoints("/catalog/-x-/sideTable")
-				),
+				Stream.of(MongoDriverSettings.DatabaseFormat.SEQUOIA),
 				Stream.of(TestParameters.EventTiming.NORMAL)
 			).map(b -> b.applyDriverSettings(s -> s
-				.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
+				.timescaleMS(SHORT_TIMESCALE)
 			));
 		}
 
@@ -309,15 +305,10 @@ class RecoveryTest {
 		@InjectorMethod
 		static Stream<ParameterSet> parameterSets() {
 			return TestParameters.driverSettings(
-				Stream.of(
-					MongoDriverSettings.DatabaseFormat.SEQUOIA,
-					PandoFormat.oneBigDocument(),
-					PandoFormat.withGraftPoints("/catalog", "/sideTable"),
-					PandoFormat.withGraftPoints("/catalog/-x-/sideTable")
-				),
+				Stream.of(MongoDriverSettings.DatabaseFormat.SEQUOIA),
 				Stream.of(TestParameters.EventTiming.NORMAL)
 			).map(b -> b.applyDriverSettings(s -> s
-				.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
+				.timescaleMS(SHORT_TIMESCALE)
 			));
 		}
 
@@ -411,13 +402,11 @@ class RecoveryTest {
 			return TestParameters.driverSettings(
 				Stream.of(
 					MongoDriverSettings.DatabaseFormat.SEQUOIA,
-					PandoFormat.oneBigDocument(),
-					PandoFormat.withGraftPoints("/catalog", "/sideTable"),
-					PandoFormat.withGraftPoints("/catalog/-x-/sideTable")
+					PandoFormat.withGraftPoints("/catalog", "/sideTable")
 				),
 				Stream.of(TestParameters.EventTiming.NORMAL)
 			).map(b -> b.applyDriverSettings(s -> s
-				.timescaleMS(SHORT_TIMESCALE) // Note that some tests can take as long as 25x this
+				.timescaleMS(SHORT_TIMESCALE)
 			));
 		}
 
