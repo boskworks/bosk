@@ -228,7 +228,6 @@ class RecoveryTest {
 			LOGGER.debug("Ensure the driver recovers");
 			assertEventuallyEquals(bosk, afterState, () -> bosk.rootReference().value());
 
-			// Prove the driver is really back: make it do some work.
 			LOGGER.debug("Ensure the driver accepts updates again");
 			TestEntity updated = afterState.withString("after recovery");
 			bosk.driver().submitReplacement(bosk.rootReference(), updated);
