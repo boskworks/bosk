@@ -39,6 +39,30 @@ def git(*args: str, cwd: Path | None = None) -> str:
     return subprocess.run(["git", *args], check=True, capture_output=True, text=True, cwd=cwd).stdout
 
 
+def merge_base(repo_dir: Path, base_sha: str, base_ref: str, reviewed: str) -> str:
+    """The fork point of `reviewed` from the PR's base.
+
+    The PR's recorded base commit is preferred, because it is exactly the commit
+    the PR was opened against. A clone can be missing that commit — the base
+    branch may have advanced since the PR was opened, and no step fetches it —
+    so fall back to the base ref as the local remotes know it, which shares the
+    same fork point. A failure with none of these present is a real error.
+    """
+    remotes = git("-C", str(repo_dir), "remote").split()
+    # Prefer the canonical remotes, whose base branch is the most likely to be
+    # at least as new as the PR's fork point; a fork's stale main would yield a
+    # too-old merge base and pull unrelated commits into the diff.
+    preferred = ["upstream", "origin"]
+    ordered = [r for r in preferred if r in remotes] + [r for r in remotes if r not in preferred]
+    candidates = [base_sha, *[f"{remote}/{base_ref}" for remote in ordered], base_ref]
+    for candidate in candidates:
+        try:
+            return git("-C", str(repo_dir), "merge-base", candidate, reviewed).strip()
+        except subprocess.CalledProcessError:
+            continue
+    sys.exit(f"no merge base for {reviewed[:8]} from base {base_sha[:8]} ({base_ref})")
+
+
 def reviewer_submissions(reviews_path: Path) -> list:
     """The reviewer's review submissions in chronological order (round boundaries)."""
     reviews = json.loads(reviews_path.read_text())
@@ -73,7 +97,7 @@ def build_diffs(pr_dir: Path, repo_dir: Path, pr: dict, boundary: str | None) ->
         base_sha = pr["base"]["sha"]
         parts = []
         for anchor in anchors:
-            fork = git("-C", str(repo_dir), "merge-base", base_sha, anchor).strip()
+            fork = merge_base(repo_dir, base_sha, pr["base"]["ref"], anchor)
             diff = git("-C", str(repo_dir), "diff", fork, anchor)
             parts.append({"anchor": anchor, "diff": diff})
         if parts:
@@ -82,11 +106,11 @@ def build_diffs(pr_dir: Path, repo_dir: Path, pr: dict, boundary: str | None) ->
     # reviewed, computed locally. Diffing against the *reviewed head* — the
     # round's anchor, or the PR head for the current state — keeps the snapshot
     # consistent with the worktree and omits commits that postdate the review: a
-    # review must not see the future. The corpus's commits are always in the
-    # local clone, so git is the only source of truth here; a failure is a real
-    # error, not a signal to consult a different source.
+    # review must not see the future. The commits come from the local clone; the
+    # PR's base may not be among them, so merge_base falls back to the base ref
+    # the remotes already have.
     reviewed = review_head(pr, comments, boundary)
-    fork = git("-C", str(repo_dir), "merge-base", pr["base"]["sha"], reviewed).strip()
+    fork = merge_base(repo_dir, pr["base"]["sha"], pr["base"]["ref"], reviewed)
     diff = git("-C", str(repo_dir), "diff", fork, reviewed)
     return [{"anchor": None, "diff": diff}]
 
