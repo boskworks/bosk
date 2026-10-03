@@ -42,9 +42,10 @@ information. Never fetch, pull, or check out anything from a remote.
 
 When the PR has already been reviewed and revised, treat it as a fresh review at the new head: re-examine
 the whole PR, not just the delta — fixes can introduce new issues (stale docs, dead code, abandoned
-approaches) — and don't re-raise threads that were already resolved. Read any prior comments from the
-snapshot by their anchored record (`original_line`, or the span `original_start_line`..`original_line`,
-within their `diff_hunk`), so you know exactly what each was about.
+approaches). The snapshot's prior comments are context to use: match one to the code it is about by its
+`path` and its `line` at the reviewed head — `original_line` is where it was written, which a force-push
+may have moved. Don't post a finding a prior comment already makes, resolved or not: restating someone
+else's comment as your own is confusing at best and insulting at worst.
 
 ## What to comment on, in priority order
 
