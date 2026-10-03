@@ -33,11 +33,15 @@ import works.bosk.drivers.ForwardingDriver;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
+import works.bosk.junit.InjectedTest;
 import works.bosk.junit.InjectorMethod;
 import works.bosk.libtesting.BlockingGate;
 import works.bosk.logback.BoskLogFilter;
@@ -65,6 +69,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * update.
  */
 @InjectFields
+@InjectFrom({MongoService.FailureMode.class})
 @ReplayLogsOnFailure
 public class ReconnectTest extends AbstractMongoDriverTest {
 	private static final String DISCONNECT_PROBE_ID = "disconnectProbe";
@@ -93,12 +98,24 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
-		return TestParameters.standardDriverSettings();
+		// The disruption scenarios recover through format-specific state loading
+		// and event handling, so run them for one single-document format and one
+		// multi-document format. The other Pando layouts are covered by the
+		// conformance suite.
+		return TestParameters.driverSettings(
+			Stream.of(
+				MongoDriverSettings.DatabaseFormat.SEQUOIA,
+				PandoFormat.withGraftPoints("/catalog", "/sideTable")
+			),
+			Stream.of(TestParameters.EventTiming.NORMAL)
+		).map(b -> b.applyDriverSettings(s -> s
+			.timescaleMS(SHORT_TIMESCALE)
+		));
 	}
 
-	@Test
+	@InjectedTest
 	@DisruptsMongoProxy
-	void networkOutage_boskRecovers() throws InvalidTypeException, InterruptedException, IOException {
+	void networkOutage_boskRecovers(@Injected MongoService.FailureMode failureMode) throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
@@ -123,14 +140,14 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		errorRecorder.assertAllClear("before cut connection");
 
 		LOGGER.debug("Cut connection");
-		mongoService.cutConnection();
-		tearDownActions.add(()->mongoService.restoreConnection());
+		mongoService.disruptConnection(failureMode);
+		tearDownActions.add(()->mongoService.restoreConnection(failureMode));
 
 		assertThrows(FlushFailureException.class, driver::flush);
 		assertThrows(FlushFailureException.class, latecomerBosk.driver()::flush);
 
 		LOGGER.debug("Reestablish connection");
-		mongoService.restoreConnection();
+		mongoService.restoreConnection(failureMode);
 
 		LOGGER.debug("Make a change to the bosk and verify that it gets through");
 		driver.submitReplacement(refs.listingEntry(entity123), LISTING_ENTRY);
@@ -151,9 +168,9 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		}
 		assertEquals(expected, latecomerActual);
 	}
-	@Test
+	@InjectedTest
 	@DisruptsMongoProxy
-	void hookInterrupted_whenReceiverDisconnects() throws InvalidTypeException, InterruptedException, IOException {
+	void hookInterrupted_whenReceiverDisconnects(@Injected MongoService.FailureMode failureMode) throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
@@ -189,8 +206,8 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		assertTrue(started, "The hook must start running");
 
 		LOGGER.debug("Cut connection and submit an update that fails, disconnecting the driver");
-		mongoService.cutConnection();
-		tearDownActions.add(() -> mongoService.restoreConnection());
+		mongoService.disruptConnection(failureMode);
+		tearDownActions.add(() -> mongoService.restoreConnection(failureMode));
 
 		// The submit runs on a worker thread because, once it triggers the disconnect,
 		// it blocks waiting for the receiver to reconnect.
@@ -208,7 +225,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		assertTrue(interrupted, "The running hook must receive the interrupt when the receiver disconnects");
 
 		LOGGER.debug("Reestablish connection");
-		mongoService.restoreConnection();
+		mongoService.restoreConnection(failureMode);
 
 		driver.flush();
 		submitter.join(30_000);
@@ -226,9 +243,9 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		}
 		assertEquals(expected, actual, "The bosk must recover and converge to the expected state");
 	}
-	@Test
+	@InjectedTest
 	@DisruptsMongoProxy
-	void hookRegisteredDuringNetworkOutage_works() throws InvalidTypeException, InterruptedException, IOException {
+	void hookRegisteredDuringNetworkOutage_works(@Injected MongoService.FailureMode failureMode) throws InvalidTypeException, InterruptedException, IOException {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
@@ -252,8 +269,8 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		errorRecorder.assertAllClear("before cut connection");
 
 		LOGGER.debug("Cut connection");
-		mongoService.cutConnection();
-		tearDownActions.add(()->mongoService.restoreConnection());
+		mongoService.disruptConnection(failureMode);
+		tearDownActions.add(()->mongoService.restoreConnection(failureMode));
 
 		assertThrows(FlushFailureException.class, driver::flush);
 
@@ -268,7 +285,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		});
 
 		LOGGER.debug("Reestablish connection");
-		mongoService.restoreConnection();
+		mongoService.restoreConnection(failureMode);
 
 		LOGGER.debug("Ensure populateListing hook has been triggered");
 		driver.flush();
@@ -287,14 +304,14 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		}
 		assertEquals(expected, actual);
 	}
-	@Test
+	@InjectedTest
 	@DisruptsMongoProxy
-	void downstreamInitialStateThrows_wrappedInIllegalArgumentException() {
+	void downstreamInitialStateThrows_wrappedInIllegalArgumentException(@Injected MongoService.FailureMode failureMode) {
 		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		// Force the downstream driver to be used for initial state
-		mongoService.cutConnection();
-		tearDownActions.add(() -> mongoService.restoreConnection());
+		mongoService.disruptConnection(failureMode);
+		tearDownActions.add(() -> mongoService.restoreConnection(failureMode));
 
 		IOException thrown = new IOException("downstream initial state failed");
 		var e = assertThrows(IllegalArgumentException.class, () -> new Bosk<>(

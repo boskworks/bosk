@@ -54,6 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
+import static works.bosk.drivers.mongo.internal.MongoService.FailureMode.CLOSE;
 import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
@@ -256,8 +257,8 @@ class RecoveryTest {
 			TestEntity initialState = initializeDatabase("distinctive string");
 
 			LOGGER.debug("Cut mongo connection");
-			mongoService.cutConnection();
-			tearDownActions.add(()->mongoService.restoreConnection());
+			mongoService.disruptConnection(CLOSE);
+			tearDownActions.add(()->mongoService.restoreConnection(CLOSE));
 
 			LOGGER.debug("Create a new bosk that can't connect");
 			Bosk<TestEntity> bosk = new Bosk<>(getClass().getSimpleName() + boskCounter.incrementAndGet(), TestEntity.class, AbstractMongoDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
@@ -279,7 +280,7 @@ class RecoveryTest {
 				"Updates disallowed during outage");
 
 			LOGGER.debug("Restore mongo connection");
-			mongoService.restoreConnection();
+			mongoService.restoreConnection(CLOSE);
 
 			LOGGER.debug("Wait and check that the state updates");
 			assertEventuallyEquals(bosk, initialState, () -> bosk.rootReference().value());

@@ -102,20 +102,46 @@ public class MongoService implements Closeable {
 	private static final int TCP_CONNECTION_TIMEOUT_MS = 1000;
 	private static final MongoClientSettings disruptableClientSettings = mongoClientSettings(DISRUPTABLE_SERVER_ADDRESS);
 
-	public void cutConnection() {
-		try {
-			MONGO_PROXY.disable();
-		} catch (IOException e) {
-			throw new IllegalStateException("Failed to cut connection", e);
+	/**
+	 * The way in which a test disrupts the database connection.
+	 * Each mode is implemented with a Toxiproxy feature: {@link #CLOSE} takes the
+	 * proxy down ({@code enabled=false}).
+	 */
+	public enum FailureMode {
+		/**
+		 * Closes the open connections, as when the server restarts or a load balancer resets them.
+		 */
+		CLOSE,
+	}
+
+	/**
+	 * Disrupts the database connection in the given way.
+	 */
+	public void disruptConnection(FailureMode mode) {
+		switch (mode) {
+			case CLOSE -> {
+				try {
+					MONGO_PROXY.disable();
+				} catch (IOException e) {
+					throw new IllegalStateException("Failed to close the database connection", e);
+				}
+			}
 		}
 	}
 
-	public void restoreConnection() {
-		try {
-			MONGO_PROXY.enable();
-			awaitTcpConnection();
-		} catch (IOException e) {
-			throw new IllegalStateException("Failed to restore connection", e);
+	/**
+	 * Restores the database connection after {@link #disruptConnection(FailureMode)}.
+	 */
+	public void restoreConnection(FailureMode mode) {
+		switch (mode) {
+			case CLOSE -> {
+				try {
+					MONGO_PROXY.enable();
+					awaitTcpConnection();
+				} catch (IOException e) {
+					throw new IllegalStateException("Failed to restore the database connection", e);
+				}
+			}
 		}
 	}
 

@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.parallel.ResourceAccessMode.READ_WRITE;
 
 /**
  * Indicates that a test is going to use {@link MongoService},
- * and that it will use {@link MongoService#cutConnection()} to test
+ * and that it will use {@link MongoService#disruptConnection(MongoService.FailureMode)} to test
  * network outages and other errors.
  * Only one {@link DisruptsMongoProxy} test will run at a time.
  *
