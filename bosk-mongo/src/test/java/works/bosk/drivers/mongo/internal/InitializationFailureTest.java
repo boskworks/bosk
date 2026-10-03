@@ -8,6 +8,8 @@ import works.bosk.BoskConfig;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.exceptions.InitialStateFailureException;
 import works.bosk.junit.InjectFields;
+import works.bosk.junit.InjectFrom;
+import works.bosk.junit.Injected;
 import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
@@ -25,7 +27,10 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  */
 @ReplayLogsOnFailure
 @InjectFields
+@InjectFrom({MongoService.FailureMode.class})
 public class InitializationFailureTest extends AbstractMongoDriverTest {
+	@Injected MongoService.FailureMode failureMode;
+
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
 		return Stream.of(new ParameterSet(
@@ -40,8 +45,8 @@ public class InitializationFailureTest extends AbstractMongoDriverTest {
 	@DisruptsMongoProxy
 	void initialOutage_throws(TestInfo testInfo) {
 		logController.setLogging(ERROR, ChangeReceiver.class);
-		mongoService.cutConnection();
-		tearDownActions.add(()->mongoService.restoreConnection());
+		mongoService.disruptConnection(failureMode);
+		tearDownActions.add(()->mongoService.restoreConnection(failureMode));
 		assertThrows(InitialStateFailureException.class, ()->{
 			new Bosk<>(
 				boskName("Fail"),
