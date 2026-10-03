@@ -42,7 +42,8 @@ public class InitializationAtomicityTest extends AbstractMongoDriverTest {
 		return TestParameters.driverSettings(
 			Stream.of(
 				MongoDriverSettings.DatabaseFormat.SEQUOIA,
-				PandoFormat.oneBigDocument()
+				PandoFormat.oneBigDocument(),
+				PandoFormat.withGraftPoints("/catalog", "/sideTable")
 			),
 			Stream.of(TestParameters.EventTiming.NORMAL)
 		);
