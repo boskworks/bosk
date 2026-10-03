@@ -69,13 +69,13 @@ class ChangeReceiver implements Closeable {
 	private volatile @Nullable Thread thread = null;
 	private volatile boolean isClosed = false;
 
-	ChangeReceiver(String boskName, Identifier boskID, ChangeListener listener, MongoDriverSettings settings, MongoCollection<BsonDocument> collection) {
+	ChangeReceiver(String boskName, Identifier boskID, ChangeListener listener, MongoDriverSettings settings, long changeStreamMaxAwaitTimeMS, MongoCollection<BsonDocument> collection) {
 		this.boskName = boskName;
 		this.boskID = boskID;
 		this.listener = listener;
 		this.settings = settings;
 		this.creationPoint = new Exception("Additional context: ChangeReceiver creation stack trace:");
-		this.changeStreamIterable = collection.watch();
+		this.changeStreamIterable = watch(collection, changeStreamMaxAwaitTimeMS);
 		if (settings.initialDatabaseUnavailableMode() == FAIL_FAST) {
 			// User requested fail-fast behaviour; try to open the cursor right away
 			// to ensure the database is set up for change streams.
@@ -274,6 +274,18 @@ class ChangeReceiver implements Closeable {
 
 	private void addContextToException(Throwable x) {
 		x.addSuppressed(creationPoint);
+	}
+
+	/**
+	 * Opens a change stream on {@code collection}, configured the way this
+	 * receiver needs it. Exposed so tests can open the same stream the receiver
+	 * uses, rather than duplicating the configuration and risking drift.
+	 *
+	 * @param changeStreamMaxAwaitTimeMS how long the server may wait for an
+	 * event before answering a {@code getMore}
+	 */
+	static ChangeStreamIterable<BsonDocument> watch(MongoCollection<BsonDocument> collection, long changeStreamMaxAwaitTimeMS) {
+		return collection.watch().maxAwaitTime(changeStreamMaxAwaitTimeMS, MILLISECONDS);
 	}
 
 	private MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> openCursor() {

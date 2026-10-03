@@ -32,6 +32,8 @@ public class MongoDriverSettings {
 	 * Changes to the database connectivity and status will be "noticed"
 	 * in about this many milliseconds, and other time-related behaviours
 	 * are scaled accordingly.
+	 * Among other things, this is the interval at which a change stream polls
+	 * the database when idle, so it also governs each bosk's idle network traffic.
 	 * Lower values recover more quickly, but will also give up sooner
 	 * and cause more network traffic;
 	 * higher values are more patient and efficient, and can tolerate

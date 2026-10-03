@@ -21,7 +21,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 record ClientSettings(
 	MongoClientSettings query,
 	long queryTimeoutMS,
-	MongoClientSettings changeStream
+	MongoClientSettings changeStream,
+	long changeStreamMaxAwaitTimeMS
 ) {
 	static ClientSettings derive(MongoClientSettings base, MongoDriverSettings driverSettings) {
 		long timescaleMS = driverSettings.timescaleMS();
@@ -39,26 +40,33 @@ record ClientSettings(
 		// remaining quarter.
 		long queryTimeout = 4L * timescaleMS;
 
+		// The change-stream client can't use the driver's operation timeout,
+		// because on a change stream an operation timeout is a CURSOR_LIFETIME
+		// budget that would cap the cursor's life. Instead the server is asked to
+		// answer each getMore within one poll interval, and the socket read
+		// timeout is a multiple of that interval: a healthy idle stream always
+		// answers within one interval, so only a silently dead socket trips it.
+		long changeStreamMaxAwaitTimeMS = timescaleMS;
+		long changeStreamReadTimeout = 2 * changeStreamMaxAwaitTimeMS;
+
 		MongoClientSettings common = MongoClientSettings
 			.builder(base)
 			.applyToServerSettings(s ->
-				// If timescaleMS is shorter than the default min heartbeat,
-				// then we need to reduce this setting to prevent the client
-				// from using a stale view of the server state for too long.
-				// If timescaleMS is longer, then the user has told us
-				// they don't mind longer delays and want the increased
-				// efficiency of fewer heartbeats.
-				// Either way, timescaleMS is the right value for this setting.
+				// Both heartbeat settings track timescaleMS, so the client
+				// notices changes in the server's state on roughly the timescale
+				// the user asked for. (At the 10s production default,
+				// heartbeatFrequency is unchanged from the driver's own default.)
 				//
-				// Note that this doesn't set the heartbeat frequency itself.
-				// That is left at the default value, since it is only used
-				// to "notice" connectivity problems when the driver is quiescent,
-				// which is not time-critical and is not governed by timescaleMS:
-				// the actual behaviour of the bosk during a network partition
-				// is that its contents remain fixed, and it doesn't matter much
-				// whether that is achieved by formally disconnecting or simply
-				// by doing nothing.
-				s.minHeartbeatFrequency(timescaleMS, MILLISECONDS))
+				// minHeartbeatFrequency is the floor on how often server selection
+				// re-checks a server it believes to be down.
+				//
+				// heartbeatFrequency is how often the monitor checks a server it
+				// believes to be healthy. It matters because a change stream whose
+				// socket has silently died only surfaces once the monitor marks the
+				// server unknown and server selection then fails; until that point
+				// the driver's change-stream resumption keeps retrying in silence.
+				s.heartbeatFrequency(timescaleMS, MILLISECONDS)
+					.minHeartbeatFrequency(timescaleMS, MILLISECONDS))
 			// By default, we deal only with durable data that won't get rolled back.
 			// In some circumstances, we need the very latest possible data for correctness,
 			// so we override the ReadConcern in those cases.
@@ -81,22 +89,16 @@ record ClientSettings(
 				s.connectTimeout(timescaleMS, MILLISECONDS))
 			.build();
 
-		// The change-stream client can't use the driver's operation timeout:
-		// an idle change-stream cursor may legitimately wait a long time
-		// between events, so its socket read timeout must be 0, and that is
-		// a per-client setting.
-		long changeStreamReadTimeout = 0;
 		MongoClientSettings changeStream = MongoClientSettings.builder(common)
 			.applyToSocketSettings(s -> s.readTimeout(changeStreamReadTimeout, MILLISECONDS))
 			.build();
 
-		// Queries must not hang indefinitely, so they use the driver's
-		// operation timeout (see queryTimeout above), which is deliberately
-		// larger than the phase budgets above.
+		// Queries must not hang indefinitely, so they use the driver's operation
+		// timeout, which is deliberately larger than the phase budgets above.
 		MongoClientSettings query = MongoClientSettings.builder(common)
 			.timeout(queryTimeout, MILLISECONDS)
 			.build();
 
-		return new ClientSettings(query, queryTimeout, changeStream);
+		return new ClientSettings(query, queryTimeout, changeStream, changeStreamMaxAwaitTimeMS);
 	}
 }

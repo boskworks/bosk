@@ -229,6 +229,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				boskInfo.instanceID(),
 				listener,
 				driverSettings,
+				clients.changeStreamMaxAwaitTimeMS(),
 				changeStreamClient
 					.getDatabase(driverSettings.database())
 					.getCollection(driverSettings.collection(), BsonDocument.class)
