@@ -12,6 +12,8 @@ import com.mongodb.event.ConnectionCreatedEvent;
 import com.mongodb.event.ConnectionPoolListener;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
+import eu.rekawek.toxiproxy.model.Toxic;
+import eu.rekawek.toxiproxy.model.ToxicDirection;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -98,6 +100,8 @@ public class MongoService implements Closeable {
 
 	private static final Proxy MONGO_PROXY = createMongoProxy();
 	private static final int PROXY_PORT = 8666;
+	private static final String PARTITION_UPSTREAM_TOXIC = "partitionUpstream";
+	private static final String PARTITION_DOWNSTREAM_TOXIC = "partitionDownstream";
 	private static final ServerAddress DISRUPTABLE_SERVER_ADDRESS = new ServerAddress(TOXIPROXY_CONTAINER.getHost(), TOXIPROXY_CONTAINER.getMappedPort(PROXY_PORT));
 	private static final int TCP_CONNECTION_TIMEOUT_MS = 1000;
 	private static final MongoClientSettings disruptableClientSettings = mongoClientSettings(DISRUPTABLE_SERVER_ADDRESS);
@@ -105,13 +109,19 @@ public class MongoService implements Closeable {
 	/**
 	 * The way in which a test disrupts the database connection.
 	 * Each mode is implemented with a Toxiproxy feature: {@link #CLOSE} takes the
-	 * proxy down ({@code enabled=false}).
+	 * proxy down ({@code enabled=false}), and {@link #PARTITION} applies a
+	 * {@code timeout} toxic with a timeout of 0.
 	 */
 	public enum FailureMode {
 		/**
 		 * Closes the open connections, as when the server restarts or a load balancer resets them.
 		 */
 		CLOSE,
+		/**
+		 * Drops all packets in both directions without closing the connections,
+		 * as in a network partition.
+		 */
+		PARTITION,
 	}
 
 	/**
@@ -124,6 +134,14 @@ public class MongoService implements Closeable {
 					MONGO_PROXY.disable();
 				} catch (IOException e) {
 					throw new IllegalStateException("Failed to close the database connection", e);
+				}
+			}
+			case PARTITION -> {
+				try {
+					MONGO_PROXY.toxics().timeout(PARTITION_UPSTREAM_TOXIC, ToxicDirection.UPSTREAM, 0);
+					MONGO_PROXY.toxics().timeout(PARTITION_DOWNSTREAM_TOXIC, ToxicDirection.DOWNSTREAM, 0);
+				} catch (IOException e) {
+					throw new IllegalStateException("Failed to partition the database connection", e);
 				}
 			}
 		}
@@ -141,6 +159,27 @@ public class MongoService implements Closeable {
 				} catch (IOException e) {
 					throw new IllegalStateException("Failed to restore the database connection", e);
 				}
+			}
+			case PARTITION -> {
+				try {
+					removeToxic(PARTITION_UPSTREAM_TOXIC);
+					removeToxic(PARTITION_DOWNSTREAM_TOXIC);
+				} catch (IOException e) {
+					throw new IllegalStateException("Failed to heal the database partition", e);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Removes the named toxic if it is present.
+	 * Removing a {@code timeout} toxic also closes the connection it was applied to,
+	 * so the client notices that the disruption is over.
+	 */
+	private static void removeToxic(String name) throws IOException {
+		for (Toxic toxic : MONGO_PROXY.toxics().getAll()) {
+			if (toxic.getName().equals(name)) {
+				toxic.remove();
 			}
 		}
 	}
