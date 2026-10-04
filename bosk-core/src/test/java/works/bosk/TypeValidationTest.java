@@ -13,6 +13,7 @@ import works.bosk.annotations.Enclosing;
 import works.bosk.annotations.Self;
 import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.util.Types;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.containsStringIgnoringCase;
@@ -30,13 +31,22 @@ class TypeValidationTest {
 		AllowedFieldNames.class,
 		BooleanPrimitive.class,
 		BoskyTypes.class,
+		BoundedRoot.class,
 		BoxedPrimitives.class,
 		BytePrimitive.class,
 		CharPrimitive.class,
+		ConcreteGenericVariantRoot.class,
+		DeepGenericRoot.class,
 		DoublePrimitive.class,
+		EnclosingReferenceToTypeVariableRoot.class,
 		ExtraStaticField.class,
 		FloatPrimitive.class,
+		GenericContainersRoot.class,
+		GenericPairRoot.class,
 		GenericSelfReferenceRoot.class,
+		GenericStateRoot.class,
+		GenericTaggedUnionRoot.class,
+		GenericVariantRoot.class,
 		ImplicitReferences_onConstructorParameters.class,
 		ImplicitReferences_onFields.class,
 		IntegerPrimitive.class,
@@ -46,6 +56,12 @@ class TypeValidationTest {
 	})
 	void testValidRootClasses(Class<?> rootClass) throws InvalidTypeException {
 		TypeValidation.validateType(rootClass);
+	}
+
+	@Test
+	void testParameterizedRootType() throws InvalidTypeException {
+		// The root type itself may be a parameterized StateTreeNode, not just a field of one.
+		TypeValidation.validateType(Types.parameterizedType(GenericNode.class, String.class));
 	}
 
 	@ParameterizedTest
@@ -59,7 +75,10 @@ class TypeValidationTest {
 		EnclosingReferenceToOptional.class,
 		EnclosingReferenceToString.class,
 		FieldNameWithDollarSign.class,
+		GenericArrayRoot.class,
+		GenericNode.class,
 		HasDeserializationPath.class,
+		InvalidGenericRoot.class,
 		ListingOfInvalidType.class,
 		ListValueInvalidSubclass.class,
 		ListValueMutableSubclass.class,
@@ -78,13 +97,19 @@ class TypeValidationTest {
 		ParameterizedFieldRoot.class,
 		ReferenceToReference.class,
 		SelfNonReference.class,
+		SelfReferenceToTypeVariableRoot.class,
 		SelfWrongType.class,
 		SideTableWithInvalidKey.class,
 		SideTableWithInvalidValue.class,
 		NestedError.class,
 		OptionalOfInvalidType.class,
+		RawGenericVariantRoot.class,
 		ReferenceToInvalidType.class,
 		ValidThenInvalidOfTheSameClass.class,
+		WildcardGenericRoot.class,
+		WildcardListValueRoot.class,
+		WildcardReferenceRoot.class,
+		WildcardTaggedUnionRoot.class,
 		TaggedUnionCaseWithNoTaggedUnion.class,
 	})
 	void testInvalidRootClasses(Class<?> rootClass) throws Exception {
@@ -652,8 +677,9 @@ class TypeValidationTest {
 	) implements StateTreeNode {}
 
 	/**
-	 * Right now, we don't yet support parameterized StateTreeNode types.
-	 * If we ever do, be sure to add support (and a test) to BoskGraphQL.
+	 * A parameterized type that does not itself implement StateTreeNode is still
+	 * not allowed in a bosk tree. Parameterized StateTreeNode types are supported;
+	 * see {@link GenericNode}.
 	 */
 	public record ParameterizedFieldRoot(
 		ParameterizedField<SimpleTypes> field
@@ -662,6 +688,52 @@ class TypeValidationTest {
 	public record ParameterizedField<T extends StateTreeNode>(
 		T field
 	) {}
+
+	/** A parameterized StateTreeNode, used as a field and, in the test, as a root type. */
+	public record GenericNode<T>(T value) implements StateTreeNode {
+		static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("type parameters"));
+		}
+	}
+
+	public record GenericStateRoot(
+		GenericNode<String> node
+	) implements StateTreeNode {}
+
+	public record GenericPair<A, B>(
+		A first,
+		B second
+	) implements StateTreeNode {}
+
+	public record GenericPairRoot(
+		GenericPair<String, Integer> pair
+	) implements StateTreeNode {}
+
+	public record Bounded<T extends Entity>(T value) implements StateTreeNode {}
+
+	public record BoundedRoot(
+		Bounded<SimpleTypes> bounded
+	) implements StateTreeNode {}
+
+	public record GenericContainersRoot(
+		Optional<GenericNode<String>> optional,
+		ListValue<GenericNode<String>> listValue,
+		MapValue<GenericNode<String>> mapValue,
+		SideTable<SimpleTypes, GenericNode<String>> sideTable
+	) implements StateTreeNode {}
+
+	public record DeepGenericRoot(
+		GenericNode<Catalog<SimpleTypes>> node
+	) implements StateTreeNode {}
+
+	/** The type argument is validated after substitution, so this is invalid. */
+	public record InvalidGenericRoot(
+		GenericNode<ArrayList<Object>> node
+	) implements StateTreeNode {
+		static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("ArrayList"));
+		}
+	}
 
 	/**
 	 * A self-referential parameterized node. Validating it resolves a type variable that
@@ -674,4 +746,130 @@ class TypeValidationTest {
 	public record GenericSelfReferenceRoot(
 		GenericSelfReference<String> node
 	) implements StateTreeNode {}
+
+	/**
+	 * The @Self check reads the reference's target type, which is a type variable here and
+	 * must be substituted before it can be inspected.
+	 */
+	public record SelfReferenceToTypeVariable<T>(
+		@Self Reference<T> self
+	) implements StateTreeNode {}
+
+	public record SelfReferenceToTypeVariableRoot(
+		SelfReferenceToTypeVariable<String> node
+	) implements StateTreeNode {}
+
+	/** The @Enclosing check reads the reference's target type in the same way. */
+	public record EnclosingReferenceToTypeVariable<T extends Entity>(
+		@Enclosing Reference<T> enclosing
+	) implements StateTreeNode {}
+
+	public record EnclosingReferenceToTypeVariableRoot(
+		EnclosingReferenceToTypeVariable<SimpleTypes> node
+	) implements StateTreeNode {}
+
+	/**
+	 * A variant whose case map names an explicitly parameterized case type.
+	 */
+	public interface GenericVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("generic", Types.parameterizedType(GenericTaggedUnionCase.class, String.class));
+	}
+
+	public record GenericTaggedUnionCase<T>(T value) implements GenericVariant {
+		public String tag() {
+			return "generic";
+		}
+	}
+
+	public record GenericVariantRoot(
+		TaggedUnion<GenericVariant> variant
+	) implements StateTreeNode {}
+
+	/** A TaggedUnion<T> inside a generic node, resolved when the node is parameterized. */
+	public record GenericTaggedUnionHolder<T extends TaggedUnionCase>(
+		TaggedUnion<T> variant
+	) implements StateTreeNode {}
+
+	public record GenericTaggedUnionRoot(
+		GenericTaggedUnionHolder<GenericVariant> holder
+	) implements StateTreeNode {}
+
+	/**
+	 * A generic variant used directly as the union's type argument. Validating the concrete
+	 * variant needs the type arguments that the TaggedUnion supplies.
+	 */
+	public record ConcreteGenericVariant<T>(T value) implements TaggedUnionCase {
+		public String tag() {
+			return "concreteGeneric";
+		}
+
+		@TaggedUnionCaseMap
+		static final MapValue<Type> CASES = MapValue.singleton("concreteGeneric", Types.parameterizedType(ConcreteGenericVariant.class, String.class));
+	}
+
+	public record ConcreteGenericVariantRoot(
+		TaggedUnion<ConcreteGenericVariant<String>> variant
+	) implements StateTreeNode {}
+
+	/** The case map names a raw generic case, which cannot be validated without type arguments. */
+	public interface RawGenericVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("generic", GenericTaggedUnionCase.class);
+	}
+
+	public record RawGenericVariantRoot(
+		TaggedUnion<RawGenericVariant> variant
+	) implements StateTreeNode {
+		static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("type parameters"));
+		}
+	}
+
+	/** A wildcard type argument has no raw class to validate. */
+	public record WildcardGenericRoot(
+		GenericNode<?> node
+	) implements StateTreeNode {
+		static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("Unsupported type"));
+		}
+	}
+
+	/** A generic array type argument has no raw class to validate. */
+	public record GenericArrayNode<T>(T[] items) implements StateTreeNode {}
+
+	public record GenericArrayRoot(
+		GenericArrayNode<String> node
+	) implements StateTreeNode {
+		static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("Unsupported type"));
+		}
+	}
+
+	/** A wildcard Reference target has no raw class to validate. */
+	public record WildcardReferenceRoot(
+		Reference<?> reference
+	) implements StateTreeNode {
+		static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("Unsupported type"));
+		}
+	}
+
+	/** A wildcard tagged union case supertype has no raw class to validate. */
+	public record WildcardTaggedUnionRoot(
+		TaggedUnion<?> variant
+	) implements StateTreeNode {
+		static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("Unsupported type"));
+		}
+	}
+
+	/** A wildcard ListValue entry type has no raw class to validate. */
+	public record WildcardListValueRoot(
+		ListValue<?> items
+	) implements StateTreeNode {
+		static void testException(InvalidTypeException e) {
+			assertThat(e.getMessage(), containsString("Unsupported type"));
+		}
+	}
 }

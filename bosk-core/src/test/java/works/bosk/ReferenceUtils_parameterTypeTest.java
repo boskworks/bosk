@@ -161,6 +161,26 @@ class ReferenceUtils_parameterTypeTest extends AbstractBoskTest {
 		assertThrows(AssertionError.class, () -> parameterType(ClassInheritingLots.class, List.class, 0));
 	}
 
+	@Test
+	void resolveTypeVariables_concreteTypeIsUnchanged() {
+		assertEquals(String.class,
+			ReferenceUtils.resolveTypeVariables(String.class, Types.parameterizedType(Class1.class, String.class)));
+	}
+
+	@Test
+	void resolveTypeVariables_substitutesTypeVariable() {
+		Type typeVariable = Class1.class.getTypeParameters()[0];
+		assertEquals(String.class,
+			ReferenceUtils.resolveTypeVariables(typeVariable, Types.parameterizedType(Class1.class, String.class)));
+	}
+
+	@Test
+	void resolveTypeVariables_substitutesInsideParameterizedType() throws NoSuchFieldException {
+		Type listOfTypeVariable = Container.class.getDeclaredField("elements").getGenericType();
+		assertEquals(Types.parameterizedType(List.class, String.class),
+			ReferenceUtils.resolveTypeVariables(listOfTypeVariable, Types.parameterizedType(Container.class, String.class)));
+	}
+
 	void assertParameter0IsString(Type type) {
 		assertDirectParameterEquals(String.class, type, 0);
 
@@ -195,6 +215,11 @@ class ReferenceUtils_parameterTypeTest extends AbstractBoskTest {
 
 	private static class Class1<T> {}
 	private static class Class2<T> {}
+
+	@SuppressWarnings("unused") // The field exists so its generic type can be inspected
+	private static class Container<T> {
+		List<T> elements;
+	}
 	private interface Interface1<T> {}
 	private interface Interface2<T> {}
 

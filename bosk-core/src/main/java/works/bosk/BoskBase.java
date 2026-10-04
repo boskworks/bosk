@@ -87,6 +87,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 */
 	protected BoskBase(String name, Type rootType, Bosk.DefaultStateFunction<R> defaultStateFunction, BoskConfig<R> boskConfig) {
 		this.name = requireNonNull(name);
+		checkRootType(rootType);
 		this.pathCompiler = PathCompiler.withSourceType(requireNonNull(rootType)); // Required before rootRef
 		this.localDriver = new LocalDriver(requireNonNull(defaultStateFunction));
 		this.rootRef = new RootRef(rootType);
@@ -111,6 +112,14 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
 			initializationFuture.completeExceptionally(e);
 			throw new IllegalArgumentException("Error computing initial state: " + e.getMessage(), e);
+		}
+	}
+
+	private static void checkRootType(Type rootType) {
+		if (rootType instanceof Class<?> rootClass && rootClass.getTypeParameters().length > 0) {
+			throw new IllegalArgumentException("Root type " + rootClass.getSimpleName() + " is generic;"
+				+ " specify its type arguments, for example Types.parameterizedType("
+				+ rootClass.getSimpleName() + ".class, String.class)");
 		}
 	}
 
