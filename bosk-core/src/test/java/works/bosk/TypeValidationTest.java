@@ -36,6 +36,7 @@ class TypeValidationTest {
 		DoublePrimitive.class,
 		ExtraStaticField.class,
 		FloatPrimitive.class,
+		GenericSelfReferenceRoot.class,
 		ImplicitReferences_onConstructorParameters.class,
 		ImplicitReferences_onFields.class,
 		IntegerPrimitive.class,
@@ -661,4 +662,16 @@ class TypeValidationTest {
 	public record ParameterizedField<T extends StateTreeNode>(
 		T field
 	) {}
+
+	/**
+	 * A self-referential parameterized node. Validating it resolves a type variable that
+	 * leads back to the node itself, which must terminate.
+	 */
+	public record GenericSelfReference<T>(
+		@Self Reference<GenericSelfReference<T>> self
+	) implements StateTreeNode {}
+
+	public record GenericSelfReferenceRoot(
+		GenericSelfReference<String> node
+	) implements StateTreeNode {}
 }

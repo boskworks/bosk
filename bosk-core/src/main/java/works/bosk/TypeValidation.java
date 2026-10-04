@@ -7,7 +7,7 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
-import java.util.IdentityHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,7 +22,6 @@ import static java.lang.reflect.Modifier.isFinal;
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Arrays.asList;
-import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
@@ -43,7 +42,10 @@ public final class TypeValidation {
 		if (!Record.class.isAssignableFrom(rootClass)) {
 			throw new InvalidTypeException("Bosk root type must be a Record");
 		}
-		validateType(rootType, newSetFromMap(new IdentityHashMap<>()));
+		// Compare types by value, not identity: reflection can return equal but
+		// distinct Type instances, so an identity set can fail to terminate on a
+		// recursive parameterized state node.
+		validateType(rootType, new HashSet<>());
 	}
 
 	private static void validateType(Type theType, Set<Type> alreadyValidated) throws InvalidTypeException {
