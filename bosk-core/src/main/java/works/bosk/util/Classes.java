@@ -12,7 +12,7 @@ import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.SideTableReference;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 
 /**
  * An imperfect, non-idiomatic way to describe complex parameterized types.
@@ -63,7 +63,7 @@ public final class Classes {
 		return (Class)MapValue.class;
 	}
 
-	public static <V extends VariantCase> Class<TaggedUnion<V>> taggedUnion(Class<V> variantCaseClass, String... segments) {
+	public static <V extends TaggedUnionCase> Class<TaggedUnion<V>> taggedUnion(Class<V> taggedUnionCaseClass, String... segments) {
 		return (Class)TaggedUnion.class;
 	}
 }

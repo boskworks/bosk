@@ -208,7 +208,7 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
       - Bad: `String name`, `int version`: might be framework concepts or meaningful domain properties; generalization is unclear.
       - Good: bosk jargon used in the right context, like "reference", "driver", "path".
       - Bad: Bosk jargon used outside its Bosk meaning.
-      - Good: names that convey the relationship between the artifacts (`Catalog<T> parts`, `TaggedUnion<X> variant`).
+      - Good: names that convey the relationship between the artifacts (`Catalog<T> parts`, `TaggedUnion<X> value`).
     - Things that are the same should look the same; things that are different should look different.
       - Example: `field1`, `field2` suggests the test treats these fields the same way
       - Example: `date`, `name` suggests the test might treat dates and names differently

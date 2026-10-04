@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import works.bosk.annotations.DeserializationPath;
 import works.bosk.annotations.Enclosing;
 import works.bosk.annotations.Self;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.hamcrest.CoreMatchers.containsString;
@@ -51,7 +51,7 @@ class TypeValidationTest {
 	@ParameterizedTest
 	@ValueSource(classes = {
 		String.class,
-		AmbiguousVariantCaseMap.class,
+		AmbiguousTaggedUnionCaseMap.class,
 		ArrayField.class,
 		CatalogOfInvalidType.class,
 		EnclosingNonReference.class,
@@ -85,7 +85,7 @@ class TypeValidationTest {
 		OptionalOfInvalidType.class,
 		ReferenceToInvalidType.class,
 		ValidThenInvalidOfTheSameClass.class,
-		VariantCaseWithNoTaggedUnion.class,
+		TaggedUnionCaseWithNoTaggedUnion.class,
 	})
 	void testInvalidRootClasses(Class<?> rootClass) throws Exception {
 		try {
@@ -245,16 +245,16 @@ class TypeValidationTest {
 		@Enclosing Reference<ImplicitReferences_onFields> enclosingRef
 	) implements Entity { }
 
-	public interface VariantWithExtraStaticField extends VariantCase {
+	public interface VariantWithExtraStaticField extends TaggedUnionCase {
 		record Subtype() implements VariantWithExtraStaticField {}
 		@Override default String tag() { return ""; }
 
-		@VariantCaseMap MapValue<Class<? extends VariantWithExtraStaticField>> CASE_MAP = MapValue.copyOf(Map.of(
+		@TaggedUnionCaseMap MapValue<Class<? extends VariantWithExtraStaticField>> CASE_MAP = MapValue.copyOf(Map.of(
 			"subtype", Subtype.class
 		));
 
 		/**
-		 * This is not annotated with @VariantCaseMap so we expect it to be ignored by the scan.
+		 * This is not annotated with @TaggedUnionCaseMap so we expect it to be ignored by the scan.
 		 */
 		String EXTRA_FIELD = "ignore me";
 	}
@@ -635,19 +635,19 @@ class TypeValidationTest {
 		}
 	}
 
-	public interface Variant1 extends VariantCase {
-		@VariantCaseMap MapValue<Type> MAP1 = MapValue.empty();
+	public interface Variant1 extends TaggedUnionCase {
+		@TaggedUnionCaseMap MapValue<Type> MAP1 = MapValue.empty();
 	}
 
-	public interface Variant2 extends VariantCase {
-		@VariantCaseMap MapValue<Type> MAP2 = MapValue.empty();
+	public interface Variant2 extends TaggedUnionCase {
+		@TaggedUnionCaseMap MapValue<Type> MAP2 = MapValue.empty();
 	}
 
 	public record VariantWithAmbiguousMaps(String tag) implements Variant1, Variant2 {}
 
-	public record AmbiguousVariantCaseMap(TaggedUnion<VariantWithAmbiguousMaps> variant) implements StateTreeNode {}
+	public record AmbiguousTaggedUnionCaseMap(TaggedUnion<VariantWithAmbiguousMaps> variant) implements StateTreeNode {}
 
-	public record VariantCaseWithNoTaggedUnion(
+	public record TaggedUnionCaseWithNoTaggedUnion(
 		Variant1 variant
 	) implements StateTreeNode {}
 

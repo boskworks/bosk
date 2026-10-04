@@ -51,7 +51,7 @@ import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.MalformedPathException;
 import works.bosk.exceptions.NonexistentReferenceException;
@@ -488,27 +488,26 @@ public class BoskGraphQL {
 		}
 
 		@SuppressWarnings("unchecked")
-		private <V extends VariantCase> void addTaggedUnionField(
+		private <V extends TaggedUnionCase> void addTaggedUnionField(
 			GraphQLObjectType.Builder parentBuilder,
 			String fieldName,
-			Type variantType,
+			Type caseSupertype,
 			String parentTypeName,
 			GraphQLCodeRegistry.Builder reg
 		) {
-			// Bosk doesn't yet support parameterized StateTreeNode types,
-			// and VariantCase extends StateTreeNode, so VariantCase can't be generic.
-			// See ParameterizedField in TypeValidationTest.
-			Class<V> variantInterface = (Class<V>) variantType;
-			String ifaceName = typeName(variantInterface);
+			// GraphQL builds schemas from raw classes, so a parameterized
+			// case supertype isn't supported here.
+			Class<V> caseSupertypeClass = (Class<V>) caseSupertype;
+			String ifaceName = typeName(caseSupertypeClass);
 
 			// Kind of like a computeIfAbsent, but we can produce more than one
 			// table entry on each call, so we can't actually use computeIfAbsent.
 			if (!builtTypesByName.containsKey(ifaceName)) {
-				registerTypeName(ifaceName, variantInterface);
+				registerTypeName(ifaceName, caseSupertypeClass);
 
 				MapValue<Type> caseMap;
 				try {
-					caseMap = StateTreeSerializer.getVariantCaseMap(variantInterface);
+					caseMap = StateTreeSerializer.getTaggedUnionCaseMap(caseSupertypeClass);
 				} catch (InvalidTypeException e) {
 					throw new IllegalStateException("Cannot build schema for " + ifaceName, e);
 				}
@@ -540,7 +539,7 @@ public class BoskGraphQL {
 					Object value = env.getObject();
 					GraphQLObjectType result = (GraphQLObjectType) builtTypesByName.get(typeName(value.getClass()));
 					if (result == null) {
-						throw new IllegalStateException("Unknown variant type: " + value.getClass().getName());
+						throw new IllegalStateException("Unknown tagged union case type: " + value.getClass().getName());
 					}
 					return result;
 				});
@@ -553,7 +552,7 @@ public class BoskGraphQL {
 			var fetcher = PropertyDataFetcher.fetching(fieldName);
 			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env1 -> {
 				TaggedUnion<V> union = uncheckedCast(fetcher.get(env1));
-				return union.variant();
+				return union.value();
 			});
 		}
 

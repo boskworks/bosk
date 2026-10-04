@@ -26,9 +26,9 @@ import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.Self;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.util.Types;
 
@@ -86,7 +86,7 @@ class BsonSerializerTest {
 	}
 
 	@Test
-	void variantCaseSelfReference_includesTagPath() throws InvalidTypeException {
+	void taggedUnionCaseSelfReference_includesTagPath() throws InvalidTypeException {
 		BsonSerializer bp = new BsonSerializer();
 		Bosk<VariantRoot> bosk = new Bosk<VariantRoot>(boskName(), VariantRoot.class, this::initialVariantRoot, BoskConfig.simple());
 		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
@@ -96,11 +96,11 @@ class BsonSerializerTest {
 		BsonDocument document = new BsonDocument();
 		codec.encode(new BsonDocumentWriter(document), original, EncoderContext.builder().build());
 		VariantRoot decoded = codec.decode(new BsonDocumentReader(document), DecoderContext.builder().build());
-		assertEquals(Path.parse("/variant/case1"), ((VariantCase1) decoded.variant().variant()).self().path());
+		assertEquals(Path.parse("/variant/case1"), ((TaggedUnionCase1) decoded.variant().value()).self().path());
 	}
 
 	private VariantRoot initialVariantRoot(Bosk<VariantRoot> bosk) throws InvalidTypeException {
-		return new VariantRoot(TaggedUnion.of(new VariantCase1(bosk.rootReference().then(VariantCase1.class, Path.parse("/variant/case1")), "hello")));
+		return new VariantRoot(TaggedUnion.of(new TaggedUnionCase1(bosk.rootReference().then(TaggedUnionCase1.class, Path.parse("/variant/case1")), "hello")));
 	}
 
 	private Root initialState(Bosk<Root> bosk) throws InvalidTypeException {
@@ -123,12 +123,12 @@ class BsonSerializerTest {
 
 	public record VariantRoot(TaggedUnion<Variant> variant) implements StateTreeNode { }
 
-	public interface Variant extends VariantCase {
+	public interface Variant extends TaggedUnionCase {
 		@Override default String tag() { return "case1"; }
-		@VariantCaseMap
-		MapValue<Type> CASES = MapValue.singleton("case1", VariantCase1.class);
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("case1", TaggedUnionCase1.class);
 	}
 
-	public record VariantCase1(@Self Reference<VariantCase1> self, String stringField) implements Variant { }
+	public record TaggedUnionCase1(@Self Reference<TaggedUnionCase1> self, String stringField) implements Variant { }
 
 }

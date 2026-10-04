@@ -25,9 +25,9 @@ import works.bosk.SideTable;
 import works.bosk.SideTableReference;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -445,8 +445,8 @@ class BoskGraphQLTest {
 	public record Part(Identifier id, String field1, int field2) implements Entity {}
 	public record PartInfo(String field1, String field2) implements StateTreeNode {}
 
-	public interface TestVariant extends VariantCase {
-		@VariantCaseMap
+	public interface TestVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
 		MapValue<Class<? extends TestVariant>> CASE_MAP = MapValue.copyOf(Map.of(
 			"simple", SimpleVariant.class,
 			"detailed", DetailedVariant.class

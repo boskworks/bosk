@@ -48,7 +48,7 @@ import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.drivers.mongo.exceptions.BsonFormatException;
 import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.InvalidTypeException;
@@ -457,16 +457,16 @@ public final class BsonSerializer extends StateTreeSerializer {
 	}
 
 	@SuppressWarnings("unchecked")
-	private <V extends VariantCase, R extends StateTreeNode> Codec<TaggedUnion<V>> taggedUnionCodec(Type taggedUnionType, Class<TaggedUnion<V>> taggedUnionClass, CodecRegistry registry, BoskInfo<R> boskInfo) {
+	private <V extends TaggedUnionCase, R extends StateTreeNode> Codec<TaggedUnion<V>> taggedUnionCodec(Type taggedUnionType, Class<TaggedUnion<V>> taggedUnionClass, CodecRegistry registry, BoskInfo<R> boskInfo) {
 		Type caseStaticType = parameterType(taggedUnionType, TaggedUnion.class, 0);
 		Class<V> caseStaticClass = (Class<V>)rawClass(caseStaticType);
-		MapValue<Type> variantCaseMap;
+		MapValue<Type> taggedUnionCaseMap;
 		try {
-			variantCaseMap = StateTreeSerializer.getVariantCaseMap(caseStaticClass);
+			taggedUnionCaseMap = StateTreeSerializer.getTaggedUnionCaseMap(caseStaticClass);
 		} catch (InvalidTypeException e) {
 			throw new IllegalArgumentException(e);
 		}
-		var codecs = variantCaseMap.entrySet().stream().collect(toMap(Entry::getKey, e -> {
+		var codecs = taggedUnionCaseMap.entrySet().stream().collect(toMap(Entry::getKey, e -> {
 			@SuppressWarnings("unchecked")
 			Class<? extends StateTreeNode> caseClass = (Class<? extends StateTreeNode>) rawClass(e.getValue());
 			return stateTreeNodeCodec(caseClass, registry, boskInfo);
@@ -474,20 +474,20 @@ public final class BsonSerializer extends StateTreeSerializer {
 		return new Codec<>() {
 			@Override
 			public void encode(BsonWriter writer, TaggedUnion<V> taggedUnion, EncoderContext encoderContext) {
-				V variant = taggedUnion.variant();
-				String tag = variant.tag();
+				V caseValue = taggedUnion.value();
+				String tag = caseValue.tag();
 				@SuppressWarnings("rawtypes")
 				Codec caseCodec = codecs.get(tag);
 				if (caseCodec == null) {
-					throw new IllegalStateException("TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected variant tag field \"" + tag
-						+ "; expected one of " + variantCaseMap.keySet());
+					throw new IllegalStateException("TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected case tag field \"" + tag
+						+ "; expected one of " + taggedUnionCaseMap.keySet());
 				}
-				Type caseDynamicType = variantCaseMap.get(tag);
+				Type caseDynamicType = taggedUnionCaseMap.get(tag);
 				Class<? extends V> caseDynamicClass = (Class<? extends V>) rawClass(caseDynamicType);
 				writer.writeStartDocument();
 				try {
 					writer.writeName(tag);
-					caseCodec.encode(writer, caseDynamicClass.cast(variant), encoderContext);
+					caseCodec.encode(writer, caseDynamicClass.cast(caseValue), encoderContext);
 				} catch (Exception e) {
 					throw new IllegalStateException("Error encoding " + caseStaticClass.getSimpleName() + ": " + e.getMessage(), e);
 				}
@@ -501,13 +501,13 @@ public final class BsonSerializer extends StateTreeSerializer {
 				@SuppressWarnings("unchecked")
 				Codec<V> caseCodec = (Codec<V>) codecs.get(tag);
 				if (caseCodec == null) {
-					throw new IllegalStateException("Input has unexpected variant tag field \"" + tag
+					throw new IllegalStateException("Input has unexpected case tag field \"" + tag
 						+ "\" for TaggedUnion<" + caseStaticClass.getSimpleName()
-						+ ">; expected one of " + variantCaseMap.keySet());
+						+ ">; expected one of " + taggedUnionCaseMap.keySet());
 				}
-				Class<? extends V> caseDynamicClass = (Class<? extends V>) rawClass(variantCaseMap.get(tag));
+				Class<? extends V> caseDynamicClass = (Class<? extends V>) rawClass(taggedUnionCaseMap.get(tag));
 				TaggedUnion<V> result;
-				try (DeserializationScope scope = variantCaseDeserializationScope(tag)) {
+				try (DeserializationScope scope = taggedUnionCaseDeserializationScope(tag)) {
 					result = TaggedUnion.of(caseDynamicClass.cast(caseCodec.decode(reader, decoderContext)));
 				}
 				if (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {

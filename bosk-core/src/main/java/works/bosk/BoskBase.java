@@ -750,8 +750,8 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		}
 
 		@Override
-		public <TT extends VariantCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> variantCaseClass, Path path) throws InvalidTypeException {
-			return this.then(Classes.taggedUnion(variantCaseClass), path);
+		public <TT extends TaggedUnionCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> taggedUnionCaseClass, Path path) throws InvalidTypeException {
+			return this.then(Classes.taggedUnion(taggedUnionCaseClass), path);
 		}
 
 		/**
@@ -864,8 +864,8 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		}
 
 		@Override
-		public <TT extends VariantCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> variantCaseClass, String... segments) throws InvalidTypeException {
-			return rootRef.thenTaggedUnion(variantCaseClass, path.then(segments));
+		public <TT extends TaggedUnionCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> taggedUnionCaseClass, String... segments) throws InvalidTypeException {
+			return rootRef.thenTaggedUnion(taggedUnionCaseClass, path.then(segments));
 		}
 
 		@SuppressWarnings("unchecked")

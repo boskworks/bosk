@@ -31,10 +31,10 @@ import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.annotations.Self;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.graphql.exceptions.UnsupportedNameException;
 import works.bosk.graphql.exceptions.UnsupportedTypeException;
@@ -825,8 +825,8 @@ class BoskGraphQLEdgeCasesTest {
 	public record NestedRoot(Catalog<VariedItem> items) implements StateTreeNode {}
 	public record VariedItem(Identifier id, TaggedUnion<ItemVariant> variant) implements Entity {}
 
-	public interface ItemVariant extends VariantCase {
-		@VariantCaseMap
+	public interface ItemVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
 		MapValue<Class<? extends ItemVariant>> CASE_MAP = MapValue.copyOf(Map.of(
 			"foo", FooItem.class,
 			"bar", BarItem.class

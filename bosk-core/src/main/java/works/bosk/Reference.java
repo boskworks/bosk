@@ -166,7 +166,7 @@ public sealed interface Reference<T> permits
 	<E extends Entity> ListingReference<E> thenListing(Class<E> entryClass, String... segments) throws InvalidTypeException;
 	<K extends Entity,V> SideTableReference<K,V> thenSideTable(Class<K> keyClass, Class<V> valueClass, String... segments) throws InvalidTypeException;
 	<TT> Reference<Reference<TT>> thenReference(Class<TT> targetClass, String... segments) throws InvalidTypeException;
-	<TT extends VariantCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> variantCaseClass, String... segments) throws InvalidTypeException;
+	<TT extends TaggedUnionCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> taggedUnionCaseClass, String... segments) throws InvalidTypeException;
 
 	default <TT> Reference<TT> truncatedTo(Class<TT> targetClass, int remainingSegments) throws InvalidTypeException {
 		return root().then(targetClass, path().truncatedTo(remainingSegments));

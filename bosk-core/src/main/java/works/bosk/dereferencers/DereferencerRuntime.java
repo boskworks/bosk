@@ -7,7 +7,7 @@ import works.bosk.Identifier;
 import works.bosk.Listing;
 import works.bosk.Reference;
 import works.bosk.SideTable;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 
@@ -32,8 +32,8 @@ public abstract class DereferencerRuntime implements Dereferencer {
 		throw new IllegalArgumentException("Cannot replace phantom " + ref);
 	}
 
-	protected static Object throwCannotReplaceVariantCase(Reference<?> ref) {
-		throw new IllegalArgumentException("Cannot replace VariantCase inside TaggedUnion " + ref);
+	protected static Object throwCannotReplaceTaggedUnionCase(Reference<?> ref) {
+		throw new IllegalArgumentException("Cannot replace TaggedUnionCase inside TaggedUnion " + ref);
 	}
 
 	protected static Object optionalOrThrow(Optional<?> optional, Reference<?> ref) throws NonexistentEntryException {
@@ -79,9 +79,9 @@ public abstract class DereferencerRuntime implements Dereferencer {
 		}
 	}
 
-	protected static Object tagCheck(VariantCase variantCase, String desiredTag, Reference<?> ref) throws NonexistentEntryException {
-		if (desiredTag.equals(variantCase.tag())) {
-			return variantCase;
+	protected static Object tagCheck(TaggedUnionCase taggedUnionCase, String desiredTag, Reference<?> ref) throws NonexistentEntryException {
+		if (desiredTag.equals(taggedUnionCase.tag())) {
+			return taggedUnionCase;
 		} else {
 			throw new NonexistentEntryException(ref.path());
 		}

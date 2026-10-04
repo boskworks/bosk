@@ -38,12 +38,12 @@ import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.DeserializationPath;
 import works.bosk.annotations.Polyfill;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.annotations.Self;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.MalformedPathException;
@@ -291,7 +291,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	public record HasReference(Reference<TestEntity> ref) implements StateTreeNode { }
 
 	@Test
-	void variantCaseSelfReference_includesTagPath() throws Exception {
+	void taggedUnionCaseSelfReference_includesTagPath() throws Exception {
 		// A variant case lives at /variant/<tag>, so a @Self reference inside the case
 		// must resolve to the tag path, not the union field path.
 		Bosk<HasSelfVariant> variantBosk = new Bosk<>("variant", HasSelfVariant.class, this::initialHasSelfVariant, BoskConfig.<HasSelfVariant>builder().build());
@@ -300,28 +300,28 @@ class JacksonSerializerTest extends AbstractBoskTest {
 			.addModule(serializer.moduleFor(variantBosk))
 			.build();
 
-		HasSelfVariant original = new HasSelfVariant(TaggedUnion.of(new SelfVariantCase(variantBosk.rootReference().then(SelfVariantCase.class, Path.parse("/variant/case1")), "hello")));
+		HasSelfVariant original = new HasSelfVariant(TaggedUnion.of(new SelfTaggedUnionCase(variantBosk.rootReference().then(SelfTaggedUnionCase.class, Path.parse("/variant/case1")), "hello")));
 		String json = mapper.writeValueAsString(original);
 		HasSelfVariant result;
 		try (var _ = serializer.newDeserializationScope(Path.empty())) {
 			result = mapper.readerFor(HasSelfVariant.class).readValue(json);
 		}
-		assertEquals(Path.parse("/variant/case1"), ((SelfVariantCase) result.variant().variant()).self().path());
+		assertEquals(Path.parse("/variant/case1"), ((SelfTaggedUnionCase) result.variant().value()).self().path());
 	}
 
 	private HasSelfVariant initialHasSelfVariant(Bosk<HasSelfVariant> bosk) throws InvalidTypeException {
-		return new HasSelfVariant(TaggedUnion.of(new SelfVariantCase(bosk.rootReference().then(SelfVariantCase.class, Path.parse("/variant/case1")), "hello")));
+		return new HasSelfVariant(TaggedUnion.of(new SelfTaggedUnionCase(bosk.rootReference().then(SelfTaggedUnionCase.class, Path.parse("/variant/case1")), "hello")));
 	}
 
 	public record HasSelfVariant(TaggedUnion<SelfVariant> variant) implements StateTreeNode { }
 
-	public interface SelfVariant extends VariantCase {
+	public interface SelfVariant extends TaggedUnionCase {
 		@Override default String tag() { return "case1"; }
-		@VariantCaseMap
-		MapValue<Type> CASES = MapValue.singleton("case1", SelfVariantCase.class);
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("case1", SelfTaggedUnionCase.class);
 	}
 
-	public record SelfVariantCase(@Self Reference<SelfVariantCase> self, String stringField) implements SelfVariant { }
+	public record SelfTaggedUnionCase(@Self Reference<SelfTaggedUnionCase> self, String stringField) implements SelfVariant { }
 
 	@Test
 	void missingRequiredField_throwsWithCause() {
@@ -538,7 +538,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 			Phantoms.empty(Identifier.unique("phantoms")),
 			new Optionals(Identifier.unique("optionals"), optionalString, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
 			new ImplicitRefs(Identifier.unique("implicitRefs"), implicitRefsRef, entityRef, implicitRefsRef, entityRef),
-			TaggedUnion.of(new VariantCase1("variantCase1")));
+			TaggedUnion.of(new TaggedUnionCase1("taggedUnionCase1")));
 	}
 
 	private TestEntity makeEntityWithOptionalString(Optional<String> optionalString) {
@@ -617,7 +617,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	@Test
 	void taggedUnion_works() {
-		var taggedUnion = TaggedUnion.of(new VariantCase1("fieldValue"));
+		var taggedUnion = TaggedUnion.of(new TaggedUnionCase1("fieldValue"));
 
 		Map<String, Object> expected = Map.of(
 			"variant1", Map.of("stringField", "fieldValue")
