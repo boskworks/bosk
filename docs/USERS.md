@@ -239,6 +239,20 @@ the second approach can still be employed by making that subtype's implementatio
 additional logic to determine which tag is appropriate,
 potentially by simply adding a `tag` field to the class and returning that.
 
+##### Parameterized nodes
+
+A `StateTreeNode` may declare type parameters, and a parameterized node may appear as the
+root or as a field:
+
+```java
+public record GenericNode<T>(T value) implements StateTreeNode { }
+```
+
+Convenience APIs that infer the root type from a value, such as `Bosk.simple`, don't work
+for a generic root, because a value's runtime class doesn't carry its type arguments. Use
+the `Bosk(String, Type, ...)` constructor instead, passing the root type as a
+`ParameterizedType` that carries its type arguments.
+
 ### Creating `Reference`s
 
 The `Bosk.rootReference()` object acts as a factory for `Reference` objects.

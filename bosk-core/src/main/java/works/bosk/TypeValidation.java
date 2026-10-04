@@ -25,6 +25,7 @@ import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
+import static works.bosk.ReferenceUtils.resolveTypeVariables;
 import static works.bosk.StateTreeSerializer.hasDeserializationPath;
 import static works.bosk.StateTreeSerializer.isEnclosingReference;
 import static works.bosk.StateTreeSerializer.isSelfReference;
@@ -49,6 +50,7 @@ public final class TypeValidation {
 	}
 
 	private static void validateType(Type theType, Set<Type> alreadyValidated) throws InvalidTypeException {
+		validateConcreteType(theType);
 		if (alreadyValidated.add(theType)) {
 			Class<?> theClass = rawClass(theType);
 			if (!isPublic(theClass.getModifiers())) {
@@ -59,6 +61,7 @@ public final class TypeValidation {
 			} else if (Reference.class.isAssignableFrom(theClass)) {
 				validateFieldsAreFinal(theClass);
 				Type targetType = ReferenceUtils.parameterType(theType, Reference.class, 0);
+				validateConcreteType(targetType);
 				Class<?> targetClass = rawClass(targetType);
 				if (Reference.class.isAssignableFrom(targetClass)) {
 					throw new InvalidTypeException("Reference to Reference is not allowed: " + theType);
@@ -77,14 +80,16 @@ public final class TypeValidation {
 					validateType(targetType, alreadyValidated);
 				}
 			} else if (TaggedUnion.class.isAssignableFrom(theClass)) {
-				var caseStaticClass = rawClass(parameterType(theType, TaggedUnion.class, 0));
-				validateTaggedUnionCaseClass(caseStaticClass, alreadyValidated);
+				Type caseSupertype = parameterType(theType, TaggedUnion.class, 0);
+				validateConcreteType(caseSupertype);
+				validateTaggedUnionCases(caseSupertype, alreadyValidated);
 			} else if (StateTreeNode.class.isAssignableFrom(theClass)) {
-				validateStateTreeNodeClass(theClass, alreadyValidated);
+				validateStateTreeNodeType(theType, alreadyValidated);
 			} else if (ListValue.class.isAssignableFrom(theClass) || MapValue.class.isAssignableFrom(theClass)) {
 				validateFieldsAreFinal(theClass);
 				Class<?> genericClass = ListValue.class.isAssignableFrom(theClass) ? ListValue.class : MapValue.class;
 				Type entryType = ReferenceUtils.parameterType(theType, genericClass, 0);
+				validateConcreteType(entryType);
 				Class<?> entryClass = rawClass(entryType);
 				// Exclude specific anti-patterns
 				if (Optional.class.isAssignableFrom(entryClass)) {
@@ -129,6 +134,22 @@ public final class TypeValidation {
 		}
 	}
 
+	/**
+	 * A concrete type is a class with no type parameters, or a {@link ParameterizedType}.
+	 *
+	 * @throws InvalidTypeException for anything else: a wildcard, a generic array, an
+	 * unresolved type variable, or a raw generic class
+	 */
+	private static void validateConcreteType(Type type) throws InvalidTypeException {
+		if (type instanceof Class<?> c) {
+			if (c.getTypeParameters().length > 0) {
+				throw new InvalidTypeException(c.getSimpleName() + " has type parameters, so it must be used with type arguments");
+			}
+		} else if (!(type instanceof ParameterizedType)) {
+			throw new InvalidTypeException("Unsupported type in a bosk state tree: " + type);
+		}
+	}
+
 	private static boolean isSimpleClass(Class<?> theClass) {
 		if (theClass.isEnum() || theClass.isPrimitive()) {
 			return true;
@@ -142,7 +163,8 @@ public final class TypeValidation {
 		return false;
 	}
 
-	private static void validateStateTreeNodeClass(Class<?> nodeClass, Set<Type> alreadyValidated) throws InvalidTypeException {
+	private static void validateStateTreeNodeType(Type nodeType, Set<Type> alreadyValidated) throws InvalidTypeException {
+		Class<?> nodeClass = rawClass(nodeType);
 		if (!Record.class.isAssignableFrom(nodeClass)) {
 			if (TaggedUnionCase.class.isAssignableFrom(nodeClass) && Modifier.isAbstract(nodeClass.getModifiers())) {
 				// We can emit a better error by guessing what the user was trying to do
@@ -155,8 +177,10 @@ public final class TypeValidation {
 			// For troubleshooting reasons, wrap any thrown exception so the
 			// user is able to follow the reference chain.
 			try {
-				validateRecordComponent(nodeClass, c);
-				validateType(c.getGenericType(), alreadyValidated);
+				validateRecordComponent(nodeType, c);
+				// A component's declared type may mention the enclosing type's variables,
+				// so substitute them before validating the component's actual type.
+				validateType(resolveTypeVariables(c.getGenericType(), nodeType), alreadyValidated);
 			} catch (InvalidTypeException e) {
 				throw new InvalidFieldTypeException(nodeClass, c.getName(), e.getMessage(), e);
 			}
@@ -165,18 +189,21 @@ public final class TypeValidation {
 		validateFieldsAreFinal(nodeClass);
 	}
 
-	private static void validateTaggedUnionCaseClass(Class<?> nodeClass, Set<Type> alreadyValidated) throws InvalidTypeException {
-		for (Map.Entry<String, Type> entry : StateTreeSerializer.getTaggedUnionCaseMap(nodeClass).entrySet()) {
+	private static void validateTaggedUnionCases(Type caseSupertype, Set<Type> alreadyValidated) throws InvalidTypeException {
+		Class<?> caseSupertypeClass = rawClass(caseSupertype);
+		for (Map.Entry<String, Type> entry : StateTreeSerializer.getTaggedUnionCaseMap(caseSupertypeClass).entrySet()) {
 			String tag = requireNonNull(entry.getKey());
-			Type type = requireNonNull(entry.getValue());
-			validateFieldName(nodeClass, tag); // TODO: this produces confusing exception messages
-			validateType(type, alreadyValidated);
-			if (!TaggedUnionCase.class.isAssignableFrom(rawClass(type))) {
-				throw new InvalidTypeException("Variant case " + nodeClass.getSimpleName() + "." + tag + " maps to a type that doesn't inherit TaggedUnionCase: " + type);
+			// A case's declared type may mention the supertype's type variables,
+			// so substitute them before validating the case's actual type.
+			Type caseType = resolveTypeVariables(requireNonNull(entry.getValue()), caseSupertype);
+			validateFieldName(caseSupertypeClass, tag); // TODO: this produces confusing exception messages
+			validateType(caseType, alreadyValidated);
+			if (!TaggedUnionCase.class.isAssignableFrom(rawClass(caseType))) {
+				throw new InvalidTypeException("Tagged union case " + caseSupertypeClass.getSimpleName() + "." + tag + " maps to a type that doesn't inherit TaggedUnionCase: " + caseType);
 			}
 		}
-		if (!Modifier.isAbstract(nodeClass.getModifiers())) {
-			validateStateTreeNodeClass(nodeClass, alreadyValidated);
+		if (!Modifier.isAbstract(caseSupertypeClass.getModifiers())) {
+			validateStateTreeNodeType(caseSupertype, alreadyValidated);
 		}
 	}
 
@@ -210,13 +237,14 @@ public final class TypeValidation {
 		}
 	}
 
-	private static void validateRecordComponent(Class<?> containingClass, RecordComponent component) throws InvalidFieldTypeException {
+	private static void validateRecordComponent(Type containingType, RecordComponent component) throws InvalidFieldTypeException {
+		Class<?> containingClass = rawClass(containingType);
 		String fieldName = component.getName();
 		validateFieldName(containingClass, fieldName);
 		if (hasDeserializationPath(containingClass, component)) {
 			throw new InvalidFieldTypeException(containingClass, fieldName, "@" + DeserializationPath.class.getSimpleName() + " not valid inside the bosk");
 		} else if (isEnclosingReference(containingClass, component)) {
-			Type type = component.getGenericType();
+			Type type = resolveTypeVariables(component.getGenericType(), containingType);
 			if (!Reference.class.isAssignableFrom(rawClass(type))) {
 				throw new InvalidFieldTypeException(containingClass, fieldName, "@" + Enclosing.class.getSimpleName() + " applies only to Reference parameters");
 			}
@@ -226,7 +254,7 @@ public final class TypeValidation {
 				throw new InvalidFieldTypeException(containingClass, fieldName, "@" + Enclosing.class.getSimpleName() + " applies only to References to Entities");
 			}
 		} else if (isSelfReference(containingClass, component)) {
-			Type type = component.getGenericType();
+			Type type = resolveTypeVariables(component.getGenericType(), containingType);
 			if (!Reference.class.isAssignableFrom(rawClass(type))) {
 				throw new InvalidFieldTypeException(containingClass, fieldName, "@" + Self.class.getSimpleName() + " applies only to References");
 			}

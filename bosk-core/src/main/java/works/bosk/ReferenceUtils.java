@@ -207,7 +207,7 @@ C&lt;String> someField;
 	 * @param environmentType the type that defines what those variables mean
 	 * @return a new type whose variables are all bound by the definitions in <code>environmentType</code>
 	 */
-	private static Type resolveTypeVariables(Type typeWithVariables, Type environmentType) {
+	static Type resolveTypeVariables(Type typeWithVariables, Type environmentType) {
 		if (typeWithVariables instanceof TypeVariable) {
 			// The recursive call has typeWithVariables us one of the type variables
 			// from our own generic class.  For example, if environmentType
