@@ -195,6 +195,7 @@ class ReferenceUtils_parameterTypeTest extends AbstractBoskTest {
 
 	private static class Class1<T> {}
 	private static class Class2<T> {}
+
 	private interface Interface1<T> {}
 	private interface Interface2<T> {}
 

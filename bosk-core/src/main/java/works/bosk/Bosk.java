@@ -98,7 +98,7 @@ public non-sealed class Bosk<R extends StateTreeNode> extends BoskBase<R> implem
 	 * @param initialRoot The starting value of the bosk state tree, before any updates.
 	 */
 	public static <RR extends StateTreeNode> Bosk<RR> simple(String name, RR initialRoot) {
-		return new Bosk<>(requireNonNull(name), initialRoot.getClass(), _ -> initialRoot, BoskConfig.simple());
+		return new Bosk<>(requireNonNull(name), requireNonNull(initialRoot).getClass(), _ -> initialRoot, BoskConfig.simple());
 	}
 
 	public interface DefaultStateFunction<RR extends StateTreeNode> {
