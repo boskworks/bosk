@@ -33,7 +33,7 @@ import works.bosk.SideTableReference;
 import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.boson.exceptions.JsonContentException;
 import works.bosk.boson.mapping.TypeScanner;
 import works.bosk.boson.mapping.TypeScanner.Directive;
@@ -77,7 +77,7 @@ public class BosonSerializer extends StateTreeSerializer {
 		// Some type variables to use in directives
 		T,
 		E extends Entity,
-		V extends VariantCase
+		V extends TaggedUnionCase
 	> TypeScanner.Bundle bundleFor(BoskInfo<?> bosk) {
 		MethodHandles.Lookup lookup = lookup();
 
@@ -204,18 +204,18 @@ public class BosonSerializer extends StateTreeSerializer {
 			taggedUnionType -> switch (taggedUnionType) {
 				case BoundType bt -> {
 					var caseStaticType = (KnownType) bt.parameterType(TaggedUnion.class, 0);
-					MapValue<Type> variantCaseMap;
+					MapValue<Type> taggedUnionCaseMap;
 					try {
-						variantCaseMap = StateTreeSerializer.getVariantCaseMap(caseStaticType.rawClass());
+						taggedUnionCaseMap = StateTreeSerializer.getTaggedUnionCaseMap(caseStaticType.rawClass());
 					} catch (InvalidTypeException e) {
 						throw new IllegalArgumentException(e);
 					}
 					SequencedMap<String, RecognizedMember> members = new LinkedHashMap<>();
-					variantCaseMap.forEach((name, caseType) -> {
+					taggedUnionCaseMap.forEach((name, caseType) -> {
 						var ifPresent = new ParseCallbackSpec(
-							openVariantCaseDeserializationScope(name, lookup),
+							openTaggedUnionCaseDeserializationScope(name, lookup),
 							new TypeRefNode(DataType.of(caseType)),
-							closeVariantCaseDeserializationScope(ReferenceUtils.rawClass(caseType), lookup));
+							closeTaggedUnionCaseDeserializationScope(ReferenceUtils.rawClass(caseType), lookup));
 						var ifAbsent = new ComputedSpec(supplier(
 							DataType.known(caseType),
 							() -> null)); // This is a signal to the finisher that the case is absent
@@ -223,11 +223,11 @@ public class BosonSerializer extends StateTreeSerializer {
 							TypedHandles.<TaggedUnion<V>, Boolean>function(
 								taggedUnionType,
 								DataType.BOOLEAN,
-								tu -> name.equals(tu.variant().tag())));
+								tu -> name.equals(tu.value().tag())));
 						var accessor = TypedHandles.<TaggedUnion<V>, Object>function(
 							taggedUnionType,
 							DataType.known(caseType),
-							TaggedUnion::variant);
+							TaggedUnion::value);
 						members.put(name, new RecognizedMember(
 							new MaybeAbsentSpec(
 								ifPresent,
@@ -241,11 +241,11 @@ public class BosonSerializer extends StateTreeSerializer {
 						members,
 						(Object[] args) -> {
 							for (var arg: args) {
-								if (arg instanceof VariantCase vc) {
+								if (arg instanceof TaggedUnionCase vc) {
 									return TaggedUnion.of(vc);
 								}
 							}
-							throw new IllegalStateException("Hey, no variant");
+							throw new IllegalStateException("Hey, no tagged union case");
 						}
 					);
 				}
@@ -475,33 +475,33 @@ public class BosonSerializer extends StateTreeSerializer {
 	}
 
 	/**
-	 * @return nullary callback that opens a {@link DeserializationScope} for a variant case tag.
+	 * @return nullary callback that opens a {@link DeserializationScope} for a tagged union case tag.
 	 */
-	private @NonNull TypedHandle openVariantCaseDeserializationScope(String tag, Lookup lookup) {
+	private @NonNull TypedHandle openTaggedUnionCaseDeserializationScope(String tag, Lookup lookup) {
 		try {
-			MethodHandle variantCaseDeserializationScope = lookup.findVirtual(StateTreeSerializer.class,
-				"variantCaseDeserializationScope",
+			MethodHandle taggedUnionCaseDeserializationScope = lookup.findVirtual(StateTreeSerializer.class,
+				"taggedUnionCaseDeserializationScope",
 				methodType(DeserializationScope.class, String.class));
 			return new TypedHandle(
-				insertArguments(variantCaseDeserializationScope, 0,
+				insertArguments(taggedUnionCaseDeserializationScope, 0,
 					this, tag
 				),
 				DataType.known(DeserializationScope.class), List.of());
 		} catch (NoSuchMethodException | IllegalAccessException e) {
-			throw new IllegalArgumentException("Failed to create scope callback for variant case " + tag, e);
+			throw new IllegalArgumentException("Failed to create scope callback for tagged union case " + tag, e);
 		}
 	}
 
 	/**
 	 * @return callback that closes a {@link DeserializationScope}
-	 * opened by {@link #openVariantCaseDeserializationScope(String, Lookup)}.
+	 * opened by {@link #openTaggedUnionCaseDeserializationScope(String, Lookup)}.
 	 */
-	private static @NonNull TypedHandle closeVariantCaseDeserializationScope(Class<?> caseClass, Lookup lookup) {
+	private static @NonNull TypedHandle closeTaggedUnionCaseDeserializationScope(Class<?> caseClass, Lookup lookup) {
 		try {
 			MethodHandle close = lookup.findVirtual(DeserializationScope.class, "close",
 				methodType(void.class));
 
-			// The callback receives the parsed variant case value, but we don't use it
+			// The callback receives the parsed tagged union case value, but we don't use it
 			MethodHandle mh = dropArguments(close, 1, caseClass);
 
 			return new TypedHandle(mh,
@@ -511,7 +511,7 @@ public class BosonSerializer extends StateTreeSerializer {
 					DataType.known(caseClass)
 				));
 		} catch (NoSuchMethodException | IllegalAccessException e) {
-			throw new IllegalArgumentException("Failed to create scope callback for variant case " + caseClass.getSimpleName(), e);
+			throw new IllegalArgumentException("Failed to create scope callback for tagged union case " + caseClass.getSimpleName(), e);
 		}
 	}
 

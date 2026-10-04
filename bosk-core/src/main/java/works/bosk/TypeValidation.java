@@ -78,7 +78,7 @@ public final class TypeValidation {
 				}
 			} else if (TaggedUnion.class.isAssignableFrom(theClass)) {
 				var caseStaticClass = rawClass(parameterType(theType, TaggedUnion.class, 0));
-				validateVariantCaseClass(caseStaticClass, alreadyValidated);
+				validateTaggedUnionCaseClass(caseStaticClass, alreadyValidated);
 			} else if (StateTreeNode.class.isAssignableFrom(theClass)) {
 				validateStateTreeNodeClass(theClass, alreadyValidated);
 			} else if (ListValue.class.isAssignableFrom(theClass) || MapValue.class.isAssignableFrom(theClass)) {
@@ -144,9 +144,9 @@ public final class TypeValidation {
 
 	private static void validateStateTreeNodeClass(Class<?> nodeClass, Set<Type> alreadyValidated) throws InvalidTypeException {
 		if (!Record.class.isAssignableFrom(nodeClass)) {
-			if (VariantCase.class.isAssignableFrom(nodeClass) && Modifier.isAbstract(nodeClass.getModifiers())) {
+			if (TaggedUnionCase.class.isAssignableFrom(nodeClass) && Modifier.isAbstract(nodeClass.getModifiers())) {
 				// We can emit a better error by guessing what the user was trying to do
-				throw new InvalidTypeException("Abstract VariantCase " + nodeClass.getSimpleName() + " must be wrapped in a TaggedUnion");
+				throw new InvalidTypeException("Abstract TaggedUnionCase " + nodeClass.getSimpleName() + " must be wrapped in a TaggedUnion");
 			} else {
 				throw new InvalidTypeException(nodeClass + " must be a record because it is a " + StateTreeNode.class.getSimpleName());
 			}
@@ -165,14 +165,14 @@ public final class TypeValidation {
 		validateFieldsAreFinal(nodeClass);
 	}
 
-	private static void validateVariantCaseClass(Class<?> nodeClass, Set<Type> alreadyValidated) throws InvalidTypeException {
-		for (Map.Entry<String, Type> entry : StateTreeSerializer.getVariantCaseMap(nodeClass).entrySet()) {
+	private static void validateTaggedUnionCaseClass(Class<?> nodeClass, Set<Type> alreadyValidated) throws InvalidTypeException {
+		for (Map.Entry<String, Type> entry : StateTreeSerializer.getTaggedUnionCaseMap(nodeClass).entrySet()) {
 			String tag = requireNonNull(entry.getKey());
 			Type type = requireNonNull(entry.getValue());
 			validateFieldName(nodeClass, tag); // TODO: this produces confusing exception messages
 			validateType(type, alreadyValidated);
-			if (!VariantCase.class.isAssignableFrom(rawClass(type))) {
-				throw new InvalidTypeException("Variant case " + nodeClass.getSimpleName() + "." + tag + " maps to a type that doesn't inherit VariantCase: " + type);
+			if (!TaggedUnionCase.class.isAssignableFrom(rawClass(type))) {
+				throw new InvalidTypeException("Variant case " + nodeClass.getSimpleName() + "." + tag + " maps to a type that doesn't inherit TaggedUnionCase: " + type);
 			}
 		}
 		if (!Modifier.isAbstract(nodeClass.getModifiers())) {

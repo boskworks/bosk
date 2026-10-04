@@ -50,7 +50,7 @@ import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.UnexpectedPathException;
 
@@ -217,7 +217,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		}
 
 		@SuppressWarnings({"unchecked"})
-		private <T extends VariantCase> ValueSerializer<TaggedUnion<?>> taggedUnionSerializer() {
+		private <T extends TaggedUnionCase> ValueSerializer<TaggedUnion<?>> taggedUnionSerializer() {
 			return new ValueSerializer<>() {
 				/**
 				 * A {@link TaggedUnion} has a single field called {@code value},
@@ -225,13 +225,13 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				 */
 				@Override
 				public void serialize(TaggedUnion<?> union, JsonGenerator gen, SerializationContext serializers) {
-					// We assume the TaggedUnion object is correct by construction and don't bother checking the variant case map here
-					T variant = (T)union.variant();
-					ValueSerializer<Object> valueSerializer = serializers.findValueSerializer(variant.getClass());
-					String tag = requireNonNull(variant.tag());
+					// We assume the TaggedUnion object is correct by construction and don't bother checking the case map here
+					T caseValue = (T)union.value();
+					ValueSerializer<Object> valueSerializer = serializers.findValueSerializer(caseValue.getClass());
+					String tag = requireNonNull(caseValue.tag());
 					gen.writeStartObject();
 					gen.writeName(tag);
-					valueSerializer.serialize(variant, gen, serializers);
+					valueSerializer.serialize(caseValue, gen, serializers);
 					gen.writeEndObject();
 				}
 			};
@@ -477,36 +477,36 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			return compiler.<StateTreeNode>compiled(type, boskInfo).deserializer(config);
 		}
 
-		private <V extends VariantCase, D extends V> ValueDeserializer<TaggedUnion<V>> taggedUnionDeserializer(JavaType taggedUnionType, DeserializationConfig config) {
+		private <V extends TaggedUnionCase, D extends V> ValueDeserializer<TaggedUnion<V>> taggedUnionDeserializer(JavaType taggedUnionType, DeserializationConfig config) {
 			JavaType caseStaticType = taggedUnionType.findTypeParameters(TaggedUnion.class)[0];
 			Class<?> caseStaticClass = caseStaticType.getRawClass();
-			MapValue<Type> variantCaseMap;
+			MapValue<Type> taggedUnionCaseMap;
 			try {
-				variantCaseMap = StateTreeSerializer.getVariantCaseMap(caseStaticClass);
+				taggedUnionCaseMap = StateTreeSerializer.getTaggedUnionCaseMap(caseStaticClass);
 			} catch (InvalidTypeException e) {
 				throw new IllegalArgumentException(e);
 			}
-			Map<String, ValueDeserializer<?>> deserializers = variantCaseMap.entrySet().stream().collect(toMap(Entry::getKey, e ->
+			Map<String, ValueDeserializer<?>> deserializers = taggedUnionCaseMap.entrySet().stream().collect(toMap(Entry::getKey, e ->
 				stateTreeNodeDeserializer(typeFactory.constructType(e.getValue()), config)));
 			return new ValueDeserializer<>() {
 				@Override
 				public TaggedUnion<V> deserialize(JsonParser p, DeserializationContext ctxt) {
 					expect(START_OBJECT, p, ctxt);
 					if (p.nextToken() == END_OBJECT) {
-						return ctxt.reportInputMismatch(Object.class, "Input is missing variant tag field; expected one of " + variantCaseMap.keySet());
+						return ctxt.reportInputMismatch(Object.class, "Input is missing case tag field; expected one of " + taggedUnionCaseMap.keySet());
 					}
 					p.nextValue();
 
 					String tag = p.currentName();
 					ValueDeserializer<?> deserializer = deserializers.get(tag);
 					if (deserializer == null) {
-						return ctxt.reportInputMismatch(Object.class, "TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected variant tag field \"" + tag + "\"; expected one of " + variantCaseMap.keySet());
+						return ctxt.reportInputMismatch(Object.class, "TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected case tag field \"" + tag + "\"; expected one of " + taggedUnionCaseMap.keySet());
 					}
 					Object deserialized;
-					try (DeserializationScope scope = variantCaseDeserializationScope(tag)) {
+					try (DeserializationScope scope = taggedUnionCaseDeserializationScope(tag)) {
 						deserialized = deserializer.deserialize(p, ctxt);
 					}
-					@SuppressWarnings("unchecked") Class<D> caseDynamicClass = (Class<D>) rawClass(variantCaseMap.get(tag));
+					@SuppressWarnings("unchecked") Class<D> caseDynamicClass = (Class<D>) rawClass(taggedUnionCaseMap.get(tag));
 					D value;
 					try {
 						value = caseDynamicClass.cast(deserialized);

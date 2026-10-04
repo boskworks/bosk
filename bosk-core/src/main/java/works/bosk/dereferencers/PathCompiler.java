@@ -34,7 +34,7 @@ import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.bytecode.Codegen;
 import works.bosk.bytecode.GeneratedClass;
 import works.bosk.bytecode.LocalVariable;
@@ -254,12 +254,12 @@ public final class PathCompiler {
 				return new SideTableEntryStep(keyType, targetType, segmentNum);
 			} else if (TaggedUnion.class.isAssignableFrom(currentClass)) {
 				Class<?> caseStaticClass = rawClass(parameterType(currentType, TaggedUnion.class, 0));
-				Map<String, Type> typeMap = StateTreeSerializer.getVariantCaseMap(caseStaticClass);
+				Map<String, Type> typeMap = StateTreeSerializer.getTaggedUnionCaseMap(caseStaticClass);
 				Type targetType = typeMap.get(segment);
 				if (targetType == null) {
 					throw new InvalidTypeException("Invalid tag \"" + segment + "\" for TaggedUnion<" + caseStaticClass.getSimpleName() + ">: expected one of " + typeMap.keySet());
 				} else {
-					return new VariantCaseStep(segment, targetType);
+					return new TaggedUnionCaseStep(segment, targetType);
 				}
 			} else if (StateTreeNode.class.isAssignableFrom(currentClass)) {
 				if (isParameterSegment(segment)) {
@@ -718,7 +718,7 @@ public final class PathCompiler {
 		}
 
 		@Value
-		class VariantCaseStep implements Step {
+		class TaggedUnionCaseStep implements Step {
 			String name;
 			Type targetType;
 
@@ -749,7 +749,7 @@ public final class PathCompiler {
 				pop(codeBuilder);
 				pop(codeBuilder);
 				pushReference(codeBuilder);
-				invoke(codeBuilder, THROW_CANNOT_REPLACE_VARIANT_CASE);
+				invoke(codeBuilder, THROW_CANNOT_REPLACE_TAGGED_UNION_CASE);
 			}
 
 			@Override
@@ -846,7 +846,7 @@ public final class PathCompiler {
 	static final Method LISTING_GET, LISTING_WITH, LISTING_WITHOUT;
 	static final Method SIDE_TABLE_GET, SIDE_TABLE_WITH, SIDE_TABLE_WITHOUT;
 	static final Method OPTIONAL_OF, OPTIONAL_OR_THROW, OPTIONAL_EMPTY;
-	static final Method TAGGED_UNION_VALUE, TAG_CHECK, THROW_CANNOT_REPLACE_VARIANT_CASE;
+	static final Method TAGGED_UNION_VALUE, TAG_CHECK, THROW_CANNOT_REPLACE_TAGGED_UNION_CASE;
 	static final Method THROW_NONEXISTENT_ENTRY, THROW_CANNOT_REPLACE_PHANTOM;
 	static final Method INSTANCEOF_OR_NONEXISTENT, INVALID_WITHOUT;
 
@@ -865,9 +865,9 @@ public final class PathCompiler {
 			OPTIONAL_OF = Optional.class.getDeclaredMethod("ofNullable", Object.class);
 			OPTIONAL_OR_THROW = DereferencerRuntime.class.getDeclaredMethod("optionalOrThrow", Optional.class, Reference.class);
 			OPTIONAL_EMPTY = Optional.class.getDeclaredMethod("empty");
-			TAGGED_UNION_VALUE = TaggedUnion.class.getDeclaredMethod("variant");
-			TAG_CHECK = DereferencerRuntime.class.getDeclaredMethod("tagCheck", VariantCase.class, String.class, Reference.class);
-			THROW_CANNOT_REPLACE_VARIANT_CASE = DereferencerRuntime.class.getDeclaredMethod("throwCannotReplaceVariantCase", Reference.class);
+			TAGGED_UNION_VALUE = TaggedUnion.class.getDeclaredMethod("value");
+			TAG_CHECK = DereferencerRuntime.class.getDeclaredMethod("tagCheck", TaggedUnionCase.class, String.class, Reference.class);
+			THROW_CANNOT_REPLACE_TAGGED_UNION_CASE = DereferencerRuntime.class.getDeclaredMethod("throwCannotReplaceTaggedUnionCase", Reference.class);
 			THROW_NONEXISTENT_ENTRY = DereferencerRuntime.class.getDeclaredMethod("throwNonexistentEntry", Reference.class);
 			THROW_CANNOT_REPLACE_PHANTOM = DereferencerRuntime.class.getDeclaredMethod("throwCannotReplacePhantom", Reference.class);
 			INVALID_WITHOUT = DereferencerRuntime.class.getDeclaredMethod("invalidWithout", Object.class, Reference.class);

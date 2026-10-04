@@ -69,7 +69,7 @@ final class JacksonCompiler {
 
 	/**
 	 * The main entry point to the compiler.
-	 * Only for ordinary {@link works.bosk.StateTreeNode}s that aren't variants.
+	 * Only for ordinary {@link works.bosk.StateTreeNode}s that aren't tagged union cases.
 	 *
 	 * @return a newly compiled {@link CompiledSerDes} for values of the given <code>nodeType</code>.
 	 */

@@ -24,9 +24,9 @@ import works.bosk.SideTable;
 import works.bosk.SideTableReference;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.jackson.JsonNodeSurgeon.NodeInfo;
 import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.ArrayElement;
@@ -84,8 +84,8 @@ public class JsonNodeSurgeonTest {
 		Identifier id
 	) implements Entity {}
 
-	public sealed interface JsonVariant extends VariantCase {
-		@VariantCaseMap
+	public sealed interface JsonVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
 		static final MapValue<Class<?>> variants = MapValue.copyOf(Map.of(
 			"variant1", JsonVariant1.class,
 			"variant2", JsonVariant2.class

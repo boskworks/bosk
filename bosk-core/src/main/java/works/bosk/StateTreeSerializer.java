@@ -28,7 +28,7 @@ import works.bosk.annotations.DeserializationPath;
 import works.bosk.annotations.Enclosing;
 import works.bosk.annotations.Polyfill;
 import works.bosk.annotations.Self;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.MalformedPathException;
@@ -94,7 +94,7 @@ public abstract class StateTreeSerializer {
 		return newScope;
 	}
 
-	public final DeserializationScope variantCaseDeserializationScope(String tag) {
+	public final DeserializationScope taggedUnionCaseDeserializationScope(String tag) {
 		DeserializationScope outerScope = currentScope.get();
 		DeserializationScope newScope = new NestedDeserializationScope(
 			outerScope,
@@ -345,26 +345,26 @@ public abstract class StateTreeSerializer {
 	private static final Set<String> ALREADY_WARNED = synchronizedSet(new HashSet<>());
 
 	/**
-	 * @throws InvalidTypeException if the given class has no unique variant case map
+	 * @throws InvalidTypeException if the given class has no unique tagged union case map
 	 */
 	@NonNull
-	public static MapValue<Type> getVariantCaseMap(Class<?> nodeClass) throws InvalidTypeException {
-		var result = getVariantCaseMapIfAny(nodeClass);
+	public static MapValue<Type> getTaggedUnionCaseMap(Class<?> nodeClass) throws InvalidTypeException {
+		var result = getTaggedUnionCaseMapIfAny(nodeClass);
 		if (result == null) {
-			throw new InvalidTypeException(nodeClass + " has no variant case map");
+			throw new InvalidTypeException(nodeClass + " has no tagged union case map");
 		} else {
 			return result;
 		}
 	}
 
 	/**
-	 * @return null if the class has no variant case map
-	 * @throws InvalidTypeException if the given class has no unique variant case map
+	 * @return null if the class has no tagged union case map
+	 * @throws InvalidTypeException if the given class has no unique tagged union case map
 	 */
 	@Nullable
-	public static MapValue<Type> getVariantCaseMapIfAny(Class<?> nodeClass) throws InvalidTypeException {
-		if (VariantCase.class.isAssignableFrom(nodeClass)) {
-			return infoFor(nodeClass).variantCaseMap().ifAny();
+	public static MapValue<Type> getTaggedUnionCaseMapIfAny(Class<?> nodeClass) throws InvalidTypeException {
+		if (TaggedUnionCase.class.isAssignableFrom(nodeClass)) {
+			return infoFor(nodeClass).taggedUnionCaseMap().ifAny();
 		} else {
 			// We don't want to even call infoFor on types that aren't StateTreeNodes
 			return null;
@@ -468,9 +468,9 @@ public abstract class StateTreeSerializer {
 			Set<String> enclosingParameters = new HashSet<>();
 			Map<String, DeserializationPath> deserializationPathParameters = new HashMap<>();
 			Map<String, Object> polyfills = new HashMap<>();
-			AtomicReference<VariantCaseMapInfo> variantCaseMap = new AtomicReference<>(new NoVariantCaseMap(type));
+			AtomicReference<TaggedUnionCaseMapInfo> taggedUnionCaseMap = new AtomicReference<>(new NoTaggedUnionCaseMap(type));
 
-			if (!type.isInterface()) { // Avoid for @VariantCaseMap classes
+			if (!type.isInterface()) { // Avoid for @TaggedUnionCaseMap classes
 				for (Parameter parameter: ReferenceUtils.getCanonicalConstructor(type).getParameters()) {
 					scanForInfo(parameter, parameter.getName(),
 						selfParameters, enclosingParameters, deserializationPathParameters, polyfills);
@@ -483,7 +483,7 @@ public abstract class StateTreeSerializer {
 			// can also go on fields with the same name. This accommodates systems
 			// like Lombok that derive constructors from fields.
 			//
-			// It's also required to scan static fields for features like @VariantCaseMap.
+			// It's also required to scan static fields for features like @TaggedUnionCaseMap.
 
 			for (Class<?> c = type; c != Object.class && c != null; c = c.getSuperclass()) {
 				for (Field field: c.getDeclaredFields()) {
@@ -492,31 +492,31 @@ public abstract class StateTreeSerializer {
 				}
 			}
 
-			if (VariantCase.class.isAssignableFrom(type)) {
-				scanForVariantCaseMap(type, variantCaseMap);
+			if (TaggedUnionCase.class.isAssignableFrom(type)) {
+				scanForTaggedUnionCaseMap(type, taggedUnionCaseMap);
 			}
 
-			return new ParameterInfo(selfParameters, enclosingParameters, deserializationPathParameters, polyfills, variantCaseMap.get());
+			return new ParameterInfo(selfParameters, enclosingParameters, deserializationPathParameters, polyfills, taggedUnionCaseMap.get());
 		}
 	};
 
 	@SuppressWarnings({"rawtypes","unchecked"})
-	private static void scanForVariantCaseMap(Class<?> nodeClass, AtomicReference<VariantCaseMapInfo> variantCaseMap) {
-		if (!VariantCase.class.isAssignableFrom(nodeClass)) {
+	private static void scanForTaggedUnionCaseMap(Class<?> nodeClass, AtomicReference<TaggedUnionCaseMapInfo> taggedUnionCaseMap) {
+		if (!TaggedUnionCase.class.isAssignableFrom(nodeClass)) {
 			return;
 		}
 
 		for (Class<?> c = nodeClass; c != Object.class && c != null; c = c.getSuperclass()) {
 			for (Field f: c.getDeclaredFields()) {
-				var annotations = f.getAnnotationsByType(VariantCaseMap.class);
+				var annotations = f.getAnnotationsByType(TaggedUnionCaseMap.class);
 				if (annotations.length == 0) {
 					// This is not the droid you're looking for
 					continue;
 				} else if (annotations.length >= 2) {
-					throw new IllegalStateException("Multiple variant case maps for the same class: " + f);
+					throw new IllegalStateException("Multiple tagged union case maps for the same class: " + f);
 				}
 				if (!isStatic(f.getModifiers()) || isPrivate(f.getModifiers())) {
-					throw new IllegalStateException("The variant case map must be static and final: " + f);
+					throw new IllegalStateException("The tagged union case map must be static and final: " + f);
 				}
 				MapValue value;
 				try {
@@ -525,21 +525,21 @@ public abstract class StateTreeSerializer {
 					throw new AssertionError("Field should not be inaccessible: " + f, e);
 				}
 				if (value == null) {
-					throw new NullPointerException("VariantCaseMap cannot be null: " + f);
+					throw new NullPointerException("TaggedUnionCaseMap cannot be null: " + f);
 				}
-				var old = variantCaseMap.get();
-				boolean success = variantCaseMap.compareAndSet(old, old.plus(nodeClass, value, c));
+				var old = taggedUnionCaseMap.get();
+				boolean success = taggedUnionCaseMap.compareAndSet(old, old.plus(nodeClass, value, c));
 				assert success: "Hey who's messing with our AtomicReference?";
 			}
 		}
 
-		// Recurse to look for inherited variant case maps
+		// Recurse to look for inherited tagged union case maps
 		for (var i : nodeClass.getInterfaces()) {
-			scanForVariantCaseMap(i, variantCaseMap);
+			scanForTaggedUnionCaseMap(i, taggedUnionCaseMap);
 		}
 		Class<?> superclass = nodeClass.getSuperclass();
 		if (superclass != null && superclass != Object.class) {
-			scanForVariantCaseMap(superclass, variantCaseMap);
+			scanForTaggedUnionCaseMap(superclass, taggedUnionCaseMap);
 		}
 	}
 
@@ -583,51 +583,51 @@ public abstract class StateTreeSerializer {
 		Set<String> annotatedParameters_Enclosing,
 		Map<String, DeserializationPath> annotatedParameters_DeserializationPath,
 		Map<String, Object> polyfills,
-		VariantCaseMapInfo variantCaseMap
+		TaggedUnionCaseMapInfo taggedUnionCaseMap
 	) { }
 
-	private sealed interface VariantCaseMapInfo {
+	private sealed interface TaggedUnionCaseMapInfo {
 		/**
 		 * We're just scanning for info here, not throwing exceptions.
-		 * Hence, we simply record what we discovered, and then when anyone asks for the variant case map, <em>then</em> we throw.
+		 * Hence, we simply record what we discovered, and then when anyone asks for the tagged union case map, <em>then</em> we throw.
 		 */
 		@Nullable MapValue<Type> ifAny() throws InvalidTypeException;
 
 		/**
-		 * @param nodeClass the class whose variant case map we're looking for
-		 * @param map the variant case map we found
+		 * @param nodeClass the class whose tagged union case map we're looking for
+		 * @param map the tagged union case map we found
 		 * @param origin the class in which we found it
 		 */
-		VariantCaseMapInfo plus(Class<?> nodeClass, MapValue<Type> map, Class<?> origin);
+		TaggedUnionCaseMapInfo plus(Class<?> nodeClass, MapValue<Type> map, Class<?> origin);
 	}
 
-	private record NoVariantCaseMap(Class<?> nodeClass) implements VariantCaseMapInfo {
+	private record NoTaggedUnionCaseMap(Class<?> nodeClass) implements TaggedUnionCaseMapInfo {
 		@Override public MapValue<Type> ifAny() { return null; }
 
 		@Override
-		public VariantCaseMapInfo plus(Class<?> nodeClass, MapValue<Type> map, Class<?> origin) {
-			return new OneVariantCaseMap(map, origin);
+		public TaggedUnionCaseMapInfo plus(Class<?> nodeClass, MapValue<Type> map, Class<?> origin) {
+			return new OneTaggedUnionCaseMap(map, origin);
 		}
 	}
 
-	private record OneVariantCaseMap(MapValue<Type> map, Class<?> origin) implements VariantCaseMapInfo {
+	private record OneTaggedUnionCaseMap(MapValue<Type> map, Class<?> origin) implements TaggedUnionCaseMapInfo {
 		@Override public MapValue<Type> ifAny() { return map; }
 
 		@Override
-		public VariantCaseMapInfo plus(Class<?> nodeClass, MapValue<Type> map, Class<?> origin) {
-			return new AmbiguousVariantCaseMap(nodeClass, ConsPStack.<Class<?>>singleton(this.origin).plus(origin));
+		public TaggedUnionCaseMapInfo plus(Class<?> nodeClass, MapValue<Type> map, Class<?> origin) {
+			return new AmbiguousTaggedUnionCaseMap(nodeClass, ConsPStack.<Class<?>>singleton(this.origin).plus(origin));
 		}
 	}
 
-	private record AmbiguousVariantCaseMap(Class<?> nodeClass, ConsPStack<Class<?>> origins) implements VariantCaseMapInfo {
+	private record AmbiguousTaggedUnionCaseMap(Class<?> nodeClass, ConsPStack<Class<?>> origins) implements TaggedUnionCaseMapInfo {
 		@Override
 		public MapValue<Type> ifAny() throws InvalidTypeException {
-			throw new InvalidTypeException(nodeClass.getSimpleName() + " has multiple variant case maps in " + origins);
+			throw new InvalidTypeException(nodeClass.getSimpleName() + " has multiple tagged union case maps in " + origins);
 		}
 
 		@Override
-		public VariantCaseMapInfo plus(Class<?> nodeClass, MapValue<Type> map, Class<?> origin) {
-			return new AmbiguousVariantCaseMap(nodeClass, this.origins.plus(origin));
+		public TaggedUnionCaseMapInfo plus(Class<?> nodeClass, MapValue<Type> map, Class<?> origin) {
+			return new AmbiguousTaggedUnionCaseMap(nodeClass, this.origins.plus(origin));
 		}
 	}
 

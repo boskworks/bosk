@@ -18,10 +18,10 @@ import works.bosk.Phantom;
 import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.Enclosing;
 import works.bosk.annotations.Self;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.Arrays.asList;
@@ -140,16 +140,16 @@ public abstract class AbstractBoskTest {
 		}
 	}
 
-	public interface Variant extends VariantCase {
+	public interface Variant extends TaggedUnionCase {
 		@Override default String tag() {
 			return "variant1";
 		}
 
-		@VariantCaseMap
-		MapValue<Type> CASES = MapValue.singleton("variant1", VariantCase1.class);
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("variant1", TaggedUnionCase1.class);
 	}
 
-	public record VariantCase1(String stringField) implements Variant { }
+	public record TaggedUnionCase1(String stringField) implements Variant { }
 
 	protected static Bosk<TestRoot> setUpBosk(DriverFactory<TestRoot> driverFactory) {
 		return new Bosk<>(
@@ -197,7 +197,7 @@ public abstract class AbstractBoskTest {
 			new ImplicitRefs(Identifier.from("parent_implicitRefs"),
 				teb.implicitRefsRef(parentID), parentRef,
 				teb.implicitRefsRef(parentID), parentRef),
-			TaggedUnion.of(new VariantCase1("variantCase1String")));
+			TaggedUnion.of(new TaggedUnionCase1("taggedUnionCase1String")));
 		return new TestRoot(
 			Identifier.from("root"),
 			Catalog.of(entity),

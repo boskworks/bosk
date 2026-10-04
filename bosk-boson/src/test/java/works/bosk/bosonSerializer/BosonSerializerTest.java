@@ -20,10 +20,10 @@ import works.bosk.SideTable;
 import works.bosk.SideTableReference;
 import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.annotations.Self;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.boson.codec.Codec;
 import works.bosk.boson.codec.CodecBuilder;
 import works.bosk.boson.codec.io.CharArrayJsonReader;
@@ -143,7 +143,7 @@ public class BosonSerializerTest {
 	}
 
 	@Test
-	void variantCaseSelfReference_includesTagPath() throws InvalidTypeException, IOException {
+	void taggedUnionCaseSelfReference_includesTagPath() throws InvalidTypeException, IOException {
 		// A variant case lives at /variant/<tag>, so a @Self reference inside the case
 		// must resolve to the tag path, not the union field path.
 		Bosk<VariantRoot> variantBosk = new Bosk<>("variant", VariantRoot.class, BosonSerializerTest::initialVariantRoot, BoskConfig.simple());
@@ -160,22 +160,22 @@ public class BosonSerializerTest {
 			""".toCharArray()
 		));
 
-		assertEquals(Path.parse("/variant/case1"), ((VariantCase1) parsed.variant().variant()).self().path());
+		assertEquals(Path.parse("/variant/case1"), ((TaggedUnionCase1) parsed.variant().value()).self().path());
 	}
 
 	private static @NonNull VariantRoot initialVariantRoot(Bosk<VariantRoot> bosk) throws InvalidTypeException {
-		return new VariantRoot(TaggedUnion.of(new VariantCase1(bosk.rootReference().then(VariantCase1.class, Path.parse("/variant/case1")), "hello")));
+		return new VariantRoot(TaggedUnion.of(new TaggedUnionCase1(bosk.rootReference().then(TaggedUnionCase1.class, Path.parse("/variant/case1")), "hello")));
 	}
 
 	public record VariantRoot(TaggedUnion<Variant> variant) implements StateTreeNode { }
 
-	public interface Variant extends VariantCase {
+	public interface Variant extends TaggedUnionCase {
 		@Override default String tag() { return "case1"; }
-		@VariantCaseMap
-		MapValue<Type> CASES = MapValue.singleton("case1", VariantCase1.class);
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("case1", TaggedUnionCase1.class);
 	}
 
-	public record VariantCase1(@Self Reference<VariantCase1> self, String stringField) implements Variant { }
+	public record TaggedUnionCase1(@Self Reference<TaggedUnionCase1> self, String stringField) implements Variant { }
 
 	@Test
 	void catalogEntryKeyMismatch_throws() throws InvalidTypeException {
