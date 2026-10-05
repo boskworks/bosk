@@ -1,6 +1,7 @@
 package works.bosk;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.Optional;
 import works.bosk.Bosk.ReadSession;
 import works.bosk.drivers.ForwardingDriver;
@@ -32,8 +33,10 @@ public interface BoskDriver {
 	 * is empty, and could use the resulting initial state to initialize the
 	 * database.
 	 *
-	 * @param rootType The class of the root state tree node.
-	 * Enables a lot of type inference.
+	 * @param rootType The type of the root state tree node, including any type arguments,
+	 * so a driver that converts state to and from some backing store can retain the
+	 * full generic type of the root. Use {@link works.bosk.ReferenceUtils#rawClass(Type)}
+	 * to get the corresponding class.
 	 * @throws InvalidTypeException as a convenience to support initialization logic
 	 * that creates {@link Reference References} (which is very common) so that implementations
 	 * do not need to catch that exception and wrap it or otherwise deal with it:
@@ -43,7 +46,7 @@ public interface BoskDriver {
 	 * but it can be used downstream of a {@link ForwardingDriver} provided there is
 	 * another downstream driver that can provide the initial state instead.
 	 */
-	<R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException;
+	<R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException;
 
 	/**
 	 * Requests that the object referenced by <code>target</code> be changed to <code>newValue</code>.
