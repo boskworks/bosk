@@ -203,16 +203,20 @@ C&lt;String> someField;
 	}
 
 	/**
-	 * @param typeWithVariables a {@link Type} that may or may not contain references to {@link TypeVariable}s.
-	 * @param environmentType the type that defines what those variables mean
-	 * @return a new type whose variables are all bound by the definitions in <code>environmentType</code>
+	 * Resolves the type variables in {@code typeWithVariables} using the type arguments
+	 * of {@code environmentType}. For example, if {@code environmentType} is
+	 * {@code Node<String>}, resolving the type variable {@code T} yields {@code String}.
+	 *
+	 * @param typeWithVariables a type that may mention type variables, such as a record
+	 *   component's generic type
+	 * @param environmentType the parameterized type that gives those variables their meaning
+	 * @return a type whose variables are all bound by {@code environmentType}
 	 */
-	static Type resolveTypeVariables(Type typeWithVariables, Type environmentType) {
+	public static Type resolveTypeVariables(Type typeWithVariables, Type environmentType) {
 		if (typeWithVariables instanceof TypeVariable) {
-			// The recursive call has typeWithVariables us one of the type variables
-			// from our own generic class.  For example, if environmentType
-			// were C<String> and C was declared as C<T> extends S<U>, then
-			// `typeWithVariables` is T, and it's our job here to resolve it back to String.
+			// `typeWithVariables` is one of the type variables declared by the class
+			// named in environmentType. For example, if environmentType is C<String>,
+			// then C's type variable T resolves to String.
 			Class<?> parameterizedClass = rawClass(environmentType);
 			TypeVariable<?>[] typeVariables = parameterizedClass.getTypeParameters();
 			for (int i = 0; i < typeVariables.length; i++) {
