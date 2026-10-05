@@ -27,7 +27,6 @@ import works.bosk.MapValue;
 import works.bosk.Path;
 import works.bosk.Phantom;
 import works.bosk.Reference;
-import works.bosk.ReferenceUtils;
 import works.bosk.SideTable;
 import works.bosk.SideTableReference;
 import works.bosk.StateTreeNode;
@@ -55,6 +54,7 @@ import works.bosk.boson.mapping.spec.handles.TypedHandle;
 import works.bosk.boson.mapping.spec.handles.TypedHandles;
 import works.bosk.boson.types.BoundType;
 import works.bosk.boson.types.DataType;
+import works.bosk.boson.types.InstanceType;
 import works.bosk.boson.types.KnownType;
 import works.bosk.boson.types.TypeReference;
 import works.bosk.boson.types.TypeVariable;
@@ -67,8 +67,6 @@ import static java.lang.invoke.MethodHandles.lookup;
 import static java.lang.invoke.MethodType.methodType;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.boson.mapping.spec.handles.MemberPresenceCondition.memberValue;
-import static works.bosk.boson.mapping.spec.handles.TypedHandles.canonicalConstructor;
-import static works.bosk.boson.mapping.spec.handles.TypedHandles.componentAccessor;
 import static works.bosk.boson.mapping.spec.handles.TypedHandles.supplier;
 
 public class BosonSerializer extends StateTreeSerializer {
@@ -204,6 +202,11 @@ public class BosonSerializer extends StateTreeSerializer {
 			taggedUnionType -> switch (taggedUnionType) {
 				case BoundType bt -> {
 					var caseStaticType = (KnownType) bt.parameterType(TaggedUnion.class, 0);
+					// A case's declared type may mention the case supertype's type variables,
+					// so substitute them before using it.
+					Map<String, DataType> caseStaticArguments = caseStaticType instanceof BoundType caseStaticBoundType
+						? caseStaticBoundType.actualArguments()
+						: Map.of();
 					MapValue<Type> taggedUnionCaseMap;
 					try {
 						taggedUnionCaseMap = StateTreeSerializer.getTaggedUnionCaseMap(caseStaticType.rawClass());
@@ -212,12 +215,13 @@ public class BosonSerializer extends StateTreeSerializer {
 					}
 					SequencedMap<String, RecognizedMember> members = new LinkedHashMap<>();
 					taggedUnionCaseMap.forEach((name, caseType) -> {
+						KnownType caseKnownType = (KnownType) DataType.of(caseType).substitute(caseStaticArguments);
 						var ifPresent = new ParseCallbackSpec(
 							openTaggedUnionCaseDeserializationScope(name, lookup),
-							new TypeRefNode(DataType.of(caseType)),
-							closeTaggedUnionCaseDeserializationScope(ReferenceUtils.rawClass(caseType), lookup));
+							new TypeRefNode(caseKnownType),
+							closeTaggedUnionCaseDeserializationScope(caseKnownType, lookup));
 						var ifAbsent = new ComputedSpec(supplier(
-							DataType.known(caseType),
+							caseKnownType,
 							() -> null)); // This is a signal to the finisher that the case is absent
 						var presenceCondition = MemberPresenceCondition.enclosingObject(
 							TypedHandles.<TaggedUnion<V>, Boolean>function(
@@ -226,7 +230,7 @@ public class BosonSerializer extends StateTreeSerializer {
 								tu -> name.equals(tu.value().tag())));
 						var accessor = TypedHandles.<TaggedUnion<V>, Object>function(
 							taggedUnionType,
-							DataType.known(caseType),
+							caseKnownType,
 							TaggedUnion::value);
 						members.put(name, new RecognizedMember(
 							new MaybeAbsentSpec(
@@ -299,22 +303,24 @@ public class BosonSerializer extends StateTreeSerializer {
 					// because there'd be no way to make that omit the member name from the containing object.
 
 					Class<? extends Record> recordClass = bt.rawClass().asSubclass(Record.class);
+					Map<String, DataType> actualArguments = bt.actualArguments();
 					SequencedMap<String, RecognizedMember> componentsByName = new LinkedHashMap<>();
 					for (var rc : recordClass.getRecordComponents()) {
+						KnownType componentType = componentType(rc, actualArguments);
 						// Look for record components requiring special handling
 						if (Optional.class.isAssignableFrom(rc.getType())) {
 							// This is remarkably cumbersome
-							var valueType = ReferenceUtils.parameterType(rc.getGenericType(), Optional.class, 0);
-							var elementType = new TypeRefNode(DataType.known(valueType));
+							KnownType valueType = (KnownType) ((InstanceType) componentType).parameterType(Optional.class, 0);
+							var elementType = new TypeRefNode(valueType);
 							// The element needs an appropriate scope for @Self to resolve inside it
 							TypedHandle closeScope;
 							try {
 								MethodHandle close = lookup.findVirtual(DeserializationScope.class, "close",
 									methodType(void.class));
-								MethodHandle closeMh = dropArguments(close, 1, ReferenceUtils.rawClass(valueType));
+								MethodHandle closeMh = dropArguments(close, 1, valueType.rawClass());
 								closeScope = new TypedHandle(closeMh,
 									DataType.VOID,
-									List.of(DataType.known(DeserializationScope.class), DataType.known(valueType)));
+									List.of(DataType.known(DeserializationScope.class), valueType));
 							} catch (NoSuchMethodException | IllegalAccessException e) {
 								throw new IllegalArgumentException("Failed to create scope callback for " + rc.getName(), e);
 							}
@@ -324,27 +330,27 @@ public class BosonSerializer extends StateTreeSerializer {
 								closeScope);
 							var ifPresent = RepresentAsSpec.<Optional<?>, Object>as(
 								scopedElement,
-								DataType.known(rc.getGenericType()),
+								componentType,
 								Optional::get,
 								Optional::of
 							);
-							var ifAbsent = new ComputedSpec(supplier(DataType.known(rc.getGenericType()),
+							var ifAbsent = new ComputedSpec(supplier(componentType,
 								Optional::empty));
-							var presenceCondition = memberValue(TypedHandles.<Optional<?>>predicate(DataType.known(rc.getGenericType()),
+							var presenceCondition = memberValue(TypedHandles.<Optional<?>>predicate(componentType,
 								Optional::isPresent));
 							componentsByName.put(rc.getName(), new RecognizedMember(
 								new MaybeAbsentSpec(ifPresent, ifAbsent, presenceCondition),
-								componentAccessor(rc, lookup)
+								componentAccessor(rc, bt, componentType, lookup)
 							));
 						} else if (Phantom.class.isAssignableFrom(rc.getType())) {
 							componentsByName.put(rc.getName(), new RecognizedMember(
-								new ComputedSpec(supplier(DataType.known(rc.getGenericType()),
+								new ComputedSpec(supplier(componentType,
 									Phantom::empty)),
-								componentAccessor(rc, lookup)
+								componentAccessor(rc, bt, componentType, lookup)
 							));
 						} else if (isImplicitParameter(recordClass, rc)) {
 							componentsByName.put(rc.getName(), new RecognizedMember(
-								new ComputedSpec(supplier(DataType.known(rc.getGenericType()),
+								new ComputedSpec(supplier(componentType,
 									() -> {
 										try {
 											return implicitReference(recordClass, rc, bosk);
@@ -352,7 +358,7 @@ public class BosonSerializer extends StateTreeSerializer {
 											throw new JsonContentException(e);
 										}
 									})),
-								componentAccessor(rc, lookup)
+								componentAccessor(rc, bt, componentType, lookup)
 							));
 						} else {
 							// This would be just a TypeRefNode, except we also need a DeserializationScope.
@@ -362,16 +368,16 @@ public class BosonSerializer extends StateTreeSerializer {
 							componentsByName.put(rc.getName(), new RecognizedMember(
 								new ParseCallbackSpec(
 									openRecordComponentDeserializationScope(rc, recordClass, lookup),
-									new TypeRefNode(DataType.known(rc.getGenericType())),
-									closeRecordComponentDeserializationScope(rc, lookup)
+									new TypeRefNode(componentType),
+									closeRecordComponentDeserializationScope(rc, componentType, lookup)
 								),
-								componentAccessor(rc, lookup)
+								componentAccessor(rc, bt, componentType, lookup)
 							));
 						}
 					}
 					yield new FixedObjectNode(
 						componentsByName,
-						canonicalConstructor(recordClass, lookup)
+						recordFinisher(bt, componentsByName, lookup)
 					);
 				}
 				default -> throw new IllegalStateException("Unexpected StateTreeNode type: " + stateTreeNodeType);
@@ -475,8 +481,51 @@ public class BosonSerializer extends StateTreeSerializer {
 	}
 
 	/**
-	 * @return nullary callback that opens a {@link DeserializationScope} for a tagged union case tag.
+	 * @return the component's declared type with the enclosing record's type variables
+	 *   substituted with {@code actualArguments}
 	 */
+	private static KnownType componentType(RecordComponent rc, Map<String, DataType> actualArguments) {
+		return (KnownType) DataType.of(rc.getGenericType()).substitute(actualArguments);
+	}
+
+	private static TypedHandle componentAccessor(RecordComponent rc, InstanceType recordType, KnownType componentType, Lookup lookup) {
+		MethodHandle mh;
+		try {
+			mh = lookup.unreflect(rc.getAccessor())
+				.asType(methodType(componentType.rawClass(), recordType.rawClass()));
+		} catch (IllegalAccessException e) {
+			throw new IllegalArgumentException("Can't access accessor " + rc.getAccessor() + " of " + rc.getDeclaringRecord(), e);
+		}
+		return new TypedHandle(mh, componentType, List.of(recordType));
+	}
+
+	/**
+	 * @return finisher that invokes the canonical constructor of a record,
+	 *   reporting {@code recordType} as its return type so that parameterized
+	 *   record types don't appear to contain wildcards.
+	 */
+	private static TypedHandle recordFinisher(InstanceType recordType, Map<String, RecognizedMember> componentsByName, Lookup lookup) {
+		Class<? extends Record> recordClass = recordType.rawClass().asSubclass(Record.class);
+		RecordComponent[] recordComponents = recordClass.getRecordComponents();
+		Class<?>[] ctorParameterTypes = new Class<?>[recordComponents.length];
+		for (int i = 0; i < recordComponents.length; i++) {
+			ctorParameterTypes[i] = recordComponents[i].getType();
+		}
+		MethodHandle constructor;
+		try {
+			constructor = lookup.findConstructor(recordClass, methodType(void.class, ctorParameterTypes));
+		} catch (NoSuchMethodException e) {
+			throw new AssertionError("Canonical constructor must exist for " + recordClass);
+		} catch (IllegalAccessException e) {
+			throw new IllegalArgumentException("Can't access canonical constructor of " + recordClass, e);
+		}
+		List<DataType> memberTypes = componentsByName.values().stream().map(RecognizedMember::dataType).toList();
+		return new TypedHandle(
+			constructor.asType(methodType(recordClass, memberTypes.stream().map(DataType::leastUpperBoundClass).toArray(Class<?>[]::new))),
+			recordType,
+			memberTypes);
+	}
+
 	private @NonNull TypedHandle openTaggedUnionCaseDeserializationScope(String tag, Lookup lookup) {
 		try {
 			MethodHandle taggedUnionCaseDeserializationScope = lookup.findVirtual(StateTreeSerializer.class,
@@ -496,22 +545,22 @@ public class BosonSerializer extends StateTreeSerializer {
 	 * @return callback that closes a {@link DeserializationScope}
 	 * opened by {@link #openTaggedUnionCaseDeserializationScope(String, Lookup)}.
 	 */
-	private static @NonNull TypedHandle closeTaggedUnionCaseDeserializationScope(Class<?> caseClass, Lookup lookup) {
+	private static @NonNull TypedHandle closeTaggedUnionCaseDeserializationScope(KnownType caseType, Lookup lookup) {
 		try {
 			MethodHandle close = lookup.findVirtual(DeserializationScope.class, "close",
 				methodType(void.class));
 
 			// The callback receives the parsed tagged union case value, but we don't use it
-			MethodHandle mh = dropArguments(close, 1, caseClass);
+			MethodHandle mh = dropArguments(close, 1, caseType.rawClass());
 
 			return new TypedHandle(mh,
 				DataType.VOID,
 				List.of(
 					DataType.known(DeserializationScope.class),
-					DataType.known(caseClass)
+					caseType
 				));
 		} catch (NoSuchMethodException | IllegalAccessException e) {
-			throw new IllegalArgumentException("Failed to create scope callback for tagged union case " + caseClass.getSimpleName(), e);
+			throw new IllegalArgumentException("Failed to create scope callback for tagged union case " + caseType.rawClass().getSimpleName(), e);
 		}
 	}
 
@@ -537,19 +586,19 @@ public class BosonSerializer extends StateTreeSerializer {
 	 * @return callback that closes a {@link DeserializationScope}
 	 * opened by {@link #openRecordComponentDeserializationScope(RecordComponent, Class, Lookup)}.
 	 */
-	private static @NonNull TypedHandle closeRecordComponentDeserializationScope(RecordComponent rc, Lookup lookup) {
+	private static @NonNull TypedHandle closeRecordComponentDeserializationScope(RecordComponent rc, KnownType componentType, Lookup lookup) {
 		try {
 			MethodHandle close = lookup.findVirtual(DeserializationScope.class, "close",
 				methodType(void.class));
 
 			// The callback receives the parsed record component value, but we don't use it
-			MethodHandle mh = dropArguments(close, 1, rc.getType());
+			MethodHandle mh = dropArguments(close, 1, componentType.rawClass());
 
 			return new TypedHandle(mh,
 				DataType.VOID,
 				List.of(
 					DataType.known(DeserializationScope.class),
-					DataType.known(rc.getGenericType())
+					componentType
 				));
 		} catch (NoSuchMethodException | IllegalAccessException e) {
 			throw new IllegalArgumentException("Failed to create scope callback for " + rc.getName(), e);
