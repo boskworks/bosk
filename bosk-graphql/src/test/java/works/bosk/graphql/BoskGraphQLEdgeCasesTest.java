@@ -9,6 +9,7 @@ import graphql.language.StringValue;
 import graphql.schema.CoercingParseLiteralException;
 import graphql.schema.CoercingParseValueException;
 import graphql.schema.GraphQLSchema;
+import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.HashMap;
@@ -37,7 +38,7 @@ import works.bosk.annotations.Self;
 import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.graphql.exceptions.UnsupportedNameException;
-import works.bosk.graphql.exceptions.UnsupportedTypeException;
+import works.bosk.util.Types;
 
 import static java.util.stream.Collectors.toMap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -617,10 +618,29 @@ class BoskGraphQLEdgeCasesTest {
 	}
 
 	@Test
-	void optionalMapValueField_throws() {
-		assertThrows(UnsupportedTypeException.class, () ->
-			buildGraphQL(createBosk(OptionalContainerRoot.class,
-				new OptionalContainerRoot(Optional.of(MapValue.empty())))));
+	void optionalMapValueField_present() {
+		var bosk = createBosk(OptionalContainerRoot.class,
+			new OptionalContainerRoot(Optional.of(MapValue.copyOf(Map.of("key1", "value1")))));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("tags", List.of(Map.of("key", "key1", "value", "value1"))),
+				"{ tags { key value } }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
+	@Test
+	void optionalMapValueField_absent() {
+		var bosk = createBosk(OptionalContainerRoot.class,
+			new OptionalContainerRoot(Optional.empty()));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			var absent = new HashMap<String, Object>();
+			absent.put("tags", null);
+			assertQueryReturns(absent, "{ tags { key value } }", graphQL, bosk.rootReference().valueIfExists());
+		}
 	}
 
 	@Test
@@ -872,10 +892,139 @@ class BoskGraphQLEdgeCasesTest {
 
 	public record MixedTypes(boolean flag, double ratio) implements StateTreeNode {}
 
-	// Parameterized StateTreeNode types are not yet supported
-	// (see ParameterizedField in TypeValidationTest)
+	// Parameterized StateTreeNode types
+
+	public record GenericNode<T>(T value) implements StateTreeNode {}
+
+	public record GenericNodeRoot(
+		GenericNode<String> stringNode,
+		GenericNode<Integer> intNode
+	) implements StateTreeNode {}
+
+	@Test
+	void parameterizedStateNodes() {
+		var bosk = createBosk(GenericNodeRoot.class, new GenericNodeRoot(
+			new GenericNode<>("hello"),
+			new GenericNode<>(42)
+		));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of(
+					"stringNode", Map.of("value", "hello"),
+					"intNode", Map.of("value", 42)),
+				"{ stringNode { value } intNode { value } }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
+	public record GenericPayload(String field1) implements StateTreeNode {}
+
+	public record GenericPayloadNodeRoot(
+		GenericNode<GenericPayload> payloadNode
+	) implements StateTreeNode {}
+
+	@Test
+	void parameterizedStateNode_withRecordArgument() {
+		var bosk = createBosk(GenericPayloadNodeRoot.class,
+			new GenericPayloadNodeRoot(new GenericNode<>(new GenericPayload("nested"))));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("payloadNode", Map.of("value", Map.of("field1", "nested"))),
+				"{ payloadNode { value { field1 } } }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
+	public interface BoxVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASE_MAP = MapValue.copyOf(Map.of(
+			"string", Types.parameterizedType(BoxedCase.class, String.class),
+			"integer", Types.parameterizedType(BoxedCase.class, Integer.class)
+		));
+	}
+
+	public record BoxedCase<T>(T value) implements BoxVariant {
+		@Override public String tag() { return value instanceof String ? "string" : "integer"; }
+	}
+
+	public record BoxedCaseRoot(TaggedUnion<BoxVariant> box) implements StateTreeNode {}
+
+	@Test
+	void taggedUnionWithTwoParameterizationsOfOneRecord() {
+		assertBoxedCaseResolvesTo(new BoxedCase<>("hello"), "string", "BoxedCase_String", "hello");
+		assertBoxedCaseResolvesTo(new BoxedCase<>(42), "integer", "BoxedCase_Integer", 42);
+	}
+
+	private void assertBoxedCaseResolvesTo(BoxedCase<?> box, String tag, String caseTypeName, Object value) {
+		var bosk = createBosk(BoxedCaseRoot.class, new BoxedCaseRoot(TaggedUnion.of(box)));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("box", Map.of("tag", tag, "value", value)),
+				"{ box { tag ... on " + caseTypeName + " { value } } }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
+	public record GenericVariantRoot(TaggedUnion<GenericVariant<String>> variant) implements StateTreeNode {}
+
+	public interface GenericVariant<T> extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("caseA",
+			Types.parameterizedType(GenericCase.class, GenericVariant.class.getTypeParameters()[0]));
+	}
+
+	public record GenericCase<T>(T value) implements GenericVariant<T> {
+		@Override public String tag() { return "caseA"; }
+	}
+
+	@Test
+	void taggedUnionWithGenericCaseSupertype() {
+		var bosk = createBosk(GenericVariantRoot.class,
+			new GenericVariantRoot(TaggedUnion.<GenericVariant<String>>of(new GenericCase<>("hello"))));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("variant", Map.of("tag", "caseA", "value", "hello")),
+				"{ variant { tag ... on GenericCase_String { value } } }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
 
 	public record OptionalContainerRoot(Optional<MapValue<String>> tags) implements StateTreeNode {}
+
+	public record OptionalTaggedUnionRoot(Optional<TaggedUnion<BoxVariant>> box) implements StateTreeNode {}
+
+	@Test
+	void optionalTaggedUnionField_present() {
+		var bosk = createBosk(OptionalTaggedUnionRoot.class,
+			new OptionalTaggedUnionRoot(Optional.of(TaggedUnion.of(new BoxedCase<>("hello")))));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("box", Map.of("tag", "string", "value", "hello")),
+				"{ box { tag ... on BoxedCase_String { value } } }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
+	@Test
+	void optionalTaggedUnionField_absent() {
+		var bosk = createBosk(OptionalTaggedUnionRoot.class, new OptionalTaggedUnionRoot(Optional.empty()));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			var absent = new HashMap<String, Object>();
+			absent.put("box", null);
+			assertQueryReturns(absent, "{ box { tag } }", graphQL, bosk.rootReference().valueIfExists());
+		}
+	}
 
 	public record Info(int field1) implements StateTreeNode {}
 	public record CollisionRoot(
