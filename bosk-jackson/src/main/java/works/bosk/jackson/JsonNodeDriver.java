@@ -49,7 +49,7 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <R extends StateTreeNode> R initialState() throws InvalidTypeException, IOException, InterruptedException {
 		var result = downstream.<R>initialState();
-		contents = mapper.convertValue(result, JsonNode.class);
+		contents = toJsonNode(result);
 		traceCurrentState("After initialState");
 		return result;
 	}
@@ -121,11 +121,15 @@ public class JsonNodeDriver implements BoskDriver {
 
 	private <T> void doReplacement(NodeInfo nodeInfo, Supplier<String> lastSegment, T newValue) {
 		if (nodeInfo.replacementLocation() instanceof Root) {
-			contents = mapper.convertValue(newValue, JsonNode.class);
+			contents = toJsonNode(newValue);
 		} else {
-			JsonNode replacement = surgeon.replacementNode(nodeInfo, lastSegment.get(), () -> mapper.convertValue(newValue, JsonNode.class));
+			JsonNode replacement = surgeon.replacementNode(nodeInfo, lastSegment.get(), () -> toJsonNode(newValue));
 			surgeon.replaceNode(nodeInfo, replacement);
 		}
+	}
+
+	private JsonNode toJsonNode(Object value) {
+		return mapper.valueToTree(value);
 	}
 
 	void traceCurrentState(String description) {

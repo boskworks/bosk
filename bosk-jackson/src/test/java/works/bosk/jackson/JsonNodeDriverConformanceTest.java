@@ -2,6 +2,7 @@ package works.bosk.jackson;
 
 import org.junit.jupiter.api.BeforeEach;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BoskDriver;
 import works.bosk.testing.drivers.DriverConformanceTest;
 import works.bosk.testing.drivers.state.TestEntity;
@@ -10,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class JsonNodeDriverConformanceTest extends DriverConformanceTest {
 	private JsonNodeDriver jsonNodeDriver;
+
+	private static final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
 
 	@BeforeEach
 	void setUp() {
@@ -26,7 +29,8 @@ class JsonNodeDriverConformanceTest extends DriverConformanceTest {
 		JsonNode expected, actual;
 		try (var _ = bosk.readSession()) {
 			TestEntity boskRoot = bosk.rootReference().value();
-			expected = jsonNodeDriver.mapper.convertValue(boskRoot, JsonNode.class);
+			var targetType = typeFactory.constructType(bosk.rootReference().targetType());
+			expected = jsonNodeDriver.mapper.writerFor(targetType).valueToTree(boskRoot);
 			actual = jsonNodeDriver.contents;
 		}
 		assertEquals(expected, actual);

@@ -36,7 +36,7 @@ interface ChangeListener {
 	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException;
 
 	/**
-	 * @throws DownstreamInitialStateException if {@link BoskDriver#initialState(Class)}
+	 * @throws DownstreamInitialStateException if {@link BoskDriver#initialState}
 	 * is still underway but the downstream driver fails to provide an initial state.
 	 */
 	void onConnectionFailed(Exception cause) throws DownstreamInitialStateException;
