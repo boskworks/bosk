@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -26,10 +27,15 @@ import works.bosk.Path;
 import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
+import works.bosk.TaggedUnion;
+import works.bosk.TaggedUnionCase;
+import works.bosk.annotations.ReferencePath;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.libtesting.AbstractBoskTest;
 import works.bosk.libtesting.TestEntityBuilder;
+import works.bosk.util.Types;
 
 import static java.util.Collections.singletonList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -487,6 +493,55 @@ public class PathCompilerTest extends AbstractBoskTest {
 
 	private Iterable<Identifier> ids(String... strings) {
 		return Stream.of(strings).map(Identifier::from)::iterator;
+	}
+
+	public record GenericNode<T>(T value) implements StateTreeNode {}
+
+	public record GenericNodeRoot(GenericNode<String> node) implements StateTreeNode {}
+
+	public interface GenericNodeRefs {
+		@ReferencePath("/node")
+		Reference<GenericNode<String>> node();
+
+		@ReferencePath("/node/value")
+		Reference<String> value();
+	}
+
+	@Test
+	void referenceIntoGenericNode() throws InvalidTypeException {
+		var genericBosk = Bosk.simple("test", new GenericNodeRoot(new GenericNode<>("hello")));
+		var refs = genericBosk.rootReference().buildReferences(GenericNodeRefs.class);
+		try (var _ = genericBosk.readSession()) {
+			assertEquals("hello", refs.value().value());
+			assertEquals(new GenericNode<>("hello"), refs.node().value());
+			assertEquals(Types.parameterizedType(GenericNode.class, String.class), refs.node().targetType());
+		}
+	}
+
+	public record GenericVariantRoot(TaggedUnion<GenericVariant<String>> variant) implements StateTreeNode {}
+
+	public interface GenericVariant<T> extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("caseA",
+			Types.parameterizedType(GenericCase.class, GenericVariant.class.getTypeParameters()[0]));
+	}
+
+	public record GenericCase<T>(T value) implements GenericVariant<T> {
+		@Override public String tag() { return "caseA"; }
+	}
+
+	public interface GenericVariantRefs {
+		@ReferencePath("/variant/caseA/value")
+		Reference<String> value();
+	}
+
+	@Test
+	void referenceIntoGenericTaggedUnionCase() throws InvalidTypeException {
+		var variantBosk = Bosk.simple("test", new GenericVariantRoot(TaggedUnion.of(new GenericCase<>("hello"))));
+		var refs = variantBosk.rootReference().buildReferences(GenericVariantRefs.class);
+		try (var _ = variantBosk.readSession()) {
+			assertEquals("hello", refs.value().value());
+		}
 	}
 
 }
