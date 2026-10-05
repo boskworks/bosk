@@ -99,6 +99,71 @@ class BsonSerializerTest {
 		assertEquals(Path.parse("/variant/case1"), ((TaggedUnionCase1) decoded.variant().value()).self().path());
 	}
 
+	@Test
+	void taggedUnionWithTwoParameterizationsOfOneRecord() {
+		BsonSerializer bp = new BsonSerializer();
+		Bosk<ParameterizedVariantRoot> bosk = new Bosk<>(boskName(), ParameterizedVariantRoot.class,
+			_ -> new ParameterizedVariantRoot(TaggedUnion.of(new BoxedCase<>("hello"))), BoskConfig.simple());
+		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
+		Codec<ParameterizedVariantRoot> codec = registry.get(ParameterizedVariantRoot.class);
+
+		assertBsonRoundTrip(codec, new ParameterizedVariantRoot(TaggedUnion.of(new BoxedCase<>("hello"))));
+		assertBsonRoundTrip(codec, new ParameterizedVariantRoot(TaggedUnion.of(new BoxedCase<>(42))));
+	}
+
+	@Test
+	void taggedUnionWithGenericCaseSupertype() {
+		BsonSerializer bp = new BsonSerializer();
+		Bosk<GenericVariantRoot> bosk = new Bosk<>(boskName(), GenericVariantRoot.class,
+			_ -> new GenericVariantRoot(TaggedUnion.<GenericVariant<String>>of(new GenericCase<>("hello"))), BoskConfig.simple());
+		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
+		Codec<GenericVariantRoot> codec = registry.get(GenericVariantRoot.class);
+
+		assertBsonRoundTrip(codec, new GenericVariantRoot(TaggedUnion.<GenericVariant<String>>of(new GenericCase<>("hello"))));
+	}
+
+	private static <T> void assertBsonRoundTrip(Codec<T> codec, T original) {
+		BsonDocument document = new BsonDocument();
+		codec.encode(new BsonDocumentWriter(document), original, EncoderContext.builder().build());
+		T decoded = codec.decode(new BsonDocumentReader(document), DecoderContext.builder().build());
+		assertEquals(original, decoded);
+	}
+
+	@Test
+	void genericNodeCodec() throws InvalidTypeException {
+		BsonSerializer bp = new BsonSerializer();
+		Bosk<GenericRoot> bosk = new Bosk<GenericRoot>(boskName(), GenericRoot.class, this::initialGenericRoot, BoskConfig.simple());
+		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
+		Type nodeType = Types.parameterizedType(GenericNode.class, String.class);
+		@SuppressWarnings("unchecked")
+		Codec<GenericNode<String>> codec = (Codec<GenericNode<String>>) (Codec<?>) bp.getCodec(nodeType, GenericNode.class, registry, bosk);
+
+		GenericNode<String> original = new GenericNode<>("hello");
+		BsonDocument document = new BsonDocument();
+		codec.encode(new BsonDocumentWriter(document), original, EncoderContext.builder().build());
+		GenericNode<String> decoded = codec.decode(new BsonDocumentReader(document), DecoderContext.builder().build());
+		assertEquals(original, decoded);
+	}
+
+	@Test
+	void genericNodeRoundTripThroughRoot() {
+		BsonSerializer bp = new BsonSerializer();
+		Bosk<GenericRoot> bosk = new Bosk<GenericRoot>(boskName(), GenericRoot.class, this::initialGenericRoot, BoskConfig.simple());
+		CodecRegistry registry = CodecRegistries.fromProviders(bp.codecProviderFor(bosk), new ValueCodecProvider());
+		Codec<GenericRoot> codec = registry.get(GenericRoot.class);
+		try (var _ = bosk.readSession()) {
+			BsonDocument document = new BsonDocument();
+			GenericRoot original = bosk.rootReference().value();
+			codec.encode(new BsonDocumentWriter(document), original, EncoderContext.builder().build());
+			GenericRoot decoded = codec.decode(new BsonDocumentReader(document), DecoderContext.builder().build());
+			assertEquals(original, decoded);
+		}
+	}
+
+	private GenericRoot initialGenericRoot(Bosk<GenericRoot> bosk) {
+		return new GenericRoot(new GenericNode<>("hello"));
+	}
+
 	private VariantRoot initialVariantRoot(Bosk<VariantRoot> bosk) throws InvalidTypeException {
 		return new VariantRoot(TaggedUnion.of(new TaggedUnionCase1(bosk.rootReference().then(TaggedUnionCase1.class, Path.parse("/variant/case1")), "hello")));
 	}
@@ -130,5 +195,35 @@ class BsonSerializerTest {
 	}
 
 	public record TaggedUnionCase1(@Self Reference<TaggedUnionCase1> self, String stringField) implements Variant { }
+
+	public record GenericNode<T>(T value) implements StateTreeNode { }
+
+	public record GenericRoot(GenericNode<String> node) implements StateTreeNode { }
+
+	public record ParameterizedVariantRoot(TaggedUnion<ParameterizedVariant> variant) implements StateTreeNode { }
+
+	public interface ParameterizedVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.copyOf(Map.of(
+			"string", Types.parameterizedType(BoxedCase.class, String.class),
+			"integer", Types.parameterizedType(BoxedCase.class, Integer.class)
+		));
+	}
+
+	public record BoxedCase<T>(T value) implements ParameterizedVariant {
+		@Override public String tag() { return value instanceof String ? "string" : "integer"; }
+	}
+
+	public record GenericVariantRoot(TaggedUnion<GenericVariant<String>> variant) implements StateTreeNode { }
+
+	public interface GenericVariant<T> extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("caseA",
+			Types.parameterizedType(GenericCase.class, GenericVariant.class.getTypeParameters()[0]));
+	}
+
+	public record GenericCase<T>(T value) implements GenericVariant<T> {
+		@Override public String tag() { return "caseA"; }
+	}
 
 }
