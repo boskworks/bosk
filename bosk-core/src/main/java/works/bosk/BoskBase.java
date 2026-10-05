@@ -108,7 +108,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
 
 		try {
-			this.currentState = ingressDriver.initialState(rootRef.targetClass());
+			this.currentState = ingressDriver.initialState(rootRef.targetType());
 		} catch (InvalidTypeException | IOException | InterruptedException e) {
 			initializationFuture.completeExceptionally(e);
 			throw new IllegalArgumentException("Error computing initial state: " + e.getMessage(), e);
@@ -194,9 +194,10 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		}
 
 		@Override
-		public <RR extends StateTreeNode> RR initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
+		@SuppressWarnings("unchecked")
+		public <RR extends StateTreeNode> RR initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 			try (var _ = setupMDC(name, instanceID)) {
-				return rootType.cast(rootRef.targetClass().cast(requireNonNull(downstream.initialState(rootType))));
+				return (RR) rootRef.targetClass().cast(requireNonNull(downstream.initialState(rootType)));
 			}
 		}
 
@@ -258,8 +259,9 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		}
 
 		@Override
-		public <RR extends StateTreeNode> RR initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
-			return rootType.cast(requireNonNull(initialStateFunction.apply((Bosk<R>) BoskBase.this)));
+		@SuppressWarnings("unchecked")
+		public <RR extends StateTreeNode> RR initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+			return (RR) ReferenceUtils.rawClass(rootType).cast(requireNonNull(initialStateFunction.apply((Bosk<R>) BoskBase.this)));
 		}
 
 		@Override

@@ -1,6 +1,7 @@
 package works.bosk.drivers;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.Deque;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
@@ -46,7 +47,7 @@ public class BufferingDriver implements BoskDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		return downstream.initialState(rootType);
 	}
 

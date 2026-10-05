@@ -1,6 +1,7 @@
 package works.bosk.testing.drivers;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.Random;
 import java.util.function.DoubleSupplier;
 import org.slf4j.Logger;
@@ -44,7 +45,7 @@ public final class JitterDriver implements BoskDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		sleep();
 		return downstream.initialState(rootType);
 	}

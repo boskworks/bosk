@@ -1,15 +1,18 @@
 package works.bosk.jackson;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JavaType;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.StringNode;
+import tools.jackson.databind.type.TypeFactory;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
@@ -29,6 +32,7 @@ public class JsonNodeDriver implements BoskDriver {
 	final BoskDriver downstream;
 	final BoskContext context;
 	final ObjectMapper mapper;
+	final JavaType rootType;
 	final JsonNodeSurgeon surgeon;
 	JsonNode contents;
 	int updateNumber = 0;
@@ -42,14 +46,15 @@ public class JsonNodeDriver implements BoskDriver {
 		this.mapper = JsonMapper.builder()
 			.addModule(jacksonSerializer.moduleFor(bosk))
 			.build();
+		this.rootType = typeFactory.constructType(bosk.rootReference().targetType());
 		this.surgeon = new JsonNodeSurgeon();
 		this.context = bosk.context();
 	}
 
 	@Override
-	public synchronized <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
-		var result = downstream.initialState(rootType);
-		contents = mapper.convertValue(result, JsonNode.class);
+	public synchronized <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+		var result = downstream.<R>initialState(rootType);
+		contents = toJsonNode(result, this.rootType);
 		traceCurrentState("After initialState");
 		return result;
 	}
@@ -57,7 +62,7 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitReplacement(Reference<T> target, T newValue) {
 		traceCurrentState("Before submitReplacement");
-		doReplacement(surgeon.nodeInfo(currentRoot(), target), () -> target.path().lastSegment(), newValue);
+		doReplacement(target, surgeon.nodeInfo(currentRoot(), target), () -> target.path().lastSegment(), newValue);
 		downstream.submitReplacement(target, newValue);
 		traceCurrentState("After submitReplacement");
 	}
@@ -67,7 +72,7 @@ public class JsonNodeDriver implements BoskDriver {
 		traceCurrentState("Before submitConditionalReplacement");
 		JsonNode root = currentRoot();
 		if (preconditionMatches(root, precondition, requiredValue)) {
-			doReplacement(surgeon.nodeInfo(root, target), () -> target.path().lastSegment(), newValue);
+			doReplacement(target, surgeon.nodeInfo(root, target), () -> target.path().lastSegment(), newValue);
 		}
 		downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		traceCurrentState("After submitConditionalReplacement");
@@ -77,7 +82,7 @@ public class JsonNodeDriver implements BoskDriver {
 	public synchronized <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 		traceCurrentState("Before submitConditionalCreation");
 		if (surgeon.valueNode(currentRoot(), target) == null) {
-			doReplacement(surgeon.nodeInfo(currentRoot(), target), () -> target.path().lastSegment(), newValue);
+			doReplacement(target, surgeon.nodeInfo(currentRoot(), target), () -> target.path().lastSegment(), newValue);
 		}
 		downstream.submitConditionalCreation(target, newValue);
 		traceCurrentState("After submitConditionalCreation");
@@ -119,13 +124,18 @@ public class JsonNodeDriver implements BoskDriver {
 			&& Objects.equals(text.asString(), requiredValue.toString());
 	}
 
-	private <T> void doReplacement(NodeInfo nodeInfo, Supplier<String> lastSegment, T newValue) {
+	private <T> void doReplacement(Reference<T> target, NodeInfo nodeInfo, Supplier<String> lastSegment, T newValue) {
+		JavaType valueType = typeFactory.constructType(target.targetType());
 		if (nodeInfo.replacementLocation() instanceof Root) {
-			contents = mapper.convertValue(newValue, JsonNode.class);
+			contents = toJsonNode(newValue, valueType);
 		} else {
-			JsonNode replacement = surgeon.replacementNode(nodeInfo, lastSegment.get(), () -> mapper.convertValue(newValue, JsonNode.class));
+			JsonNode replacement = surgeon.replacementNode(nodeInfo, lastSegment.get(), () -> toJsonNode(newValue, valueType));
 			surgeon.replaceNode(nodeInfo, replacement);
 		}
+	}
+
+	private JsonNode toJsonNode(Object value, JavaType type) {
+		return mapper.writerFor(type).valueToTree(value);
 	}
 
 	void traceCurrentState(String description) {
@@ -143,5 +153,6 @@ public class JsonNodeDriver implements BoskDriver {
 		return mapper.convertValue(contents, JsonNode.class).toPrettyString();
 	}
 
+	private static final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
 	private static final Logger LOGGER = LoggerFactory.getLogger(JsonNodeDriver.class);
 }

@@ -4,6 +4,7 @@ import com.mongodb.MongoException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeoutException;
@@ -321,7 +322,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 			BoskConfig.<TestEntity>builder().driverFactory((b, d) -> {
 				BoskDriver failingDownstream = new ForwardingDriver(d) {
 					@Override
-					public <R extends StateTreeNode> R initialState(Class<R> rootType) throws IOException {
+					public <R extends StateTreeNode> R initialState(Type rootType) throws IOException {
 						throw thrown;
 					}
 				};

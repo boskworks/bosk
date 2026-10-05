@@ -26,7 +26,7 @@ class JsonNodeDriverConformanceTest extends DriverConformanceTest {
 		JsonNode expected, actual;
 		try (var _ = bosk.readSession()) {
 			TestEntity boskRoot = bosk.rootReference().value();
-			expected = jsonNodeDriver.mapper.convertValue(boskRoot, JsonNode.class);
+			expected = jsonNodeDriver.mapper.writerFor(jsonNodeDriver.rootType).valueToTree(boskRoot);
 			actual = jsonNodeDriver.contents;
 		}
 		assertEquals(expected, actual);

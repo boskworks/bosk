@@ -1,6 +1,7 @@
 package works.bosk.testing.drivers;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,7 +30,7 @@ public class AsyncDriver implements BoskDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		return downstream.initialState(rootType);
 	}
 

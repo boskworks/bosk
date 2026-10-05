@@ -261,7 +261,7 @@ class SqlDriverImpl implements SqlDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		// TODO: Consider a disconnected mode where we delegate downstream if something goes wrong
 		LOGGER.debug("initialState({})", rootType);
 		try (
@@ -275,7 +275,7 @@ class SqlDriverImpl implements SqlDriver {
 				LOGGER.debug("No current state; initializing {} table from downstream", BOSK);
 				this.epoch = UUID.randomUUID().toString();
 				result = downstream.initialState(rootType);
-				String stateJson = mapper.writeValueAsString(result);
+				String stateJson = mapper.writerFor(typeFactory.constructType(rootType)).writeValueAsString(result);
 
 				using(connection)
 					.insertInto(BOSK).columns(ID, STATE, BOSK.EPOCH)
@@ -464,7 +464,7 @@ class SqlDriverImpl implements SqlDriver {
 				if (newValue == null) {
 					throw new NotYetImplementedException("Cannot delete root");
 				}
-				String json = mapper.writeValueAsString(newValue);
+				String json = mapper.writerFor(typeFactory.constructType(target.targetType())).writeValueAsString(newValue);
 				long revision = insertChange(connection, target, json);
 				using(connection)
 					.update(BOSK)
@@ -483,7 +483,7 @@ class SqlDriverImpl implements SqlDriver {
 					newNode = null;
 					surgeon.deleteNode(node);
 				} else {
-					newNode = mapper.valueToTree(newValue);
+					newNode = mapper.writerFor(typeFactory.constructType(target.targetType())).valueToTree(newValue);
 					surgeon.replaceNode(node, surgeon.replacementNode(node, target.path().lastSegment(), ()->newNode));
 				}
 				String nodeJson, stateJson;
@@ -512,7 +512,7 @@ class SqlDriverImpl implements SqlDriver {
 					epoch,
 					ref.pathString(),
 					newValue,
-					mapper.writeValueAsString(context.getAttributes())
+					mapper.writerFor(mapValueType(String.class)).writeValueAsString(context.getAttributes())
 				)
 				.returning(REVISION)
 				.fetchOptional(REVISION)

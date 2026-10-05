@@ -1,6 +1,7 @@
 package works.bosk.opentelemetry;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
@@ -28,7 +29,7 @@ final class TraceContextReceiverDriver implements TraceContextDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		try (var _ = Utils.otelContextFromDiagnosticAttributes(context).makeCurrent()) {
 			return downstream.initialState(rootType);
 		}
