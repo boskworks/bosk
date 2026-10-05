@@ -11,6 +11,7 @@ import graphql.schema.CoercingParseLiteralException;
 import graphql.schema.CoercingParseValueException;
 import graphql.schema.CoercingSerializeException;
 import graphql.schema.DataFetcher;
+import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLEnumType;
@@ -46,6 +47,7 @@ import works.bosk.Listing;
 import works.bosk.MapValue;
 import works.bosk.Path;
 import works.bosk.Reference;
+import works.bosk.ReferenceUtils;
 import works.bosk.RootReference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
@@ -109,7 +111,7 @@ public class BoskGraphQL {
 		 * Registry of user-provided type names, used to detect duplicates.
 		 * A name is registered here before its type is built and added to {@link #builtTypesByName}.
 		 */
-		private final Map<String, Class<?>> typesByName = new HashMap<>();
+		private final Map<String, Type> typesByName = new HashMap<>();
 
 		/**
 		 * The breadth-first traversal queue.
@@ -117,7 +119,7 @@ public class BoskGraphQL {
 		 * are encountered because they can't be responsible for recursive type
 		 * cycles without involving a record.
 		 */
-		private final ArrayDeque<Class<? extends Record>> queue = new ArrayDeque<>();
+		private final ArrayDeque<Type> queue = new ArrayDeque<>();
 
 		/**
 		 * All built GraphQL types, keyed by name, including generated wrapper types
@@ -129,14 +131,15 @@ public class BoskGraphQL {
 		private GraphQLSchema generate() {
 			var reg = newCodeRegistry();
 
-			ensureQueued(rootReference.targetClass());
+			Type rootType = rootReference.targetType();
+			ensureQueued(rootType);
 			while (!queue.isEmpty()) {
 				processRecord(queue.removeFirst(), reg);
 			}
 
 			var queryBuilder = GraphQLObjectType.newObject().name("Query");
-			for (var c : rootReference.targetClass().getRecordComponents()) {
-				addRecordComponent(queryBuilder, c, "Query", reg);
+			for (var c : ReferenceUtils.rawClass(rootType).getRecordComponents()) {
+				addRecordComponent(queryBuilder, c, rootType, "Query", reg);
 			}
 			var queryType = queryBuilder.build();
 
@@ -147,11 +150,11 @@ public class BoskGraphQL {
 				.build();
 		}
 
-		private void processRecord(Class<? extends Record> clazz, GraphQLCodeRegistry.Builder reg) {
-			String name = typeName(clazz);
+		private void processRecord(Type recordType, GraphQLCodeRegistry.Builder reg) {
+			String name = typeName(recordType);
 			var builder = GraphQLObjectType.newObject().name(name);
-			for (var c : clazz.getRecordComponents()) {
-				addRecordComponent(builder, c, name, reg);
+			for (var c : ReferenceUtils.rawClass(recordType).getRecordComponents()) {
+				addRecordComponent(builder, c, recordType, name, reg);
 			}
 			builtTypesByName.put(name, builder.build());
 		}
@@ -159,12 +162,13 @@ public class BoskGraphQL {
 		private void addRecordComponent(
 			GraphQLObjectType.Builder parentBuilder,
 			RecordComponent component,
+			Type containingType,
 			String parentTypeName,
 			GraphQLCodeRegistry.Builder reg
 		) {
 			String fieldName = component.getName();
 			validateFieldName(fieldName, parentTypeName);
-			Type genericType = component.getGenericType();
+			Type genericType = ReferenceUtils.resolveTypeVariables(component.getGenericType(), containingType);
 
 			if (genericType instanceof ParameterizedType pt) {
 				var rawType = (Class<?>) pt.getRawType();
@@ -173,19 +177,25 @@ public class BoskGraphQL {
 				if (Optional.class.isAssignableFrom(rawType)) {
 					addOptionalField(parentBuilder, fieldName, typeArgs[0], parentTypeName, reg);
 				} else if (Catalog.class.isAssignableFrom(rawType)) {
-					addCatalogField(parentBuilder, fieldName, typeArgs[0], parentTypeName, reg);
+					addContainerField(parentBuilder, fieldName, parentTypeName, reg, catalogField(typeArgs[0]));
 				} else if (SideTable.class.isAssignableFrom(rawType)) {
-					addSideTableField(parentBuilder, fieldName, typeArgs[1], parentTypeName, reg);
+					addContainerField(parentBuilder, fieldName, parentTypeName, reg, sideTableField(typeArgs[1]));
 				} else if (Listing.class.isAssignableFrom(rawType)) {
-					addListingField(parentBuilder, fieldName, typeArgs[0], parentTypeName, reg);
+					addContainerField(parentBuilder, fieldName, parentTypeName, reg, listingField(typeArgs[0]));
 				} else if (TaggedUnion.class.isAssignableFrom(rawType)) {
-					addTaggedUnionField(parentBuilder, fieldName, typeArgs[0], parentTypeName, reg);
+					addContainerField(parentBuilder, fieldName, parentTypeName, reg, taggedUnionField(typeArgs[0], reg));
 				} else if (ListValue.class.isAssignableFrom(rawType)) {
 					addListValueField(parentBuilder, fieldName, typeArgs[0]);
 				} else if (MapValue.class.isAssignableFrom(rawType)) {
-					addMapValueField(parentBuilder, fieldName, typeArgs[0], parentTypeName, reg);
+					addContainerField(parentBuilder, fieldName, parentTypeName, reg, mapValueField(typeArgs[0]));
 				} else if (Reference.class.isAssignableFrom(rawType)) {
-					addReferenceField(parentBuilder, fieldName, typeArgs[0], parentTypeName, reg);
+					addContainerField(parentBuilder, fieldName, parentTypeName, reg, referenceField(typeArgs[0]));
+				} else if (rawType.isRecord()) {
+					ensureQueued(pt);
+					parentBuilder.field(newFieldDefinition()
+						.name(fieldName)
+						.type(nonNull(typeRef(typeName(pt))))
+						.build());
 				} else {
 					throw new UnsupportedTypeException("Unsupported parameterized type " + rawType.getName()
 						+ " for field " + fieldName + " on " + parentTypeName);
@@ -226,52 +236,94 @@ public class BoskGraphQL {
 			if (innerType instanceof ParameterizedType pt) {
 				var rawType = (Class<?>) pt.getRawType();
 				if (Reference.class.isAssignableFrom(rawType)) {
-					addOptionalReferenceField(parentBuilder, fieldName, pt, parentTypeName, reg);
+					addOptionalContainerField(parentBuilder, fieldName, parentTypeName, reg, referenceField(pt.getActualTypeArguments()[0]));
+					return;
+				} else if (MapValue.class.isAssignableFrom(rawType)) {
+					addOptionalContainerField(parentBuilder, fieldName, parentTypeName, reg, mapValueField(pt.getActualTypeArguments()[0]));
+					return;
+				} else if (Catalog.class.isAssignableFrom(rawType)) {
+					addOptionalContainerField(parentBuilder, fieldName, parentTypeName, reg, catalogField(pt.getActualTypeArguments()[0]));
+					return;
+				} else if (SideTable.class.isAssignableFrom(rawType)) {
+					addOptionalContainerField(parentBuilder, fieldName, parentTypeName, reg, sideTableField(pt.getActualTypeArguments()[1]));
+					return;
+				} else if (Listing.class.isAssignableFrom(rawType)) {
+					addOptionalContainerField(parentBuilder, fieldName, parentTypeName, reg, listingField(pt.getActualTypeArguments()[0]));
+					return;
+				} else if (TaggedUnion.class.isAssignableFrom(rawType)) {
+					addOptionalContainerField(parentBuilder, fieldName, parentTypeName, reg, taggedUnionField(pt.getActualTypeArguments()[0], reg));
 					return;
 				}
-				if (MapValue.class.isAssignableFrom(rawType)
-					|| Catalog.class.isAssignableFrom(rawType)
-					|| SideTable.class.isAssignableFrom(rawType)
-					|| Listing.class.isAssignableFrom(rawType)
-					|| TaggedUnion.class.isAssignableFrom(rawType)) {
-					throw new UnsupportedTypeException("Optional<" + rawType.getSimpleName() + "<...>> fields are not yet supported"
-						+ " (field " + fieldName + " on " + parentTypeName + ")");
-				}
 			}
-			parentBuilder.field(newFieldDefinition()
-				.name(fieldName)
-				.type(resolveType(innerType))
-				.build());
-			var fetcher = PropertyDataFetcher.fetching(fieldName);
-			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env -> {
-				Optional<?> opt = uncheckedCast(fetcher.get(env));
-				return opt == null ? null : opt.orElse(null);
-			});
+			addOptionalContainerField(parentBuilder, fieldName, parentTypeName, reg,
+				new ContainerField(resolveType(innerType), List.of(), (_, value) -> value));
 		}
 
-		private void addOptionalReferenceField(
+		private record ContainerField(GraphQLOutputType type, List<GraphQLArgument> arguments, ContainerFetcher fetcher) {}
+
+		@FunctionalInterface
+		private interface ContainerFetcher {
+			Object fetch(DataFetchingEnvironment env, Object container);
+		}
+
+		/**
+		 * Registers a field whose value is passed as-is to {@code field}'s fetcher.
+		 */
+		private void addContainerField(
 			GraphQLObjectType.Builder parentBuilder,
 			String fieldName,
-			ParameterizedType referenceType,
 			String parentTypeName,
-			GraphQLCodeRegistry.Builder reg
+			GraphQLCodeRegistry.Builder reg,
+			ContainerField field
 		) {
-			Type targetType = referenceType.getActualTypeArguments()[0];
-			String entryName = "_Reference_" + typeName(targetType);
-			buildEntryType(entryName, GRAPHQL_PATH, PATH_FIELD, targetType, false);
-			parentBuilder.field(newFieldDefinition()
+			var propertyFetcher = PropertyDataFetcher.fetching(fieldName);
+			registerField(parentBuilder, fieldName, parentTypeName, reg,
+				nonNull(field.type()), field.arguments(),
+				(DataFetcher<?>) env -> field.fetcher().fetch(env, propertyFetcher.get(env)));
+		}
+
+		/**
+		 * Like {@link #addContainerField}, but the field is nullable and an {@link Optional}
+		 * value is unwrapped before it reaches {@code field}'s fetcher.
+		 */
+		private void addOptionalContainerField(
+			GraphQLObjectType.Builder parentBuilder,
+			String fieldName,
+			String parentTypeName,
+			GraphQLCodeRegistry.Builder reg,
+			ContainerField field
+		) {
+			var propertyFetcher = PropertyDataFetcher.fetching(fieldName);
+			registerField(parentBuilder, fieldName, parentTypeName, reg,
+				field.type(), field.arguments(),
+				(DataFetcher<?>) env -> {
+					Object container = optionalOrNull(propertyFetcher.get(env));
+					return container == null ? null : field.fetcher().fetch(env, container);
+				});
+		}
+
+		private void registerField(
+			GraphQLObjectType.Builder parentBuilder,
+			String fieldName,
+			String parentTypeName,
+			GraphQLCodeRegistry.Builder reg,
+			GraphQLOutputType fieldType,
+			List<GraphQLArgument> arguments,
+			DataFetcher<?> fetcher
+		) {
+			var fieldBuilder = newFieldDefinition()
 				.name(fieldName)
-				.type(typeRef(entryName))
-				.build());
-			var fetcher = PropertyDataFetcher.fetching(fieldName);
-			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env -> {
-				Optional<?> opt = uncheckedCast(fetcher.get(env));
-				if (opt == null || opt.isEmpty()) {
-					return null;
-				}
-				Reference<?> ref = uncheckedCast(opt.get());
-				return hashMapOf(PATH_FIELD, ref.path(), VALUE_FIELD, ref.valueIfExists());
-			});
+				.type(fieldType);
+			arguments.forEach(fieldBuilder::argument);
+			parentBuilder.field(fieldBuilder.build());
+			reg.dataFetcher(coordinates(parentTypeName, fieldName), fetcher);
+		}
+
+		/**
+		 * @return the value wrapped by an optional field, or null if the field is empty
+		 */
+		private static Object optionalOrNull(Object fetched) {
+			return fetched == null ? null : ((Optional<?>) fetched).orElse(null);
 		}
 
 		private void addListValueField(
@@ -287,115 +339,74 @@ public class BoskGraphQL {
 			// so GraphQLList can handle it natively without our help.
 		}
 
-		private void addMapValueField(
-			GraphQLObjectType.Builder parentBuilder,
-			String fieldName,
-			Type elementType,
-			String parentTypeName,
-			GraphQLCodeRegistry.Builder reg
-		) {
+		private ContainerField mapValueField(Type elementType) {
 			String entryName = "_MapValueEntry_" + typeName(elementType);
 			buildEntryType(entryName, GraphQLString, KEY_FIELD, elementType, true);
-			parentBuilder.field(newFieldDefinition()
-				.name(fieldName)
-				.argument(GraphQLArgument.newArgument()
-					.name(KEY_FIELD)
-					.type(GraphQLString)
-					.build())
-				.type(nonNull(GraphQLList.list(nonNull(typeRef(entryName)))))
-				.build());
-			var fetcher = PropertyDataFetcher.fetching(fieldName);
-			// No key filter; return all
-			// No match
-			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env -> {
-				MapValue<Object> mapValue = uncheckedCast(fetcher.get(env));
-				String keyArg = env.getArgument(KEY_FIELD);
-				if (keyArg == null) {
-					// No key filter; return all
-					List<Map<String, Object>> result = new ArrayList<>();
-					for (var entry : mapValue.entrySet()) {
-						result.add(Map.of(KEY_FIELD, entry.getKey(), VALUE_FIELD, entry.getValue()));
-					}
-					return result;
-				} else {
-					Object value = mapValue.get(keyArg);
-					if (value == null) {
-						// No match
-						return List.of();
+			return new ContainerField(
+				GraphQLList.list(nonNull(typeRef(entryName))),
+				List.of(GraphQLArgument.newArgument().name(KEY_FIELD).type(GraphQLString).build()),
+				(env, value) -> {
+					MapValue<Object> mapValue = uncheckedCast(value);
+					String keyArg = env.getArgument(KEY_FIELD);
+					if (keyArg == null) {
+						List<Map<String, Object>> result = new ArrayList<>();
+						for (var entry : mapValue.entrySet()) {
+							result.add(Map.of(KEY_FIELD, entry.getKey(), VALUE_FIELD, entry.getValue()));
+						}
+						return result;
 					} else {
-						return List.of(Map.of(KEY_FIELD, keyArg, VALUE_FIELD, value));
+						Object entryValue = mapValue.get(keyArg);
+						if (entryValue == null) {
+							return List.of();
+						} else {
+							return List.of(Map.of(KEY_FIELD, keyArg, VALUE_FIELD, entryValue));
+						}
 					}
-				}
-			});
+				});
 		}
 
-		private <E extends Entity> void addCatalogField(
-			GraphQLObjectType.Builder parentBuilder,
-			String fieldName,
-			Type elementType,
-			String parentTypeName,
-			GraphQLCodeRegistry.Builder reg
-		) {
+		private <E extends Entity> ContainerField catalogField(Type elementType) {
 			String elemName = typeName(elementType);
 			ensureQueued(elementType);
-			parentBuilder.field(newFieldDefinition()
-				.name(fieldName)
-				.argument(GraphQLArgument.newArgument()
-					.name(ID_FIELD)
-					.type(GRAPHQL_IDENTIFIER)
-					.build())
-				.type(nonNull(GraphQLList.list(nonNull(typeRef(elemName)))))
-				.build());
-			var fetcher = PropertyDataFetcher.fetching(fieldName);
-			// No id filter; return all
-			// no match
-			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env -> {
-				Catalog<E> catalog = uncheckedCast(fetcher.get(env));
-				Identifier id = env.getArgument(ID_FIELD);
-				if (id == null) {
-					// No id filter; return all
-					return catalog.stream().toList();
-				} else {
-					E entry = catalog.get(id);
-					return entry == null
-						? List.of() // no match
-						: List.of(entry);
-				}
-			});
+			return new ContainerField(
+				GraphQLList.list(nonNull(typeRef(elemName))),
+				List.of(GraphQLArgument.newArgument().name(ID_FIELD).type(GRAPHQL_IDENTIFIER).build()),
+				(env, value) -> {
+					Catalog<E> catalog = uncheckedCast(value);
+					Identifier id = env.getArgument(ID_FIELD);
+					if (id == null) {
+						return catalog.stream().toList();
+					} else {
+						E entry = catalog.get(id);
+						return entry == null ? List.of() : List.of(entry);
+					}
+				});
 		}
 
-		private <K extends Entity, V> void addSideTableField(
-			GraphQLObjectType.Builder parentBuilder,
-			String fieldName,
-			Type valueType,
-			String parentTypeName,
-			GraphQLCodeRegistry.Builder reg
-		) {
-			addContainerEntryField(parentBuilder, fieldName, valueType, "SideTable", true);
-			var fetcher = PropertyDataFetcher.fetching(fieldName);
-			// No id filter; return all
-			// no match
-			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env -> {
-				SideTable<K, V> table = uncheckedCast(fetcher.get(env));
-				Identifier idArg = env.getArgument(ID_FIELD);
-				if (idArg == null) {
-					// No id filter; return all
-					List<Map<String, Object>> result = new ArrayList<>();
-					table.forEachID((id, value) -> result.add(Map.of(
-						PATH_FIELD, table.domain().then(id).path(),
-						VALUE_FIELD, value)));
-					return result;
-				} else {
-					if (table.hasID(idArg)) {
-						return List.of(Map.of(
-							PATH_FIELD, table.domain().then(idArg).path(),
-							VALUE_FIELD, table.get(idArg)
-						));
+		private <K extends Entity, V> ContainerField sideTableField(Type valueType) {
+			return new ContainerField(
+				containerEntryType("SideTable", valueType, true),
+				List.of(GraphQLArgument.newArgument().name(ID_FIELD).type(GRAPHQL_IDENTIFIER).build()),
+				(env, value) -> {
+					SideTable<K, V> table = uncheckedCast(value);
+					Identifier idArg = env.getArgument(ID_FIELD);
+					if (idArg == null) {
+						List<Map<String, Object>> result = new ArrayList<>();
+						table.forEachID((id, entryValue) -> result.add(Map.of(
+							PATH_FIELD, table.domain().then(id).path(),
+							VALUE_FIELD, entryValue)));
+						return result;
 					} else {
-						return List.of(); // no match
+						if (table.hasID(idArg)) {
+							return List.of(Map.of(
+								PATH_FIELD, table.domain().then(idArg).path(),
+								VALUE_FIELD, table.get(idArg)
+							));
+						} else {
+							return List.of();
+						}
 					}
-				}
-			});
+				});
 		}
 
 		/**
@@ -407,103 +418,66 @@ public class BoskGraphQL {
 		 * entries and include fields of the referenced entities in the query results.
 		 * If there's no such entity, the value is represented by a null.
 		 */
-		private <E extends Entity> void addListingField(
-			GraphQLObjectType.Builder parentBuilder,
-			String fieldName,
-			Type elementType,
-			String parentTypeName,
-			GraphQLCodeRegistry.Builder reg
-		) {
-			addContainerEntryField(parentBuilder, fieldName, elementType, "Listing", false);
-			var fetcher = PropertyDataFetcher.fetching(fieldName);
-			// No id filter; return all
-			// no match
-			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env -> {
-				Listing<E> listing = uncheckedCast(fetcher.get(env));
-				Identifier idArg = env.getArgument(ID_FIELD);
-				if (idArg == null) {
-					// No id filter; return all
-					List<Map<String, Object>> result = new ArrayList<>();
-					var domain = listing.domain();
-					for (Identifier id : listing.ids()) {
-						result.add(hashMapOf(
-							PATH_FIELD, domain.then(id).path(),
-							VALUE_FIELD, safeGetValue(listing, id)
-						));
-					}
-					return result;
-				} else {
-					if (listing.containsID(idArg)) {
-						return List.of(hashMapOf(
-							PATH_FIELD, listing.domain().then(idArg).path(),
-							VALUE_FIELD, safeGetValue(listing, idArg)
-						));
+		private <E extends Entity> ContainerField listingField(Type elementType) {
+			return new ContainerField(
+				containerEntryType("Listing", elementType, false),
+				List.of(GraphQLArgument.newArgument().name(ID_FIELD).type(GRAPHQL_IDENTIFIER).build()),
+				(env, value) -> {
+					Listing<E> listing = uncheckedCast(value);
+					Identifier idArg = env.getArgument(ID_FIELD);
+					if (idArg == null) {
+						List<Map<String, Object>> result = new ArrayList<>();
+						var domain = listing.domain();
+						for (Identifier id : listing.ids()) {
+							result.add(hashMapOf(
+								PATH_FIELD, domain.then(id).path(),
+								VALUE_FIELD, safeGetValue(listing, id)
+							));
+						}
+						return result;
 					} else {
-						return List.of(); // no match
+						if (listing.containsID(idArg)) {
+							return List.of(hashMapOf(
+								PATH_FIELD, listing.domain().then(idArg).path(),
+								VALUE_FIELD, safeGetValue(listing, idArg)
+							));
+						} else {
+							return List.of();
+						}
 					}
-				}
-			});
+				});
 		}
 
-		private void addContainerEntryField(
-			GraphQLObjectType.Builder parentBuilder,
-			String fieldName,
-			Type valueType,
-			String containerKind,
-			boolean valueNonNull
-		) {
+		private GraphQLOutputType containerEntryType(String containerKind, Type valueType, boolean valueNonNull) {
 			String entryName = "_" + containerKind + "Entry_" + typeName(valueType);
 			buildEntryType(entryName, GRAPHQL_PATH, PATH_FIELD, valueType, valueNonNull);
-			parentBuilder.field(newFieldDefinition()
-				.name(fieldName)
-				.argument(GraphQLArgument.newArgument()
-					.name(ID_FIELD) // Query by ID rather than path
-					.type(GRAPHQL_IDENTIFIER)
-					.build())
-				.type(nonNull(GraphQLList.list(nonNull(typeRef(entryName)))))
-				.build());
+			return GraphQLList.list(nonNull(typeRef(entryName)));
 		}
 
-		private void addReferenceField(
-			GraphQLObjectType.Builder parentBuilder,
-			String fieldName,
-			Type targetType,
-			String parentTypeName,
-			GraphQLCodeRegistry.Builder reg
-		) {
+		private ContainerField referenceField(Type targetType) {
 			String entryName = "_Reference_" + typeName(targetType);
 			buildEntryType(entryName, GRAPHQL_PATH, PATH_FIELD, targetType, false);
-			parentBuilder.field(newFieldDefinition()
-				.name(fieldName)
-				.type(nonNull(typeRef(entryName)))
-				.build());
-			var fetcher = PropertyDataFetcher.fetching(fieldName);
-			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env -> {
-				Reference<?> ref = uncheckedCast(fetcher.get(env));
-				return hashMapOf(
-					PATH_FIELD, ref.path(),
-					VALUE_FIELD, ref.valueIfExists()
-				);
-			});
+			return new ContainerField(
+				typeRef(entryName), List.of(), (_, value) -> {
+					Reference<?> ref = uncheckedCast(value);
+					return hashMapOf(
+						PATH_FIELD, ref.path(),
+						VALUE_FIELD, ref.valueIfExists()
+					);
+				});
 		}
 
 		@SuppressWarnings("unchecked")
-		private <V extends TaggedUnionCase> void addTaggedUnionField(
-			GraphQLObjectType.Builder parentBuilder,
-			String fieldName,
-			Type caseSupertype,
-			String parentTypeName,
-			GraphQLCodeRegistry.Builder reg
-		) {
-			// GraphQL builds schemas from raw classes, so a parameterized
-			// case supertype isn't supported here.
-			Class<V> caseSupertypeClass = (Class<V>) caseSupertype;
-			String ifaceName = typeName(caseSupertypeClass);
+		private <V extends TaggedUnionCase> ContainerField taggedUnionField(Type caseSupertype, GraphQLCodeRegistry.Builder reg) {
+			// The case map is declared on the raw class, but each case type is
+			// resolved against the (possibly parameterized) case supertype.
+			Class<?> caseSupertypeClass = ReferenceUtils.rawClass(caseSupertype);
+			String ifaceName = typeName(caseSupertype);
 
 			// Kind of like a computeIfAbsent, but we can produce more than one
 			// table entry on each call, so we can't actually use computeIfAbsent.
 			if (!builtTypesByName.containsKey(ifaceName)) {
-				registerTypeName(ifaceName, caseSupertypeClass);
+				registerTypeName(ifaceName, caseSupertype);
 
 				MapValue<Type> caseMap;
 				try {
@@ -520,10 +494,13 @@ public class BoskGraphQL {
 				var interfaceType = interfaceBuilder.build();
 				builtTypesByName.put(ifaceName, interfaceType);
 
+				Map<String, String> typeNameByTag = new HashMap<>();
 				for (var entry : caseMap.entrySet()) {
-					Class<?> caseClass = (Class<?>) entry.getValue();
-					String typeName = typeName(caseClass);
-					registerTypeName(typeName, caseClass);
+					String tag = entry.getKey();
+					Type caseType = ReferenceUtils.resolveTypeVariables(entry.getValue(), caseSupertype);
+					String typeName = typeName(caseType);
+					registerTypeName(typeName, caseType);
+					typeNameByTag.put(tag, typeName);
 					var objBuilder = GraphQLObjectType.newObject()
 						.name(typeName)
 						.withInterface(interfaceType);
@@ -531,38 +508,34 @@ public class BoskGraphQL {
 						.name(TAG_FIELD)
 						.type(nonNull(GraphQLString))
 						.build());
-					emitRecordComponents(objBuilder, caseClass, reg);
+					emitRecordComponents(objBuilder, caseType, reg);
 					builtTypesByName.put(typeName, objBuilder.build());
 				}
 
 				reg.typeResolver((GraphQLInterfaceType) builtTypesByName.get(ifaceName), env -> {
 					Object value = env.getObject();
-					GraphQLObjectType result = (GraphQLObjectType) builtTypesByName.get(typeName(value.getClass()));
+					String tag = ((TaggedUnionCase) value).tag();
+					String typeName = typeNameByTag.get(tag);
+					GraphQLObjectType result = typeName == null ? null : (GraphQLObjectType) builtTypesByName.get(typeName);
 					if (result == null) {
-						throw new IllegalStateException("Unknown tagged union case type: " + value.getClass().getName());
+						throw new IllegalStateException("Unknown tagged union case tag: " + tag);
 					}
 					return result;
 				});
 			}
 
-			parentBuilder.field(newFieldDefinition()
-				.name(fieldName)
-				.type(nonNull(typeRef(ifaceName)))
-				.build());
-			var fetcher = PropertyDataFetcher.fetching(fieldName);
-			reg.dataFetcher(coordinates(parentTypeName, fieldName), (DataFetcher<?>) env1 -> {
-				TaggedUnion<V> union = uncheckedCast(fetcher.get(env1));
-				return union.value();
-			});
+			return new ContainerField(
+				typeRef(ifaceName), List.of(),
+				(_, value) -> ((TaggedUnion<V>) value).value());
 		}
 
 		private void emitRecordComponents(
 			GraphQLObjectType.Builder builder,
-			Class<?> recordClass,
+			Type recordType,
 			GraphQLCodeRegistry.Builder reg
 		) {
-			for (RecordComponent component : recordClass.getRecordComponents()) {
-				addRecordComponent(builder, component, typeName(recordClass), reg);
+			for (RecordComponent component : ReferenceUtils.rawClass(recordType).getRecordComponents()) {
+				addRecordComponent(builder, component, recordType, typeName(recordType), reg);
 			}
 		}
 
@@ -570,12 +543,11 @@ public class BoskGraphQL {
 		 * @param type a record type
 		 */
 		private void ensureQueued(Type type) {
-			if (type instanceof Class<?> clazz && clazz.isRecord()) {
-				String name = typeName(clazz);
-				if (!builtTypesByName.containsKey(name) && registerTypeName(name, clazz)) {
-					@SuppressWarnings("unchecked")
-					Class<? extends Record> recordClass = (Class<? extends Record>) clazz;
-					queue.add(recordClass);
+			if ((type instanceof Class<?> || type instanceof ParameterizedType)
+				&& ReferenceUtils.rawClass(type).isRecord()) {
+				String name = typeName(type);
+				if (!builtTypesByName.containsKey(name) && registerTypeName(name, type)) {
+					queue.add(type);
 				}
 			} else {
 				throw new UnsupportedTypeException("Expected a record type: " + type);
@@ -609,6 +581,10 @@ public class BoskGraphQL {
 				}
 				if (ListValue.class.isAssignableFrom(rawType)) {
 					return GraphQLList.list(nonNull(resolveType(pt.getActualTypeArguments()[0])));
+				}
+				if (rawType.isRecord()) {
+					ensureQueued(pt);
+					return typeRef(typeName(pt));
 				}
 				throw new UnsupportedTypeException("Unsupported parameterized type " + rawType.getName()
 					+ " for field type. Consider wrapping in a record class.");
@@ -659,17 +635,17 @@ public class BoskGraphQL {
 			}
 		}
 
-		private boolean registerTypeName(String name, Class<?> clazz) {
-			assert name.equals(typeName(clazz)) : "name must equal typeName(clazz)";
-			Class<?> existing = typesByName.get(name);
-			if (existing == clazz) {
+		private boolean registerTypeName(String name, Type type) {
+			assert name.equals(typeName(type)) : "name must equal typeName(type)";
+			Type existing = typesByName.get(name);
+			if (type.equals(existing)) {
 				return false;
 			}
 			if (existing != null) {
 				throw new UnsupportedNameException("Duplicate GraphQL type name '" + name
-					+ "' from " + clazz.getName() + " and " + existing.getName());
+					+ "' from " + type.getTypeName() + " and " + existing.getTypeName());
 			}
-			typesByName.put(name, clazz);
+			typesByName.put(name, type);
 			return true;
 		}
 

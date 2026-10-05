@@ -203,11 +203,20 @@ C&lt;String> someField;
 	}
 
 	/**
-	 * @param typeWithVariables a {@link Type} that may or may not contain references to {@link TypeVariable}s.
-	 * @param environmentType the type that defines what those variables mean
-	 * @return a new type whose variables are all bound by the definitions in <code>environmentType</code>
+	 * Resolves the type variables in {@code typeWithVariables} using the type arguments
+	 * of {@code environmentType}. For example, if {@code environmentType} is
+	 * {@code Node<String>}, resolving the type variable {@code T} yields {@code String}.
+	 * <p>
+	 * This is how a generic state node's component types become concrete before they are
+	 * validated or serialized; most callers want {@link #parameterType(Type, Class, int)}
+	 * instead, and generally the framework calls this on the caller's behalf.
+	 *
+	 * @param typeWithVariables a type that may mention type variables, such as a record
+	 *   component's generic type
+	 * @param environmentType the parameterized type that gives those variables their meaning
+	 * @return a type whose variables are all bound by {@code environmentType}
 	 */
-	static Type resolveTypeVariables(Type typeWithVariables, Type environmentType) {
+	public static Type resolveTypeVariables(Type typeWithVariables, Type environmentType) {
 		if (typeWithVariables instanceof TypeVariable) {
 			// The recursive call has typeWithVariables us one of the type variables
 			// from our own generic class.  For example, if environmentType
