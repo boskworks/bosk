@@ -28,9 +28,19 @@ public abstract class JacksonCodecRuntime implements Codec {
 		SerializationContext serializers
 	) {
 		gen.writeName(fieldName);
-		serializers
-			.findValueSerializer(type)
-			.serialize(fieldValue, gen, serializers);
+		if (type.getRawClass() == Object.class) {
+			// An unresolved type variable: the declared type tells us nothing, so
+			// serialize the value by its runtime type, as Jackson does for an untyped field.
+			if (fieldValue == null) {
+				gen.writeNull();
+			} else {
+				serializers.findValueSerializer(fieldValue.getClass()).serialize(fieldValue, gen, serializers);
+			}
+		} else {
+			serializers
+				.findValueSerializer(type)
+				.serialize(fieldValue, gen, serializers);
+		}
 	}
 
 }

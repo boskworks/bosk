@@ -19,6 +19,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JavaType;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.exc.InvalidDefinitionException;
 import tools.jackson.databind.exc.MismatchedInputException;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.type.TypeFactory;
@@ -51,6 +52,7 @@ import works.bosk.exceptions.ParameterUnboundException;
 import works.bosk.exceptions.UnexpectedPathException;
 import works.bosk.libtesting.AbstractBoskTest;
 import works.bosk.libtesting.TestEntityBuilder;
+import works.bosk.util.Types;
 
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyMap;
@@ -292,7 +294,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 
 	@Test
 	void taggedUnionCaseSelfReference_includesTagPath() throws Exception {
-		// A variant case lives at /variant/<tag>, so a @Self reference inside the case
+		// A tagged-union case lives at /variant/<tag>, so a @Self reference inside the case
 		// must resolve to the tag path, not the union field path.
 		Bosk<HasSelfVariant> variantBosk = new Bosk<>("variant", HasSelfVariant.class, this::initialHasSelfVariant, BoskConfig.<HasSelfVariant>builder().build());
 		JacksonSerializer serializer = new JacksonSerializer();
@@ -346,7 +348,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	void listValue_serializationWorks(List<?> list, JavaType type) {
 		ListValue<?> listValue = ListValue.from(list);
 		String expected = plainMapper.writeValueAsString(list);
-		assertEquals(expected, boskMapper.writeValueAsString(listValue));
+		assertEquals(expected, boskMapper.writerFor(type).writeValueAsString(listValue));
 	}
 
 	@ParameterizedTest
@@ -407,7 +409,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	void mapValue_serializationWorks(Map<String,?> map, JavaType type) {
 		MapValue<?> mapValue = MapValue.copyOf(map);
 		String expected = plainMapper.writeValueAsString(map);
-		assertEquals(expected, boskMapper.writeValueAsString(mapValue));
+		assertEquals(expected, boskMapper.writerFor(type).writeValueAsString(mapValue));
 	}
 
 	@ParameterizedTest
@@ -546,39 +548,50 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	private void assertJacksonWorks(Map<String,?> plainObject, Object boskObject, TypeReference<?> boskObjectTypeRef, Path path) {
-		Map<String, Object> actualPlainObject = plainObjectFor(boskObject);
+		JavaType boskObjectType = typeFactory.constructType(boskObjectTypeRef);
+		Map<String, Object> actualPlainObject = plainObjectFor(boskObject, boskObjectType);
 		assertEquals(plainObject, actualPlainObject, "Serialized object should match expected");
 
 		Object deserializedBoskObject = boskObjectFor(plainObject, boskObjectTypeRef, path);
 		assertEquals(boskObject, deserializedBoskObject, "Deserialized object should match expected");
 
-		Map<String, Object> roundTripPlainObject = plainObjectFor(deserializedBoskObject);
+		Map<String, Object> roundTripPlainObject = plainObjectFor(deserializedBoskObject, boskObjectType);
 		assertEquals(plainObject, roundTripPlainObject, "Round-trip serialized object should match expected");
 
 	}
 
 	private void assertJacksonWorks(List<?> plainList, Object boskObject, TypeReference<?> boskObjectTypeRef, Path path) {
 		JavaType boskObjectType = typeFactory.constructType(boskObjectTypeRef);
-		List<Object> actualPlainList = plainListFor(boskObject);
+		List<Object> actualPlainList = plainListFor(boskObject, boskObjectType);
 		assertEquals(plainList, actualPlainList, "Serialized object should match expected");
 
 		Object deserializedBoskObject = boskListFor(plainList, boskObjectType, path);
 		assertEquals(boskObject, deserializedBoskObject, "Deserialized object should match expected");
 
-		List<Object> roundTripPlainObject = plainListFor(deserializedBoskObject);
+		List<Object> roundTripPlainObject = plainListFor(deserializedBoskObject, boskObjectType);
 		assertEquals(plainList, roundTripPlainObject, "Round-trip serialized object should match expected");
 
 	}
 
+	private Map<String, Object> plainObjectFor(Object boskObject, JavaType type) {
+		JavaType mapJavaType = typeFactory.constructParametricType(Map.class, String.class, Object.class);
+		String json = boskMapper.writerFor(type).writeValueAsString(boskObject);
+		return plainMapper.readerFor(mapJavaType).readValue(json);
+	}
+
+	/**
+	 * For a value whose type has no type parameters, the runtime class is enough,
+	 * so no declared type is needed.
+	 */
 	private Map<String, Object> plainObjectFor(Object boskObject) {
 		JavaType mapJavaType = typeFactory.constructParametricType(Map.class, String.class, Object.class);
 		String json = boskMapper.writeValueAsString(boskObject);
 		return plainMapper.readerFor(mapJavaType).readValue(json);
 	}
 
-	private List<Object> plainListFor(Object boskObject) {
+	private List<Object> plainListFor(Object boskObject, JavaType type) {
 		JavaType listJavaType = typeFactory.constructParametricType(List.class, Object.class);
-		String json = boskMapper.writeValueAsString(boskObject);
+		String json = boskMapper.writerFor(type).writeValueAsString(boskObject);
 		return plainMapper.readerFor(listJavaType).readValue(json);
 	}
 
@@ -624,6 +637,168 @@ class JacksonSerializerTest extends AbstractBoskTest {
 		);
 
 		assertJacksonWorks(expected, taggedUnion, new TypeReference<TaggedUnion<Variant>>() {}, Path.just("doesn't matter"));
+	}
+
+	@Test
+	void taggedUnion_withTwoParameterizationsOfOneRecord() {
+		assertJacksonWorks(
+			Map.of("box", Map.of("string", Map.of("value", "hello"))),
+			new BoxedCaseRoot(TaggedUnion.of(new BoxedCase<>("hello"))),
+			new TypeReference<BoxedCaseRoot>() {},
+			Path.empty());
+
+		assertJacksonWorks(
+			Map.of("box", Map.of("integer", Map.of("value", 42))),
+			new BoxedCaseRoot(TaggedUnion.of(new BoxedCase<>(42))),
+			new TypeReference<BoxedCaseRoot>() {},
+			Path.empty());
+	}
+
+	@Test
+	void taggedUnion_withTwoParameterizationsOfOneRecordAtRoot() {
+		assertJacksonWorks(
+			Map.of("string", Map.of("value", "hello")),
+			TaggedUnion.of(new BoxedCase<>("hello")),
+			new TypeReference<TaggedUnion<BoxVariant>>() {},
+			Path.just("doesn't matter"));
+
+		assertJacksonWorks(
+			Map.of("integer", Map.of("value", 42)),
+			TaggedUnion.of(new BoxedCase<>(42)),
+			new TypeReference<TaggedUnion<BoxVariant>>() {},
+			Path.just("doesn't matter"));
+	}
+
+	public record BoxedCaseRoot(TaggedUnion<BoxVariant> box) implements StateTreeNode {}
+
+	public interface BoxVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASE_MAP = MapValue.copyOf(Map.of(
+			"string", Types.parameterizedType(BoxedCase.class, String.class),
+			"integer", Types.parameterizedType(BoxedCase.class, Integer.class)
+		));
+	}
+
+	public record BoxedCase<T>(T value) implements BoxVariant {
+		@Override public String tag() { return value instanceof String ? "string" : "integer"; }
+	}
+
+	public record UnknownTagCase(String value) implements BoxVariant {
+		@Override public String tag() { return "unknownTag"; }
+	}
+
+	@Test
+	void taggedUnion_withUnknownTag_throws() {
+		// A tag the case map doesn't know has no case type, so serialization must fail
+		// rather than fall back to the value's runtime class.
+		assertThrows(IllegalStateException.class, () ->
+			boskMapper
+				.writerFor(typeFactory.constructType(new TypeReference<TaggedUnion<BoxVariant>>() {}))
+				.writeValueAsString(TaggedUnion.<BoxVariant>of(new UnknownTagCase("hello"))));
+	}
+
+	public record ValueNode<T>(T value) implements StateTreeNode {}
+
+	public record MapValueWithParameterizedElement(MapValue<ValueNode<String>> map) implements StateTreeNode {}
+
+	@Test
+	void mapValue_withParameterizedElement() {
+		assertJacksonWorks(
+			Map.of("map", Map.of("key1", Map.of("value", "hello"))),
+			new MapValueWithParameterizedElement(MapValue.copyOf(Map.of("key1", new ValueNode<>("hello")))),
+			new TypeReference<MapValueWithParameterizedElement>() {},
+			Path.empty());
+	}
+
+	public record PlainNode(String value) implements StateTreeNode {}
+
+	public record ListValueHolder<T>(ListValue<T> items) implements StateTreeNode {}
+
+	public record OptionalHolder<T>(Optional<T> value) implements StateTreeNode {}
+
+	@Test
+	void parameterizedListValueComponent_serializedByRuntimeType() {
+		assertEquals(Map.of("items", List.of("a", "b")),
+			plainObjectFor(new ListValueHolder<>(ListValue.from(List.of("a", "b")))));
+	}
+
+	@Test
+	void parameterizedOptionalComponent_serializedByRuntimeType() {
+		assertEquals(Map.of("value", "hello"),
+			plainObjectFor(new OptionalHolder<>(Optional.of("hello"))));
+	}
+
+	@Test
+	void parameterizedRecord_serializedWithDeclaredType() {
+		// The runtime class of a ValueNode<String> is just ValueNode, so the type
+		// argument must be supplied for the value component to serialize as String.
+		JavaType type = typeFactory.constructType(Types.parameterizedType(ValueNode.class, String.class));
+		assertEquals(Map.of("value", "hello"),
+			plainObjectFor(new ValueNode<>("hello"), type));
+	}
+
+	@Test
+	void unparameterizedRecord_serializedWithoutDeclaredType() {
+		// PlainNode has no type parameters, so the runtime class says everything.
+		assertEquals(Map.of("value", "hello"),
+			plainObjectFor(new PlainNode("hello")));
+	}
+
+	@Test
+	void parameterizedRecord_serializedByRuntimeType() {
+		// JSON writing is value-driven, so a bare value serializes from its runtime type
+		// without a declared type.
+		assertEquals(Map.of("value", "hello"), plainObjectFor(new ValueNode<>("hello")));
+	}
+
+	@Test
+	void parameterizedRecord_withoutDeclaredType_throwsOnRead() {
+		InvalidDefinitionException e = assertThrows(InvalidDefinitionException.class, () ->
+			boskMapper.readerFor(ValueNode.class).readValue("{\"value\":\"hello\"}"));
+		assertThat(e.getMessage(), containsString("must be used with type arguments"));
+	}
+
+	public record GenericVariantRoot(TaggedUnion<GenericVariant<String>> variant) implements StateTreeNode {}
+
+	public interface GenericVariant<T> extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("caseA",
+			Types.parameterizedType(GenericCase.class, GenericVariant.class.getTypeParameters()[0]));
+	}
+
+	public record GenericCase<T>(T value) implements GenericVariant<T> {
+		@Override public String tag() { return "caseA"; }
+	}
+
+	@Test
+	void taggedUnion_withGenericCaseSupertype() {
+		assertJacksonWorks(
+			Map.of("variant", Map.of("caseA", Map.of("value", "hello"))),
+			new GenericVariantRoot(TaggedUnion.<GenericVariant<String>>of(new GenericCase<>("hello"))),
+			new TypeReference<GenericVariantRoot>() {},
+			Path.empty());
+	}
+
+	public interface WrapperVariant<T extends TaggedUnionCase> extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Type> CASES = MapValue.singleton("wrapped", WrapperVariant.class.getTypeParameters()[0]);
+	}
+
+	public record WrappedCase(String value) implements WrapperVariant<WrappedCase> {
+		@Override public String tag() { return "wrapped"; }
+	}
+
+	public record WrapperVariantRoot(TaggedUnion<WrapperVariant<WrappedCase>> variant) implements StateTreeNode {}
+
+	@Test
+	void taggedUnion_whoseCaseTypeIsAVariable() {
+		// The case map maps its tag to the case supertype's own type variable,
+		// which must be resolved against the union before it can be cast.
+		assertJacksonWorks(
+			Map.of("variant", Map.of("wrapped", Map.of("value", "hello"))),
+			new WrapperVariantRoot(TaggedUnion.<WrapperVariant<WrappedCase>>of(new WrappedCase("hello"))),
+			new TypeReference<WrapperVariantRoot>() {},
+			Path.empty());
 	}
 
 	// Sad paths

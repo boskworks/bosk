@@ -55,13 +55,11 @@ import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.UnexpectedPathException;
 
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toMap;
 import static tools.jackson.core.JsonToken.END_ARRAY;
 import static tools.jackson.core.JsonToken.END_OBJECT;
 import static tools.jackson.core.JsonToken.START_ARRAY;
 import static tools.jackson.core.JsonToken.START_OBJECT;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
-import static works.bosk.ReferenceUtils.rawClass;
 
 /**
  * Provides JSON serialization/deserialization using Jackson.
@@ -101,7 +99,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		private ValueSerializer<?> getValueSerializer(SerializationConfig config, JavaType type) {
 			Class theClass = type.getRawClass();
 			if (Catalog.class.isAssignableFrom(theClass)) {
-				return catalogSerializer();
+				return catalogSerializer(type);
 			} else if (Listing.class.isAssignableFrom(theClass)) {
 				return listingSerializer();
 			} else if (Reference.class.isAssignableFrom(theClass)) {
@@ -111,9 +109,9 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			} else if (ListingEntry.class.isAssignableFrom(theClass)) {
 				return listingEntrySerializer();
 			} else if (SideTable.class.isAssignableFrom(theClass)) {
-				return sideTableSerializer();
+				return sideTableSerializer(type);
 			} else if (TaggedUnion.class.isAssignableFrom(theClass)) {
-				return taggedUnionSerializer();
+				return taggedUnionSerializer(type);
 			} else if (StateTreeNode.class.isAssignableFrom(theClass)) {
 				return stateTreeNodeSerializer(config, type);
 			} else if (Optional.class.isAssignableFrom(theClass)) {
@@ -122,13 +120,13 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			} else if (Phantom.class.isAssignableFrom(theClass)) {
 				throw new IllegalArgumentException("Cannot serialize a Phantom on its own; only as a field of another object");
 			} else if (MapValue.class.isAssignableFrom(theClass)) {
-				return mapValueSerializer();
+				return mapValueSerializer(type);
 			} else {
 				return null;
 			}
 		}
 
-		private ValueSerializer<Catalog<Entity>> catalogSerializer() {
+		private ValueSerializer<Catalog<Entity>> catalogSerializer(JavaType catalogType) {
 			return new ValueSerializer<>() {
 				@Override
 				public void serialize(Catalog<Entity> value, JsonGenerator gen, SerializationContext serializers) {
@@ -197,7 +195,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			};
 		}
 
-		private ValueSerializer<SideTable<Entity, Object>> sideTableSerializer() {
+		private ValueSerializer<SideTable<Entity, Object>> sideTableSerializer(JavaType sideTableType) {
 			return new ValueSerializer<>() {
 				@Override
 				public void serialize(SideTable<Entity, Object> value, JsonGenerator gen, SerializationContext serializers) {
@@ -217,7 +215,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		}
 
 		@SuppressWarnings({"unchecked"})
-		private <T extends TaggedUnionCase> ValueSerializer<TaggedUnion<?>> taggedUnionSerializer() {
+		private <T extends TaggedUnionCase> ValueSerializer<TaggedUnion<?>> taggedUnionSerializer(JavaType taggedUnionType) {
 			return new ValueSerializer<>() {
 				/**
 				 * A {@link TaggedUnion} has a single field called {@code value},
@@ -225,13 +223,21 @@ public final class JacksonSerializer extends StateTreeSerializer {
 				 */
 				@Override
 				public void serialize(TaggedUnion<?> union, JsonGenerator gen, SerializationContext serializers) {
-					// We assume the TaggedUnion object is correct by construction and don't bother checking the case map here
 					T caseValue = (T)union.value();
-					ValueSerializer<Object> valueSerializer = serializers.findValueSerializer(caseValue.getClass());
 					String tag = requireNonNull(caseValue.tag());
+					MapValue<Type> caseMap;
+					try {
+						caseMap = StateTreeSerializer.getTaggedUnionCaseMap(caseValue.getClass());
+					} catch (InvalidTypeException e) {
+						throw new IllegalArgumentException(e);
+					}
+					if (!caseMap.containsKey(tag)) {
+						throw new IllegalStateException("Unknown tagged union case tag \"" + tag + "\" from "
+							+ caseValue.getClass().getName() + "; case map has " + caseMap.keySet());
+					}
 					gen.writeStartObject();
 					gen.writeName(tag);
-					valueSerializer.serialize(caseValue, gen, serializers);
+					serializers.findValueSerializer(caseValue.getClass()).serialize(caseValue, gen, serializers);
 					gen.writeEndObject();
 				}
 			};
@@ -241,7 +247,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			return compiler.<StateTreeNode>compiled(type, boskInfo).serializer(config);
 		}
 
-		private ValueSerializer<MapValue<Object>> mapValueSerializer() {
+		private ValueSerializer<MapValue<Object>> mapValueSerializer(JavaType mapValueType) {
 			return new ValueSerializer<>() {
 				@Override
 				public void serialize(MapValue<Object> value, JsonGenerator gen, SerializationContext serializers) {
@@ -249,8 +255,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 					for (Entry<String, Object> element : value.entrySet()) {
 						gen.writeName(requireNonNull(element.getKey()));
 						Object val = requireNonNull(element.getValue());
-						ValueSerializer<Object> valueSerializer = serializers.findValueSerializer(val.getClass());
-						valueSerializer.serialize(val, gen, serializers);
+						serializers.findValueSerializer(val.getClass()).serialize(val, gen, serializers);
 					}
 					gen.writeEndObject();
 				}
@@ -474,6 +479,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		}
 
 		private ValueDeserializer<? extends StateTreeNode> stateTreeNodeDeserializer(JavaType type, DeserializationConfig config) {
+			requireTypeArguments(type, "deserialize");
 			return compiler.<StateTreeNode>compiled(type, boskInfo).deserializer(config);
 		}
 
@@ -486,8 +492,14 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			} catch (InvalidTypeException e) {
 				throw new IllegalArgumentException(e);
 			}
-			Map<String, ValueDeserializer<?>> deserializers = taggedUnionCaseMap.entrySet().stream().collect(toMap(Entry::getKey, e ->
-				stateTreeNodeDeserializer(typeFactory.constructType(e.getValue()), config)));
+			// A case's declared type may mention the case supertype's type variables.
+			Map<String, ValueDeserializer<?>> deserializers = new LinkedHashMap<>();
+			Map<String, Class<?>> caseClassesByTag = new LinkedHashMap<>();
+			taggedUnionCaseMap.forEach((tag, caseType) -> {
+				JavaType resolvedCaseType = typeFactory.resolveMemberType(caseType, caseStaticType.getBindings());
+				deserializers.put(tag, stateTreeNodeDeserializer(resolvedCaseType, config));
+				caseClassesByTag.put(tag, resolvedCaseType.getRawClass());
+			});
 			return new ValueDeserializer<>() {
 				@Override
 				public TaggedUnion<V> deserialize(JsonParser p, DeserializationContext ctxt) {
@@ -506,7 +518,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 					try (DeserializationScope scope = taggedUnionCaseDeserializationScope(tag)) {
 						deserialized = deserializer.deserialize(p, ctxt);
 					}
-					@SuppressWarnings("unchecked") Class<D> caseDynamicClass = (Class<D>) rawClass(taggedUnionCaseMap.get(tag));
+					@SuppressWarnings("unchecked") Class<D> caseDynamicClass = (Class<D>) caseClassesByTag.get(tag);
 					D value;
 					try {
 						value = caseDynamicClass.cast(deserialized);
@@ -600,8 +612,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		for (Entry<Identifier, V> entry: entries) {
 			gen.writeStartObject();
 			gen.writeName(entry.getKey().toString());
-			ValueSerializer<Object> valueSerializer = serializers.findContentValueSerializer(entry.getValue().getClass(), null);
-			valueSerializer.serialize(entry.getValue(), gen, serializers);
+			serializers.findValueSerializer(entry.getValue().getClass()).serialize(entry.getValue(), gen, serializers);
 			gen.writeEndObject();
 		}
 		gen.writeEndArray();
@@ -725,6 +736,18 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			return parameterizedType.findTypeParameters(expectedClass)[index];
 		} catch (IndexOutOfBoundsException e) {
 			throw new IllegalStateException("Error computing javaParameterType(" + parameterizedType + ", " + expectedClass + ", " + index + ")", e);
+		}
+	}
+
+	/**
+	 * A runtime class is erased, so a generic node must be handled with a declared
+	 * type for its components to have usable types.
+	 */
+	private static void requireTypeArguments(JavaType type, String operation) {
+		Class<?> nodeClass = type.getRawClass();
+		if (nodeClass.getTypeParameters().length > 0 && type.getBindings().isEmpty()) {
+			throw new IllegalArgumentException("Cannot " + operation + " " + nodeClass.getSimpleName()
+				+ ": it has type parameters, so it must be used with type arguments");
 		}
 	}
 
