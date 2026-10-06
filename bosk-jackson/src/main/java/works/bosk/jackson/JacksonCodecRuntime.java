@@ -1,7 +1,6 @@
 package works.bosk.jackson;
 
 import tools.jackson.core.JsonGenerator;
-import tools.jackson.databind.JavaType;
 import tools.jackson.databind.SerializationContext;
 import tools.jackson.databind.ValueSerializer;
 import works.bosk.jackson.JacksonCompiler.Codec;
@@ -13,24 +12,26 @@ import works.bosk.jackson.JacksonCompiler.Codec;
  */
 public abstract class JacksonCodecRuntime implements Codec {
 	/**
-	 * Looks up a {@link ValueSerializer} at serialization time, and uses it to {@link ValueSerializer#serialize} serialize} the given field.
+	 * Writes a field by looking up the value's {@link ValueSerializer} at serialization
+	 * time, based on the value's runtime type, and using it to {@link ValueSerializer#serialize serialize}
+	 * the value.
 	 *
 	 * <p>
-	 * This is the basic, canonical way to write fields, but usually we can optimize
-	 * this by looking up the {@link ValueSerializer} ahead of time, while compiling the
-	 * codec, so we can save the overhead of the lookup operation during serialization.
+	 * Serialization is value-driven: Jackson picks each value's serializer from the value
+	 * itself, so the field's declared type tells us nothing useful and isn't consulted.
 	 */
 	protected static void dynamicWriteField(
 		Object fieldValue,
 		String fieldName,
-		JavaType type,
 		JsonGenerator gen,
 		SerializationContext serializers
 	) {
 		gen.writeName(fieldName);
-		serializers
-			.findValueSerializer(type)
-			.serialize(fieldValue, gen, serializers);
+		if (fieldValue == null) {
+			gen.writeNull();
+		} else {
+			serializers.findValueSerializer(fieldValue.getClass()).serialize(fieldValue, gen, serializers);
+		}
 	}
 
 }
