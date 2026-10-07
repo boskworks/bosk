@@ -511,41 +511,34 @@ public abstract class StateTreeSerializer {
 			return;
 		}
 
-		for (Class<?> c = nodeClass; c != Object.class && c != null; c = c.getSuperclass()) {
-			for (Field f: c.getDeclaredFields()) {
-				var annotations = f.getAnnotationsByType(TaggedUnionCaseMap.class);
-				if (annotations.length == 0) {
-					// This is not the droid you're looking for
-					continue;
-				} else if (annotations.length >= 2) {
-					throw new IllegalStateException("Multiple tagged union case maps for the same class: " + f);
+		ReferenceUtils.supertypes(nodeClass)
+			.filter(TaggedUnionCase.class::isAssignableFrom)
+			.forEach(c -> {
+				for (Field f: c.getDeclaredFields()) {
+					var annotations = f.getAnnotationsByType(TaggedUnionCaseMap.class);
+					if (annotations.length == 0) {
+						// This is not the droid you're looking for
+						continue;
+					} else if (annotations.length >= 2) {
+						throw new IllegalStateException("Multiple tagged union case maps for the same class: " + f);
+					}
+					if (!isStatic(f.getModifiers()) || isPrivate(f.getModifiers())) {
+						throw new IllegalStateException("The tagged union case map must be static and final: " + f);
+					}
+					MapValue value;
+					try {
+						value = (MapValue) f.get(null);
+					} catch (IllegalAccessException e) {
+						throw new AssertionError("Field should not be inaccessible: " + f, e);
+					}
+					if (value == null) {
+						throw new NullPointerException("TaggedUnionCaseMap cannot be null: " + f);
+					}
+					var old = taggedUnionCaseMap.get();
+					boolean success = taggedUnionCaseMap.compareAndSet(old, old.plus(nodeClass, value, c));
+					assert success: "Hey who's messing with our AtomicReference?";
 				}
-				if (!isStatic(f.getModifiers()) || isPrivate(f.getModifiers())) {
-					throw new IllegalStateException("The tagged union case map must be static and final: " + f);
-				}
-				MapValue value;
-				try {
-					value = (MapValue) f.get(null);
-				} catch (IllegalAccessException e) {
-					throw new AssertionError("Field should not be inaccessible: " + f, e);
-				}
-				if (value == null) {
-					throw new NullPointerException("TaggedUnionCaseMap cannot be null: " + f);
-				}
-				var old = taggedUnionCaseMap.get();
-				boolean success = taggedUnionCaseMap.compareAndSet(old, old.plus(nodeClass, value, c));
-				assert success: "Hey who's messing with our AtomicReference?";
-			}
-		}
-
-		// Recurse to look for inherited tagged union case maps
-		for (var i : nodeClass.getInterfaces()) {
-			scanForTaggedUnionCaseMap(i, taggedUnionCaseMap);
-		}
-		Class<?> superclass = nodeClass.getSuperclass();
-		if (superclass != null && superclass != Object.class) {
-			scanForTaggedUnionCaseMap(superclass, taggedUnionCaseMap);
-		}
+			});
 	}
 
 	private static void scanForInfo(AnnotatedElement thing, String name, Set<String> selfParameters, Set<String> enclosingParameters, Map<String, DeserializationPath> deserializationPathParameters, Map<String, Object> polyfills) {

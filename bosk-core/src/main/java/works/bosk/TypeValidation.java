@@ -218,7 +218,10 @@ public final class TypeValidation {
 	 * objects. Just don't!
 	 */
 	private static void validateFieldsAreFinal(Class<?> nodeClass) throws InvalidFieldTypeException {
-		for (Class<?> currentClass = nodeClass; currentClass != null; currentClass = currentClass.getSuperclass()) {
+		for (Class<?> currentClass : ReferenceUtils.supertypes(nodeClass)
+			.filter(c -> !c.isInterface())
+			.toList()
+			.reversed()) {
 			if (TRUSTED_IMMUTABLE_CLASSES.contains(currentClass)) {
 				// Don't bother checking superclasses of trusted immutables
 				break;

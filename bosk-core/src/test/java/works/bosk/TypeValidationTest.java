@@ -37,6 +37,7 @@ class TypeValidationTest {
 		CharPrimitive.class,
 		ConcreteGenericVariantRoot.class,
 		DeepGenericRoot.class,
+		DiamondVariantRoot.class,
 		DoublePrimitive.class,
 		EnclosingReferenceToTypeVariableRoot.class,
 		ExtraStaticField.class,
@@ -679,6 +680,23 @@ class TypeValidationTest {
 	public record VariantWithAmbiguousMaps(String tag) implements Variant1, Variant2 {}
 
 	public record AmbiguousTaggedUnionCaseMap(TaggedUnion<VariantWithAmbiguousMaps> variant) implements StateTreeNode {}
+
+	/** A single case map reachable by two inheritance paths must not be treated as ambiguous. */
+	public interface DiamondBase extends TaggedUnionCase {
+		@TaggedUnionCaseMap MapValue<Type> CASES = MapValue.singleton("diamondCase", DiamondCase.class);
+	}
+
+	public interface DiamondLeft extends DiamondBase {}
+
+	public interface DiamondRight extends DiamondBase {}
+
+	public interface DiamondVariant extends DiamondLeft, DiamondRight {}
+
+	public record DiamondCase(String value) implements DiamondVariant {
+		@Override public String tag() { return "diamondCase"; }
+	}
+
+	public record DiamondVariantRoot(TaggedUnion<DiamondVariant> variant) implements StateTreeNode {}
 
 	public record TaggedUnionCaseWithNoTaggedUnion(
 		Variant1 variant

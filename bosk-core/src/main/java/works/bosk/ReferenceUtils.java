@@ -8,11 +8,14 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import lombok.experimental.Delegate;
 import works.bosk.exceptions.InvalidTypeException;
@@ -245,6 +248,28 @@ C&lt;String> someField;
 		} else {
 			return (Class<?>)sourceType;
 		}
+	}
+
+	/**
+	 * @return {@code type} and all its supertypes, including {@link Object},
+	 * each appearing exactly once and ordered so that each type comes after
+	 * all the types it extends or implements
+	 */
+	static Stream<Class<?>> supertypes(Class<?> type) {
+		List<Class<?>> result = new ArrayList<>();
+		collectSupertypes(type, new HashSet<>(), result);
+		return result.stream();
+	}
+
+	private static void collectSupertypes(Class<?> type, Set<Class<?>> visited, List<Class<?>> result) {
+		if (type == null || !visited.add(type)) {
+			return;
+		}
+		collectSupertypes(type.getSuperclass(), visited, result);
+		for (Class<?> iface : type.getInterfaces()) {
+			collectSupertypes(iface, visited, result);
+		}
+		result.add(type);
 	}
 
 	public static Method getterMethod(Class<?> objectClass, String fieldName) throws InvalidTypeException {
