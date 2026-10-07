@@ -25,14 +25,10 @@ import static java.lang.reflect.Modifier.isStatic;
  */
 final class HookScanner {
 	static <T> void registerHooks(T receiverObject, RootReference<?> rootReference, HookRegistrar hookRegistrar, MethodHandles.Lookup lookup) throws InvalidTypeException {
-		List<Class<?>> bottomUpHierarchy = new ArrayList<>();
-		for (Class<?> receiverClass = receiverObject.getClass(); receiverClass != Object.class; receiverClass = receiverClass.getSuperclass()) {
-			bottomUpHierarchy.add(receiverClass);
-		}
 		// Collect hook methods from all classes in the hierarchy. If a subclass overrides a hook method,
 		// the override replaces the original, so only the most-derived version of each signature is registered.
 		Map<MethodSignature, HookMethod> hookMethodsBySignature = new LinkedHashMap<>();
-		for (Class<?> receiverClass: bottomUpHierarchy.reversed()) {
+		for (Class<?> receiverClass : ReferenceUtils.superclasses(receiverObject.getClass()).toList()) {
 			List<Method> methods;
 			try {
 				methods = ReflectionHelpers.getDeclaredMethodsInOrder(receiverClass, lookup);
