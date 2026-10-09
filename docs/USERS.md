@@ -239,6 +239,26 @@ the second approach can still be employed by making that subtype's implementatio
 additional logic to determine which tag is appropriate,
 potentially by simply adding a `tag` field to the class and returning that.
 
+##### Parameterized nodes
+
+A `StateTreeNode` may declare type parameters, and a parameterized node may appear as the
+root or as a field. A component's type is resolved against the type arguments of its
+enclosing node, so a node can be reused at more than one parameterization:
+
+```java
+public record GenericNode<T>(T value) implements StateTreeNode { }
+```
+
+Because the type arguments can't be inferred from an instance, a parameterized node is
+always used with its declared type. As a field, that comes from the enclosing node's
+type. As a root, pass a `Type` that carries the type arguments to the
+`Bosk(String, Type, ...)` constructor, since `Bosk.simple` derives the root type from its
+instance. A raw generic root type is rejected rather than silently erased.
+
+Serializing a parameterized value does not require its declared type: each component is
+written from the component's value. Deserializing does need it: it is parsing, and the
+declared datatypes describe the grammar.
+
 ### Creating `Reference`s
 
 The `Bosk.rootReference()` object acts as a factory for `Reference` objects.
