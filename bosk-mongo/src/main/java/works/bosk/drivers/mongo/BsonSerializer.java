@@ -440,7 +440,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 				reader.readEndDocument();
 				List<Object> parameterValues;
 				try {
-					parameterValues = parameterValueList(nodeClass, parameterValuesByName, parametersByName, boskInfo);
+					parameterValues = parameterValueList(nodeType, parameterValuesByName, parametersByName, boskInfo);
 				} catch (DeserializationException e) {
 					throw new IllegalStateException(e);
 				}

@@ -39,6 +39,9 @@ import static java.lang.reflect.Modifier.isPrivate;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Collections.synchronizedSet;
 import static java.util.Objects.requireNonNull;
+import static works.bosk.ReferenceUtils.parameterType;
+import static works.bosk.ReferenceUtils.rawClass;
+import static works.bosk.ReferenceUtils.resolveTypeVariables;
 
 /**
  * Serialization systems are generally not good at allowing custom logic to
@@ -268,12 +271,13 @@ public abstract class StateTreeSerializer {
 	 * supplied where possible, such as <code>Optional.empty()</code> and
 	 * {@link Enclosing} references.
 	 */
-	public final List<Object> parameterValueList(Class<?> nodeClass, Map<String, Object> parameterValuesByName, LinkedHashMap<String, RecordComponent> componentsByName, BoskInfo<?> boskInfo) throws DeserializationException {
+	public final List<Object> parameterValueList(Type nodeType, Map<String, Object> parameterValuesByName, LinkedHashMap<String, RecordComponent> componentsByName, BoskInfo<?> boskInfo) throws DeserializationException {
+		Class<?> nodeClass = rawClass(nodeType);
 		List<Object> parameterValues = new ArrayList<>();
 		for (var component: componentsByName.values()) {
 			String name = component.getName();
 			Class<?> type = component.getType();
-			Reference<?> implicitReference = findImplicitReferenceIfAny(nodeClass, component, boskInfo);
+			Reference<?> implicitReference = findImplicitReferenceIfAny(nodeType, component, boskInfo);
 
 			boolean present = parameterValuesByName.containsKey(name);
 			Object value = parameterValuesByName.remove(name);
@@ -403,12 +407,13 @@ public abstract class StateTreeSerializer {
 		}
 	}
 
-	private Reference<?> findImplicitReferenceIfAny(Class<?> nodeClass, RecordComponent parameter, BoskInfo<?> boskInfo) {
+	private Reference<?> findImplicitReferenceIfAny(Type nodeType, RecordComponent parameter, BoskInfo<?> boskInfo) {
+		Class<?> nodeClass = rawClass(nodeType);
 		if (isSelfReference(nodeClass, parameter)) {
-			Class<?> targetClass = ReferenceUtils.rawClass(ReferenceUtils.parameterType(parameter.getGenericType(), Reference.class, 0));
+			Class<?> targetClass = rawClass(parameterType(resolveTypeVariables(parameter.getGenericType(), nodeType), Reference.class, 0));
 			return selfReference(targetClass, boskInfo);
 		} else if (isEnclosingReference(nodeClass, parameter)) {
-			Class<?> targetClass = ReferenceUtils.rawClass(ReferenceUtils.parameterType(parameter.getGenericType(), Reference.class, 0));
+			Class<?> targetClass = rawClass(parameterType(resolveTypeVariables(parameter.getGenericType(), nodeType), Reference.class, 0));
 			Reference<Object> selfRef = selfReference(Object.class, boskInfo);
 			try {
 				return selfRef.enclosingReference(targetClass);
@@ -423,11 +428,11 @@ public abstract class StateTreeSerializer {
 		}
 	}
 
-	protected final Reference<?> implicitReference(Class<?> nodeClass, RecordComponent parameter, BoskInfo<?> boskInfo) throws DeserializationException {
-		Reference<?> result = findImplicitReferenceIfAny(nodeClass, parameter, boskInfo);
+	protected final Reference<?> implicitReference(Type nodeType, RecordComponent parameter, BoskInfo<?> boskInfo) throws DeserializationException {
+		Reference<?> result = findImplicitReferenceIfAny(nodeType, parameter, boskInfo);
 		if (result == null) {
 			throw new DeserializationException("No implicit reference for parameter \"" + parameter.getName()
-				+ "\" of " + nodeClass.getSimpleName());
+				+ "\" of " + rawClass(nodeType).getSimpleName());
 		}
 		return result;
 	}

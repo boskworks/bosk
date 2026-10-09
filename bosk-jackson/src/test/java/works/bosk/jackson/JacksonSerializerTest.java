@@ -41,6 +41,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.TaggedUnion;
 import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.DeserializationPath;
+import works.bosk.annotations.Enclosing;
 import works.bosk.annotations.Polyfill;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.annotations.Self;
@@ -324,6 +325,36 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	public record SelfTaggedUnionCase(@Self Reference<SelfTaggedUnionCase> self, String stringField) implements SelfVariant { }
+
+	public record EnclosingRefWithTypeVariable<T extends Entity>(
+		@Enclosing Reference<T> enclosing
+	) implements StateTreeNode { }
+
+	public record EnclosingNode(Identifier id, EnclosingRefWithTypeVariable<EnclosingNode> child) implements Entity { }
+
+	public record EnclosingRoot(EnclosingNode node) implements StateTreeNode { }
+
+	@Test
+	void enclosingReferenceWithTypeVariable_roundTrips() throws Exception {
+		// The @Enclosing target is the node's own type variable, so resolving it needs
+		// the node's declared type, not just its erased class.
+		Bosk<EnclosingRoot> enclosingBosk = new Bosk<>("enclosing", EnclosingRoot.class, this::initialEnclosingRoot, BoskConfig.<EnclosingRoot>builder().build());
+		JacksonSerializer serializer = new JacksonSerializer();
+		ObjectMapper mapper = JsonMapper.builder().addModule(serializer.moduleFor(enclosingBosk)).build();
+
+		EnclosingRoot original = initialEnclosingRoot(enclosingBosk);
+		String json = mapper.writeValueAsString(original);
+		EnclosingRoot result;
+		try (var _ = serializer.newDeserializationScope(Path.empty())) {
+			result = mapper.readerFor(EnclosingRoot.class).readValue(json);
+		}
+		assertEquals(original, result);
+	}
+
+	private EnclosingRoot initialEnclosingRoot(Bosk<EnclosingRoot> bosk) throws InvalidTypeException {
+		Reference<EnclosingNode> nodeRef = bosk.rootReference().then(EnclosingNode.class, Path.parse("/node"));
+		return new EnclosingRoot(new EnclosingNode(Identifier.from("node"), new EnclosingRefWithTypeVariable<>(nodeRef)));
+	}
 
 	@Test
 	void missingRequiredField_throwsWithCause() {
