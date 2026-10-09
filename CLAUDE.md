@@ -190,7 +190,7 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 
 ### Pull request descriptions
 
-- Write PR descriptions in plain, informal language. Say what the change is and why, and which modules it touches; don't pad them out with formal headers or restate what's obvious from the diff.
+- Write PR descriptions in plain, informal language. Say what the change is and why, and which modules it touches; don't restate what's obvious from the diff. Use section headings when they help a reader navigate a long description, but don't include boilerplate sections that may not apply, like a "Test plan", just because PRs often have them.
 - Don't list the commits in the description: readers can browse the commits themselves.
 - For bug fixes, describe the motivating bug and its mechanism so reviewers can see the "why", not just the "what" in the diff.
 - If you refer to other work (an issue, PR, commit, or earlier investigation), link to it instead of alluding to it by name.
