@@ -35,6 +35,7 @@ import works.bosk.bytecode.GeneratedClass;
 import works.bosk.bytecode.LocalVariable;
 import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.util.Types;
 
 import static java.lang.classfile.Opcode.IFNE;
 import static java.lang.classfile.TypeKind.REFERENCE;
@@ -331,7 +332,7 @@ final class JacksonCompiler {
 
 					List<Object> parameterValues;
 					try {
-						parameterValues = jacksonSerializer.parameterValueList(nodeJavaType.getRawClass(), valueMap, componentsByName, boskInfo);
+						parameterValues = jacksonSerializer.parameterValueList(toReflectType(nodeJavaType), valueMap, componentsByName, boskInfo);
 					} catch (DeserializationException e) {
 						MismatchedInputException mismatch = MismatchedInputException.from(p, nodeJavaType, e.getMessage());
 						mismatch.initCause(e);
@@ -344,6 +345,18 @@ final class JacksonCompiler {
 				}
 			};
 		}
+	}
+
+	/**
+	 * @return the {@link Type} corresponding to {@code javaType}, reconstructing its
+	 * type arguments so a generic node's declared type can resolve its own variables
+	 */
+	private static Type toReflectType(JavaType javaType) {
+		Type[] arguments = new Type[javaType.containedTypeCount()];
+		for (int i = 0; i < arguments.length; i++) {
+			arguments[i] = toReflectType(javaType.containedType(i));
+		}
+		return Types.parameterizedType(javaType.getRawClass(), arguments);
 	}
 
 	private static final Method DYNAMIC_WRITE_FIELD;

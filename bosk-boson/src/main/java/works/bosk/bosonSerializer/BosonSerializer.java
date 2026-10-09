@@ -60,6 +60,7 @@ import works.bosk.boson.types.TypeReference;
 import works.bosk.boson.types.TypeVariable;
 import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.util.Types;
 
 import static java.lang.invoke.MethodHandles.dropArguments;
 import static java.lang.invoke.MethodHandles.insertArguments;
@@ -353,7 +354,7 @@ public class BosonSerializer extends StateTreeSerializer {
 								new ComputedSpec(supplier(componentType,
 									() -> {
 										try {
-											return implicitReference(recordClass, rc, bosk);
+											return implicitReference(toReflectType(bt), rc, bosk);
 										} catch (DeserializationException e) {
 											throw new JsonContentException(e);
 										}
@@ -486,6 +487,20 @@ public class BosonSerializer extends StateTreeSerializer {
 	 */
 	private static KnownType componentType(RecordComponent rc, Map<String, DataType> actualArguments) {
 		return (KnownType) DataType.of(rc.getGenericType()).substitute(actualArguments);
+	}
+
+	/**
+	 * @return the {@link Type} corresponding to {@code knownType}, reconstructing its type
+	 * arguments so a generic node's declared type can resolve its own variables
+	 */
+	private static Type toReflectType(KnownType knownType) {
+		if (knownType instanceof BoundType bt) {
+			return Types.parameterizedType(bt.rawClass(), bt.bindings().stream()
+				.map(b -> toReflectType((KnownType) b))
+				.toArray(Type[]::new));
+		} else {
+			return knownType.rawClass();
+		}
 	}
 
 	private static TypedHandle componentAccessor(RecordComponent rc, InstanceType recordType, KnownType componentType, Lookup lookup) {
