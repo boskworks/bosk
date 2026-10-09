@@ -35,6 +35,7 @@ import works.bosk.bytecode.GeneratedClass;
 import works.bosk.bytecode.LocalVariable;
 import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.InvalidTypeException;
+import works.bosk.util.Types;
 
 import static java.lang.classfile.Opcode.IFNE;
 import static java.lang.classfile.TypeKind.REFERENCE;
@@ -331,7 +332,7 @@ final class JacksonCompiler {
 
 					List<Object> parameterValues;
 					try {
-						parameterValues = jacksonSerializer.parameterValueList(nodeJavaType.getRawClass(), valueMap, componentsByName, boskInfo);
+						parameterValues = jacksonSerializer.parameterValueList(toReflectType(nodeJavaType), valueMap, componentsByName, boskInfo);
 					} catch (DeserializationException e) {
 						MismatchedInputException mismatch = MismatchedInputException.from(p, nodeJavaType, e.getMessage());
 						mismatch.initCause(e);
@@ -343,6 +344,23 @@ final class JacksonCompiler {
 					return result;
 				}
 			};
+		}
+	}
+
+	/**
+	 * @return the {@link Type} corresponding to {@code javaType}, reconstructing its
+	 * type arguments so a generic node's declared type can resolve its own variables
+	 */
+	private static Type toReflectType(JavaType javaType) {
+		int count = javaType.containedTypeCount();
+		if (count == 0) {
+			return javaType.getRawClass();
+		} else {
+			Type[] arguments = new Type[count];
+			for (int i = 0; i < count; i++) {
+				arguments[i] = toReflectType(javaType.containedType(i));
+			}
+			return Types.parameterizedType(javaType.getRawClass(), arguments);
 		}
 	}
 
