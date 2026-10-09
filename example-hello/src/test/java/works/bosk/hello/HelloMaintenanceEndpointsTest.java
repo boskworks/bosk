@@ -16,6 +16,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import works.bosk.Catalog;
 import works.bosk.Identifier;
@@ -106,7 +107,7 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void get_targets_works() throws Exception {
-		assertGetReturns(INITIAL_STATE.targets(), "/bosk/state/targets");
+		assertGetReturns(INITIAL_STATE.targets(), new TypeReference<Catalog<Target>>() {}, "/bosk/state/targets");
 	}
 
 	@Test
@@ -115,9 +116,9 @@ public class HelloMaintenanceEndpointsTest {
 		mvc.perform(put("/bosk/state/targets")
 				.with(bearer())
 				.contentType(APPLICATION_JSON)
-				.content(mapper.writeValueAsString(newTargets)))
+				.content(mapper.writerFor(new TypeReference<Catalog<Target>>() {}).writeValueAsString(newTargets)))
 			.andExpect(status().isAccepted());
-		assertGetReturns(newTargets, "/bosk/state/targets");
+		assertGetReturns(newTargets, new TypeReference<Catalog<Target>>() {}, "/bosk/state/targets");
 		assertHello("world", "new target");
 	}
 
@@ -224,7 +225,14 @@ public class HelloMaintenanceEndpointsTest {
 	}
 
 	private void assertGetReturns(Object object, String uri) throws Exception {
-		String expected = mapper.writeValueAsString(object);
+		assertGetReturns(mapper.writeValueAsString(object), uri);
+	}
+
+	private void assertGetReturns(Object object, TypeReference<?> type, String uri) throws Exception {
+		assertGetReturns(mapper.writerFor(type).writeValueAsString(object), uri);
+	}
+
+	private void assertGetReturns(String expected, String uri) throws Exception {
 		mvc.perform(get(uri).header(CACHE_CONTROL, "no-cache").with(bearer()))
 			.andExpect(status().isOk())
 			.andExpect(content().json(expected));

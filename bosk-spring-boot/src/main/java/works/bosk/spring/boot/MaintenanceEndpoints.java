@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import works.bosk.Bosk;
 import works.bosk.Entity;
@@ -59,14 +60,16 @@ public class MaintenanceEndpoints {
 	}
 
 	@GetMapping(produces = APPLICATION_JSON_VALUE, path = {"", "{*path}"})
-	Object getAny(
+	JsonNode getAny(
 		@PathVariable(value="path", required = false) String path,
 		HttpServletRequest req
 	) {
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		Reference<?> ref = referenceForPath(path);
 		try {
-			return ref.value();
+			// Serialize with the reference's declared type, since a value's runtime
+			// class doesn't carry its type arguments.
+			return mapper.writerFor(mapper.constructType(ref.targetType())).valueToTree(ref.value());
 		} catch (NonexistentReferenceException e) {
 			throw new ResponseStatusException(NOT_FOUND, "Object does not exist: " + ref, e);
 		}
