@@ -72,6 +72,10 @@ The usual Gradle commands, plus:
 - To the extent possible, we separate complex logic from side effects to facilitate unit testing.
 - When something can't always work, we prefer it _never_ to work rather than _sometimes_ to work.
   - The overarching goal of Bosk is to reduce the behaviour gap between local development and production. If your code works, you probably did things right.
+- We don't write defensive code for situations that can't happen. A fallback for an impossible
+  condition tells the reader the condition is possible, so they question their understanding of the
+  code and waste time working out how it could arise. Rely on the invariant instead, and if a reader
+  might doubt it, say so in a comment or assert it.
 
 ### Code ordering
 - Generally, in a class, instance fields come first, followed by shared mutable state (i.e. static fields, even if the reference is final), then constructors, then methods in use-before-declaration order
