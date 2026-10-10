@@ -22,6 +22,10 @@ import static works.bosk.bytecode.GeneratedClass.here;
 class ReferenceBuilder {
 	@SuppressWarnings({"unchecked","rawtypes"})
 	static <T> T buildReferences(Class<T> refsClass, Bosk<?> bosk) throws InvalidTypeException {
+		if (refsClass.getTypeParameters().length >= 1) {
+			throw new InvalidTypeException(refsClass.getSimpleName()
+				+ " has type parameters, so its Reference types can't be resolved; use a class without type parameters");
+		}
 		List<MethodBinding> bindings = new ArrayList<>();
 		for (Method method: refsClass.getDeclaredMethods()) { // TODO: Inherited methods
 			ReferencePath referencePath = method.getAnnotation(ReferencePath.class);

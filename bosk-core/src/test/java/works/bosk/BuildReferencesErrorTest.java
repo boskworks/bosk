@@ -49,6 +49,15 @@ public class BuildReferencesErrorTest extends AbstractBoskTest {
 			bosk.buildReferences(Invalid_WeirdParameter.class));
 	}
 
+	@Test
+	@SuppressWarnings("rawtypes")
+	void genericRefsInterface_throws() {
+		// A generic reference interface can't resolve its Reference types against the
+		// raw class, so it's rejected up front rather than failing type argument by type argument.
+		assertThrows(InvalidTypeException.class, ()->
+			bosk.buildReferences(Invalid_GenericRefs.class));
+	}
+
 	@SuppressWarnings("unused")
 	public interface Invalid_NonReference {
 		@ReferencePath("/entities/-entity-")
@@ -70,6 +79,12 @@ public class BuildReferencesErrorTest extends AbstractBoskTest {
 	public interface Invalid_WeirdParameter {
 		@ReferencePath("/entities/-entity-")
 		Reference<TestEntity> anyEntity(Object parameter);
+	}
+
+	@SuppressWarnings("unused")
+	public interface Invalid_GenericRefs<T> {
+		@ReferencePath("/entities/-entity-")
+		Reference<T> anyEntity();
 	}
 
 }
