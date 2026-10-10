@@ -129,6 +129,7 @@ configure(subprojects.findAll {
 		signaturesFiles = files("${rootProject.projectDir}/forbidden-apis-signatures.txt")
 		ignoreFailures = false
 		failOnMissingClasses = false // Forbidden APIs struggles with the Classfile API
+		ignoreSignaturesOfMissingClasses = true // The signature file is shared by modules that don't all depend on Jackson
 		suppressAnnotations = ['works.bosk.junit.SuppressForbidden']
 	}
 
