@@ -90,7 +90,7 @@ final class JacksonCompiler {
 			StackWalker.StackFrame origin = here();
 			Currier currier = new Currier();
 			Codec codec = GeneratedClass.instantiate("BOSK_JACKSON_" + nodeClass.getSimpleName(), JacksonCodecRuntime.class, nodeClass.getClassLoader(), origin, currier, cb -> {
-				generate_writeFields(cb, currier, origin, nodeType, components);
+				generate_writeFields(cb, origin, nodeType, components);
 				generate_instantiateFrom(cb, origin, constructor, components);
 			});
 
@@ -136,7 +136,7 @@ final class JacksonCompiler {
 	/**
 	 * Generates the body of the {@link Codec#writeFields} method.
 	 */
-	private void generate_writeFields(java.lang.classfile.ClassBuilder cb, Currier currier, StackWalker.StackFrame origin, Type nodeType, List<RecordComponent> components) {
+	private void generate_writeFields(java.lang.classfile.ClassBuilder cb, StackWalker.StackFrame origin, Type nodeType, List<RecordComponent> components) {
 		JavaType nodeJavaType = typeFactory.constructType(nodeType);
 		Class<?> nodeClass = nodeJavaType.getRawClass();
 		cb.withMethodBody("writeFields", GeneratedClass.mtd(Object.class, Object.class, JsonGenerator.class, SerializationContext.class), PUBLIC.mask(), codeBuilder -> {
@@ -161,7 +161,6 @@ final class JacksonCompiler {
 				// building the plan. The plan should be straightforward and "obviously
 				// correct". The execution of the plan should contain the sophistication.
 				FieldWritePlan plan;
-				JavaType parameterType = typeFactory.resolveMemberType(component.getGenericType(), nodeJavaType.getBindings());
 				plan = new OrdinaryFieldWritePlan();
 				if (Optional.class.isAssignableFrom(component.getType())) {
 					plan = new OptionalFieldWritePlan(plan);
@@ -181,7 +180,7 @@ final class JacksonCompiler {
 
 				// Execute the plan
 				SerializationContext serializerProvider = null; // static optimization not yet implemented
-				plan.generateFieldWrite(codeBuilder, currier, name, jsonGenerator, serializers, serializerProvider, parameterType);
+				plan.generateFieldWrite(codeBuilder, name, jsonGenerator, serializers, serializerProvider);
 			}
 			// TODO: Support void methods
 			codeBuilder.loadLocal(REFERENCE, node.slot());
@@ -239,12 +238,10 @@ final class JacksonCompiler {
 		 */
 		void generateFieldWrite(
 			CodeBuilder codeBuilder,
-			Currier currier,
 			String name,
 			LocalVariable jsonGenerator,
 			LocalVariable serializers,
-			SerializationContext serializerProvider,
-			JavaType type);
+			SerializationContext serializerProvider);
 	}
 
 	/**
@@ -255,9 +252,8 @@ final class JacksonCompiler {
 		 * {@inheritDoc}
 		 */
 		@Override
-		public void generateFieldWrite(CodeBuilder codeBuilder, Currier currier, String name, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider, JavaType type) {
+		public void generateFieldWrite(CodeBuilder codeBuilder, String name, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider) {
 			codeBuilder.loadConstant(name);
-			currier.pushCurried(codeBuilder, "type", type, JavaType.class);
 			codeBuilder.loadLocal(REFERENCE, jsonGenerator.slot());
 			codeBuilder.loadLocal(REFERENCE, serializers.slot());
 			invoke(codeBuilder, DYNAMIC_WRITE_FIELD);
@@ -277,7 +273,7 @@ final class JacksonCompiler {
 		 * {@inheritDoc}
 		 */
 		@Override
-		public void generateFieldWrite(CodeBuilder codeBuilder, Currier currier, String name, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider, JavaType type) {
+		public void generateFieldWrite(CodeBuilder codeBuilder, String name, LocalVariable jsonGenerator, LocalVariable serializers, SerializationContext serializerProvider) {
 			castTo(codeBuilder, Optional.class);
 			LocalVariable optional = popToLocal(codeBuilder);
 			codeBuilder.loadLocal(REFERENCE, optional.slot());
@@ -288,8 +284,7 @@ final class JacksonCompiler {
 				invoke(block, OPTIONAL_GET);
 
 				// Write the value
-				valueWriter.generateFieldWrite(block, currier, name, jsonGenerator, serializers, serializerProvider,
-					JacksonSerializer.javaParameterType(type, Optional.class, 0));
+				valueWriter.generateFieldWrite(block, name, jsonGenerator, serializers, serializerProvider);
 			});
 		}
 	}
@@ -365,7 +360,7 @@ final class JacksonCompiler {
 
 	static {
 		try {
-			DYNAMIC_WRITE_FIELD = JacksonCodecRuntime.class.getDeclaredMethod("dynamicWriteField", Object.class, String.class, JavaType.class, JsonGenerator.class, SerializationContext.class);
+			DYNAMIC_WRITE_FIELD = JacksonCodecRuntime.class.getDeclaredMethod("dynamicWriteField", Object.class, String.class, JsonGenerator.class, SerializationContext.class);
 			LIST_GET = List.class.getDeclaredMethod("get", int.class);
 			OPTIONAL_IS_PRESENT = Optional.class.getDeclaredMethod("isPresent");
 			OPTIONAL_GET = Optional.class.getDeclaredMethod("get");
