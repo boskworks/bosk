@@ -203,6 +203,11 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 
 ## Test Coding Patterns
 
+- Don't try to test every combination of behaviours: any nontrivial system has a combinatorial
+  explosion of them. Design components to be orthogonal, test each exhaustively in isolation, and
+  test the composition on a small set of cases; the untested combinations are then covered by
+  inference. This is only sound if the components really are orthogonal, which takes deliberate
+  design, not accident.
 - Tests use JUnit 5
 - For parameterizing test methods, use the `@InjectedTest` annotation: `bosk-junit/src/main/java/works/bosk/junit/InjectedTest.java`
 - Tests for subprojects that integrate with external technologies like databases use Testcontainers to run those technologies, not mocks
