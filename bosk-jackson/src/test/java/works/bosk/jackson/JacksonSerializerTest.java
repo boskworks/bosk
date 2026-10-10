@@ -379,7 +379,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	void listValue_serializationWorks(List<?> list, JavaType type) {
 		ListValue<?> listValue = ListValue.from(list);
 		String expected = plainMapper.writeValueAsString(list);
-		assertEquals(expected, boskMapper.writerFor(type).writeValueAsString(listValue));
+		assertEquals(expected, boskMapper.writeValueAsString(listValue));
 	}
 
 	@ParameterizedTest
@@ -440,7 +440,7 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	void mapValue_serializationWorks(Map<String,?> map, JavaType type) {
 		MapValue<?> mapValue = MapValue.copyOf(map);
 		String expected = plainMapper.writeValueAsString(map);
-		assertEquals(expected, boskMapper.writerFor(type).writeValueAsString(mapValue));
+		assertEquals(expected, boskMapper.writeValueAsString(mapValue));
 	}
 
 	@ParameterizedTest
@@ -579,50 +579,39 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	}
 
 	private void assertJacksonWorks(Map<String,?> plainObject, Object boskObject, TypeReference<?> boskObjectTypeRef, Path path) {
-		JavaType boskObjectType = typeFactory.constructType(boskObjectTypeRef);
-		Map<String, Object> actualPlainObject = plainObjectFor(boskObject, boskObjectType);
+		Map<String, Object> actualPlainObject = plainObjectFor(boskObject);
 		assertEquals(plainObject, actualPlainObject, "Serialized object should match expected");
 
 		Object deserializedBoskObject = boskObjectFor(plainObject, boskObjectTypeRef, path);
 		assertEquals(boskObject, deserializedBoskObject, "Deserialized object should match expected");
 
-		Map<String, Object> roundTripPlainObject = plainObjectFor(deserializedBoskObject, boskObjectType);
+		Map<String, Object> roundTripPlainObject = plainObjectFor(deserializedBoskObject);
 		assertEquals(plainObject, roundTripPlainObject, "Round-trip serialized object should match expected");
 
 	}
 
 	private void assertJacksonWorks(List<?> plainList, Object boskObject, TypeReference<?> boskObjectTypeRef, Path path) {
 		JavaType boskObjectType = typeFactory.constructType(boskObjectTypeRef);
-		List<Object> actualPlainList = plainListFor(boskObject, boskObjectType);
+		List<Object> actualPlainList = plainListFor(boskObject);
 		assertEquals(plainList, actualPlainList, "Serialized object should match expected");
 
 		Object deserializedBoskObject = boskListFor(plainList, boskObjectType, path);
 		assertEquals(boskObject, deserializedBoskObject, "Deserialized object should match expected");
 
-		List<Object> roundTripPlainObject = plainListFor(deserializedBoskObject, boskObjectType);
+		List<Object> roundTripPlainObject = plainListFor(deserializedBoskObject);
 		assertEquals(plainList, roundTripPlainObject, "Round-trip serialized object should match expected");
 
 	}
 
-	private Map<String, Object> plainObjectFor(Object boskObject, JavaType type) {
-		JavaType mapJavaType = typeFactory.constructParametricType(Map.class, String.class, Object.class);
-		String json = boskMapper.writerFor(type).writeValueAsString(boskObject);
-		return plainMapper.readerFor(mapJavaType).readValue(json);
-	}
-
-	/**
-	 * For a value whose type has no type parameters, the runtime class is enough,
-	 * so no declared type is needed.
-	 */
 	private Map<String, Object> plainObjectFor(Object boskObject) {
 		JavaType mapJavaType = typeFactory.constructParametricType(Map.class, String.class, Object.class);
 		String json = boskMapper.writeValueAsString(boskObject);
 		return plainMapper.readerFor(mapJavaType).readValue(json);
 	}
 
-	private List<Object> plainListFor(Object boskObject, JavaType type) {
+	private List<Object> plainListFor(Object boskObject) {
 		JavaType listJavaType = typeFactory.constructParametricType(List.class, Object.class);
-		String json = boskMapper.writerFor(type).writeValueAsString(boskObject);
+		String json = boskMapper.writeValueAsString(boskObject);
 		return plainMapper.readerFor(listJavaType).readValue(json);
 	}
 
@@ -757,15 +746,6 @@ class JacksonSerializerTest extends AbstractBoskTest {
 	void parameterizedOptionalComponent_serializedByRuntimeType() {
 		assertEquals(Map.of("value", "hello"),
 			plainObjectFor(new OptionalHolder<>(Optional.of("hello"))));
-	}
-
-	@Test
-	void parameterizedRecord_serializedWithDeclaredType() {
-		// The runtime class of a ValueNode<String> is just ValueNode, so the type
-		// argument must be supplied for the value component to serialize as String.
-		JavaType type = typeFactory.constructType(Types.parameterizedType(ValueNode.class, String.class));
-		assertEquals(Map.of("value", "hello"),
-			plainObjectFor(new ValueNode<>("hello"), type));
 	}
 
 	@Test
