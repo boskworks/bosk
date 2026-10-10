@@ -99,7 +99,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		private ValueSerializer<?> getValueSerializer(SerializationConfig config, JavaType type) {
 			Class theClass = type.getRawClass();
 			if (Catalog.class.isAssignableFrom(theClass)) {
-				return catalogSerializer(type);
+				return catalogSerializer();
 			} else if (Listing.class.isAssignableFrom(theClass)) {
 				return listingSerializer();
 			} else if (Reference.class.isAssignableFrom(theClass)) {
@@ -109,9 +109,9 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			} else if (ListingEntry.class.isAssignableFrom(theClass)) {
 				return listingEntrySerializer();
 			} else if (SideTable.class.isAssignableFrom(theClass)) {
-				return sideTableSerializer(type);
+				return sideTableSerializer();
 			} else if (TaggedUnion.class.isAssignableFrom(theClass)) {
-				return taggedUnionSerializer(type);
+				return taggedUnionSerializer();
 			} else if (StateTreeNode.class.isAssignableFrom(theClass)) {
 				return stateTreeNodeSerializer(config, type);
 			} else if (Optional.class.isAssignableFrom(theClass)) {
@@ -120,13 +120,13 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			} else if (Phantom.class.isAssignableFrom(theClass)) {
 				throw new IllegalArgumentException("Cannot serialize a Phantom on its own; only as a field of another object");
 			} else if (MapValue.class.isAssignableFrom(theClass)) {
-				return mapValueSerializer(type);
+				return mapValueSerializer();
 			} else {
 				return null;
 			}
 		}
 
-		private ValueSerializer<Catalog<Entity>> catalogSerializer(JavaType catalogType) {
+		private ValueSerializer<Catalog<Entity>> catalogSerializer() {
 			return new ValueSerializer<>() {
 				@Override
 				public void serialize(Catalog<Entity> value, JsonGenerator gen, SerializationContext serializers) {
@@ -195,7 +195,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			};
 		}
 
-		private ValueSerializer<SideTable<Entity, Object>> sideTableSerializer(JavaType sideTableType) {
+		private ValueSerializer<SideTable<Entity, Object>> sideTableSerializer() {
 			return new ValueSerializer<>() {
 				@Override
 				public void serialize(SideTable<Entity, Object> value, JsonGenerator gen, SerializationContext serializers) {
@@ -215,7 +215,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 		}
 
 		@SuppressWarnings({"unchecked"})
-		private <T extends TaggedUnionCase> ValueSerializer<TaggedUnion<?>> taggedUnionSerializer(JavaType taggedUnionType) {
+		private <T extends TaggedUnionCase> ValueSerializer<TaggedUnion<?>> taggedUnionSerializer() {
 			return new ValueSerializer<>() {
 				/**
 				 * A {@link TaggedUnion} has a single field called {@code value},
@@ -247,7 +247,7 @@ public final class JacksonSerializer extends StateTreeSerializer {
 			return compiler.<StateTreeNode>compiled(type, boskInfo).serializer(config);
 		}
 
-		private ValueSerializer<MapValue<Object>> mapValueSerializer(JavaType mapValueType) {
+		private ValueSerializer<MapValue<Object>> mapValueSerializer() {
 			return new ValueSerializer<>() {
 				@Override
 				public void serialize(MapValue<Object> value, JsonGenerator gen, SerializationContext serializers) {
