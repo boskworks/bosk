@@ -2,6 +2,7 @@ package works.bosk;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,16 +40,16 @@ class ReferenceBuilder {
 				Path path = Path.parseParameterized(referencePath.value());
 				if (returnClass.equals(CatalogReference.class)) {
 					Type entryType = parameterType(returnType, CatalogReference.class, 0);
-					result = bosk.rootReference().thenCatalog((Class) rawClass(entryType), path);
+					result = bosk.rootReference().thenCatalog((Class) rawClassForReference(entryType, method), path);
 				} else if (returnClass.equals(ListingReference.class)) {
 					Type entryType = parameterType(returnType, ListingReference.class, 0);
-					result = bosk.rootReference().thenListing((Class) rawClass(entryType), path);
+					result = bosk.rootReference().thenListing((Class) rawClassForReference(entryType, method), path);
 				} else if (returnClass.equals(SideTableReference.class)) {
 					Type keyType = parameterType(returnType, SideTableReference.class, 0);
 					Type valueType = parameterType(returnType, SideTableReference.class, 1);
-					result = bosk.rootReference().thenSideTable((Class) rawClass(keyType), (Class) rawClass(valueType), path);
+					result = bosk.rootReference().thenSideTable((Class) rawClassForReference(keyType, method), (Class) rawClassForReference(valueType, method), path);
 				} else {
-					result = bosk.rootReference().then(rawClass(targetType), path);
+					result = bosk.rootReference().then(rawClassForReference(targetType, method), path);
 				}
 			} catch (InvalidTypeException e) {
 				// Add some troubleshooting info for the user
@@ -98,6 +99,21 @@ class ReferenceBuilder {
 	}
 
 	private record MethodBinding(Method method, Reference<?> result) { }
+
+	/**
+	 * @return the raw class of a concrete reference type
+	 * @throws InvalidTypeException if {@code type} is not concrete, which happens when a
+	 * {@link ReferencePath} method mentions a type variable of a generic interface
+	 */
+	private static Class<?> rawClassForReference(Type type, Method method) throws InvalidTypeException {
+		if (type instanceof Class<?> c) {
+			return c;
+		} else if (type instanceof ParameterizedType pt) {
+			return (Class<?>) pt.getRawType();
+		} else {
+			throw new InvalidTypeException(methodName(method) + " must use concrete Reference types, not " + type);
+		}
+	}
 
 	@NonNull
 	private static String methodName(Method method) {
