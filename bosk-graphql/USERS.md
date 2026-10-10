@@ -48,27 +48,38 @@ Bosk's container types don't map one-to-one onto GraphQL, so each has a decided 
 
 ## Tagged unions
 
-A `TaggedUnion<C>` maps to a GraphQL interface named after the case supertype `C`, and each case maps to an object type that implements it. The interface has a `tag` field; each case type has the same `tag` field plus fields for the case's own components.
+A `TaggedUnion<C>` maps to a GraphQL interface named after the case supertype `C`, and each case maps to an object type that implements the interface. The interface has a `tag` field; each case type has the same `tag` field plus fields for the case's own components.
 
-We select the case type from the value's `tag()`, not from its runtime class. This is what lets a single union map two tags to two different parameterizations of one record (see below): those become two distinct object types, and the tag decides which one a value resolves to. A `tag()` with no entry in the case map fails rather than falling back.
+The `tag` is the discriminator: a value resolves to the case type whose case-map entry has the value's `tag()`. A `tag()` with no entry in the case map fails rather than falling back to the value's runtime class. Because the tag decides, the same record can appear as more than one case (see "Parameterized types" below).
 
 ```graphql
 {
-  box {
+  shape {
     tag
-    ... on BoxedCase_String { value }
-    ... on BoxedCase_Integer { value }
+    ... on Circle { radius }
+    ... on Square { side }
   }
 }
 ```
 
 ## Parameterized types
 
-A record used with type arguments gets a name that includes them, joined with underscores, so `GenericNode<String>` becomes `GenericNode_String` and is a distinct GraphQL type from `GenericNode_Integer`. That naming is why two tags can map to two parameterizations of the same record: each parameterization is its own type.
+A record used with type arguments gets a name that includes them, joined with underscores, so `GenericNode<String>` becomes `GenericNode_String`, a distinct GraphQL type from `GenericNode_Integer`. Each parameterization is its own GraphQL type. This is what lets a tagged union map two tags to two parameterizations of one record: the tags select two different case types.
 
 ## Names
 
-GraphQL type names come from the Java class's simple name. Because the underscore joins type arguments, a class whose simple name contains an underscore (or starts with `u`) is prefixed with `u` and its underscore count, so the encoding stays unambiguous. A name that contains `$` or starts with `_` is rejected.
+GraphQL type names come from the Java class's simple name. A parameterized type appends its type arguments, joined with underscores:
+
+- `Identifier` → `Identifier`
+- `GenericNode<String>` → `GenericNode_String`
+- `GenericNode<List<String>>` → `GenericNode_List_String`
+
+Because the underscore joins type arguments, a class whose simple name already contains underscores, or starts with `u`, is prefixed with `u` and its underscore count, so the encoding stays unambiguous:
+
+- `Foo_Bar` → `u1Foo_Bar`
+- `util` → `u0util`
+
+Names that contain `$` or start with `_` are rejected.
 
 ## Errors
 
