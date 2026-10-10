@@ -13,8 +13,8 @@ import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.TaggedUnionCase;
+import works.bosk.annotations.TaggedUnionCaseMap;
 
 @With
 @FieldNameConstants
@@ -30,7 +30,7 @@ public record TestEntity(
 	Optional<SelfValue> selfValue
 ) implements Entity {
 
-	public interface Variant extends VariantCase {
+	public interface Variant extends TaggedUnionCase {
 		@Override
 		default String tag() {
 			if (this instanceof StringCase) {
@@ -40,7 +40,7 @@ public record TestEntity(
 			}
 		}
 
-		@VariantCaseMap
+		@TaggedUnionCaseMap
 		MapValue<Type> VARIANT_CASE_MAP = MapValue.copyOf(Map.of(
 			"string", StringCase.class,
 			"identifier", IdentifierCase.class

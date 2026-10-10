@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.annotations.VariantCaseMap;
+import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.libtesting.AbstractBoskTest;
 
@@ -19,7 +19,7 @@ class TaggedUnionTest extends AbstractBoskTest {
 		TaggedUnion<TestVariant> v
 	) implements StateTreeNode { }
 
-	public interface TestVariant extends VariantCase {
+	public interface TestVariant extends TaggedUnionCase {
 		default String tag() {
 			if (this instanceof StringCase) {
 				return "string";
@@ -28,7 +28,7 @@ class TaggedUnionTest extends AbstractBoskTest {
 			}
 		}
 
-		@VariantCaseMap
+		@TaggedUnionCaseMap
 		MapValue<Class<? extends TestVariant>> TYPE_MAP = MapValue.copyOf(Map.of(
 			"string", StringCase.class,
 			"id", IDCase.class
@@ -81,8 +81,8 @@ class TaggedUnionTest extends AbstractBoskTest {
 		assertThrows(IllegalArgumentException.class, ()->bosk.driver().submitReplacement(refs.idCase(), idCase));
 	}
 
-	public interface WrongTagVariant extends VariantCase {
-		@VariantCaseMap
+	public interface WrongTagVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
 		MapValue<Class<? extends WrongTagVariant>> CASE_MAP = MapValue.copyOf(Map.of(
 			"expectedTag", NonexistentTagCase.class
 		));

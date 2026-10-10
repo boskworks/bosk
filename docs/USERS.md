@@ -179,29 +179,29 @@ It behaves just like an `Optional` field that is always empty.
 Phantom fields are primarily useful as the domain for a sparse `Listing` or `SideTable` in situations where there is no useful information to be stored about the key entities.
 If you don't already know what this means, you probably don't want to use `Phantom`.
 
-##### `VariantNode`
+##### Tagged unions
 
-A _variant node_ is a `StateTreeNode` that behaves like a _sum type_ or _tagged union_.
+A _tagged union_ is a `StateTreeNode` that behaves like a _sum type_.
 It's a way of adding polymorphism to the state tree.
 
-To use this feature, declare an interface type that extends `VariantNode`
+To use this feature, declare an interface type that extends `TaggedUnionCase`
 with one static final field of type `MapValue` that maps tag names
 to specific subtypes of the interface.
-The field is annotated with `@VariantCaseMap`.
+The field is annotated with `@TaggedUnionCaseMap`.
 Then implement the `tag()` method to return the tag associated with a given instance
-of your variant node; more about this below.
+of the interface; more about this below.
 
-The variant node can be referenced just like any other node,
-with a path like `/containingObject/exampleVariant`.
-In addition, specific variant cases can be referenced by including the tag in the path,
-like `/containingObject/exampleVariant/exampleTag`.
-Such a reference is treated as nonexistent if the variant object implements a different tag.
-In this way, a variant node behaves like a `StateTreeNode` having `Optional` fields,
-one for each variant case, whose name is the tag and whose type is provided by the `@VariantCaseMap`.
+The union can be referenced just like any other node,
+with a path like `/containingObject/exampleUnion`.
+In addition, specific cases can be referenced by including the tag in the path,
+like `/containingObject/exampleUnion/exampleTag`.
+Such a reference is treated as nonexistent if the value carries a different tag.
+In this way, a tagged union behaves like a `StateTreeNode` having `Optional` fields,
+one for each case, whose name is the tag and whose type is provided by the `@TaggedUnionCaseMap`.
 
-It is notable that the variant case map is not entirely determined by annotations,
+It is notable that the case map is not entirely determined by annotations,
 but is specified by an object that is constructed at runtime.
-The intent is that variant nodes offer a way to extend the allowed contents of the bosk at initialization time,
+The intent is that tagged unions offer a way to extend the allowed contents of the bosk at initialization time,
 whereas all other bosk contents are determined at build time.
 
 Some bosk components will make an effort to detect tag mismatches,
@@ -210,9 +210,9 @@ it is good practice to check for mismatches in your subtype constructors
 using code like this:
 
 ```java
-public record ExampleVariantCase() implements ExampleVariantNode {
-	ExampleVariantCase {
-		assert ExampleVariantNode.VARIANT_CASE_MAP
+public record ExampleSubtype() implements ExampleUnion {
+	ExampleSubtype {
+		assert ExampleUnion.CASES
 			.get(tag())
 			.isInstance(this);
 	}
@@ -224,13 +224,13 @@ There are typically two ways to implement the `tag()` method.
 First, and most straightforward, is to implement it as a `default` method in the interface class,
 inspecting the type and possibly fields of `this` and returning the appropriate tag.
 This _single method_ approach has the benefit of keeping the `tag()` implementation
-near the `@VariantCaseMap` field, which it must match.
+near the `@TaggedUnionCaseMap` field, which it must match.
 
 Second, if each subtype is associated with only one tag,
 then the subtypes can implement `tag()` to return the corresponding tag.
 This _polymorphic_ approach lends itself to adding more subtypes over time,
 with each new subtype implementing `tag()` as appropriate.
-The main `VariantCaseMap` field must still be updated to cover all subtypes,
+The main case map field must still be updated to cover all subtypes,
 which can still be a bit of a chore,
 but applications could opt to automate this, using SPI or similar, to discover the subtypes.
 
@@ -238,6 +238,26 @@ If a subtype is associated with two or more tags,
 the second approach can still be employed by making that subtype's implementation contain
 additional logic to determine which tag is appropriate,
 potentially by simply adding a `tag` field to the class and returning that.
+
+##### Parameterized nodes
+
+A `StateTreeNode` may declare type parameters, and a parameterized node may appear as the
+root or as a field. A component's type is resolved against the type arguments of its
+enclosing node, so a node can be reused at more than one parameterization:
+
+```java
+public record GenericNode<T>(T value) implements StateTreeNode { }
+```
+
+Because the type arguments can't be inferred from an instance, a parameterized node is
+always used with its declared type. As a field, that comes from the enclosing node's
+type. As a root, pass a `Type` that carries the type arguments to the
+`Bosk(String, Type, ...)` constructor, since `Bosk.simple` derives the root type from its
+instance. A raw generic root type is rejected rather than silently erased.
+
+Serializing a parameterized value does not require its declared type: each component is
+written from the component's value. Deserializing does need it: it is parsing, and the
+declared datatypes describe the grammar.
 
 ### Creating `Reference`s
 
@@ -1032,8 +1052,8 @@ The format of the various built-in types is shown below.
     ],
     "domain": "/catalog"    // Reference to the containing Catalog
 },
-"variantNode": {
-    "exampleTag": {         // Indicates which variant case this object implements
+"exampleUnion": {
+    "exampleTag": {         // Indicates which case this object implements
         /*
         Fields for subtype associated with exampleTag go here.
         */

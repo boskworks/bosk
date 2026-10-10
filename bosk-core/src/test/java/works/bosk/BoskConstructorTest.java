@@ -168,8 +168,9 @@ public class BoskConstructorTest {
 	private static <R extends StateTreeNode> DriverFactory<R> initialStateDriver(InitialStateFunction<R> initialStateFunction) {
 		return (_, _) -> new NoOpDriver() {
 			@Override
-			public <RR extends StateTreeNode> RR initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
-				return rootType.cast(initialStateFunction.get());
+			@SuppressWarnings("unchecked")
+			public <RR extends StateTreeNode> RR initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+				return (RR) initialStateFunction.get();
 			}
 		};
 	}

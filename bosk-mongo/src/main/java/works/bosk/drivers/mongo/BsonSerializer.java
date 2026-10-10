@@ -48,7 +48,7 @@ import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.drivers.mongo.exceptions.BsonFormatException;
 import works.bosk.exceptions.DeserializationException;
 import works.bosk.exceptions.InvalidTypeException;
@@ -68,6 +68,7 @@ import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.ReferenceUtils.getterMethod;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
+import static works.bosk.ReferenceUtils.resolveTypeVariables;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameSegment;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.encodeMapKey;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.undottedFieldNameSegment;
@@ -170,8 +171,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 		} else if (TaggedUnion.class.isAssignableFrom(targetClass)) {
 			return taggedUnionCodec(targetType, targetClass, registry, boskInfo);
 		} else if (StateTreeNode.class.isAssignableFrom(targetClass)) {
-			// TODO: What about generic node classes?
-			return stateTreeNodeCodec(targetClass, registry, boskInfo);
+			return stateTreeNodeCodec(targetType, registry, boskInfo);
 		} else if (Catalog.class.isAssignableFrom(targetClass)) {
 			return catalogCodec(targetType, targetClass, registry, boskInfo);
 		} else if (SideTable.class.isAssignableFrom(targetClass)) {
@@ -409,13 +409,15 @@ public final class BsonSerializer extends StateTreeSerializer {
 		};
 	}
 
-	private <T extends StateTreeNode, R extends StateTreeNode> Codec<T> stateTreeNodeCodec(Class<T> nodeClass, CodecRegistry registry, BoskInfo<R> boskInfo) {
+	@SuppressWarnings("unchecked")
+	private <T extends StateTreeNode, R extends StateTreeNode> Codec<T> stateTreeNodeCodec(Type nodeType, CodecRegistry registry, BoskInfo<R> boskInfo) {
+		Class<T> nodeClass = (Class<T>) rawClass(nodeType);
 		// Pre-compute some reflection-based stuff
 		//
 		Constructor<?> constructor = ReferenceUtils.getCanonicalConstructor(nodeClass);
 		LinkedHashMap<String, RecordComponent> parametersByName = Stream.of(nodeClass.getRecordComponents()).collect(toMap(RecordComponent::getName, p->p, (x, y)->{ throw new BsonFormatException("Two record components with same name \"" + x.getName() + "\": " + x + "; " + y); }, LinkedHashMap::new));
 
-		MethodHandle writerHandle = computeAllFieldsWriterHandle(nodeClass, parametersByName, registry, boskInfo);
+		MethodHandle writerHandle = computeAllFieldsWriterHandle(nodeType, parametersByName, registry, boskInfo);
 		MethodHandle factoryHandle = computeFactoryHandle(constructor);
 
 		return new Codec<>() {
@@ -434,11 +436,11 @@ public final class BsonSerializer extends StateTreeSerializer {
 			@SuppressWarnings("unchecked")
 			public T decode(BsonReader reader, DecoderContext decoderContext) {
 				reader.readStartDocument();
-				Map<String, Object> parameterValuesByName = gatherParameterValuesByName(nodeClass, parametersByName, reader, decoderContext, registry, boskInfo);
+				Map<String, Object> parameterValuesByName = gatherParameterValuesByName(nodeType, parametersByName, reader, decoderContext, registry, boskInfo);
 				reader.readEndDocument();
 				List<Object> parameterValues;
 				try {
-					parameterValues = parameterValueList(nodeClass, parameterValuesByName, parametersByName, boskInfo);
+					parameterValues = parameterValueList(nodeType, parameterValuesByName, parametersByName, boskInfo);
 				} catch (DeserializationException e) {
 					throw new IllegalStateException(e);
 				}
@@ -457,37 +459,36 @@ public final class BsonSerializer extends StateTreeSerializer {
 	}
 
 	@SuppressWarnings("unchecked")
-	private <V extends VariantCase, R extends StateTreeNode> Codec<TaggedUnion<V>> taggedUnionCodec(Type taggedUnionType, Class<TaggedUnion<V>> taggedUnionClass, CodecRegistry registry, BoskInfo<R> boskInfo) {
+	private <V extends TaggedUnionCase, R extends StateTreeNode> Codec<TaggedUnion<V>> taggedUnionCodec(Type taggedUnionType, Class<TaggedUnion<V>> taggedUnionClass, CodecRegistry registry, BoskInfo<R> boskInfo) {
 		Type caseStaticType = parameterType(taggedUnionType, TaggedUnion.class, 0);
 		Class<V> caseStaticClass = (Class<V>)rawClass(caseStaticType);
-		MapValue<Type> variantCaseMap;
+		MapValue<Type> taggedUnionCaseMap;
 		try {
-			variantCaseMap = StateTreeSerializer.getVariantCaseMap(caseStaticClass);
+			taggedUnionCaseMap = StateTreeSerializer.getTaggedUnionCaseMap(caseStaticClass);
 		} catch (InvalidTypeException e) {
 			throw new IllegalArgumentException(e);
 		}
-		var codecs = variantCaseMap.entrySet().stream().collect(toMap(Entry::getKey, e -> {
-			@SuppressWarnings("unchecked")
-			Class<? extends StateTreeNode> caseClass = (Class<? extends StateTreeNode>) rawClass(e.getValue());
-			return stateTreeNodeCodec(caseClass, registry, boskInfo);
+		Map<String, Codec<? extends StateTreeNode>> codecs = taggedUnionCaseMap.entrySet().stream().collect(toMap(Entry::getKey, e -> {
+			Type caseType = resolveTypeVariables(e.getValue(), caseStaticType);
+			return stateTreeNodeCodec(caseType, registry, boskInfo);
 		}));
 		return new Codec<>() {
 			@Override
 			public void encode(BsonWriter writer, TaggedUnion<V> taggedUnion, EncoderContext encoderContext) {
-				V variant = taggedUnion.variant();
-				String tag = variant.tag();
+				V caseValue = taggedUnion.value();
+				String tag = caseValue.tag();
 				@SuppressWarnings("rawtypes")
 				Codec caseCodec = codecs.get(tag);
 				if (caseCodec == null) {
-					throw new IllegalStateException("TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected variant tag field \"" + tag
-						+ "; expected one of " + variantCaseMap.keySet());
+					throw new IllegalStateException("TaggedUnion<" + caseStaticClass.getSimpleName() + "> has unexpected case tag field \"" + tag
+						+ "; expected one of " + taggedUnionCaseMap.keySet());
 				}
-				Type caseDynamicType = variantCaseMap.get(tag);
+				Type caseDynamicType = resolveTypeVariables(taggedUnionCaseMap.get(tag), caseStaticType);
 				Class<? extends V> caseDynamicClass = (Class<? extends V>) rawClass(caseDynamicType);
 				writer.writeStartDocument();
 				try {
 					writer.writeName(tag);
-					caseCodec.encode(writer, caseDynamicClass.cast(variant), encoderContext);
+					caseCodec.encode(writer, caseDynamicClass.cast(caseValue), encoderContext);
 				} catch (Exception e) {
 					throw new IllegalStateException("Error encoding " + caseStaticClass.getSimpleName() + ": " + e.getMessage(), e);
 				}
@@ -501,13 +502,13 @@ public final class BsonSerializer extends StateTreeSerializer {
 				@SuppressWarnings("unchecked")
 				Codec<V> caseCodec = (Codec<V>) codecs.get(tag);
 				if (caseCodec == null) {
-					throw new IllegalStateException("Input has unexpected variant tag field \"" + tag
+					throw new IllegalStateException("Input has unexpected case tag field \"" + tag
 						+ "\" for TaggedUnion<" + caseStaticClass.getSimpleName()
-						+ ">; expected one of " + variantCaseMap.keySet());
+						+ ">; expected one of " + taggedUnionCaseMap.keySet());
 				}
-				Class<? extends V> caseDynamicClass = (Class<? extends V>) rawClass(variantCaseMap.get(tag));
+				Class<? extends V> caseDynamicClass = (Class<? extends V>) rawClass(resolveTypeVariables(taggedUnionCaseMap.get(tag), caseStaticType));
 				TaggedUnion<V> result;
-				try (DeserializationScope scope = variantCaseDeserializationScope(tag)) {
+				try (DeserializationScope scope = taggedUnionCaseDeserializationScope(tag)) {
 					result = TaggedUnion.of(caseDynamicClass.cast(caseCodec.decode(reader, decoderContext)));
 				}
 				if (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
@@ -643,7 +644,8 @@ public final class BsonSerializer extends StateTreeSerializer {
 	/**
 	 * @return Map not necessarily in any particular order; caller is expected to apply any desired ordering.
 	 */
-	private <R extends StateTreeNode> Map<String, Object> gatherParameterValuesByName(Class<? extends StateTreeNode> nodeClass, Map<String, RecordComponent> componentsByName, BsonReader reader, DecoderContext decoderContext, CodecRegistry registry, BoskInfo<R> boskInfo) {
+	private <R extends StateTreeNode> Map<String, Object> gatherParameterValuesByName(Type nodeType, Map<String, RecordComponent> componentsByName, BsonReader reader, DecoderContext decoderContext, CodecRegistry registry, BoskInfo<R> boskInfo) {
+		Class<?> nodeClass = rawClass(nodeType);
 		Map<String, Object> parameterValuesByName = new HashMap<>();
 		while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
 			String fieldName = reader.readName();
@@ -658,7 +660,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 			}
 			Object value;
 			try (@SuppressWarnings("unused") DeserializationScope s = nodeFieldDeserializationScope(nodeClass, fieldName)) {
-				value = decodeValue(component.getGenericType(), reader, decoderContext, registry, boskInfo);
+				value = decodeValue(resolveTypeVariables(component.getGenericType(), nodeType), reader, decoderContext, registry, boskInfo);
 			}
 			Object old = parameterValuesByName.put(fieldName, value);
 			if (old != null) {
@@ -683,7 +685,9 @@ public final class BsonSerializer extends StateTreeSerializer {
 		return value;
 	}
 
-	private <T extends StateTreeNode, R extends StateTreeNode> MethodHandle computeAllFieldsWriterHandle(Class<T> nodeClass, Map<String, RecordComponent> componentsByName, CodecRegistry codecRegistry, BoskInfo<R> boskInfo) {
+	@SuppressWarnings("unchecked")
+	private <T extends StateTreeNode, R extends StateTreeNode> MethodHandle computeAllFieldsWriterHandle(Type nodeType, Map<String, RecordComponent> componentsByName, CodecRegistry codecRegistry, BoskInfo<R> boskInfo) {
+		Class<T> nodeClass = (Class<T>) rawClass(nodeType);
 		MethodHandle handleUnderConstruction = writeNothingHandle(nodeClass);
 		for (Entry<String, RecordComponent> e: componentsByName.entrySet()) {
 			// Here, handleUnderConstruction has args (N,W,E)
@@ -695,7 +699,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 			} catch (IllegalAccessException | InvalidTypeException e1) {
 				throw new IllegalStateException("Error in class " + nodeClass.getSimpleName() + ": " + e1.getMessage(), e1);
 			}
-			MethodHandle fieldWriter = componentWriterHandle(nodeClass, name, component, codecRegistry, boskInfo); // (P,W,E)
+			MethodHandle fieldWriter = componentWriterHandle(nodeType, name, component, codecRegistry, boskInfo); // (P,W,E)
 			MethodHandle writerCall = filterArguments(fieldWriter, 0, getter); // (N,W,E)
 			MethodHandle nestedCall = collectArguments(writerCall, 0, handleUnderConstruction); // (N,W,E,N,W,E)
 			handleUnderConstruction = permuteArguments(nestedCall, writerCall.type(), 0, 1, 2, 0, 1, 2); // (N,W,E)
@@ -703,11 +707,14 @@ public final class BsonSerializer extends StateTreeSerializer {
 		return handleUnderConstruction;
 	}
 
-	private <R extends StateTreeNode> MethodHandle componentWriterHandle(Class<?> nodeClass, String name, RecordComponent component, CodecRegistry codecRegistry, BoskInfo<R> boskInfo) {
+	private <R extends StateTreeNode> MethodHandle componentWriterHandle(Type nodeType, String name, RecordComponent component, CodecRegistry codecRegistry, BoskInfo<R> boskInfo) {
+		Class<?> nodeClass = rawClass(nodeType);
 		if (isImplicitParameter(nodeClass, component)) {
 			return writeNothingHandle(component.getType());
 		} else {
-			return valueWriterHandle(name, component.getGenericType(), codecRegistry, boskInfo);
+			MethodHandle fieldWriter = valueWriterHandle(name, resolveTypeVariables(component.getGenericType(), nodeType), codecRegistry, boskInfo);
+			// The getter's erased return type can differ from the substituted value type.
+			return fieldWriter.asType(fieldWriter.type().changeParameterType(0, component.getType()));
 		}
 	}
 

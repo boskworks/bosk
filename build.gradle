@@ -121,20 +121,16 @@ configure(subprojects.findAll {
 		excludeFilter = file("${rootProject.projectDir}/spotbugsExclude.xml")
 	}
 
-	tasks.matching { it.name == "spotbugsTest" }.configureEach { enabled = false }
+	// Test code isn't shipped, so we don't run these checks against it.
+	tasks.matching { it.name in ["spotbugsTest", "forbiddenApisTest"] }.configureEach { enabled = false }
 
-	forbiddenApis {
+	forbiddenApisMain {
 		bundledSignatures = ['jdk-unsafe', 'jdk-deprecated', 'jdk-non-portable', 'jdk-reflection']
 		signaturesFiles = files("${rootProject.projectDir}/forbidden-apis-signatures.txt")
 		ignoreFailures = false
 		failOnMissingClasses = false // Forbidden APIs struggles with the Classfile API
+		ignoreSignaturesOfMissingClasses = true // The signature file is shared by modules that don't all depend on Jackson
 		suppressAnnotations = ['works.bosk.junit.SuppressForbidden']
-	}
-
-	forbiddenApisTest {
-		bundledSignatures = ['jdk-unsafe', 'jdk-deprecated', 'jdk-non-portable', 'jdk-reflection']
-		signaturesFiles = files("${rootProject.projectDir}/forbidden-apis-signatures.txt")
-		failOnMissingClasses = false // Forbidden APIs struggles with the Classfile API
 	}
 
 }

@@ -72,6 +72,15 @@ The usual Gradle commands, plus:
 - To the extent possible, we separate complex logic from side effects to facilitate unit testing.
 - When something can't always work, we prefer it _never_ to work rather than _sometimes_ to work.
   - The overarching goal of Bosk is to reduce the behaviour gap between local development and production. If your code works, you probably did things right.
+- We don't write defensive code for situations that can't happen. A fallback for an impossible
+  condition tells the reader the condition is possible, so they question their understanding of the
+  code and waste time working out how it could arise. Rely on the invariant instead, and if a reader
+  might doubt it, say so in a comment or assert it.
+- A value's runtime `Class` is erased, but its declared `Type` is not. When you need a value's type
+  arguments, such as to deserialize JSON or reflect over its type, get them from the declared `Type`
+  rather than `value.getClass()`. For a bosk node, that is its `Reference`'s `targetType()`.
+  Runtime-class handling silently drops type arguments, and because it only misbehaves for generic
+  types, the mistake is easy to miss.
 
 ### Code ordering
 - Generally, in a class, instance fields come first, followed by shared mutable state (i.e. static fields, even if the reference is final), then constructors, then methods in use-before-declaration order
@@ -186,7 +195,7 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 
 ### Pull request descriptions
 
-- Write PR descriptions in plain, informal language. Say what the change is and why, and which modules it touches; don't pad them out with formal headers or restate what's obvious from the diff.
+- Write PR descriptions in plain, informal language. Say what the change is and why, and which modules it touches; don't restate what's obvious from the diff. Use section headings when they help a reader navigate a long description, but don't include boilerplate sections that may not apply, like a "Test plan", just because PRs often have them.
 - Don't list the commits in the description: readers can browse the commits themselves.
 - For bug fixes, describe the motivating bug and its mechanism so reviewers can see the "why", not just the "what" in the diff.
 - If you refer to other work (an issue, PR, commit, or earlier investigation), link to it instead of alluding to it by name.
@@ -194,6 +203,11 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 
 ## Test Coding Patterns
 
+- Don't try to test every combination of behaviours: any nontrivial system has a combinatorial
+  explosion of them. Design components to be orthogonal, test each exhaustively in isolation, and
+  test the composition on a small set of cases; the untested combinations are then covered by
+  inference. This is only sound if the components really are orthogonal, which takes deliberate
+  design, not accident.
 - Tests use JUnit 5
 - For parameterizing test methods, use the `@InjectedTest` annotation: `bosk-junit/src/main/java/works/bosk/junit/InjectedTest.java`
 - Tests for subprojects that integrate with external technologies like databases use Testcontainers to run those technologies, not mocks
@@ -208,7 +222,7 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
       - Bad: `String name`, `int version`: might be framework concepts or meaningful domain properties; generalization is unclear.
       - Good: bosk jargon used in the right context, like "reference", "driver", "path".
       - Bad: Bosk jargon used outside its Bosk meaning.
-      - Good: names that convey the relationship between the artifacts (`Catalog<T> parts`, `TaggedUnion<X> variant`).
+      - Good: names that convey the relationship between the artifacts (`Catalog<T> parts`, `TaggedUnion<X> value`).
     - Things that are the same should look the same; things that are different should look different.
       - Example: `field1`, `field2` suggests the test treats these fields the same way
       - Example: `date`, `name` suggests the test might treat dates and names differently
@@ -255,5 +269,11 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 - Bosk treats reads and writes very differently
   - Some other projects perceive a symmetry between these two operations
   - The bosk philosophy is that they have nothing in common and are handled by entirely separate mechanisms. (This is almost a corollary of representing data with immutable structures.)
+- Jackson serialization and deserialization are not symmetric, and assuming otherwise causes bugs.
+  Serialization is value-driven: Jackson derives each value's serializer from the value itself, so
+  serialize values directly rather than setting a declared write type, which can resolve a type
+  variable to `Object` and write a generic record as an empty object. Deserialization is
+  type-driven: it is parsing, and the declared datatypes describe the grammar. Main code may not
+  call `writerFor` or `ObjectWriter.forType`; the build forbids them.
 - Even when the bosk state is persisted (say, in MongoDB), the in-memory state tree is a _replica_, not a cache, and is always available.
 - Prefer `if (x) { ... } else { ... }` over `if (!x) { ... } else { ... }` to avoid the double-negative `else` branch.

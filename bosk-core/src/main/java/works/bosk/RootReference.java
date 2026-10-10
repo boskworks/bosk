@@ -48,6 +48,6 @@ public sealed interface RootReference<R>
 	<E extends Entity> ListingReference<E> thenListing(Class<E> entryClass, Path path) throws InvalidTypeException;
 	<K extends Entity,V> SideTableReference<K,V> thenSideTable(Class<K> keyClass, Class<V> valueClass, Path path) throws InvalidTypeException;
 	<T> Reference<Reference<T>> thenReference(Class<T> targetClass, Path path) throws InvalidTypeException;
-	<TT extends VariantCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> variantCaseClass, Path path) throws InvalidTypeException;
+	<TT extends TaggedUnionCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> taggedUnionCaseClass, Path path) throws InvalidTypeException;
 
 }

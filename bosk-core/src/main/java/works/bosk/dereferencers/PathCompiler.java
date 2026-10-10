@@ -34,7 +34,7 @@ import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
 import works.bosk.StateTreeSerializer;
 import works.bosk.TaggedUnion;
-import works.bosk.VariantCase;
+import works.bosk.TaggedUnionCase;
 import works.bosk.bytecode.Codegen;
 import works.bosk.bytecode.GeneratedClass;
 import works.bosk.bytecode.LocalVariable;
@@ -53,6 +53,7 @@ import static works.bosk.ReferenceUtils.getterMethod;
 import static works.bosk.ReferenceUtils.gettersForConstructorParameters;
 import static works.bosk.ReferenceUtils.parameterType;
 import static works.bosk.ReferenceUtils.rawClass;
+import static works.bosk.ReferenceUtils.resolveTypeVariables;
 import static works.bosk.bytecode.Codegen.autoBox;
 import static works.bosk.bytecode.Codegen.autoUnbox;
 import static works.bosk.bytecode.Codegen.invokeExact;
@@ -253,13 +254,15 @@ public final class PathCompiler {
 				Type targetType = parameterType(currentType, SideTable.class, 1);
 				return new SideTableEntryStep(keyType, targetType, segmentNum);
 			} else if (TaggedUnion.class.isAssignableFrom(currentClass)) {
-				Class<?> caseStaticClass = rawClass(parameterType(currentType, TaggedUnion.class, 0));
-				Map<String, Type> typeMap = StateTreeSerializer.getVariantCaseMap(caseStaticClass);
+				Type caseSupertype = parameterType(currentType, TaggedUnion.class, 0);
+				Class<?> caseStaticClass = rawClass(caseSupertype);
+				Map<String, Type> typeMap = StateTreeSerializer.getTaggedUnionCaseMap(caseStaticClass);
 				Type targetType = typeMap.get(segment);
 				if (targetType == null) {
 					throw new InvalidTypeException("Invalid tag \"" + segment + "\" for TaggedUnion<" + caseStaticClass.getSimpleName() + ">: expected one of " + typeMap.keySet());
 				} else {
-					return new VariantCaseStep(segment, targetType);
+					// The case's declared type may mention the case supertype's type variables.
+					return new TaggedUnionCaseStep(segment, resolveTypeVariables(targetType, caseSupertype));
 				}
 			} else if (StateTreeNode.class.isAssignableFrom(currentClass)) {
 				if (isParameterSegment(segment)) {
@@ -273,7 +276,7 @@ public final class PathCompiler {
 				// InvalidTypeException here instead of adding the getter to the map. -pdoyle
 				getters.put(segment, getterMethod(currentClass, segment));
 
-				Step fieldStep = newFieldStep(segment, getters, ReferenceUtils.getCanonicalConstructor(currentClass));
+				Step fieldStep = newFieldStep(segment, getters, ReferenceUtils.getCanonicalConstructor(currentClass), currentType);
 				Class<?> targetClass = rawClass(fieldStep.targetType());
 				if (Optional.class.isAssignableFrom(targetClass)) {
 					return new OptionalValueStep(parameterType(fieldStep.targetType(), Optional.class, 0), fieldStep);
@@ -288,14 +291,14 @@ public final class PathCompiler {
 		}
 
 		@NonNull
-		private Step newFieldStep(String segment, Map<String, Method> getters, Constructor<?> constructor) {
+		private Step newFieldStep(String segment, Map<String, Method> getters, Constructor<?> constructor, Type containingType) {
 			if (USE_FIELD_STEP) {
-				return new FieldStep(segment, getters, constructor);
+				return new FieldStep(segment, getters, constructor, containingType);
 			} else {
 				// FieldStep is technically redundant if we have CustomStep,
 				// though TBH the former is more understandable.
 				Method getter = getters.get(segment);
-				Type targetType = getter.getGenericReturnType();
+				Type targetType = resolveTypeVariables(getter.getGenericReturnType(), containingType);
 				MethodHandle methodHandle_get;
 				MethodHandle methodHandle_with;
 				try {
@@ -474,16 +477,18 @@ public final class PathCompiler {
 			String name;
 			Map<String, Method> gettersByName;
 			Constructor<?> constructor;
+			Type containingType;
 
 			private Method getter() { return gettersByName.get(name); }
 
 			@Override
 			public Type targetType() {
-				var valueType = valueType();
-				if (valueType instanceof Class<?> c) {
+				// The getter's return type may mention the enclosing type's variables.
+				var targetType = resolveTypeVariables(valueType(), containingType);
+				if (targetType instanceof Class<?> c) {
 					return boxedClass(c);
 				} else {
-					return valueType;
+					return targetType;
 				}
 			}
 
@@ -718,7 +723,7 @@ public final class PathCompiler {
 		}
 
 		@Value
-		class VariantCaseStep implements Step {
+		class TaggedUnionCaseStep implements Step {
 			String name;
 			Type targetType;
 
@@ -749,7 +754,7 @@ public final class PathCompiler {
 				pop(codeBuilder);
 				pop(codeBuilder);
 				pushReference(codeBuilder);
-				invoke(codeBuilder, THROW_CANNOT_REPLACE_VARIANT_CASE);
+				invoke(codeBuilder, THROW_CANNOT_REPLACE_TAGGED_UNION_CASE);
 			}
 
 			@Override
@@ -846,7 +851,7 @@ public final class PathCompiler {
 	static final Method LISTING_GET, LISTING_WITH, LISTING_WITHOUT;
 	static final Method SIDE_TABLE_GET, SIDE_TABLE_WITH, SIDE_TABLE_WITHOUT;
 	static final Method OPTIONAL_OF, OPTIONAL_OR_THROW, OPTIONAL_EMPTY;
-	static final Method TAGGED_UNION_VALUE, TAG_CHECK, THROW_CANNOT_REPLACE_VARIANT_CASE;
+	static final Method TAGGED_UNION_VALUE, TAG_CHECK, THROW_CANNOT_REPLACE_TAGGED_UNION_CASE;
 	static final Method THROW_NONEXISTENT_ENTRY, THROW_CANNOT_REPLACE_PHANTOM;
 	static final Method INSTANCEOF_OR_NONEXISTENT, INVALID_WITHOUT;
 
@@ -865,9 +870,9 @@ public final class PathCompiler {
 			OPTIONAL_OF = Optional.class.getDeclaredMethod("ofNullable", Object.class);
 			OPTIONAL_OR_THROW = DereferencerRuntime.class.getDeclaredMethod("optionalOrThrow", Optional.class, Reference.class);
 			OPTIONAL_EMPTY = Optional.class.getDeclaredMethod("empty");
-			TAGGED_UNION_VALUE = TaggedUnion.class.getDeclaredMethod("variant");
-			TAG_CHECK = DereferencerRuntime.class.getDeclaredMethod("tagCheck", VariantCase.class, String.class, Reference.class);
-			THROW_CANNOT_REPLACE_VARIANT_CASE = DereferencerRuntime.class.getDeclaredMethod("throwCannotReplaceVariantCase", Reference.class);
+			TAGGED_UNION_VALUE = TaggedUnion.class.getDeclaredMethod("value");
+			TAG_CHECK = DereferencerRuntime.class.getDeclaredMethod("tagCheck", TaggedUnionCase.class, String.class, Reference.class);
+			THROW_CANNOT_REPLACE_TAGGED_UNION_CASE = DereferencerRuntime.class.getDeclaredMethod("throwCannotReplaceTaggedUnionCase", Reference.class);
 			THROW_NONEXISTENT_ENTRY = DereferencerRuntime.class.getDeclaredMethod("throwNonexistentEntry", Reference.class);
 			THROW_CANNOT_REPLACE_PHANTOM = DereferencerRuntime.class.getDeclaredMethod("throwCannotReplacePhantom", Reference.class);
 			INVALID_WITHOUT = DereferencerRuntime.class.getDeclaredMethod("invalidWithout", Object.class, Reference.class);

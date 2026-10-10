@@ -1,6 +1,7 @@
 package works.bosk.testing.drivers;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import org.junit.jupiter.api.BeforeEach;
 import works.bosk.BoskDriver;
 import works.bosk.Identifier;
@@ -19,7 +20,7 @@ public class RepeatingDriverConformanceTest extends DriverConformanceTest {
 	void setupDriverFactory() {
 		driverFactory = (_,downstream) -> new BoskDriver() {
 			@Override
-			public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+			public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 				return downstream.initialState(rootType);
 			}
 

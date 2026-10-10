@@ -1,6 +1,7 @@
 package works.bosk.drivers.sql;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.Identifier;
@@ -33,7 +34,7 @@ class SqlDriverFacade implements SqlDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		LOGGER.debug("initialState({})", rootType);
 		return impl.initialState(rootType);
 	}

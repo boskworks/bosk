@@ -110,7 +110,7 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 				protected <T> T preprocess(Reference<T> reference, T newValue) {
 					try {
 						JavaType targetType = typeFactory.constructType(reference.targetType());
-						String json = objectMapper.writerFor(targetType).writeValueAsString(newValue);
+						String json = objectMapper.writeValueAsString(newValue);
 						try (var _ = jp.newDeserializationScope(reference)) {
 							return objectMapper.readerFor(targetType).readValue(json);
 						}
@@ -306,7 +306,7 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 		protected abstract <T> T preprocess(Reference<T> reference, T newValue);
 
 		@Override
-		public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+		public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 			return downstream.initialState(rootType);
 		}
 

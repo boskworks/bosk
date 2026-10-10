@@ -1,6 +1,7 @@
 package works.bosk.drivers;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -19,6 +20,7 @@ import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
 
 import static java.util.Objects.requireNonNull;
+import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
@@ -141,7 +143,8 @@ public class ReplicaSet<R extends StateTreeNode> {
 		 * as obtained by {@link Bosk#supersedingReadSession()}.
 		 */
 		@Override
-		public <RR extends StateTreeNode> RR initialState(Class<RR> rootType) throws InvalidTypeException, IOException, InterruptedException {
+		@SuppressWarnings("unchecked")
+		public <RR extends StateTreeNode> RR initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 			assert !replicas.isEmpty(): "Replicas must be added during by the driver factory before the drivers are used";
 			var seed = requireNonNull(ReplicaSet.this.seed.get());
 			if (isInitialized.getAndSet(true)) {
@@ -152,7 +155,7 @@ public class ReplicaSet<R extends StateTreeNode> {
 				// This should be a safe assumption--some shenanigans would be required
 				// to violate this--and seedReadSession throws if we're wrong.
 				try (var _ = seedReadSession(seed)) {
-					return rootType.cast(seed.boskInfo().bosk().rootReference().value());
+					return (RR) rawClass(rootType).cast(seed.boskInfo().bosk().rootReference().value());
 				}
 			} else {
 				// The first time this is called, we assume it's for the seed replica.

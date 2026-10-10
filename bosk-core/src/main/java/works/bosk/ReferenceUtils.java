@@ -8,11 +8,14 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import lombok.experimental.Delegate;
 import works.bosk.exceptions.InvalidTypeException;
@@ -203,16 +206,20 @@ C&lt;String> someField;
 	}
 
 	/**
-	 * @param typeWithVariables a {@link Type} that may or may not contain references to {@link TypeVariable}s.
-	 * @param environmentType the type that defines what those variables mean
-	 * @return a new type whose variables are all bound by the definitions in <code>environmentType</code>
+	 * Resolves the type variables in {@code typeWithVariables} using the type arguments
+	 * of {@code environmentType}. For example, if {@code environmentType} is
+	 * {@code Node<String>}, resolving the type variable {@code T} yields {@code String}.
+	 *
+	 * @param typeWithVariables a type that may mention type variables, such as a record
+	 *   component's generic type
+	 * @param environmentType the parameterized type that gives those variables their meaning
+	 * @return a type whose variables are all bound by {@code environmentType}
 	 */
-	private static Type resolveTypeVariables(Type typeWithVariables, Type environmentType) {
+	public static Type resolveTypeVariables(Type typeWithVariables, Type environmentType) {
 		if (typeWithVariables instanceof TypeVariable) {
-			// The recursive call has typeWithVariables us one of the type variables
-			// from our own generic class.  For example, if environmentType
-			// were C<String> and C was declared as C<T> extends S<U>, then
-			// `typeWithVariables` is T, and it's our job here to resolve it back to String.
+			// `typeWithVariables` is one of the type variables declared by the class
+			// named in environmentType. For example, if environmentType is C<String>,
+			// then C's type variable T resolves to String.
 			Class<?> parameterizedClass = rawClass(environmentType);
 			TypeVariable<?>[] typeVariables = parameterizedClass.getTypeParameters();
 			for (int i = 0; i < typeVariables.length; i++) {
@@ -241,6 +248,28 @@ C&lt;String> someField;
 		} else {
 			return (Class<?>)sourceType;
 		}
+	}
+
+	/**
+	 * @return {@code type} and all its supertypes, including {@link Object},
+	 * each appearing exactly once and ordered so that each type comes after
+	 * all the types it extends or implements
+	 */
+	static Stream<Class<?>> supertypes(Class<?> type) {
+		List<Class<?>> result = new ArrayList<>();
+		collectSupertypes(type, new HashSet<>(), result);
+		return result.stream();
+	}
+
+	private static void collectSupertypes(Class<?> type, Set<Class<?>> visited, List<Class<?>> result) {
+		if (type == null || !visited.add(type)) {
+			return;
+		}
+		collectSupertypes(type.getSuperclass(), visited, result);
+		for (Class<?> iface : type.getInterfaces()) {
+			collectSupertypes(iface, visited, result);
+		}
+		result.add(type);
 	}
 
 	public static Method getterMethod(Class<?> objectClass, String fieldName) throws InvalidTypeException {

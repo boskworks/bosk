@@ -4,6 +4,7 @@ import com.mongodb.client.MongoChangeStreamCursor;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.IOException;
+import java.lang.reflect.Type;
 import org.bson.BsonDocument;
 import works.bosk.BoskContext;
 import works.bosk.StateTreeNode;
@@ -95,7 +96,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata);
 
 	@Override
-	default <RR extends StateTreeNode> RR initialState(Class<RR> rootType) {
+	default <RR extends StateTreeNode> RR initialState(Type rootType) {
 		throw new UnsupportedOperationException(
 			"FormatDriver doesn't need to implement initialState: MainDriver derives it from loadAllState");
 	}

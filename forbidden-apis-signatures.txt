@@ -9,3 +9,15 @@
 # super() calls that subclass constructors make, unlike RuntimeException#<init>.
 @defaultMessage Use a specific subclass (e.g. IllegalStateException, IllegalArgumentException)
 java.lang.RuntimeException::new
+
+# Serialization must be driven by each value's runtime type, so that a value whose declared
+# type is generic (like a parameterized state tree node or a type variable) still serializes
+# with its actual type arguments intact. Setting a declared write type resolves such a type
+# to Object and writes a generic record as an empty object.
+@defaultMessage Serialize JSON from the value's runtime type; do not set a declared write type.
+tools.jackson.databind.ObjectMapper#writerFor(java.lang.Class)
+tools.jackson.databind.ObjectMapper#writerFor(tools.jackson.core.type.TypeReference)
+tools.jackson.databind.ObjectMapper#writerFor(tools.jackson.databind.JavaType)
+tools.jackson.databind.ObjectWriter#forType(java.lang.Class)
+tools.jackson.databind.ObjectWriter#forType(tools.jackson.core.type.TypeReference)
+tools.jackson.databind.ObjectWriter#forType(tools.jackson.databind.JavaType)

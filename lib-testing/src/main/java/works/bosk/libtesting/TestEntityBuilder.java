@@ -44,7 +44,7 @@ public class TestEntityBuilder {
 			new AbstractBoskTest.ImplicitRefs(Identifier.from(id + "_implicitRefs"),
 				implicitRefsRef(id), entityRef(id),
 				implicitRefsRef(id), entityRef(id)),
-			TaggedUnion.of(new AbstractBoskTest.VariantCase1("variantCase1String")));
+			TaggedUnion.of(new AbstractBoskTest.TaggedUnionCase1("taggedUnionCase1String")));
 	}
 
 }

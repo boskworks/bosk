@@ -1,6 +1,7 @@
 package works.bosk.testing.drivers;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import org.slf4j.MDC;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
@@ -41,7 +42,7 @@ public final class MdcCheckingDriver implements BoskDriver {
 	}
 
 	@Override
-	public <R extends StateTreeNode> R initialState(Class<R> rootType) throws InvalidTypeException, IOException, InterruptedException {
+	public <R extends StateTreeNode> R initialState(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
 		checkMDC();
 		return downstream.initialState(rootType);
 	}

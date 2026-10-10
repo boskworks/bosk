@@ -85,7 +85,7 @@ class BsonFormatterTest {
 					.append("id", new BsonString(WEIRD_ID + "_implicitRefs"))
 				)
 				.append("variant", new BsonDocument()
-					.append("variant1", new BsonDocument("stringField", new BsonString("variantCase1String")))
+					.append("variant1", new BsonDocument("stringField", new BsonString("taggedUnionCase1String")))
 				)
 				;
 
