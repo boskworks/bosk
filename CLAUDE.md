@@ -76,6 +76,11 @@ The usual Gradle commands, plus:
   condition tells the reader the condition is possible, so they question their understanding of the
   code and waste time working out how it could arise. Rely on the invariant instead, and if a reader
   might doubt it, say so in a comment or assert it.
+- A value's runtime `Class` is erased, but its declared `Type` is not. When you need a value's type
+  arguments, such as to deserialize JSON or reflect over its type, get them from the declared `Type`
+  rather than `value.getClass()`. For a bosk node, that is its `Reference`'s `targetType()`.
+  Runtime-class handling silently drops type arguments, and because it only misbehaves for generic
+  types, the mistake is easy to miss.
 
 ### Code ordering
 - Generally, in a class, instance fields come first, followed by shared mutable state (i.e. static fields, even if the reference is final), then constructors, then methods in use-before-declaration order
@@ -259,5 +264,11 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 - Bosk treats reads and writes very differently
   - Some other projects perceive a symmetry between these two operations
   - The bosk philosophy is that they have nothing in common and are handled by entirely separate mechanisms. (This is almost a corollary of representing data with immutable structures.)
+- Jackson serialization and deserialization are not symmetric, and assuming otherwise causes bugs.
+  Serialization is value-driven: Jackson derives each value's serializer from the value itself, so
+  serialize values directly rather than setting a declared write type, which can resolve a type
+  variable to `Object` and write a generic record as an empty object. Deserialization is
+  type-driven: it is parsing, and the declared datatypes describe the grammar. Main code may not
+  call `writerFor` or `ObjectWriter.forType`; the build forbids them.
 - Even when the bosk state is persisted (say, in MongoDB), the in-memory state tree is a _replica_, not a cache, and is always available.
 - Prefer `if (x) { ... } else { ... }` over `if (!x) { ... } else { ... }` to avoid the double-negative `else` branch.
