@@ -1,6 +1,8 @@
 package works.bosk.testing.drivers.fuzz;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
 import works.bosk.DriverFactory;
@@ -42,12 +44,14 @@ public abstract class AbstractRandomizedDriverConformanceTest extends AbstractDr
 	void randomizedSequences() {
 		for (int batch = 0; batch < batchCount(); batch++) {
 			long batchSeed = seed() + batch;
+			List<DriverOperation> operations = new ArrayList<>();
 			assertDoesNotThrow(
 				() -> {
-					runBatch(batchSeed);
+					runBatch(batchSeed, operations);
 					return null;
 				},
-				() -> "Randomized conformance batch failed with seed " + batchSeed);
+				() -> "Randomized conformance batch failed with seed " + batchSeed
+					+ "\nOperations:\n" + render(operations));
 		}
 	}
 
@@ -85,18 +89,27 @@ public abstract class AbstractRandomizedDriverConformanceTest extends AbstractDr
 	 */
 	protected void beforeBatch() { }
 
-	private void runBatch(long batchSeed) throws IOException, InterruptedException, InvalidTypeException {
+	private void runBatch(long batchSeed, List<DriverOperation> operations) throws IOException, InterruptedException, InvalidTypeException {
 		beforeBatch();
 		setupBosksAndReferences(driverFactory());
 		OperationSequenceGenerator generator =
 			new OperationSequenceGenerator(new Random(batchSeed), bosk, canonicalBosk, chooser());
 		for (int i = 0; i < sequenceLength(); i++) {
 			DriverOperation operation = generator.nextOperation();
+			operations.add(operation);
 			operation.submitTo(driver);
 			// Let the driver settle so the generator sees the effect of this operation
 			// when it consults the model before producing the next one.
 			driver.flush();
 		}
 		assertCorrectBoskContents();
+	}
+
+	private static String render(List<DriverOperation> operations) {
+		StringBuilder result = new StringBuilder();
+		for (int i = 0; i < operations.size(); i++) {
+			result.append("  ").append(i).append(": ").append(operations.get(i)).append('\n');
+		}
+		return result.toString();
 	}
 }
