@@ -34,6 +34,13 @@ public abstract class AbstractFuzzRegressionTest extends AbstractDriverTest {
 	 */
 	protected abstract List<OperationScript> scripts() throws InvalidTypeException;
 
+	/**
+	 * Called before each script is replayed, so that subclasses whose drivers hold resources or
+	 * persist state between scripts can release or clear it. The default implementation does
+	 * nothing.
+	 */
+	protected void beforeScript() { }
+
 	@Test
 	void replayScripts() throws InvalidTypeException {
 		for (OperationScript script : scripts()) {
@@ -47,6 +54,7 @@ public abstract class AbstractFuzzRegressionTest extends AbstractDriverTest {
 	}
 
 	private void replay(OperationScript script) throws IOException, InterruptedException, InvalidTypeException {
+		beforeScript();
 		setupBosksAndReferences(driverFactory());
 		for (DriverOperation operation : script.operationsFor(bosk)) {
 			operation.submitTo(driver);
