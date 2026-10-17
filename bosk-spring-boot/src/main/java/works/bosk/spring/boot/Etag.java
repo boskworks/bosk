@@ -17,6 +17,11 @@ import works.bosk.Identifier;
  * Decoding is deliberately lenient about a {@code %} that is not followed by two
  * hexadecimal digits, which lets hand-written headers use the older convention of
  * quoting the raw revision.
+ * <p>
+ * This is similar to the percent-encoding in {@link works.bosk.Path}, but the rules
+ * differ: path encoding uses URL form encoding, where {@code +} means space, and it
+ * percent-encodes characters that are legal in an ETag. Sharing one implementation
+ * would need a parameterized safe set and decoding policy.
  */
 final class Etag {
 	private Etag() {
