@@ -464,6 +464,10 @@ For example, `submitConditionalReplacement(target, newValue, precondition, requi
 
 A third kind of conditional update, called `submitConditionalCreation`, is like `submitReplacement` except ignored if the target node already exists.
 
+Conditional updates are how bosk supports read-modify-write decisions without transactions: they give compare-and-set semantics.
+Read the relevant observation in a read session, compute the new value, and submit a conditional update guarded by a precondition on an `Identifier`-valued node that represents the observation (or its version).
+If the observation changed in the meantime, the update is silently ignored rather than applying a decision based on stale data.
+
 #### `flush()`
 
 The `flush()` method ensures all prior updates to the bosk have been applied,
