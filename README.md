@@ -27,6 +27,7 @@ If you'd rather use SQL instead of MongoDB, there's an experimental [SQL library
 
 ## Documentation
 - [User's Guide](docs/USERS.md)
+- [Design notes](docs/DESIGN-NOTES.md)
 
 Each of the published libraries has its own `README.md` and its own Javadocs;
 for example, the `bosk-core` library has a [`README.md`](bosk-core/README.md)

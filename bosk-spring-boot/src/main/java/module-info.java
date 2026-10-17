@@ -51,6 +51,12 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *       <li>{@code If-Match: {ID}} — if the node does not exist, or its {@code revision} field has a different
  *       value, no action is taken.</li>
  *     </ul>
+ *     <p>
+ *     These headers let a client avoid the
+ *     <a href="https://www.w3.org/1999/04/Editing/">lost update problem</a> by making a write conditional
+ *     on the node's {@code revision}, which the client changes on each write. A conditional write returns
+ *     {@code 202 Accepted} whether or not its precondition holds. To check whether it took effect, the client
+ *     can do a {@code GET} with {@code Cache-Control: no-cache}, which flushes prior updates before reading.
  *     Spring Security's default {@code StrictHttpFirewall} rejects URLs containing percent-encoded slashes
  *     or percent signs, so identifiers containing those characters are unreachable through the endpoints
  *     while Spring Security is present unless the application customizes its {@code HttpFirewall}.

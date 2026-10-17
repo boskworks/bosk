@@ -453,6 +453,18 @@ To delete such nodes, call `BoskDriver.submitDeletion`.
 When applied, a deletion causes the node (and all its children) to become nonexistent.
 The semantic nuances are similar to those of replacement.
 
+#### Batching and transactions
+
+`BoskDriver` deliberately has no way to submit several updates as a single batch or transaction.
+Each update stands on its own, which keeps driver implementations simple:
+they don't need to reason about atomicity or isolation across operations,
+and applications can't create deadlocks by combining operations.
+A batch primitive would also allow atomicity to vary from one backend to another,
+reintroducing the behaviour gap between local development and production that Bosk is meant to eliminate.
+
+Instead, atomicity is achieved by modelling the unit that must change atomically as a single state tree node,
+which can then be published with one update.
+
 #### Conditional updates
 
 The replacement and deletion operations each have corresponding _conditional_ forms.
@@ -463,6 +475,10 @@ For example, `submitConditionalReplacement(target, newValue, precondition, requi
 `submitConditionalDeletion` is similar.
 
 A third kind of conditional update, called `submitConditionalCreation`, is like `submitReplacement` except ignored if the target node already exists.
+
+Conditional updates avoid the [lost update problem](https://www.w3.org/1999/04/Editing/) for read-modify-write decisions without transactions: they give compare-and-set semantics.
+Read the relevant observation in a read session, compute the new value, and submit a conditional update guarded by a precondition on an `Identifier`-valued node that represents the observation (or its version).
+If the observation changed in the meantime, the update is silently ignored rather than overwriting the other update with a decision based on stale data.
 
 #### `flush()`
 
@@ -997,6 +1013,9 @@ SecurityFilterChain maintenanceEndpoints(HttpSecurity http,
 The authority is the application's choice; `bosk:state` is just an example. The endpoints are served
 under `bosk.web.maintenance.path` (default `/bosk/state`). See the `bosk-spring-boot` module
 javadoc for the full description.
+
+Writes can be conditional on a node's `revision` field using the `If-Match` and `If-None-Match`
+headers, so a client can avoid overwriting a concurrent edit; see the module javadoc for details.
 
 ### Serialization: `bosk-jackson`
 
