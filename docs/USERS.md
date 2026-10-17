@@ -998,6 +998,12 @@ The authority is the application's choice; `bosk:state` is just an example. The 
 under `bosk.web.maintenance.path` (default `/bosk/state`). See the `bosk-spring-boot` module
 javadoc for the full description.
 
+A `GET` of a node with a field named `revision` of type `Identifier` includes an `ETag` header.
+The value is percent-encoded as needed, so any revision string works; treat it as opaque and send
+it back verbatim in `If-Match`. Nodes without a `revision` field, `404` responses, and `202` write
+responses have no ETag. A precondition mismatch is still a `202` no-op, because writes are
+asynchronous; `GET` the node again to see whether the write applied.
+
 ### Serialization: `bosk-jackson`
 
 The `bosk-jackson` module uses the Jackson library to support JSON serialization and deserialization.

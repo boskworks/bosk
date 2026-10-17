@@ -85,3 +85,22 @@ Configuration and classes name the capability (`maintenance`);
 the URL and authority vocabulary suggests the resource (`/bosk/state`, `bosk:state`).
 These are deliberately two vocabularies: "state" is unambiguous when anchored by `bosk` or `bosk.web`,
 but a bare configuration segment or class named `State` would be ambiguous.
+
+### ETags and revisions
+
+Maintenance `GET` responses include an `ETag` when the target node has a field named `revision`
+of type `Identifier`. The value is the revision's string form, quoted and percent-encoded as
+needed to satisfy RFC 9110's opaque-tag syntax. Percent-encoding is reversible for any identifier,
+and always encoding `%` as `%25` keeps decoding unambiguous.
+
+`Etag` is a separate package-private class so the encoding and decoding can be tested exhaustively
+without HTTP. Decoding is deliberately lenient about a `%` not followed by two hexadecimal digits,
+so hand-written headers that quote the raw revision continue to work.
+
+We do not return `412 Precondition Failed` on a mismatch. The maintenance write API is
+asynchronous: the precondition check and the submission are not atomic, so a `412` would suggest
+a guarantee the endpoint cannot make. A mismatch remains a `202` no-op.
+
+`MaintenanceEndpoints` memoizes whether each node type has a suitable `revision` field.
+`Reference.then` throws when the field is absent, and that absence is normal for many node types,
+so the endpoint asks once per type with `Reference.thenIfValid` and reuses the answer.

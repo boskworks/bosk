@@ -162,6 +162,29 @@ public sealed interface Reference<T> permits
 	 */
 	<U> Reference<U> then(Class<U> targetClass, String...segments) throws InvalidTypeException;
 
+	/**
+	 * Like {@link #then(Class, String...)}, but returns {@link Optional#empty() empty}
+	 * if the path cannot be resolved for this reference's target type, for example
+	 * because the target type has no such field.
+	 * <p>
+	 * "Valid" here means the same thing as it does for {@link InvalidTypeException}:
+	 * the path resolves to the requested type. It does not refer to the existence of
+	 * the referenced value; see {@link #exists()} and {@link #optionalValue()}.
+	 *
+	 * @param <U> The type of <code>targetClass</code>
+	 * @param targetClass The class of the object being referenced
+	 * @param segments The {@link Path#segment(int) segments} to add to {@link #path()}
+	 * @return a reference equivalent to the one {@link #then} would return, or
+	 * {@link Optional#empty() empty} if {@link #then} would throw {@link InvalidTypeException}
+	 */
+	default <U> Optional<Reference<U>> thenIfValid(Class<U> targetClass, String... segments) {
+		try {
+			return Optional.of(then(targetClass, segments));
+		} catch (InvalidTypeException e) {
+			return Optional.empty();
+		}
+	}
+
 	<E extends Entity> CatalogReference<E> thenCatalog(Class<E> entryClass, String... segments) throws InvalidTypeException;
 	<E extends Entity> ListingReference<E> thenListing(Class<E> entryClass, String... segments) throws InvalidTypeException;
 	<K extends Entity,V> SideTableReference<K,V> thenSideTable(Class<K> keyClass, Class<V> valueClass, String... segments) throws InvalidTypeException;

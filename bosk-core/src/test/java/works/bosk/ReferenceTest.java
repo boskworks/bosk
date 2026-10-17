@@ -70,6 +70,40 @@ class ReferenceTest extends AbstractBoskTest {
 	}
 
 	@Test
+	void thenIfValid_existingField_returnsReference() {
+		Identifier parentID = Identifier.from("parent");
+		Optional<Reference<String>> stringRef = refs.entity(parentID).thenIfValid(String.class, "string");
+		assertTrue(stringRef.isPresent(), "Reference to an existing field must be present");
+		assertEquals("parent", stringRef.get().value());
+	}
+
+	@Test
+	void thenIfValid_missingField_returnsEmpty() {
+		Identifier parentID = Identifier.from("parent");
+		assertEquals(Optional.empty(), refs.entity(parentID).thenIfValid(String.class, "nonexistent"));
+	}
+
+	@Test
+	void thenIfValid_wrongType_returnsEmpty() {
+		Identifier parentID = Identifier.from("parent");
+		assertEquals(Optional.empty(), refs.entity(parentID).thenIfValid(Identifier.class, "string"));
+	}
+
+	@Test
+	void thenIfValid_multiSegmentPathThroughCatalog_returnsReference() {
+		Optional<Reference<TestChild>> childRef = bosk.rootReference()
+			.thenIfValid(TestChild.class, "entities", "parent", "children", "child1");
+		assertTrue(childRef.isPresent(), "Reference to an existing multi-segment path must be present");
+		assertEquals(Identifier.from("child1"), childRef.get().value().id());
+	}
+
+	@Test
+	void thenIfValid_pathThroughNonStateTreeNode_returnsEmpty() {
+		Identifier parentID = Identifier.from("parent");
+		assertEquals(Optional.empty(), refs.string(parentID).thenIfValid(String.class, "anything"));
+	}
+
+	@Test
 	void phantomFields_reference_nonexistent() {
 		Identifier parentID = Identifier.from("parent");
 		Reference<Phantoms> phantomsRef = refs.phantoms(parentID);
