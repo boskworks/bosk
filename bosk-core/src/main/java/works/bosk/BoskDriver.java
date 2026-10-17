@@ -10,18 +10,6 @@ import works.bosk.exceptions.InvalidTypeException;
 /**
  * Receives update requests for some {@link Bosk}.
  *
- * <p>
- * This interface deliberately has no way to submit several updates
- * as a single batch or transaction.
- * Each update stands on its own, which keeps driver implementations simple:
- * they don't need to reason about atomicity or isolation across operations,
- * and applications can't create deadlocks by combining operations.
- * A batch primitive would also allow atomicity to vary from one backend to another,
- * reintroducing the behaviour gap between local development and production
- * that Bosk is meant to eliminate.
- * Instead, atomicity is achieved by modelling the unit that must change atomically
- * as a single state tree node, which can then be published with one update.
- *
  * @author pdoyle
  */
 public interface BoskDriver {

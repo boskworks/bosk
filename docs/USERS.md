@@ -453,6 +453,18 @@ To delete such nodes, call `BoskDriver.submitDeletion`.
 When applied, a deletion causes the node (and all its children) to become nonexistent.
 The semantic nuances are similar to those of replacement.
 
+#### Batching and transactions
+
+`BoskDriver` deliberately has no way to submit several updates as a single batch or transaction.
+Each update stands on its own, which keeps driver implementations simple:
+they don't need to reason about atomicity or isolation across operations,
+and applications can't create deadlocks by combining operations.
+A batch primitive would also allow atomicity to vary from one backend to another,
+reintroducing the behaviour gap between local development and production that Bosk is meant to eliminate.
+
+Instead, atomicity is achieved by modelling the unit that must change atomically as a single state tree node,
+which can then be published with one update.
+
 #### Conditional updates
 
 The replacement and deletion operations each have corresponding _conditional_ forms.
