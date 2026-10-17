@@ -1002,6 +1002,9 @@ The authority is the application's choice; `bosk:state` is just an example. The 
 under `bosk.web.maintenance.path` (default `/bosk/state`). See the `bosk-spring-boot` module
 javadoc for the full description.
 
+Writes can be conditional on a node's `revision` field using the `If-Match` and `If-None-Match`
+headers, so a client can avoid overwriting a concurrent edit; see the module javadoc for details.
+
 ### Serialization: `bosk-jackson`
 
 The `bosk-jackson` module uses the Jackson library to support JSON serialization and deserialization.
