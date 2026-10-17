@@ -4,6 +4,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -26,6 +29,7 @@ import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.jackson.JacksonSerializer;
 
+import static org.springframework.http.HttpHeaders.ETAG;
 import static org.springframework.http.HttpStatus.ACCEPTED;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
@@ -40,6 +44,14 @@ import static works.bosk.spring.boot.WebProperties.DEFAULT_MAINTENANCE_PATH;
  * requests to the maintenance path; see {@link MaintenanceAccess}. A {@code PUT} or {@code DELETE}
  * is submitted through {@code bosk.driver()}, so it fires hooks and any downstream replication
  * or persistence.
+ * <p>
+ * A {@code GET} response for a node with a field named {@code revision} of type
+ * {@link Identifier} includes a strong {@code ETag} derived from that revision. The value is
+ * quoted and percent-encoded as needed to satisfy RFC 9110, so any revision string can be used.
+ * {@code PUT} and {@code DELETE} accept the same value in an {@code If-Match} header.
+ * Precondition mismatches are asynchronous no-ops: the endpoint still returns
+ * {@code 202 Accepted}, and a client that needs to know whether the write applied must
+ * {@code GET} the node again.
  */
 @RestController
 @RequestMapping("${bosk.web.maintenance.path:" + DEFAULT_MAINTENANCE_PATH + "}")
@@ -47,6 +59,13 @@ public class MaintenanceEndpoints {
 	private final Bosk<?> bosk;
 	private final ObjectMapper mapper;
 	private final JacksonSerializer jackson;
+
+	/**
+	 * Whether each node type has a {@code revision} field of type {@link Identifier}.
+	 * The maintenance endpoints are on a hot path, and {@link Reference#then} throws
+	 * when the field is absent, so we determine the answer once per type and reuse it.
+	 */
+	private final ConcurrentMap<Class<?>, Boolean> revisionCapableTypes = new ConcurrentHashMap<>();
 
 	MaintenanceEndpoints(
 		Bosk<?> bosk,
@@ -61,12 +80,16 @@ public class MaintenanceEndpoints {
 	@GetMapping(produces = APPLICATION_JSON_VALUE, path = {"", "{*path}"})
 	Object getAny(
 		@PathVariable(value="path", required = false) String path,
-		HttpServletRequest req
+		HttpServletRequest req,
+		HttpServletResponse rsp
 	) {
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		Reference<?> ref = referenceForPath(path);
 		try {
-			return ref.value();
+			Object value = ref.value();
+			optionalRevisionRef(ref).ifPresent(revision ->
+				rsp.setHeader(ETAG, Etag.headerValue(revision.value())));
+			return value;
 		} catch (NonexistentReferenceException e) {
 			throw new ResponseStatusException(NOT_FOUND, "Object does not exist: " + ref, e);
 		}
@@ -150,10 +173,24 @@ public class MaintenanceEndpoints {
 	}
 
 	private Reference<Identifier> revisionRef(Reference<?> ref) {
+		return optionalRevisionRef(ref).orElseThrow(() ->
+			new ResponseStatusException(BAD_REQUEST, "Preconditions not supported for object with no suitable revision field: " + ref));
+	}
+
+	private Optional<Reference<Identifier>> optionalRevisionRef(Reference<?> ref) {
+		if (revisionCapableTypes.computeIfAbsent(ref.targetClass(),
+				_ -> ref.thenIfValid(Identifier.class, "revision").isPresent())) {
+			return Optional.of(thenRevision(ref));
+		} else {
+			return Optional.empty();
+		}
+	}
+
+	private Reference<Identifier> thenRevision(Reference<?> ref) {
 		try {
 			return ref.then(Identifier.class, "revision");
 		} catch (InvalidTypeException e) {
-			throw new ResponseStatusException(BAD_REQUEST, "Preconditions not supported for object with no suitable revision field: " + ref, e);
+			throw new AssertionError("Revision capability check passed but then() failed: " + ref, e);
 		}
 	}
 
@@ -190,7 +227,7 @@ public class MaintenanceEndpoints {
 					throw new ResponseStatusException(BAD_REQUEST, "If-None-Match header, if supplied, must be \"*\"");
 				}
 			} else if (ifNoneMatch == null) {
-				Identifier expectedRevision = Identifier.from(etagStringValue(ifMatch));
+				Identifier expectedRevision = Etag.revisionFrom(ifMatch);
 				LOGGER.trace("| MustMatch({})", expectedRevision);
 				discriminator.ifMustMatch(expectedRevision);
 			} else {
@@ -199,25 +236,6 @@ public class MaintenanceEndpoints {
 		} catch (IllegalArgumentException e) {
 			throw new ResponseStatusException(BAD_REQUEST, e.getMessage(), e);
 		}
-	}
-
-	private static String etagStringValue(String etagString) {
-		if (etagString.length() < 3 || etagString.charAt(0) != '"' || etagString.charAt(etagString.length() - 1) != '"') {
-			throw new ResponseStatusException(BAD_REQUEST, "ETag string must be a non-empty string surrounded by quotes: " + etagString);
-		}
-		String value = etagString.substring(1, etagString.length() - 1);
-		// We permit only the ASCII subset of https://datatracker.ietf.org/doc/html/rfc7232#section-2.3
-		for (int i = 0; i < value.length(); i++) {
-			int ch = value.codePointAt(i);
-			if (ch == '"') {
-				throw new ResponseStatusException(BAD_REQUEST, "Only a single ETag string is supported: " + etagString);
-			} else if (ch == 0x21 || (0x23 <= ch && ch <= 0x7E)) { // Note: 0x22 is the quote character
-				// all is well
-			} else {
-				throw new ResponseStatusException(BAD_REQUEST, "ETag string contains an unsupported character at position " + i + ", code point " + ch + ": " + etagString);
-			}
-		}
-		return value;
 	}
 
 	private void checkForMismatchedID(Reference<?> ref, Object newValue) {
