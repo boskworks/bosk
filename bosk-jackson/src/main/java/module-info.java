@@ -9,7 +9,6 @@ module works.bosk.jackson {
 	requires org.slf4j;
 	requires transitive works.bosk.core;
 
-	requires static lombok;
 	requires static transitive org.jspecify;
 
 	exports works.bosk.jackson;

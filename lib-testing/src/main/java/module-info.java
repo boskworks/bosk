@@ -12,7 +12,6 @@ module works.bosk.libtesting {
 	requires org.junit.jupiter.api;
 	requires org.junit.jupiter.params;
 
-	requires static lombok;
 
 	exports works.bosk.libtesting;
 }

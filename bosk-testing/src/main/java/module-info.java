@@ -8,7 +8,6 @@ module works.bosk.testing {
 	requires static transitive org.jspecify;
 	requires org.slf4j;
 
-	requires static lombok;
 
 	exports works.bosk.testing;
 	exports works.bosk.testing.drivers;

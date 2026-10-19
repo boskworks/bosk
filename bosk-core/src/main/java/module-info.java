@@ -13,7 +13,6 @@ module works.bosk.core {
 	requires org.slf4j;
 	requires transitive works.bosk.annotations;
 
-	requires static lombok;
 
 	exports works.bosk;
 	exports works.bosk.drivers;

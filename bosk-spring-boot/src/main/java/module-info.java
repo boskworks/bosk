@@ -94,7 +94,6 @@ module works.bosk.spring.boot {
 	requires static spring.security.core;
 	requires static spring.security.web;
 
-	requires static lombok;
 
 	exports works.bosk.spring.boot;
 }

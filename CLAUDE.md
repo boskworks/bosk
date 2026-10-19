@@ -164,10 +164,6 @@ and giving practical usage advice and best practices.
 They are concise but complete; do not assume the reader has access to the README.md file.
 Put less formal things, like references to the `example-hello` project, in the README.md file instead.
 
-### Lombok
-
-We use Lombok sparingly. Most of its features are disabled in lombok.config.
-
 ### Wrangler interfaces
 
 Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) must have **more than one abstract method**. Single-method (SAM) wranglers would allow lambda usage, but lambdas don't preserve generic type parameters at runtime, breaking the reflection-based `DataType.of(wrangler.getClass())` type extraction used in factory methods. Always make wranglers multi-method to force anonymous-class instantiation.

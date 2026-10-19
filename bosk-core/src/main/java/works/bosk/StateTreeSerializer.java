@@ -486,7 +486,7 @@ public abstract class StateTreeSerializer {
 			// constructor arguments and its getters. However, we make an exception
 			// for convenience: Bosk annotations that go on constructor parameters
 			// can also go on fields with the same name. This accommodates systems
-			// like Lombok that derive constructors from fields.
+			// that derive constructors from fields.
 			//
 			// It's also required to scan static fields for features like @TaggedUnionCaseMap.
 

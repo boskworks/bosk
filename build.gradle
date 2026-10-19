@@ -70,8 +70,6 @@ configure(subprojects.findAll {
 		// TODO: Eliminate these. These are legit module problems
 		options.compilerArgs << '-Xlint:-requires-automatic'
 		options.compilerArgs << '-Xlint:-requires-transitive-automatic'
-
-		options.forkOptions.jvmArgs << '--sun-misc-unsafe-memory-access=allow' // For Lombok
 	}
 
 	// It's important that bosk-annotations has no deps so other projects won't hesitate to use it
@@ -79,12 +77,7 @@ configure(subprojects.findAll {
 		dependencies {
 			implementation libs.jspecify
 
-			annotationProcessor libs.lombok
-			compileOnly libs.lombok
 			implementation libs.slf4j.api
-
-			testAnnotationProcessor libs.lombok
-			testCompileOnly libs.lombok
 
 			testImplementation libs.logback.classic
 
