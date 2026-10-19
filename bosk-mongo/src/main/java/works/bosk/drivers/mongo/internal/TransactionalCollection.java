@@ -18,7 +18,6 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import java.util.concurrent.atomic.AtomicLong;
-import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
@@ -35,7 +34,6 @@ import static com.mongodb.ReadConcern.LOCAL;
  * in transactions without needing to do so explicitly.
  */
 @SuppressWarnings("NullableProblems")
-@RequiredArgsConstructor(staticName = "of")
 class TransactionalCollection {
 	private final MongoCollection<BsonDocument> downstream;
 	private final MongoClient mongoClient;
@@ -44,6 +42,19 @@ class TransactionalCollection {
 	private final CommitInterceptor commitInterceptor;
 	private final SessionInterceptor sessionInterceptor;
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
+
+	private TransactionalCollection(MongoCollection<BsonDocument> downstream, MongoClient mongoClient, FindInterceptor findInterceptor, WriteInterceptor writeInterceptor, CommitInterceptor commitInterceptor, SessionInterceptor sessionInterceptor) {
+		this.downstream = downstream;
+		this.mongoClient = mongoClient;
+		this.findInterceptor = findInterceptor;
+		this.writeInterceptor = writeInterceptor;
+		this.commitInterceptor = commitInterceptor;
+		this.sessionInterceptor = sessionInterceptor;
+	}
+
+	static TransactionalCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient, FindInterceptor findInterceptor, WriteInterceptor writeInterceptor, CommitInterceptor commitInterceptor, SessionInterceptor sessionInterceptor) {
+		return new TransactionalCollection(downstream, mongoClient, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor);
+	}
 
 	/**
 	 * A {@code TransactionalCollection} with no read, write, or commit interposition.

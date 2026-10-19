@@ -9,7 +9,6 @@ import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
-import lombok.experimental.FieldNameConstants;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -531,11 +530,15 @@ class JacksonSerializerTest extends AbstractBoskTest {
 		}
 	}
 
-	@FieldNameConstants
 	public record DeserializationPathContainer(
 		@DeserializationPath("/entities/-entity1-/implicitRefs") ImplicitRefs firstField,
 		@DeserializationPath("/entities/-entity2-/implicitRefs") ImplicitRefs secondField
-	) implements StateTreeNode { }
+	) implements StateTreeNode {
+		public static final class Fields {
+			public static final String firstField = "firstField";
+			public static final String secondField = "secondField";
+		}
+	}
 
 	@Test
 	void deserializationPathMissingID_filledInFromContext() {
@@ -557,7 +560,6 @@ class JacksonSerializerTest extends AbstractBoskTest {
 		}
 	}
 
-	@FieldNameConstants
 	public record DeserializationPathMissingID(
 		@DeserializationPath("/entities/-entity-") TestEntity entity
 	) implements StateTreeNode { }

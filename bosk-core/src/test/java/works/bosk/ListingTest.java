@@ -11,8 +11,6 @@ import java.util.Set;
 import java.util.Spliterator;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
-import lombok.EqualsAndHashCode;
-import lombok.experimental.FieldNameConstants;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -81,11 +79,15 @@ class ListingTest {
 		);
 	}
 
-	@FieldNameConstants
 	public record TestEntity(
 		Identifier id,
-		@EqualsAndHashCode.Exclude Catalog<TestEntity> children
-	) implements Entity { }
+		Catalog<TestEntity> children
+	) implements Entity {
+		public static final class Fields {
+			public static final String id = "id";
+			public static final String children = "children";
+		}
+	}
 
 	@ParameterizedTest
 	@MethodSource("provideListingArguments")

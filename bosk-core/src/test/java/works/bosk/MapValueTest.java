@@ -11,7 +11,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
-import lombok.RequiredArgsConstructor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -65,9 +64,12 @@ class MapValueTest extends AbstractBoskTest {
 		return mapValueCase(map, MapValue.fromFunction(keys, function), sampleValue);
 	}
 
-	@RequiredArgsConstructor
 	private static class NoEqualsOrHashCode {
 		private final String field;
+
+		private NoEqualsOrHashCode(String field) {
+			this.field = field;
+		}
 
 		@Override public int hashCode() { throw new UnsupportedOperationException(); }
 

@@ -10,7 +10,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
-import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +30,6 @@ import works.bosk.testing.drivers.operations.FlushOperation;
 import works.bosk.testing.drivers.operations.UpdateOperation;
 
 import static java.lang.Thread.currentThread;
-import static lombok.AccessLevel.PRIVATE;
 import static works.bosk.logging.MdcKeys.BOSK_INSTANCE_ID;
 import static works.bosk.logging.MdcKeys.BOSK_NAME;
 import static works.bosk.testing.BoskTestUtils.boskName;
@@ -41,7 +39,6 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * that they have the same effect on the bosk state. If a mismatch is found, throws
  * {@link AssertionError}.
  */
-@RequiredArgsConstructor(access = PRIVATE)
 public final class DriverStateVerifier<R extends StateTreeNode> {
 	final String boskName;
 	final String boskInstanceID;
@@ -61,6 +58,13 @@ public final class DriverStateVerifier<R extends StateTreeNode> {
 	final Set<String> flushObservedByThreadID = ConcurrentHashMap.newKeySet();
 
 	static final String THREAD_ID = "testing.thread.id";
+
+	private DriverStateVerifier(String boskName, String boskInstanceID, Bosk<R> stateTrackingBosk, BoskDriver stateTrackingDriver) {
+		this.boskName = boskName;
+		this.boskInstanceID = boskInstanceID;
+		this.stateTrackingBosk = stateTrackingBosk;
+		this.stateTrackingDriver = stateTrackingDriver;
+	}
 
 	/**
 	 * @param subject factory whose behaviour is to be verified

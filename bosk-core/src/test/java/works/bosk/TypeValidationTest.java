@@ -4,7 +4,6 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
-import lombok.EqualsAndHashCode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -237,7 +236,6 @@ class TypeValidationTest {
 		ListValue<String> innerList
 	) implements StateTreeNode { }
 
-	@EqualsAndHashCode(callSuper = true)
 	public static final class ListValueSubclass extends ListValue<String> {
 		final String extraField;
 
@@ -544,7 +542,6 @@ class TypeValidationTest {
 			assertThat(e.getMessage(), containsString("ListValueInvalidSubclass.badField"));
 		}
 
-		@EqualsAndHashCode(callSuper = true)
 		public static class InvalidSubclass extends ListValue<Identifier> {
 			protected InvalidSubclass(Identifier[] entries) {
 				super(entries);
@@ -561,7 +558,6 @@ class TypeValidationTest {
 			assertThat(e.getMessage(), containsString("MutableSubclass.mutableField"));
 		}
 
-		@EqualsAndHashCode(callSuper = true)
 		public static class MutableSubclass extends ListValue<String> {
 			String mutableField;
 
@@ -585,7 +581,6 @@ class TypeValidationTest {
 		Identifier id,
 		Subclass badField
 	) implements Entity {
-		@EqualsAndHashCode(callSuper = true)
 		public static final class Subclass extends ListValue<String> {
 			private int mutableField;
 
@@ -608,7 +603,6 @@ class TypeValidationTest {
 		Identifier id,
 		Subclass badField
 	) implements Entity {
-		@EqualsAndHashCode(callSuper = true)
 		public static final class Subclass extends ListValue<String> {
 			Subclass(String[] entries) {
 				super(entries);
@@ -630,7 +624,6 @@ class TypeValidationTest {
 		Identifier id,
 		Subclass badField
 	) implements Entity {
-		@EqualsAndHashCode(callSuper = true)
 		public static final class Subclass extends ListValue<String> {
 			Subclass() {
 				super(new String[]{"Hello"});

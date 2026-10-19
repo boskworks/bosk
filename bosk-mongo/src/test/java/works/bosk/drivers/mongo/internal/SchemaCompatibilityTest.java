@@ -3,7 +3,6 @@ package works.bosk.drivers.mongo.internal;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.stream.Stream;
-import lombok.With;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -250,7 +249,6 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 			"Expected 1 disconnection: DatabaseLoadException from DISCONNECT fallback");
 	}
 
-	@With
 	public record OldEntity(
 		Identifier id,
 		String string,
@@ -269,7 +267,6 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 		}
 	}
 
-	@With
 	public record OptionalEntity(
 		Identifier id,
 		Optional<String> string,

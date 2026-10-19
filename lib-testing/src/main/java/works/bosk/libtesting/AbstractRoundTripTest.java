@@ -12,7 +12,6 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
-import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
 import org.bson.BsonDocumentWriter;
@@ -177,7 +176,6 @@ public abstract class AbstractRoundTripTest extends AbstractBoskTest {
 		}
 	}
 
-	@RequiredArgsConstructor
 	private static class BsonRoundTripDriverFactory<R extends Entity> implements DriverFactory<R> {
 		@Override
 		public BoskDriver build(BoskInfo<R> boskInfo, BoskDriver driver) {

@@ -2,8 +2,7 @@ package works.bosk;
 
 import java.util.ArrayList;
 import java.util.List;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
+import java.util.Objects;
 
 class HookRecorder {
 	private final List<Event> events = new ArrayList<>();
@@ -19,15 +18,39 @@ class HookRecorder {
 		events.clear();
 	}
 
-	@RequiredArgsConstructor
-	@EqualsAndHashCode
 	static class Event {
 		final String hookName;
 		final Event.Kind kind;
 		final Reference<?> scope;
 		final Object value;
 
+		Event(String hookName, Event.Kind kind, Reference<?> scope, Object value) {
+			this.hookName = hookName;
+			this.kind = kind;
+			this.scope = scope;
+			this.value = value;
+		}
+
 		enum Kind {CHANGED}
+
+		@Override
+		public boolean equals(Object o) {
+			if (this == o) {
+				return true;
+			} else if (o instanceof Event other) {
+				return Objects.equals(hookName, other.hookName)
+					&& kind == other.kind
+					&& Objects.equals(scope, other.scope)
+					&& Objects.equals(value, other.value);
+			} else {
+				return false;
+			}
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(hookName, kind, scope, value);
+		}
 
 		@Override
 		public String toString() {

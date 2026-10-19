@@ -3,7 +3,6 @@ package works.bosk.drivers.mongo;
 import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import lombok.experimental.FieldNameConstants;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
 import org.bson.BsonDocumentWriter;
@@ -176,11 +175,15 @@ class BsonSerializerTest {
 		);
 	}
 
-	@FieldNameConstants
 	public record Root(
 		Catalog<Item> items,
 		SideTable<Item, SideTable<Item, String>> nestedSideTable
-	) implements StateTreeNode { }
+	) implements StateTreeNode {
+		public static final class Fields {
+			public static final String items = "items";
+			public static final String nestedSideTable = "nestedSideTable";
+		}
+	}
 
 	public record Item(
 		Identifier id

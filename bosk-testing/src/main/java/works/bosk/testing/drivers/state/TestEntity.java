@@ -3,8 +3,6 @@ package works.bosk.testing.drivers.state;
 import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Optional;
-import lombok.With;
-import lombok.experimental.FieldNameConstants;
 import works.bosk.Catalog;
 import works.bosk.Entity;
 import works.bosk.Identifier;
@@ -16,8 +14,6 @@ import works.bosk.TaggedUnion;
 import works.bosk.TaggedUnionCase;
 import works.bosk.annotations.TaggedUnionCaseMap;
 
-@With
-@FieldNameConstants
 public record TestEntity(
 	Identifier id,
 	String string,
@@ -29,6 +25,42 @@ public record TestEntity(
 	Optional<TestValues> values,
 	Optional<SelfValue> selfValue
 ) implements Entity {
+
+	public TestEntity withId(Identifier id) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
+
+	public TestEntity withString(String string) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
+
+	public TestEntity withCatalog(Catalog<TestEntity> catalog) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
+
+	public TestEntity withListing(Listing<TestEntity> listing) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
+
+	public TestEntity withSideTable(SideTable<TestEntity, TestEntity> sideTable) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
+
+	public TestEntity withNestedSideTable(SideTable<TestEntity, SideTable<TestEntity, TestEntity>> nestedSideTable) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
+
+	public TestEntity withVariant(TaggedUnion<Variant> variant) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
+
+	public TestEntity withValues(Optional<TestValues> values) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
+
+	public TestEntity withSelfValue(Optional<SelfValue> selfValue) {
+		return new TestEntity(id, string, catalog, listing, sideTable, nestedSideTable, variant, values, selfValue);
+	}
 
 	public interface Variant extends TaggedUnionCase {
 		@Override
@@ -59,6 +91,18 @@ public record TestEntity(
 			TaggedUnion.of(new StringCase("")),
 			Optional.empty(),
 			Optional.empty());
+	}
+
+	public static final class Fields {
+		public static final String id = "id";
+		public static final String string = "string";
+		public static final String catalog = "catalog";
+		public static final String listing = "listing";
+		public static final String sideTable = "sideTable";
+		public static final String nestedSideTable = "nestedSideTable";
+		public static final String variant = "variant";
+		public static final String values = "values";
+		public static final String selfValue = "selfValue";
 	}
 
 }

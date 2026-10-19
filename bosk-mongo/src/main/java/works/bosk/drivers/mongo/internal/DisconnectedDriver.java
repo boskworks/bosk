@@ -1,7 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
-import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import works.bosk.Identifier;
 import works.bosk.Reference;
@@ -14,9 +13,13 @@ import works.bosk.drivers.mongo.status.MongoStatus;
  * driver is disconnected. Every operation throws {@link DisconnectedException}, so the
  * driver refuses updates and operations waiting to retry keep waiting for a replacement.
  */
-@RequiredArgsConstructor
 final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<R> {
 	private final Throwable reason;
+
+	DisconnectedDriver(Throwable reason) {
+		this.reason = reason;
+	}
+
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
 		throw disconnected();

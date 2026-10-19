@@ -5,7 +5,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,9 +18,12 @@ import static org.springframework.http.HttpHeaders.CACHE_CONTROL;
 
 @Component
 @ControllerAdvice
-@RequiredArgsConstructor
 public class ReadSessionFilter extends OncePerRequestFilter {
 	private final Bosk<?> bosk;
+
+	public ReadSessionFilter(Bosk<?> bosk) {
+		this.bosk = bosk;
+	}
 
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {

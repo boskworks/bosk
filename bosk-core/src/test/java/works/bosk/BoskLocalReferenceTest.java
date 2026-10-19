@@ -9,8 +9,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.UnaryOperator;
-import lombok.With;
-import lombok.experimental.FieldNameConstants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.annotations.ReferencePath;
@@ -83,15 +81,20 @@ class BoskLocalReferenceTest {
 		root = bosk.currentRoot();
 	}
 
-	@FieldNameConstants
-	@With
 	public record Root (
 		Integer version,
 		Catalog<TestEntity> entities
-	) implements StateTreeNode { }
+	) implements StateTreeNode {
+		public Root withVersion(Integer version) {
+			return new Root(version, entities);
+		}
 
-	@With
-	@FieldNameConstants
+		public static final class Fields {
+			public static final String version = "version";
+			public static final String entities = "entities";
+		}
+	}
+
 	public record TestEntity(
 		Identifier id,
 		Integer version,
@@ -101,7 +104,22 @@ class BoskLocalReferenceTest {
 		SideTable<TestEntity, String> sideTable,
 		ListValue<String> listValue,
 		Optional<TestEntity> optional
-	) implements Entity { }
+	) implements Entity {
+		public TestEntity withVersion(Integer version) {
+			return new TestEntity(id, version, refField, catalog, listing, sideTable, listValue, optional);
+		}
+
+		public static final class Fields {
+			public static final String id = "id";
+			public static final String version = "version";
+			public static final String refField = "refField";
+			public static final String catalog = "catalog";
+			public static final String listing = "listing";
+			public static final String sideTable = "sideTable";
+			public static final String listValue = "listValue";
+			public static final String optional = "optional";
+		}
+	}
 
 	@Test
 	void testRootReference() throws Exception {

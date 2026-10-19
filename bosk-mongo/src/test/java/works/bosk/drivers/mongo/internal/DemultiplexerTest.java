@@ -4,7 +4,6 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
 import java.util.AbstractList;
 import java.util.List;
-import lombok.Value;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonString;
@@ -73,9 +72,12 @@ class DemultiplexerTest {
 	 * Wrapper {@link List} whose {@link #hashCode} and {@link #equals} compare
 	 * list elements by identity rather than value.
 	 */
-	@Value
-	private static class IdentityList<T> extends AbstractList<T> {
-		List<T> contents;
+	private static final class IdentityList<T> extends AbstractList<T> {
+		private final List<T> contents;
+
+		private IdentityList(List<T> contents) {
+			this.contents = contents;
+		}
 
 		@Override public T get(int index) { return contents.get(index); }
 		@Override public int size() { return contents.size(); }

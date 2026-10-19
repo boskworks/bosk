@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskDriver;
@@ -15,14 +14,17 @@ import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.exceptions.InvalidTypeException;
 
-import static lombok.AccessLevel.PRIVATE;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
-@RequiredArgsConstructor(access = PRIVATE)
 public class AsyncDriver implements BoskDriver {
 	private final BoskInfo<?> bosk;
 	private final BoskDriver downstream;
 	private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+	private AsyncDriver(BoskInfo<?> bosk, BoskDriver downstream) {
+		this.bosk = bosk;
+		this.downstream = downstream;
+	}
 
 	public static <RR extends StateTreeNode> DriverFactory<RR> factory() {
 		return AsyncDriver::new;

@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
-import lombok.Value;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -82,11 +81,10 @@ class BindingEnvironmentTest extends AbstractBoskTest {
 			.map(e -> new EnvTest(map, e));
 	}
 
-	@Value
-	static class EnvTest {
-		Map<String, Identifier> map;
-		BindingEnvironment env;
-	}
+	record EnvTest(
+		Map<String, Identifier> map,
+		BindingEnvironment env
+	) { }
 
 	/**
 	 * pitest counts a mutation as "surviving" if it causes test initialization to crash,

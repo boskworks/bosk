@@ -16,7 +16,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
-import lombok.Value;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -472,12 +471,18 @@ public final class PathCompiler {
 		// Step implementations for the possible varieties of objects in the tree
 		//
 
-		@Value
-		class FieldStep implements Step {
-			String name;
-			Map<String, Method> gettersByName;
-			Constructor<?> constructor;
-			Type containingType;
+		final class FieldStep implements Step {
+			private final String name;
+			private final Map<String, Method> gettersByName;
+			private final Constructor<?> constructor;
+			private final Type containingType;
+
+			FieldStep(String name, Map<String, Method> gettersByName, Constructor<?> constructor, Type containingType) {
+				this.name = name;
+				this.gettersByName = gettersByName;
+				this.constructor = constructor;
+				this.containingType = containingType;
+			}
 
 			private Method getter() { return gettersByName.get(name); }
 
@@ -537,10 +542,16 @@ public final class PathCompiler {
 			}
 		}
 
-		@Value
-		class CatalogEntryStep implements DeletableStep {
-			Type targetType;
-			int segmentNum;
+		final class CatalogEntryStep implements DeletableStep {
+			private final Type targetType;
+			private final int segmentNum;
+
+			CatalogEntryStep(Type targetType, int segmentNum) {
+				this.targetType = targetType;
+				this.segmentNum = segmentNum;
+			}
+
+			@Override public Type targetType() { return targetType; }
 
 			@Override
 			public String fullyParameterizedPathSegment() {
@@ -571,10 +582,14 @@ public final class PathCompiler {
 			}
 		}
 
-		@Value
-		class ListingEntryStep implements DeletableStep {
-			Type entryType;
-			int segmentNum;
+		final class ListingEntryStep implements DeletableStep {
+			private final Type entryType;
+			private final int segmentNum;
+
+			ListingEntryStep(Type entryType, int segmentNum) {
+				this.entryType = entryType;
+				this.segmentNum = segmentNum;
+			}
 
 			/**
 			 * A reference to a listing entry points at a {@link ListingEntry},
@@ -616,11 +631,18 @@ public final class PathCompiler {
 			}
 		}
 
-		@Value
-		class SideTableEntryStep implements DeletableStep {
-			Type keyType;
-			Type targetType;
-			int segmentNum;
+		final class SideTableEntryStep implements DeletableStep {
+			private final Type keyType;
+			private final Type targetType;
+			private final int segmentNum;
+
+			SideTableEntryStep(Type keyType, Type targetType, int segmentNum) {
+				this.keyType = keyType;
+				this.targetType = targetType;
+				this.segmentNum = segmentNum;
+			}
+
+			@Override public Type targetType() { return targetType; }
 
 			@Override
 			public String fullyParameterizedPathSegment() {
@@ -653,10 +675,16 @@ public final class PathCompiler {
 			}
 		}
 
-		@Value
-		class OptionalValueStep implements DeletableStep {
-			Type targetType;
-			Step fieldStep;
+		final class OptionalValueStep implements DeletableStep {
+			private final Type targetType;
+			private final Step fieldStep;
+
+			OptionalValueStep(Type targetType, Step fieldStep) {
+				this.targetType = targetType;
+				this.fieldStep = fieldStep;
+			}
+
+			@Override public Type targetType() { return targetType; }
 
 			@Override
 			public String fullyParameterizedPathSegment() {
@@ -688,10 +716,16 @@ public final class PathCompiler {
 			}
 		}
 
-		@Value
-		class PhantomValueStep implements DeletableStep {
-			Type targetType;
-			String name;
+		final class PhantomValueStep implements DeletableStep {
+			private final Type targetType;
+			private final String name;
+
+			PhantomValueStep(Type targetType, String name) {
+				this.targetType = targetType;
+				this.name = name;
+			}
+
+			@Override public Type targetType() { return targetType; }
 
 			@Override
 			public String fullyParameterizedPathSegment() {
@@ -722,10 +756,14 @@ public final class PathCompiler {
 			}
 		}
 
-		@Value
-		class TaggedUnionCaseStep implements Step {
-			String name;
-			Type targetType;
+		final class TaggedUnionCaseStep implements Step {
+			private final String name;
+			private final Type targetType;
+
+			TaggedUnionCaseStep(String name, Type targetType) {
+				this.name = name;
+				this.targetType = targetType;
+			}
 
 			@Override
 			public Type targetType() {
@@ -763,12 +801,18 @@ public final class PathCompiler {
 			}
 		}
 
-		@Value
-		class CustomStep implements Step {
-			Type valueType;
-			String fullyParameterizedPathSegment;
-			MethodHandle handle_get;
-			MethodHandle handle_with;
+		final class CustomStep implements Step {
+			private final Type valueType;
+			private final String fullyParameterizedPathSegment;
+			private final MethodHandle handle_get;
+			private final MethodHandle handle_with;
+
+			CustomStep(Type valueType, String fullyParameterizedPathSegment, MethodHandle handle_get, MethodHandle handle_with) {
+				this.valueType = valueType;
+				this.fullyParameterizedPathSegment = fullyParameterizedPathSegment;
+				this.handle_get = handle_get;
+				this.handle_with = handle_with;
+			}
 
 			@Override
 			public Type targetType() {

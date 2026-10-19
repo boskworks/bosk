@@ -1,7 +1,6 @@
 package works.bosk;
 
 import java.util.Optional;
-import lombok.experimental.FieldNameConstants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.exceptions.InvalidTypeException;
@@ -39,7 +38,6 @@ public class ReferenceErrorTest {
 			bosk.driver().submitDeletion(stringRef));
 	}
 
-	@FieldNameConstants
 	@SuppressWarnings("unused")
 	public record BadGetters(Identifier id, NestedObject nestedObject) implements Entity {
 		public Identifier id() {
@@ -49,8 +47,16 @@ public class ReferenceErrorTest {
 		public NestedObject nestedObject() {
 			throw new UnsupportedOperationException("Whoops");
 		}
+
+		public static final class Fields {
+			public static final String id = "id";
+			public static final String nestedObject = "nestedObject";
+		}
 	}
 
-	@FieldNameConstants
-	public record NestedObject(Optional<String> string) implements StateTreeNode {}
+	public record NestedObject(Optional<String> string) implements StateTreeNode {
+		public static final class Fields {
+			public static final String string = "string";
+		}
+	}
 }

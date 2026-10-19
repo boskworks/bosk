@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
-import lombok.Value;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
 
@@ -28,11 +27,10 @@ public class TestParameters {
 	 */
 	public static final int LONG_TIMESCALE = 150_000;
 
-	@Value
-	public static class ParameterSet {
-		String name;
-		MongoDriverSettings.MongoDriverSettingsBuilder driverSettingsBuilder;
-
+	public record ParameterSet(
+		String name,
+		MongoDriverSettings.MongoDriverSettingsBuilder driverSettingsBuilder
+	) {
 		public static ParameterSet from(MongoDriverSettings.DatabaseFormat format, EventTiming timing) {
 			String dbName = TestParameters.class.getSimpleName()
 				+ "_" + dbCounter.incrementAndGet()

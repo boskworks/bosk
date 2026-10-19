@@ -16,8 +16,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
-import lombok.experimental.Delegate;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.util.Types;
 
@@ -40,9 +40,23 @@ public final class ReferenceUtils {
 	}
 
 	record CatalogRef<E extends Entity>(
-		@Delegate(excludes = CovariantOverrides.class) Reference<Catalog<E>> ref,
+		Reference<Catalog<E>> ref,
 		Class<E> entryClass
 	) implements CatalogReference<E> {
+		@Override public Path path() { return ref.path(); }
+		@Override public Type targetType() { return ref.targetType(); }
+		@Override public Class<Catalog<E>> targetClass() { return ref.targetClass(); }
+		@Override public Catalog<E> valueIfExists() { return ref.valueIfExists(); }
+		@Override public void forEachValue(BiConsumer<Catalog<E>, BindingEnvironment> action, BindingEnvironment existingEnvironment) { ref.forEachValue(action, existingEnvironment); }
+		@Override public RootReference<?> root() { return ref.root(); }
+		@Override public <U> Reference<U> then(Class<U> targetClass, String... segments) throws InvalidTypeException { return ref.then(targetClass, segments); }
+		@Override public <E2 extends Entity> CatalogReference<E2> thenCatalog(Class<E2> entryClass, String... segments) throws InvalidTypeException { return ref.thenCatalog(entryClass, segments); }
+		@Override public <E2 extends Entity> ListingReference<E2> thenListing(Class<E2> entryClass, String... segments) throws InvalidTypeException { return ref.thenListing(entryClass, segments); }
+		@Override public <K extends Entity, V> SideTableReference<K, V> thenSideTable(Class<K> keyClass, Class<V> valueClass, String... segments) throws InvalidTypeException { return ref.thenSideTable(keyClass, valueClass, segments); }
+		@Override public <TT> Reference<Reference<TT>> thenReference(Class<TT> targetClass, String... segments) throws InvalidTypeException { return ref.thenReference(targetClass, segments); }
+		@Override public <TT extends TaggedUnionCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> taggedUnionCaseClass, String... segments) throws InvalidTypeException { return ref.thenTaggedUnion(taggedUnionCaseClass, segments); }
+		@Override public <TT> Reference<TT> enclosingReference(Class<TT> targetClass) { return ref.enclosingReference(targetClass); }
+
 		@Override
 		public CatalogReference<E> boundBy(BindingEnvironment bindings) {
 			return new CatalogRef<>(ref.boundBy(bindings), entryClass());
@@ -71,8 +85,22 @@ public final class ReferenceUtils {
 	}
 
 	record ListingRef<E extends Entity>(
-		@Delegate(excludes = {CovariantOverrides.class}) Reference<Listing<E>> ref
+		Reference<Listing<E>> ref
 	) implements ListingReference<E> {
+		@Override public Path path() { return ref.path(); }
+		@Override public Type targetType() { return ref.targetType(); }
+		@Override public Class<Listing<E>> targetClass() { return ref.targetClass(); }
+		@Override public Listing<E> valueIfExists() { return ref.valueIfExists(); }
+		@Override public void forEachValue(BiConsumer<Listing<E>, BindingEnvironment> action, BindingEnvironment existingEnvironment) { ref.forEachValue(action, existingEnvironment); }
+		@Override public RootReference<?> root() { return ref.root(); }
+		@Override public <U> Reference<U> then(Class<U> targetClass, String... segments) throws InvalidTypeException { return ref.then(targetClass, segments); }
+		@Override public <E2 extends Entity> CatalogReference<E2> thenCatalog(Class<E2> entryClass, String... segments) throws InvalidTypeException { return ref.thenCatalog(entryClass, segments); }
+		@Override public <E2 extends Entity> ListingReference<E2> thenListing(Class<E2> entryClass, String... segments) throws InvalidTypeException { return ref.thenListing(entryClass, segments); }
+		@Override public <K extends Entity, V> SideTableReference<K, V> thenSideTable(Class<K> keyClass, Class<V> valueClass, String... segments) throws InvalidTypeException { return ref.thenSideTable(keyClass, valueClass, segments); }
+		@Override public <TT> Reference<Reference<TT>> thenReference(Class<TT> targetClass, String... segments) throws InvalidTypeException { return ref.thenReference(targetClass, segments); }
+		@Override public <TT extends TaggedUnionCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> taggedUnionCaseClass, String... segments) throws InvalidTypeException { return ref.thenTaggedUnion(taggedUnionCaseClass, segments); }
+		@Override public <TT> Reference<TT> enclosingReference(Class<TT> targetClass) { return ref.enclosingReference(targetClass); }
+
 		@Override
 		public ListingReference<E> boundBy(BindingEnvironment bindings) {
 			return new ListingRef<>(ref.boundBy(bindings));
@@ -101,10 +129,24 @@ public final class ReferenceUtils {
 	}
 
 	record SideTableRef<K extends Entity, V>(
-		@Delegate(excludes = {CovariantOverrides.class}) Reference<SideTable<K, V>> ref,
+		Reference<SideTable<K, V>> ref,
 		Class<K> keyClass,
 		Class<V> valueClass
 	) implements SideTableReference<K, V> {
+		@Override public Path path() { return ref.path(); }
+		@Override public Type targetType() { return ref.targetType(); }
+		@Override public Class<SideTable<K, V>> targetClass() { return ref.targetClass(); }
+		@Override public SideTable<K, V> valueIfExists() { return ref.valueIfExists(); }
+		@Override public void forEachValue(BiConsumer<SideTable<K, V>, BindingEnvironment> action, BindingEnvironment existingEnvironment) { ref.forEachValue(action, existingEnvironment); }
+		@Override public RootReference<?> root() { return ref.root(); }
+		@Override public <U> Reference<U> then(Class<U> targetClass, String... segments) throws InvalidTypeException { return ref.then(targetClass, segments); }
+		@Override public <E extends Entity> CatalogReference<E> thenCatalog(Class<E> entryClass, String... segments) throws InvalidTypeException { return ref.thenCatalog(entryClass, segments); }
+		@Override public <E extends Entity> ListingReference<E> thenListing(Class<E> entryClass, String... segments) throws InvalidTypeException { return ref.thenListing(entryClass, segments); }
+		@Override public <K2 extends Entity, V2> SideTableReference<K2, V2> thenSideTable(Class<K2> keyClass, Class<V2> valueClass, String... segments) throws InvalidTypeException { return ref.thenSideTable(keyClass, valueClass, segments); }
+		@Override public <TT> Reference<Reference<TT>> thenReference(Class<TT> targetClass, String... segments) throws InvalidTypeException { return ref.thenReference(targetClass, segments); }
+		@Override public <TT extends TaggedUnionCase> Reference<TaggedUnion<TT>> thenTaggedUnion(Class<TT> taggedUnionCaseClass, String... segments) throws InvalidTypeException { return ref.thenTaggedUnion(taggedUnionCaseClass, segments); }
+		@Override public <TT> Reference<TT> enclosingReference(Class<TT> targetClass) { return ref.enclosingReference(targetClass); }
+
 		@Override
 		public Reference<V> then(Identifier id) {
 			try {

@@ -2,8 +2,6 @@ package works.bosk.testing.drivers;
 
 import java.io.IOException;
 import java.util.function.Consumer;
-import lombok.AccessLevel;
-import lombok.RequiredArgsConstructor;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
 import works.bosk.DriverFactory;
@@ -32,13 +30,20 @@ import works.bosk.testing.drivers.operations.UpdateOperation;
  * <em>Implementation note</em>: this class calls the downstream driver using {@link UpdateOperation#submitTo}
  * so that the ordinary {@link DriverConformanceTest} suite also tests all the {@link UpdateOperation} objects.
  */
-@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public class ReportingDriver implements BoskDriver {
 	final BoskDriver downstream;
 	final BoskContext context;
 	final Consumer<? super UpdateOperation> updateListener;
 	final FlushOperation.Consumer preFlushListener;
 	final FlushOperation.Consumer postFlushListener;
+
+	private ReportingDriver(BoskDriver downstream, BoskContext context, Consumer<? super UpdateOperation> updateListener, FlushOperation.Consumer preFlushListener, FlushOperation.Consumer postFlushListener) {
+		this.downstream = downstream;
+		this.context = context;
+		this.updateListener = updateListener;
+		this.preFlushListener = preFlushListener;
+		this.postFlushListener = postFlushListener;
+	}
 
 	/**
 	 * Builds a driver that reports all updates and flushes to the given listener before sending them to the downstream driver.

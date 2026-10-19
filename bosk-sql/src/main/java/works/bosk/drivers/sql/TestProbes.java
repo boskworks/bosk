@@ -1,7 +1,5 @@
 package works.bosk.drivers.sql;
 
-import lombok.With;
-
 /**
  * Test probes: the test-only facilities that {@link SqlDriverImpl} consults at
  * well-defined points, so tests can deterministically coordinate with the
@@ -22,10 +20,13 @@ import lombok.With;
  * submissions.</li>
  * </ul>
  */
-@With
 record TestProbes(
 	Runnable afterStateRead
 ) {
+	TestProbes withAfterStateRead(Runnable afterStateRead) {
+		return new TestProbes(afterStateRead);
+	}
+
 	static TestProbes noop() {
 		return new TestProbes(NOOP);
 	}

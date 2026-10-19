@@ -2,7 +2,6 @@ package works.bosk.drivers.mongo.internal;
 
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
-import lombok.With;
 import works.bosk.Bosk;
 import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
 
@@ -51,7 +50,6 @@ import works.bosk.drivers.mongo.internal.MainDriver.MongoClientFactory;
  * {@link SessionInterceptor}.</li>
  * </ul>
  */
-@With
 record TestProbes(
 	MongoClientFactory clientFactory,
 	UnaryOperator<ChangeListener> listenerFactory,
@@ -64,6 +62,46 @@ record TestProbes(
 	SessionInterceptor sessionInterceptor,
 	Consumer<Throwable> onDisruption
 ) {
+	TestProbes withClientFactory(MongoClientFactory clientFactory) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withListenerFactory(UnaryOperator<ChangeListener> listenerFactory) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withPrePublicationWaitAction(Runnable prePublicationWaitAction) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withBeforeRefurbishDelete(Runnable beforeRefurbishDelete) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withBeforeInitialStateApplied(Runnable beforeInitialStateApplied) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withFindInterceptor(FindInterceptor findInterceptor) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withWriteInterceptor(WriteInterceptor writeInterceptor) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withCommitInterceptor(CommitInterceptor commitInterceptor) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withSessionInterceptor(SessionInterceptor sessionInterceptor) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
+	TestProbes withOnDisruption(Consumer<Throwable> onDisruption) {
+		return new TestProbes(clientFactory, listenerFactory, prePublicationWaitAction, beforeRefurbishDelete, beforeInitialStateApplied, findInterceptor, writeInterceptor, commitInterceptor, sessionInterceptor, onDisruption);
+	}
+
 	static TestProbes noop() {
 		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), SessionInterceptor.identity(), NOOP_DISRUPTION);
 	}

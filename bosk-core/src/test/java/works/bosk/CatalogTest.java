@@ -8,11 +8,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Spliterator;
 import java.util.stream.Stream;
-import lombok.EqualsAndHashCode;
-import lombok.Value;
-import lombok.experimental.NonFinal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -338,21 +336,77 @@ class CatalogTest {
 		assertThrows(UnsupportedOperationException.class, () -> Catalog.empty().asCollection().retainAll(singletonList(wrongEntity)));
 	}
 
-	@Value
-	@NonFinal
 	private static class BasicEntity implements Entity {
-		Identifier id;
+		private final Identifier id;
+
+		BasicEntity(Identifier id) {
+			this.id = id;
+		}
+
+		public Identifier id() {
+			return id;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (this == o) {
+				return true;
+			} else if (o instanceof BasicEntity other && other.canEqual(this)) {
+				return Objects.equals(id, other.id);
+			} else {
+				return false;
+			}
+		}
+
+		protected boolean canEqual(Object other) {
+			return other instanceof BasicEntity;
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hashCode(id);
+		}
+
+		@Override
+		public String toString() {
+			return "BasicEntity(id=" + id + ")";
+		}
 	}
 
-	@Value
-	@EqualsAndHashCode(callSuper = true)
 	private static class ComplexEntity extends BasicEntity {
-		@EqualsAndHashCode.Include
-		String value;
+		private final String value;
 
 		ComplexEntity(Identifier id, String value) {
 			super(id);
 			this.value = value;
+		}
+
+		public String value() {
+			return value;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (o instanceof ComplexEntity other && other.canEqual(this)) {
+				return super.equals(o) && Objects.equals(value, other.value);
+			} else {
+				return false;
+			}
+		}
+
+		@Override
+		protected boolean canEqual(Object other) {
+			return other instanceof ComplexEntity;
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(super.hashCode(), value);
+		}
+
+		@Override
+		public String toString() {
+			return "ComplexEntity(value=" + value + ")";
 		}
 	}
 

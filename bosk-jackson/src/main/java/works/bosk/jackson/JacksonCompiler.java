@@ -11,9 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
-import lombok.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JsonGenerator;
@@ -53,10 +50,13 @@ import static works.bosk.bytecode.Codegen.popToLocal;
 import static works.bosk.bytecode.GeneratedClass.here;
 import static works.bosk.util.ReflectionHelpers.boxedClass;
 
-@RequiredArgsConstructor
 final class JacksonCompiler {
 	private final JacksonSerializer jacksonSerializer;
 	private final TypeFactory typeFactory = TypeFactory.createDefaultInstance();
+
+	JacksonCompiler(JacksonSerializer jacksonSerializer) {
+		this.jacksonSerializer = jacksonSerializer;
+	}
 
 	/**
 	 * A stack of types for which we are in the midst of compiling a {@link CompiledSerDes}.
@@ -295,13 +295,18 @@ final class JacksonCompiler {
 	 * in the compiler, and allows us to keep the {@link Codec} interface focused
 	 * on just the highly customized code that we do want to generate.
 	 */
-	@Value
-	@EqualsAndHashCode(callSuper = false)
 	private class CodecWrapper<T> implements CompiledSerDes<T> {
-		Codec codec;
-		BoskInfo<?> boskInfo;
-		JavaType nodeJavaType;
-		LinkedHashMap<String, RecordComponent> componentsByName;
+		private final Codec codec;
+		private final BoskInfo<?> boskInfo;
+		private final JavaType nodeJavaType;
+		private final LinkedHashMap<String, RecordComponent> componentsByName;
+
+		private CodecWrapper(Codec codec, BoskInfo<?> boskInfo, JavaType nodeJavaType, LinkedHashMap<String, RecordComponent> componentsByName) {
+			this.codec = codec;
+			this.boskInfo = boskInfo;
+			this.nodeJavaType = nodeJavaType;
+			this.componentsByName = componentsByName;
+		}
 
 		@Override
 		public ValueSerializer<T> serializer(SerializationConfig config) {

@@ -1,8 +1,6 @@
 package works.bosk.drivers.mongo;
 
-import lombok.Builder;
-import lombok.Builder.Default;
-import lombok.Value;
+import java.util.Objects;
 import works.bosk.Bosk;
 import works.bosk.BoskDriver;
 
@@ -11,10 +9,8 @@ import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavai
 import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.EARNEST;
 import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
 
-@Value
-@Builder(toBuilder = true)
-public class MongoDriverSettings {
-	String database;
+public final class MongoDriverSettings {
+	private final String database;
 
 	/**
 	 * The name of the collection within the {@link #database} in which the bosk state
@@ -25,7 +21,7 @@ public class MongoDriverSettings {
 	 * <p>
 	 * The default is {@link #DEFAULT_COLLECTION_NAME}.
 	 */
-	@Default String collection = DEFAULT_COLLECTION_NAME;
+	private final String collection;
 
 	/**
 	 * The general responsiveness of the system under unusual circumstances.
@@ -60,45 +56,271 @@ public class MongoDriverSettings {
 	 * In Bosk's own tests, we use even more extreme values to ensure
 	 * this works across a wide range of values.
 	 */
-	@Default int timescaleMS = 10_000;
+	private final int timescaleMS;
 
 	/**
 	 * @see DatabaseFormat#SEQUOIA
 	 * @see PandoFormat
 	 */
-	@Default DatabaseFormat preferredDatabaseFormat = SEQUOIA;
+	private final DatabaseFormat preferredDatabaseFormat;
 
 	/**
 	 * Default is {@link InitialDatabaseUnavailableMode#DISCONNECT DISCONNECT}
 	 * because it simplifies production deployments and repairs,
 	 * but these very fault-tolerance features can be confusing during development.
 	 */
-	@Default InitialDatabaseUnavailableMode initialDatabaseUnavailableMode = DISCONNECT;
+	private final InitialDatabaseUnavailableMode initialDatabaseUnavailableMode;
+	private final Experimental experimental;
+	private final Testing testing;
 
-	@Default Experimental experimental = Experimental.builder().build();
-	@Default Testing testing = Testing.builder().build();
+	private MongoDriverSettings(
+		String database,
+		String collection,
+		int timescaleMS,
+		DatabaseFormat preferredDatabaseFormat,
+		InitialDatabaseUnavailableMode initialDatabaseUnavailableMode,
+		Experimental experimental,
+		Testing testing
+	) {
+		this.database = database;
+		this.collection = collection;
+		this.timescaleMS = timescaleMS;
+		this.preferredDatabaseFormat = preferredDatabaseFormat;
+		this.initialDatabaseUnavailableMode = initialDatabaseUnavailableMode;
+		this.experimental = experimental;
+		this.testing = testing;
+	}
+
+	public static MongoDriverSettingsBuilder builder() {
+		return new MongoDriverSettingsBuilder();
+	}
+
+	public MongoDriverSettingsBuilder toBuilder() {
+		return new MongoDriverSettingsBuilder()
+			.database(database)
+			.collection(collection)
+			.timescaleMS(timescaleMS)
+			.preferredDatabaseFormat(preferredDatabaseFormat)
+			.initialDatabaseUnavailableMode(initialDatabaseUnavailableMode)
+			.experimental(experimental)
+			.testing(testing);
+	}
+
+	public String database() {
+		return database;
+	}
+
+	public String collection() {
+		return collection;
+	}
+
+	public int timescaleMS() {
+		return timescaleMS;
+	}
+
+	public DatabaseFormat preferredDatabaseFormat() {
+		return preferredDatabaseFormat;
+	}
+
+	public InitialDatabaseUnavailableMode initialDatabaseUnavailableMode() {
+		return initialDatabaseUnavailableMode;
+	}
+
+	public Experimental experimental() {
+		return experimental;
+	}
+
+	public Testing testing() {
+		return testing;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) {
+			return true;
+		} else if (o instanceof MongoDriverSettings other) {
+			return Objects.equals(database, other.database)
+				&& Objects.equals(collection, other.collection)
+				&& timescaleMS == other.timescaleMS
+				&& Objects.equals(preferredDatabaseFormat, other.preferredDatabaseFormat)
+				&& initialDatabaseUnavailableMode == other.initialDatabaseUnavailableMode
+				&& Objects.equals(experimental, other.experimental)
+				&& Objects.equals(testing, other.testing);
+		} else {
+			return false;
+		}
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(database, collection, timescaleMS, preferredDatabaseFormat, initialDatabaseUnavailableMode, experimental, testing);
+	}
+
+	@Override
+	public String toString() {
+		return "MongoDriverSettings("
+			+ "database=" + database
+			+ ", collection=" + collection
+			+ ", timescaleMS=" + timescaleMS
+			+ ", preferredDatabaseFormat=" + preferredDatabaseFormat
+			+ ", initialDatabaseUnavailableMode=" + initialDatabaseUnavailableMode
+			+ ", experimental=" + experimental
+			+ ", testing=" + testing
+			+ ")";
+	}
+
+	public static final class MongoDriverSettingsBuilder {
+		private String database;
+		private String collection = DEFAULT_COLLECTION_NAME;
+		private int timescaleMS = 10_000;
+		private DatabaseFormat preferredDatabaseFormat = SEQUOIA;
+		private InitialDatabaseUnavailableMode initialDatabaseUnavailableMode = DISCONNECT;
+		private Experimental experimental = Experimental.builder().build();
+		private Testing testing = Testing.builder().build();
+
+		private MongoDriverSettingsBuilder() { }
+
+		public MongoDriverSettingsBuilder database(String database) {
+			this.database = database;
+			return this;
+		}
+
+		public MongoDriverSettingsBuilder collection(String collection) {
+			this.collection = collection;
+			return this;
+		}
+
+		public MongoDriverSettingsBuilder timescaleMS(int timescaleMS) {
+			this.timescaleMS = timescaleMS;
+			return this;
+		}
+
+		public MongoDriverSettingsBuilder preferredDatabaseFormat(DatabaseFormat preferredDatabaseFormat) {
+			this.preferredDatabaseFormat = preferredDatabaseFormat;
+			return this;
+		}
+
+		public MongoDriverSettingsBuilder initialDatabaseUnavailableMode(InitialDatabaseUnavailableMode initialDatabaseUnavailableMode) {
+			this.initialDatabaseUnavailableMode = initialDatabaseUnavailableMode;
+			return this;
+		}
+
+		public MongoDriverSettingsBuilder experimental(Experimental experimental) {
+			this.experimental = experimental;
+			return this;
+		}
+
+		public MongoDriverSettingsBuilder testing(Testing testing) {
+			this.testing = testing;
+			return this;
+		}
+
+		public MongoDriverSettings build() {
+			return new MongoDriverSettings(database, collection, timescaleMS, preferredDatabaseFormat, initialDatabaseUnavailableMode, experimental, testing);
+		}
+	}
 
 	/**
 	 * Settings with no guarantee of long-term support.
 	 */
-	@Value
-	@Builder
-	public static class Experimental {
-		@Default OrphanDocumentMode orphanDocumentMode = HASTY;
+	public static final class Experimental {
+		private final OrphanDocumentMode orphanDocumentMode;
+
+		private Experimental(OrphanDocumentMode orphanDocumentMode) {
+			this.orphanDocumentMode = orphanDocumentMode;
+		}
+
+		public static ExperimentalBuilder builder() {
+			return new ExperimentalBuilder();
+		}
+
+		public OrphanDocumentMode orphanDocumentMode() {
+			return orphanDocumentMode;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof Experimental other && orphanDocumentMode == other.orphanDocumentMode;
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hashCode(orphanDocumentMode);
+		}
+
+		@Override
+		public String toString() {
+			return "Experimental(orphanDocumentMode=" + orphanDocumentMode + ")";
+		}
+
+		public static final class ExperimentalBuilder {
+			private OrphanDocumentMode orphanDocumentMode = HASTY;
+
+			private ExperimentalBuilder() { }
+
+			public ExperimentalBuilder orphanDocumentMode(OrphanDocumentMode orphanDocumentMode) {
+				this.orphanDocumentMode = orphanDocumentMode;
+				return this;
+			}
+
+			public Experimental build() {
+				return new Experimental(orphanDocumentMode);
+			}
+		}
 	}
 
 	/**
 	 * Settings not meant to be used in production.
 	 */
-	@Value
-	@Builder
-	public static class Testing {
+	public static final class Testing {
 		/**
 		 * How long to sleep before processing each event.
 		 * If negative, sleeps before performing each driver operation
 		 * so that events have a chance to arrive first.
 		 */
-		@Default long eventDelayMS = 0;
+		private final long eventDelayMS;
+
+		private Testing(long eventDelayMS) {
+			this.eventDelayMS = eventDelayMS;
+		}
+
+		public static TestingBuilder builder() {
+			return new TestingBuilder();
+		}
+
+		public long eventDelayMS() {
+			return eventDelayMS;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof Testing other && eventDelayMS == other.eventDelayMS;
+		}
+
+		@Override
+		public int hashCode() {
+			return Long.hashCode(eventDelayMS);
+		}
+
+		@Override
+		public String toString() {
+			return "Testing(eventDelayMS=" + eventDelayMS + ")";
+		}
+
+		public static final class TestingBuilder {
+			private long eventDelayMS = 0;
+
+			private TestingBuilder() { }
+
+			public TestingBuilder eventDelayMS(long eventDelayMS) {
+				this.eventDelayMS = eventDelayMS;
+				return this;
+			}
+
+			public Testing build() {
+				return new Testing(eventDelayMS);
+			}
+		}
 	}
 
 	public sealed interface DatabaseFormat
