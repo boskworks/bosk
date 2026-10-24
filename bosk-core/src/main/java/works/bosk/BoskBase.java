@@ -2,12 +2,12 @@ package works.bosk;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
@@ -240,11 +240,33 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 */
 	private final class LocalDriver implements BoskDriver {
 		final Bosk.DefaultStateFunction<R> initialStateFunction;
-		final Deque<Runnable> hookExecutionQueue = new ConcurrentLinkedDeque<>();
+		final Deque<HookExecution<?>> hookExecutionQueue = new ArrayDeque<>();
 		final Semaphore hookExecutionPermit = new Semaphore(1);
 
 		public LocalDriver(Bosk.DefaultStateFunction<R> initialStateFunction) {
 			this.initialStateFunction = initialStateFunction;
+		}
+
+		private final class HookExecution<S> {
+			final HookRegistration<S> registration;
+			final Reference<S> changedRef;
+			final R afterState;
+			final boolean existedBefore;
+			final boolean existsAfter;
+			final MapValue<String> attributes;
+
+			HookExecution(HookRegistration<S> registration, Reference<S> changedRef, R afterState, boolean existedBefore, boolean existsAfter, MapValue<String> attributes) {
+				this.registration = registration;
+				this.changedRef = changedRef;
+				this.afterState = afterState;
+				this.existedBefore = existedBefore;
+				this.existsAfter = existsAfter;
+				this.attributes = attributes;
+			}
+
+			void run() throws InterruptedException {
+				LocalDriver.this.runHook(registration, changedRef, afterState, attributes);
+			}
 		}
 
 		@Override
@@ -342,7 +364,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		 */
 		void triggerEverywhere(HookRegistration<?> reg) {
 			synchronized (this) {
-				triggerQueueingOfHooks(rootRef, null, currentState, reg);
+				triggerQueueingOfHooks(rootRef, null, currentState, reg, context.getAttributes());
 			}
 			drainQueueIfAllowed();
 		}
@@ -419,8 +441,9 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 
 		private <T> void queueHooks(Reference<T> target, @Nullable R priorRoot) {
 			R rootForHook = currentRoot();
+			MapValue<String> attributes = context.getAttributes();
 			for (HookRegistration<?> reg : hooks) {
-				triggerQueueingOfHooks(target, priorRoot, rootForHook, reg);
+				triggerQueueingOfHooks(target, priorRoot, rootForHook, reg, attributes);
 			}
 		}
 
@@ -430,34 +453,16 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		 * when <code>target</code> was updated. If <code>priorRoot</code> is null, the hook is called
 		 * on every matching object that exists in <code>rootForHook</code>.
 		 */
-		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
-			MapValue<String> attributes = context.getAttributes();
+		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg, MapValue<String> attributes) {
 			reg.triggerAction(priorRoot, rootForHook, target, (changedRef, existedBefore, existsAfter) -> {
 				HOOK_LOGGER.debug("Hook: queue {}({}) due to {}", reg.name(), changedRef, target);
-				hookExecutionQueue.addLast(() -> {
-					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
-					try (
-						var _ = setupMDC(name, instanceID);
-						var _ = context.withOnly(attributes)
-					) {
-						try (var _ = newReadSession(rootForHook)) {
-							HOOK_LOGGER.debug("Hook: RUN {}({})", reg.name(), changedRef);
-							reg.hook().onChanged(changedRef);
-						} catch (InterruptedException e) {
-							HOOK_LOGGER.warn("Bosk hook \"{}\" was interrupted; proceeding", reg.name(), e);
-						} catch (RuntimeException e) {
-							HOOK_LOGGER.error("Bosk hook \"{}\" terminated with an exception, which usually indicates a bug. State updates may have been lost", reg.name(), e);
-
-							// Note that we don't catch Error. The practical reason is to allow users to write
-							// unit tests that throw AssertionError from hooks, but the bigger reason is that
-							// Errors indicate that something has gone dreadfully wrong, and we probably should
-							// not attempt to continue.
-						} finally {
-							HOOK_LOGGER.debug("Hook: end {}({})", reg.name(), changedRef);
-						}
-					}
-				});
+				enqueueHookExecution(reg, changedRef, rootForHook, existedBefore, existsAfter, attributes);
 			});
+		}
+
+		private <S> void enqueueHookExecution(HookRegistration<S> reg, Reference<S> changedRef, R rootForHook, boolean existedBefore, boolean existsAfter, MapValue<String> attributes) {
+			assert holdsLock(this);
+			hookExecutionQueue.addLast(new HookExecution<>(reg, changedRef, rootForHook, existedBefore, existsAfter, attributes));
 		}
 
 		/**
@@ -498,39 +503,24 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 								HOOK_LOGGER.debug("Interrupted; deferring the remaining queued hooks");
 								return;
 							}
-							Runnable ex = hookExecutionQueue.pollFirst();
-							if (ex == null) {
+							HookExecution<?> execution;
+							synchronized (this) {
+								execution = hookExecutionQueue.pollFirst();
+							}
+							if (execution == null) {
 								break;
 							}
-							// Run the task in a separate virtual thread to prevent ThreadLocals from propagating.
-							// This is slightly tragic, because usually ThreadLocal propagation works just the
-							// way we'd want, but not always. Given the choices "always, sometimes, never", if
-							// we can't achieve "always", then the bosk philosophy prefers "never" over "sometimes".
-							FutureTask<Void> task = new FutureTask<>(ex, null);
-							Thread hookThread = hookThreadBuilder.start(task);
-							try {
-								task.get();
-							} catch (ExecutionException e) {
-								try {
-									throw e.getCause();
-								} catch (RuntimeException | Error cause) {
-									throw cause;
-								} catch (Throwable t) {
-									throw new AssertionError("Hook runnable should catch and wrap checked exceptions", t);
-								}
-							} catch (InterruptedException e) {
-								// The interrupt is intended for the hook work in flight here.
-								// Deliver it to the running hook, per the BoskHook contract,
-								// and await its termination before proceeding. This is intended
-								// to mimic structured concurrency (StructuredTaskScope.close()):
-								// cancel the in-flight subtasks and wait for them to terminate.
-								hookThread.interrupt();
-								awaitTermination(hookThread);
-								Thread.currentThread().interrupt();
-								HOOK_LOGGER.warn("Interrupted while running hooks; the running hook was interrupted and terminated, and the remaining queued hooks are deferred to the next update", e);
-								return;
-							}
+							execution.run();
 						}
+					} catch (InterruptedException e) {
+						// The interrupt is intended for the hook work in flight here.
+						// Deliver it to the running hook, per the BoskHook contract,
+						// and await its termination before proceeding. This is intended
+						// to mimic structured concurrency (StructuredTaskScope.close()):
+						// cancel the in-flight subtasks and wait for them to terminate.
+						Thread.currentThread().interrupt();
+						HOOK_LOGGER.warn("Interrupted while running hooks; the running hook was interrupted and terminated, and the remaining queued hooks are deferred to the next update", e);
+						return;
 					} finally {
 						hookExecutionPermit.release();
 					}
@@ -567,7 +557,64 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				// if another thread queues another hook after this point, that thread will also
 				// succeed in acquiring the permit and will itself drain the queue.
 
-			} while (!hookExecutionQueue.isEmpty());
+			} while (hasQueuedHookExecutions());
+		}
+
+		private boolean hasQueuedHookExecutions() {
+			synchronized (this) {
+				return !hookExecutionQueue.isEmpty();
+			}
+		}
+
+		private <S> void runHook(HookRegistration<S> reg, Reference<S> changedRef, R rootForHook, MapValue<String> attributes) throws InterruptedException {
+			Runnable work = () -> {
+				// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
+				try (
+					var _ = setupMDC(name, instanceID);
+					var _ = context.withOnly(attributes)
+				) {
+					try (var _ = newReadSession(rootForHook)) {
+						HOOK_LOGGER.debug("Hook: RUN {}({})", reg.name(), changedRef);
+						reg.hook().onChanged(changedRef);
+					} catch (InterruptedException e) {
+						HOOK_LOGGER.warn("Bosk hook \"{}\" was interrupted; proceeding", reg.name(), e);
+					} catch (RuntimeException e) {
+						HOOK_LOGGER.error("Bosk hook \"{}\" terminated with an exception, which usually indicates a bug. State updates may have been lost", reg.name(), e);
+
+						// Note that we don't catch Error. The practical reason is to allow users to write
+						// unit tests that throw AssertionError from hooks, but the bigger reason is that
+						// Errors indicate that something has gone dreadfully wrong, and we probably should
+						// not attempt to continue.
+					} finally {
+						HOOK_LOGGER.debug("Hook: end {}({})", reg.name(), changedRef);
+					}
+				}
+			};
+			runHookTask(work);
+		}
+
+		private void runHookTask(Runnable work) throws InterruptedException {
+			// Run the task in a separate virtual thread to prevent ThreadLocals from propagating.
+			// This is slightly tragic, because usually ThreadLocal propagation works just the
+			// way we'd want, but not always. Given the choices "always, sometimes, never", if
+			// we can't achieve "always", then the bosk philosophy prefers "never" over "sometimes".
+			FutureTask<Void> task = new FutureTask<>(work, null);
+			Thread hookThread = hookThreadBuilder.start(task);
+			try {
+				task.get();
+			} catch (ExecutionException e) {
+				try {
+					throw e.getCause();
+				} catch (RuntimeException | Error cause) {
+					throw cause;
+				} catch (Throwable t) {
+					throw new AssertionError("Hook runnable should catch and wrap checked exceptions", t);
+				}
+			} catch (InterruptedException e) {
+				hookThread.interrupt();
+				awaitTermination(hookThread);
+				throw e;
+			}
 		}
 
 		/**
