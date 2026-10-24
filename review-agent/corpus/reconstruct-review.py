@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Reconstruct a posted review's JSON from the corpus PR data.
 
-post-review.py archives each review it posts to data/reviews/<PR>.json. Reviews
-posted before that feature existed, or whose archive was lost with a deleted
+post-review.py saves each review it posts to data/reviews/<PR>.json, moving any
+earlier review to data/reviews/archive/<PR>/<timestamp>.json first. Reviews
+posted before that feature existed, or whose saved copy was lost with a deleted
 data/ cache, are reconstructed from the corpus PR data: the top-level
 "[review]"-marked comments (stripped of the marker), plus the review summary and
 verdict from reviews.json. The result is what measure-agreement.py and

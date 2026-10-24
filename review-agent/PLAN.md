@@ -212,8 +212,10 @@ One run produces **one proposed patch** to `review-agent/review/reviewer.md`, wi
   git-derived review-time contexts — losslessly recreatable from GitHub plus the repo's git history.
   `data/eval/` holds *run artifacts* (virtual reviews, match results, logs), keyed by prompt hash and
   model so prompt versions can be compared; they are regenerable, but not losslessly recreatable, since
-  generation is stochastic. Only `review/`, `eval/`, `calibrate/`, and `corpus/` under `review-agent/` (and
-  this plan) are committed.
+  generation is stochastic. `data/reviews/` holds the posted reviews: the latest round at `<PR>.json` and
+  superseded rounds under `archive/<PR>/<timestamp>.json`, so a new post never destroys the review the
+  previous round was calibrated from. Only `review/`, `eval/`, `calibrate/`, and `corpus/` under
+  `review-agent/` (and this plan) are committed.
 
 ## Deliverables
 
@@ -248,6 +250,8 @@ review-agent/
     corpus/<PR>/…          # reference data: metadata, comments, reactions, classifications, contexts
     eval/<key>/<PR>.{json,log,stats,match*}   # run artifacts: virtual reviews, generation logs and stats, match results
     eval/archive-<ts>/<key>/…                 # superseded generations, preserved for post hoc analysis
+    reviews/<PR>.json                         # current posted review (the calibration tools read this)
+    reviews/archive/<PR>/<timestamp>.json     # earlier posted reviews, preserved per round
     reports/               # evidence output
 ```
 
