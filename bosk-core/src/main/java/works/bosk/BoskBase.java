@@ -6,10 +6,9 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
@@ -55,7 +54,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	final RootRef rootRef;
 	final ThreadLocal<R> rootSnapshot = new ThreadLocal<>();
 	final HookRegistrar hookRegistrar;
-	final Queue<HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
+	final List<HookRegistration<?>> hooks = new CopyOnWriteArrayList<>();
 	final PathCompiler pathCompiler;
 
 	final Thread.Builder hookThreadBuilder = Thread
@@ -600,8 +599,12 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	final <T> void localRegisterHook(String name, @NonNull Reference<T> scope, @NonNull BoskHook<T> action) {
 		// The cast is safe because BoskBase permits only Bosk as a subclass, and hook
 		// registration happens after construction.
-		HookRegistration<T> reg = new HookRegistration<>(name, requireNonNull(scope), requireNonNull(action));
-		hooks.add(reg);
+		HookRegistration<T> reg;
+		synchronized (this) {
+			int index = hooks.size();
+			reg = new HookRegistration<>(name, requireNonNull(scope), requireNonNull(action), index);
+			hooks.add(reg);
+		}
 		localDriver.triggerEverywhere(reg);
 	}
 
@@ -610,11 +613,13 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		private final String name;
 		private final Reference<S> scope;
 		private final BoskHook<S> hook;
+		private final int index;
 
-		HookRegistration(String name, Reference<S> scope, BoskHook<S> hook) {
+		HookRegistration(String name, Reference<S> scope, BoskHook<S> hook, int index) {
 			this.name = name;
 			this.scope = scope;
 			this.hook = hook;
+			this.index = index;
 		}
 
 		/**
@@ -658,6 +663,10 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 
 		BoskHook<S> hook() {
 			return this.hook;
+		}
+
+		int index() {
+			return this.index;
 		}
 
 		@Override
