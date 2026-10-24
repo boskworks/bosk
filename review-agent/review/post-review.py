@@ -6,6 +6,11 @@ is the only path from that JSON to GitHub: it submits the review in one call
 carrying the summary body, the verdict, and the inline comments. If a comment's
 line anchor is rejected, it reports the offending comment; --per-comment then
 posts each comment individually so one bad anchor does not lose the rest.
+
+Each posted review becomes the current one at data/reviews/<PR>.json, where the
+calibration tools look for it. Any earlier review at that path is moved to
+data/reviews/archive/<PR>/<timestamp>.json first, so posting a new round never
+destroys the previous one.
 """
 from __future__ import annotations
 
@@ -14,6 +19,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.stdout.reconfigure(line_buffering=True)
@@ -91,6 +97,39 @@ def post_per_comment(repo: str, pr: int, review: dict, mark: bool) -> None:
     post_review(repo, pr, {"summary": review["summary"], "verdict": review["verdict"], "comments": []}, mark)
 
 
+def archive_previous(reviews_dir: Path, pr: int, now: str | None = None) -> Path | None:
+    """Move the current review for `pr` into the archive; return where it went.
+
+    The archive is keyed by PR and stamped with the time the next review is
+    posted. A numeric suffix keeps reviews posted within the same second from
+    overwriting each other.
+    """
+    current = reviews_dir / f"{pr}.json"
+    if not current.exists():
+        return None
+    archive_dir = reviews_dir / "archive" / str(pr)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    stamp = now or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = archive_dir / f"{stamp}.json"
+    suffix = 1
+    while target.exists():
+        target = archive_dir / f"{stamp}-{suffix}.json"
+        suffix += 1
+    current.rename(target)
+    return target
+
+
+def save_review(reviews_dir: Path, pr: int, review: dict, now: str | None = None) -> Path:
+    """Save `review` as the current review for `pr`, preserving the previous one."""
+    reviews_dir.mkdir(parents=True, exist_ok=True)
+    archived = archive_previous(reviews_dir, pr, now)
+    if archived is not None:
+        print(f"archived previous review to {archived}")
+    path = reviews_dir / f"{pr}.json"
+    path.write_text(json.dumps(review, indent=2) + "\n")
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser(description="Post a review JSON as a GitHub pull-request review.")
     parser.add_argument("pr", type=int, help="pull request number")
@@ -120,9 +159,8 @@ def main():
         print("hint: a rejected line anchor is the usual cause; retry with --per-comment", file=sys.stderr)
         return 1
     reviews_dir = Path(__file__).resolve().parent.parent / "data" / "reviews"
-    reviews_dir.mkdir(parents=True, exist_ok=True)
-    (reviews_dir / f"{args.pr}.json").write_text(json.dumps(review, indent=2) + "\n")
-    print(f"posted review {args.pr}")
+    path = save_review(reviews_dir, args.pr, review)
+    print(f"posted review {args.pr}; saved {path}")
     return 0
 
 

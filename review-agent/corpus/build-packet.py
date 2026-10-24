@@ -11,6 +11,10 @@ The snapshot is filtered by review round: round 1 is a fresh review, so it
 contains no prior comments; round N is a follow-up, so it contains the
 conversation up to round N (previous review comments, the maintainer's reactions
 and replies). Without --round, the snapshot is the current state (production).
+
+Packets are reused between rounds. Rebuilding one verifies that its worktree is
+a clean checkout of the reviewed head and moves it there if it is not, so a
+rebuild never silently reviews stale code.
 """
 from __future__ import annotations
 
@@ -61,6 +65,55 @@ def merge_base(repo_dir: Path, base_sha: str, base_ref: str, reviewed: str) -> s
         except subprocess.CalledProcessError:
             continue
     sys.exit(f"no merge base for {reviewed[:8]} from base {base_sha[:8]} ({base_ref})")
+
+
+def checked_out_head(worktree: Path) -> str | None:
+    """The commit a worktree has checked out, or None if it is not a usable worktree."""
+    if not worktree.is_dir():
+        return None
+    try:
+        return git("-C", str(worktree), "rev-parse", "HEAD").strip()
+    except subprocess.CalledProcessError:
+        return None
+
+
+def local_changes(worktree: Path) -> str:
+    """A worktree's uncommitted changes, including untracked files."""
+    return git("-C", str(worktree), "status", "--porcelain")
+
+
+def ensure_worktree(worktree: Path, head: str, repo_dir: Path) -> None:
+    """Make `worktree` a clean checkout of `head`, refreshing an existing one.
+
+    Packets are reused across review rounds, so an existing worktree is often
+    pinned to an older commit. Reusing it without checking would review stale
+    code, so the checkout is verified and moved to the requested head.
+    Uncommitted changes are an error rather than something to discard: the
+    worktree is the reviewer's working directory, so it may hold work that would
+    be lost.
+    """
+    try:
+        git("-C", str(repo_dir), "cat-file", "-e", f"{head}^{{commit}}")
+    except subprocess.CalledProcessError:
+        sys.exit(f"commit {head} is not in {repo_dir}; fetch the PR's data and rebuild the packet")
+
+    if not worktree.exists():
+        git("worktree", "add", "--detach", str(worktree), head, cwd=repo_dir)
+        return
+
+    current = checked_out_head(worktree)
+    if current is None:
+        sys.exit(f"{worktree} exists but is not a usable git worktree; rerun with --cleanup")
+    changes = local_changes(worktree)
+    if changes:
+        sys.exit(f"{worktree} has uncommitted changes; commit or discard them, or rerun with --cleanup")
+    if current == head:
+        return
+
+    git("-C", str(worktree), "checkout", "--detach", head)
+    actual = checked_out_head(worktree)
+    if actual != head:
+        sys.exit(f"could not move {worktree} to {head}; it is at {actual}")
 
 
 def reviewer_submissions(reviews_path: Path) -> list:
@@ -183,7 +236,14 @@ def main():
     if args.cleanup:
         worktree = packet_dir / "worktree"
         if worktree.exists():
-            git("worktree", "remove", "--force", str(worktree), cwd=Path(args.repo_dir))
+            subprocess.run(["git", "worktree", "remove", "--force", str(worktree)],
+                           cwd=args.repo_dir, capture_output=True, text=True)
+            # A directory that is not registered with this clone (for example,
+            # left behind by a worktree created from another clone) cannot be
+            # removed with `git worktree remove`, so fall back to deleting it.
+            shutil.rmtree(worktree, ignore_errors=True)
+        subprocess.run(["git", "worktree", "prune"], cwd=args.repo_dir,
+                       capture_output=True, text=True)
         shutil.rmtree(packet_dir, ignore_errors=True)
         print(f"removed {packet_dir}")
         return
@@ -198,9 +258,7 @@ def main():
         return
 
     worktree = packet_dir / "worktree"
-    if not worktree.exists():
-        git("worktree", "add", "--detach", str(worktree), snapshot["review_head"],
-            cwd=Path(args.repo_dir))
+    ensure_worktree(worktree, snapshot["review_head"], Path(args.repo_dir))
     print(f"worktree {worktree} at {snapshot['review_head']}")
 
 

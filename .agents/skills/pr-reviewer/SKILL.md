@@ -17,14 +17,20 @@ reproducible and evaluable.
 
 1. **Review.** Build the review packet for the PR first: `review-agent/corpus/fetch-prs.sh --pr <PR>` to
    bring the PR's current data into the corpus, then `review-agent/corpus/build-packet.py <PR>` to check
-   out the reviewed commit in a worktree and snapshot its GitHub information. Then load
+   out the reviewed commit in a worktree and snapshot its GitHub information. Rebuilding a packet reuses
+   the packet directory but verifies the worktree is clean and at the reviewed head, moving it there when
+   an earlier round left it at an older commit; if the worktree has uncommitted changes the build stops
+   and asks you to rerun with `--cleanup`, rather than discarding work or reviewing stale code. Then load
    `review-agent/review/reviewer.md` and follow it exactly, reviewing against the packet: the repository
    is checked out at the reviewed commit in `review-agent/data/packets/<PR>/worktree`, and the PR's
    GitHub information is in `review-agent/data/packets/<PR>/snapshot.json`. Produce the review as the JSON
    document described in the prompt file and write it to the requested path.
-2. **Post.** Post it with `review-agent/review/post-review.py <PR> <path>`. The maintainer usually asks for a
-   review expecting it to be posted, so default to posting; only hold off, and say why, if you're clearly
-   unsure that's what they want.
+2. **Post.** Post it with `review-agent/review/post-review.py <PR> <path>`. The posted review becomes
+   `review-agent/data/reviews/<PR>.json`, the path the calibration tools read; any earlier review moves to
+   `review-agent/data/reviews/archive/<PR>/<timestamp>.json` first, so each round's review is preserved
+   while the current one stays easy to find. The maintainer usually asks for a review expecting it to be
+   posted, so default to posting; only hold off, and say why, if you're clearly unsure that's what they
+   want.
    - Approval is the handoff signal: the maintainer treats `APPROVE` as their cue to do their own review,
      so post it only for a clean review (no findings). On the author's own account, GitHub refuses
      `APPROVE` and `REQUEST_CHANGES`; fall back to `COMMENT` and say so.
