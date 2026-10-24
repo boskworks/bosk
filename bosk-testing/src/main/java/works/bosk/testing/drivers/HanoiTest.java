@@ -26,7 +26,6 @@ import works.bosk.junit.InjectedTest;
 
 import static java.lang.Thread.currentThread;
 import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.stream.Collectors.joining;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.testing.BoskTestUtils.boskName;
@@ -85,10 +84,6 @@ public abstract class HanoiTest {
 
 	@InjectedTest
 	void threePuzzles() throws InterruptedException {
-		if (LOGGER.isDebugEnabled()) {
-			LOGGER.debug("Registered hooks:{}",
-				bosk.allRegisteredHooks().stream().map(r -> "\n\t" + r.name() + " @ " + r.scope()).collect(joining()));
-		}
 		bosk.driver().submitReplacement(refs.puzzles(),
 			Catalog.of(
 				newPuzzle(PUZZLE_1, 5),

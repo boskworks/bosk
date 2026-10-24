@@ -56,7 +56,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	final RootRef rootRef;
 	final ThreadLocal<R> rootSnapshot = new ThreadLocal<>();
 	final HookRegistrar hookRegistrar;
-	final Queue<Bosk<R>.HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
+	final Queue<HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
 	final PathCompiler pathCompiler;
 
 	final Thread.Builder hookThreadBuilder = Thread
@@ -342,7 +342,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		/**
 		 * Run the given hook on every existing object that matches its scope.
 		 */
-		void triggerEverywhere(Bosk<R>.HookRegistration<?> reg) {
+		void triggerEverywhere(HookRegistration<?> reg) {
 			synchronized (this) {
 				triggerQueueingOfHooks(rootRef, null, currentState, reg);
 			}
@@ -421,18 +421,18 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 
 		private <T> void queueHooks(Reference<T> target, @Nullable R priorRoot) {
 			R rootForHook = currentRoot();
-			for (Bosk<R>.HookRegistration<?> reg : hooks) {
+			for (HookRegistration<?> reg : hooks) {
 				triggerQueueingOfHooks(target, priorRoot, rootForHook, reg);
 			}
 		}
 
 		/**
-		 * For a given {@link Bosk.HookRegistration}, queues up a call to {@link BoskHook#onChanged}
+		 * For a given {@link HookRegistration}, queues up a call to {@link BoskHook#onChanged}
 		 * for each matching object that changed between <code>priorRoot</code> and <code>rootForHook</code>
 		 * when <code>target</code> was updated. If <code>priorRoot</code> is null, the hook is called
 		 * on every matching object that exists in <code>rootForHook</code>.
 		 */
-		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, Bosk<R>.HookRegistration<S> reg) {
+		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
 			MapValue<String> attributes = context.getAttributes();
 			reg.triggerAction(priorRoot, rootForHook, target, changedRef -> {
 				HOOK_LOGGER.debug("Hook: queue {}({}) due to {}", reg.name(), changedRef, target);
@@ -601,10 +601,87 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	final <T> void localRegisterHook(String name, @NonNull Reference<T> scope, @NonNull BoskHook<T> action) {
 		// The cast is safe because BoskBase permits only Bosk as a subclass, and hook
 		// registration happens after construction.
-		Bosk<R>.HookRegistration<T> reg = ((Bosk<R>) BoskBase.this).new HookRegistration<>(name, requireNonNull(scope), requireNonNull(action));
+		HookRegistration<T> reg = new HookRegistration<>(name, requireNonNull(scope), requireNonNull(action));
 		hooks.add(reg);
 		localDriver.triggerEverywhere(reg);
 	}
+
+	// Inner class can't be a record
+	final class HookRegistration<S> {
+		private final String name;
+		private final Reference<S> scope;
+		private final BoskHook<S> hook;
+
+		HookRegistration(String name, Reference<S> scope, BoskHook<S> hook) {
+			this.name = name;
+			this.scope = scope;
+			this.hook = hook;
+		}
+
+		/**
+		 * Calls <code>action</code> for every object whose path matches <code>scope</code> that
+		 * was changed by a driver event targeting <code>target</code>.
+		 *
+		 * @param priorRoot The bosk root object before the driver event occurred
+		 * @param newRoot   The bosk root object after the driver event occurred
+		 * @param target    The object specified by the driver event
+		 * @param action    The operation to perform for each matching object that could have changed
+		 */
+		void triggerAction(@Nullable R priorRoot, R newRoot, Reference<?> target, Consumer<Reference<S>> action) {			Reference<S> effectiveScope;
+			int relativeDepth = target.path().length() - scope.path().length();
+			if (relativeDepth >= 0) {
+				// target may be the scope object or a descendant
+				Path candidate = target.path().truncatedBy(relativeDepth);
+				if (scope.path().matches(candidate)) {
+					effectiveScope = scope.boundBy(candidate);
+				} else {
+					return;
+				}
+			} else {
+				// target may be an ancestor of the scope object
+				Path enclosingScope = scope.path().truncatedBy(-relativeDepth);
+				if (enclosingScope.matches(target.path())) {
+					effectiveScope = scope.boundBy(target.path());
+				} else {
+					return;
+				}
+			}
+			triggerCascade(effectiveScope, priorRoot, newRoot, action);
+		}
+
+		String name() {
+			return this.name;
+		}
+
+		Reference<S> scope() {
+			return this.scope;
+		}
+
+		BoskHook<S> hook() {
+			return this.hook;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (o == null || getClass() != o.getClass()) return false;
+			@SuppressWarnings("unchecked")
+			HookRegistration<?> that = (HookRegistration<?>) o;
+			return Objects.equals(name, that.name)
+				&& Objects.equals(scope, that.scope)
+				&& Objects.equals(hook, that.hook);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(name, scope, hook);
+		}
+
+		@Override
+		public String toString() {
+			return "HookRegistration(name=" + this.name() + ", scope=" + this.scope() + ", hook=" + this.hook + ")";
+		}
+	}
+
 
 	/**
 	 * Recursive helper routine that calls the given action for all objects matching <code>effectiveScope</code> that

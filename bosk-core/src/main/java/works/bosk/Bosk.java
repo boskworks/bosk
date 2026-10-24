@@ -3,12 +3,8 @@ package works.bosk;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Type;
-import java.util.Collection;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.annotations.Hook;
@@ -16,7 +12,6 @@ import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.exceptions.NotYetImplementedException;
 
-import static java.util.Collections.unmodifiableCollection;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -220,86 +215,6 @@ public non-sealed class Bosk<R extends StateTreeNode> extends BoskBase<R> implem
 	 */
 	public void registerHooks(Object receiver, MethodHandles.Lookup lookup) throws InvalidTypeException {
 		HookScanner.registerHooks(receiver, this.rootReference(), this.hookRegistrar(), lookup);
-	}
-
-	public Collection<HookRegistration<?>> allRegisteredHooks() {
-		return unmodifiableCollection(hooks);
-	}
-
-	// Inner class can't be a record
-	public final class HookRegistration<S> {
-		private final String name;
-		private final Reference<S> scope;
-		private final BoskHook<S> hook;
-
-		public HookRegistration(String name, Reference<S> scope, BoskHook<S> hook) {
-			this.name = name;
-			this.scope = scope;
-			this.hook = hook;
-		}
-
-		/**
-		 * Calls <code>action</code> for every object whose path matches <code>scope</code> that
-		 * was changed by a driver event targeting <code>target</code>.
-		 *
-		 * @param priorRoot The bosk root object before the driver event occurred
-		 * @param newRoot   The bosk root object after the driver event occurred
-		 * @param target    The object specified by the driver event
-		 * @param action    The operation to perform for each matching object that could have changed
-		 */
-		void triggerAction(@Nullable R priorRoot, R newRoot, Reference<?> target, Consumer<Reference<S>> action) {			Reference<S> effectiveScope;
-			int relativeDepth = target.path().length() - scope.path().length();
-			if (relativeDepth >= 0) {
-				// target may be the scope object or a descendant
-				Path candidate = target.path().truncatedBy(relativeDepth);
-				if (scope.path().matches(candidate)) {
-					effectiveScope = scope.boundBy(candidate);
-				} else {
-					return;
-				}
-			} else {
-				// target may be an ancestor of the scope object
-				Path enclosingScope = scope.path().truncatedBy(-relativeDepth);
-				if (enclosingScope.matches(target.path())) {
-					effectiveScope = scope.boundBy(target.path());
-				} else {
-					return;
-				}
-			}
-			triggerCascade(effectiveScope, priorRoot, newRoot, action);
-		}
-
-		public String name() {
-			return this.name;
-		}
-
-		public Reference<S> scope() {
-			return this.scope;
-		}
-
-		public BoskHook<S> hook() {
-			return this.hook;
-		}
-
-		@Override
-		public boolean equals(Object o) {
-			if (o == null || getClass() != o.getClass()) return false;
-			@SuppressWarnings("unchecked")
-			HookRegistration<?> that = (HookRegistration<?>) o;
-			return Objects.equals(name, that.name)
-				&& Objects.equals(scope, that.scope)
-				&& Objects.equals(hook, that.hook);
-		}
-
-		@Override
-		public int hashCode() {
-			return Objects.hash(name, scope, hook);
-		}
-
-		@Override
-		public String toString() {
-			return "Bosk.HookRegistration(name=" + this.name() + ", scope=" + this.scope() + ", hook=" + this.hook + ")";
-		}
 	}
 
 	/**
