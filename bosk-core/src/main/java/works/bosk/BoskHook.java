@@ -3,6 +3,11 @@ package works.bosk;
 /**
  * Called to indicate the hook's "scope object" may have been modified.
  * <p>
+ * Under overload, Bosk may coalesce notifications. A hook may be called once
+ * for several changes to the same reference and may see a later state than the
+ * one immediately after the triggering update. Intermediate states may
+ * therefore be skipped.
+ * <p>
  * Hooks run on their own virtual thread. If the bosk machinery that runs a hook is
  * interrupted (for example, because a driver is shutting down or disconnecting),
  * bosk delivers the interrupt to the running hook so it can stop promptly;

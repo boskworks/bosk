@@ -565,24 +565,50 @@ bosk.registerHook("Widget changed", bosk.anyWidget, ref -> {
 });
 ```
 
-The hook call-back occurs inside a read session containing a state snapshot taken immediately after the triggering update occurred.
+The hook call-back normally occurs inside a read session containing a state snapshot taken immediately after the triggering update occurred.
 This means there are no race conditions between bosk reads in a hook versus other bosk updates happening in parallel.
+We call this _standard mode_.
+Under overload, Bosk may enter _overload mode_ and coalesce notifications; see [Overload mode](#overload-mode) below.
+In that case a hook may see a later snapshot, and intermediate states may be skipped.
 
 Hooks run on separate threads from the one that submitted the triggering update,
 and so they do not inherit that thread's MDC.
 The `bosk.name` and `bosk.instanceID` MDC keys are nevertheless established during hook execution,
 just as they are during every driver operation.
-The `BoskContext` diagnostic attributes are propagated into hooks:
+The `BoskContext` diagnostic attributes are propagated into hooks in _standard mode_:
 a hook triggered by an update sees the attributes of that update,
 while a hook triggered by registration sees the attributes of the registering thread.
 This is not a bug: diagnostic attributes tell you _how_ something happened, not merely _that_ it happened,
 so the same hook can legitimately observe different attributes depending on what triggered it.
 Hooks must therefore not depend on the presence or values of specific attributes.
+Coalesced notifications in overload mode do not carry update diagnostic attributes,
+because there is no single originating update.
 If a hook needs information to be available on every invocation,
 that information belongs in the bosk state tree, which the hook's read session makes accessible,
 rather than in the diagnostic attributes.
 
-If a single update triggers multiple hooks, the hooks will run in the order they were registered.
+In standard mode, if a single update triggers multiple hooks, the hooks run in the order they were registered.
+
+#### Overload mode
+
+When the hook queue reaches the `hookQueueMaxSize` limit, Bosk stops keeping one queued notification per update and coalesces pending notifications by hook registration and reference.
+It then runs each pending pair at most once against a later state snapshot.
+This bounds memory by the amount of dirty state rather than by the number of updates, at the cost of skipping intermediate states.
+Standard mode keeps one notification per update instead, with the snapshot taken immediately after that update.
+
+An object created and deleted between observations is not reported, since the hook never saw it.
+A deletion of an object that existed before the pending interval is still reported.
+A value that changes and changes back may still cause one call.
+
+The default limit is 1000.
+It can be changed with `BoskConfig.builder().hookQueueMaxSize(...)`.
+Before the limit is reached, the queue still holds one execution per update, so the limit is also a memory bound; raising it allows more state snapshots to accumulate before coalescing.
+
+Once overload mode begins, Bosk returns to standard mode when the queue drains.
+An overflow between them resets the count.
+If the queue has at most one execution, there is nothing to coalesce, so Bosk returns to standard mode immediately.
+
+A hook that must observe every intermediate update cannot use overload mode safely; that requires a separate delivery policy.
 
 #### Breadth-first ordering
 

@@ -17,7 +17,13 @@ public interface HookRegistrar {
 	 * with all its parameters (if any) bound.
 	 *
 	 * <p>
-	 * For a given update, hooks are called in the order they were registered.
+	 * Under overload, Bosk may coalesce hook notifications. A hook may be called
+	 * once for several changes to the same reference and may see a later state
+	 * than the one immediately after the triggering update. Intermediate states
+	 * may therefore be skipped.
+	 *
+	 * <p>
+	 * In normal operation, for a given update, hooks are called in the order they were registered.
 	 * Updates performed by the <code>hook</code> could themselves trigger hooks.
 	 * Such "hook cascades" are performed in breadth-first order, and are queued
 	 * as necessary to achieve this; hooks are <em>not</em> called recursively.

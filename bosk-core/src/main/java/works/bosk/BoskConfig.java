@@ -2,10 +2,34 @@ package works.bosk;
 
 import static java.util.Objects.requireNonNull;
 
+/**
+ * @param driverFactory      the factory used to build the driver stack
+ * @param registrarFactory   the factory used to build the hook registrar
+ * @param hookQueueMaxSize   the maximum number of queued hook executions before the local driver
+ *                           switches to overload mode; defaults to 1000. Raising the limit allows
+ *                           more state snapshots to accumulate before coalescing, so it also raises
+ *                           the queue's memory bound.
+ */
 public record BoskConfig<R extends StateTreeNode> (
 	DriverFactory<R> driverFactory,
-	RegistrarFactory registrarFactory
+	RegistrarFactory registrarFactory,
+	int hookQueueMaxSize
 ) {
+
+	public BoskConfig {
+		driverFactory = requireNonNull(driverFactory);
+		registrarFactory = requireNonNull(registrarFactory);
+		if (hookQueueMaxSize < 1) {
+			throw new IllegalArgumentException("hookQueueMaxSize must be positive");
+		}
+	}
+
+	/**
+	 * Uses the default hook queue limit.
+	 */
+	public BoskConfig(DriverFactory<R> driverFactory, RegistrarFactory registrarFactory) {
+		this(driverFactory, registrarFactory, DEFAULT_HOOK_QUEUE_MAX_SIZE);
+	}
 
 	/**
 	 * Calls {@code BoskConfig.builder().build()} and returns the result.
@@ -38,6 +62,7 @@ public record BoskConfig<R extends StateTreeNode> (
 	public static class Builder<R extends StateTreeNode> {
 		private DriverFactory<R> driverFactory;
 		private RegistrarFactory registrarFactory;
+		private int hookQueueMaxSize = DEFAULT_HOOK_QUEUE_MAX_SIZE;
 
 		Builder() {
 			driverFactory = simpleDriver();
@@ -54,19 +79,30 @@ public record BoskConfig<R extends StateTreeNode> (
 			return this;
 		}
 
+		/**
+		 * Sets the number of queued hook executions at which the local driver
+		 * switches to overload mode.
+		 */
+		public Builder<R> hookQueueMaxSize(int hookQueueMaxSize) {
+			this.hookQueueMaxSize = hookQueueMaxSize;
+			return this;
+		}
+
 		public BoskConfig<R> build() {
 			return new BoskConfig<>(
 				this.driverFactory,
-				this.registrarFactory
+				this.registrarFactory,
+				this.hookQueueMaxSize
 			);
 		}
 
 		@Override
 		public String toString() {
-			return "BoskConfig.Builder(driverFactory=" + this.driverFactory + ", registrarFactory=" + this.registrarFactory + ")";
+			return "BoskConfig.Builder(driverFactory=" + this.driverFactory + ", registrarFactory=" + this.registrarFactory + ", hookQueueMaxSize=" + this.hookQueueMaxSize + ")";
 		}
 	}
 
+	private static final int DEFAULT_HOOK_QUEUE_MAX_SIZE = 1000;
 	private static final DriverFactory<?> SIMPLE_DRIVER_FACTORY = (_, d) -> d;
 	private static final RegistrarFactory SIMPLE_REGISTRAR_FACTORY = (_, d) -> d;
 }

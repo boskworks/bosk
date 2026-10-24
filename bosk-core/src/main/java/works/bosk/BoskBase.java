@@ -6,6 +6,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -31,6 +32,7 @@ import works.bosk.util.Classes;
 import static java.lang.Thread.holdsLock;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
+import static works.bosk.OverloadPendingSet.PendingHooks;
 import static works.bosk.Path.parameterNameFromSegment;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.TypeValidation.validateType;
@@ -48,6 +50,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	final String name;
 	final Identifier instanceID = Identifier.from(randomUUID().toString());
 	final BoskContext context;
+	final int hookQueueMaxSize;
 
 	final IngressDriver ingressDriver;
 	final LocalDriver localDriver;
@@ -85,6 +88,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 */
 	protected BoskBase(String name, Type rootType, Bosk.DefaultStateFunction<R> defaultStateFunction, BoskConfig<R> boskConfig) {
 		this.name = requireNonNull(name);
+		this.hookQueueMaxSize = boskConfig.hookQueueMaxSize();
 		this.pathCompiler = PathCompiler.withSourceType(requireNonNull(rootType)); // Required before rootRef
 		this.localDriver = new LocalDriver(requireNonNull(defaultStateFunction));
 		this.rootRef = new RootRef(rootType);
@@ -249,6 +253,14 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 * even if those hooks themselves submit more updates.
 	 * </li></ol>
 	 * <p>
+	 * When hook work cannot keep up with updates, the driver may enter overload mode.
+	 * In overload mode, notifications are coalesced by registration and reference,
+	 * hooks run against a later snapshot, and updates caused by hooks are handled
+	 * in subsequent catch-up batches. The update-ordering and sequential-hook
+	 * guarantees above still apply; the breadth-first per-event ordering describes
+	 * normal mode. Overload mode ends when the queue drains.
+	 *
+	 * <p>
 	 * Satisfying all of these simultaneously is tricky, especially because we can't just put
 	 * "synchronized" on the submit methods because that could cause deadlock. We also don't
 	 * want to require a background thread for hook processing, partly on principle: if our
@@ -262,6 +274,8 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		final Bosk.DefaultStateFunction<R> initialStateFunction;
 		final Deque<HookExecution<?>> hookExecutionQueue = new ArrayDeque<>();
 		final Semaphore hookExecutionPermit = new Semaphore(1);
+		final OverloadPendingSet overloadPending = new OverloadPendingSet();
+		volatile boolean overloadMode;
 
 		public LocalDriver(Bosk.DefaultStateFunction<R> initialStateFunction) {
 			this.initialStateFunction = initialStateFunction;
@@ -488,6 +502,34 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		private <S> void enqueueHookExecution(HookRegistration<S> reg, Reference<S> changedRef, R rootForHook, boolean existedBefore, boolean existsAfter, MapValue<String> diagnosticAttributes) {
 			assert holdsLock(this);
 			hookExecutionQueue.addLast(new HookExecution<>(reg, changedRef, rootForHook, existedBefore, existsAfter, diagnosticAttributes));
+			if (hookExecutionQueue.size() >= hookQueueMaxSize) {
+				ensureOverloadMode();
+			}
+		}
+
+		/**
+		 * Ensures overload mode is active and collapses the current standard queue
+		 * into the pending set.
+		 */
+		private void ensureOverloadMode() {
+			assert holdsLock(this);
+			boolean wasInStandardMode = !overloadMode;
+			overloadMode = true;
+			if (wasInStandardMode) {
+				HOOK_LOGGER.warn("Hook execution queue has exceeded limit ({}); entering overload mode", hookQueueMaxSize);
+			}
+			collapseHookExecutionQueue();
+		}
+
+		private void collapseHookExecutionQueue() {
+			assert holdsLock(this);
+			for (HookExecution<?> execution; (execution = hookExecutionQueue.pollFirst()) != null; ) {
+				overloadPending.add(
+					execution.registration.index(),
+					execution.changedRef.path(),
+					execution.existedBefore,
+					execution.existsAfter);
+			}
 		}
 
 		private <S> Runnable hookTask(HookRegistration<S> reg, Reference<S> changedRef, R rootForHook, MapValue<String> diagnosticAttributes) {
@@ -554,14 +596,18 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 								HOOK_LOGGER.debug("Interrupted; deferring the remaining queued hooks");
 								return;
 							}
-							HookExecution<?> execution;
-							synchronized (this) {
-								execution = hookExecutionQueue.pollFirst();
+							if (standardMode()) {
+								HookExecution<?> execution;
+								synchronized (this) {
+									execution = hookExecutionQueue.pollFirst();
+								}
+								if (execution == null) {
+									break;
+								}
+								execution.run();
+							} else if (!runOverloadBatch()) {
+								continue;
 							}
-							if (execution == null) {
-								break;
-							}
-							execution.run();
 						}
 					} catch (InterruptedException e) {
 						// The interrupt is intended for the hook work in flight here.
@@ -608,12 +654,88 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				// if another thread queues another hook after this point, that thread will also
 				// succeed in acquiring the permit and will itself drain the queue.
 
-			} while (hasQueuedHookExecutions());
+			} while (hasQueuedHookExecutions() || overloadMode);
+		}
+
+		private boolean standardMode() {
+			return !overloadMode;
 		}
 
 		private boolean hasQueuedHookExecutions() {
 			synchronized (this) {
 				return !hookExecutionQueue.isEmpty();
+			}
+		}
+
+		private boolean runOverloadBatch() throws InterruptedException {
+			Map<Path, PendingHooks> batch;
+			R snapshot;
+			synchronized (this) {
+				if (overloadPending.isEmpty()) {
+					if (hookExecutionQueue.isEmpty()) {
+						leaveOverloadMode();
+						return false;
+					}
+					collapseHookExecutionQueue();
+				}
+				batch = overloadPending.detach();
+				snapshot = currentRoot();
+			}
+			HOOK_LOGGER.debug("Hook: overload batch with {} paths", batch.size());
+			try {
+				runPendingBatch(batch, snapshot);
+			} catch (InterruptedException | RuntimeException | Error e) {
+				requeueOverloadBatch(batch);
+				throw e;
+			}
+			return true;
+		}
+
+		private void leaveOverloadMode() {
+			assert holdsLock(this);
+			overloadMode = false;
+			HOOK_LOGGER.info("Hook backlog returned to normal; leaving overload mode");
+		}
+
+		private void requeueOverloadBatch(Map<Path, PendingHooks> batch) {
+			synchronized (this) {
+				overloadPending.merge(batch);
+				overloadMode = true;
+			}
+		}
+
+		private void runPendingBatch(Map<Path, PendingHooks> batch, R snapshot) throws InterruptedException {
+			for (var entry : batch.entrySet()) {
+				Path path = entry.getKey();
+				PendingHooks hooks = entry.getValue();
+				for (int hookIndex = hooks.toRun().nextSetBit(0); hookIndex >= 0; hookIndex = hooks.toRun().nextSetBit(hookIndex + 1)) {
+					if (Thread.currentThread().isInterrupted()) {
+						throw new InterruptedException();
+					}
+					boolean existedAtBaseline = hooks.existedAtBaseline().get(hookIndex);
+					hooks.toRun().clear(hookIndex);
+					hooks.existedAtBaseline().clear(hookIndex);
+					runPendingHook(hookAt(hookIndex), path, snapshot, existedAtBaseline);
+				}
+			}
+		}
+
+		private <S> void runPendingHook(HookRegistration<S> reg, Path path, R snapshot, boolean existedAtBaseline) throws InterruptedException {
+			Reference<S> changedRef = reg.scope().boundBy(path);
+			// A requeued batch can contain a baseline-absent pair whose reference was deleted while the batch was detached.
+			if (!existedAtBaseline && refValueIfExists(changedRef, snapshot) == null) {
+				return;
+			}
+			// Coalesced notifications have no single originating update, so they do not carry diagnostic attributes.
+			runHook(reg, changedRef, snapshot, MapValue.empty());
+		}
+
+		private HookRegistration<?> hookAt(int index) {
+			synchronized (this) {
+				HookRegistration<?> registration = hooks.get(index);
+				// Registrations are append-only, and registerHook assigns index == hooks.size().
+				assert registration.index() == index : "Hook registration index must match its position";
+				return registration;
 			}
 		}
 
@@ -703,7 +825,8 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		 * @param target    The object specified by the driver event
 		 * @param action    The operation to perform for each matching object that could have changed
 		 */
-		void triggerAction(@Nullable R priorRoot, R newRoot, Reference<?> target, HookAction<S> action) {			Reference<S> effectiveScope;
+		void triggerAction(@Nullable R priorRoot, R newRoot, Reference<?> target, HookAction<S> action) {
+			Reference<S> effectiveScope;
 			int relativeDepth = target.path().length() - scope.path().length();
 			if (relativeDepth >= 0) {
 				// target may be the scope object or a descendant
@@ -761,7 +884,6 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 			return "HookRegistration(name=" + this.name() + ", scope=" + this.scope() + ", hook=" + this.hook + ")";
 		}
 	}
-
 
 	/**
 	 * Receives each reference whose value changed, along with its existence
