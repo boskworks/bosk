@@ -363,7 +363,8 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		 */
 		<T> void registerHook(String name, Reference<T> scope, BoskHook<T> action) {
 			synchronized (this) {
-				HookRegistration<T> reg = new HookRegistration<>(name, scope, action);
+				int index = hooks.size();
+				HookRegistration<T> reg = new HookRegistration<>(name, scope, action, index);
 				hooks.add(reg);
 				triggerQueueingOfHooks(rootRef, null, currentState, reg);
 			}
@@ -629,11 +630,13 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		private final String name;
 		private final Reference<S> scope;
 		private final BoskHook<S> hook;
+		private final int index;
 
-		HookRegistration(String name, Reference<S> scope, BoskHook<S> hook) {
+		HookRegistration(String name, Reference<S> scope, BoskHook<S> hook, int index) {
 			this.name = name;
 			this.scope = scope;
 			this.hook = hook;
+			this.index = index;
 		}
 
 		/**
@@ -677,6 +680,10 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 
 		BoskHook<S> hook() {
 			return this.hook;
+		}
+
+		int index() {
+			return this.index;
 		}
 
 		@Override
