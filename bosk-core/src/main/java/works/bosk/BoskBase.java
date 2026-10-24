@@ -2,13 +2,13 @@ package works.bosk;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
@@ -260,7 +260,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 */
 	private final class LocalDriver implements BoskDriver {
 		final Bosk.DefaultStateFunction<R> initialStateFunction;
-		final Deque<Runnable> hookExecutionQueue = new ConcurrentLinkedDeque<>();
+		final Deque<Runnable> hookExecutionQueue = new ArrayDeque<>();
 		final Semaphore hookExecutionPermit = new Semaphore(1);
 
 		public LocalDriver(Bosk.DefaultStateFunction<R> initialStateFunction) {
@@ -532,7 +532,10 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 								HOOK_LOGGER.debug("Interrupted; deferring the remaining queued hooks");
 								return;
 							}
-							Runnable ex = hookExecutionQueue.pollFirst();
+							Runnable ex;
+							synchronized (this) {
+								ex = hookExecutionQueue.pollFirst();
+							}
 							if (ex == null) {
 								break;
 							}
@@ -580,7 +583,13 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				// if another thread queues another hook after this point, that thread will also
 				// succeed in acquiring the permit and will itself drain the queue.
 
-			} while (!hookExecutionQueue.isEmpty());
+			} while (hasQueuedHookExecutions());
+		}
+
+		private boolean hasQueuedHookExecutions() {
+			synchronized (this) {
+				return !hookExecutionQueue.isEmpty();
+			}
 		}
 
 		private void runHookTask(Runnable work) throws InterruptedException {
