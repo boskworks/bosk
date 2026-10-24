@@ -108,6 +108,13 @@ public class HooksTest extends AbstractBoskTest {
 	}
 
 	@Test
+	void registerHook_rejectsReferenceFromAnotherBosk() {
+		Bosk<TestRoot> otherBosk = setUpBosk(simpleDriver());
+		assertThrows(AssertionError.class, () ->
+			bosk.hookRegistrar().registerHook("wrongBosk", otherBosk.rootReference(), _ -> {}));
+	}
+
+	@Test
 	void basic_hooksDoNotPropagateThreadLocals() throws InterruptedException {
 		ThreadLocal<String> threadLocal = ThreadLocal.withInitial(() -> "initial");
 		threadLocal.set("updated");

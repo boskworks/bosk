@@ -104,7 +104,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		// initialization to have completed already.
 		//
 		this.ingressDriver = new IngressDriver(requireNonNull(boskConfig.driverFactory().build(boskInfo, this.localDriver)));
-		this.hookRegistrar = requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook));
+		this.hookRegistrar = new IngressRegistrar(requireNonNull(boskConfig.registrarFactory().build(boskInfo, this::localRegisterHook)));
 
 		try {
 			this.currentState = ingressDriver.initialState();
@@ -199,16 +199,36 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 			}
 		}
 
-		private <T> void assertCorrectBosk(Reference<T> target) {
-			// TODO: Do we need to be this strict?
-			// On the one hand, we could write conditional updates in a way that don't require the
-			// reference to point to the right bosk.
-			// On the other hand, there's a certain symmetry to requiring the references to have the right
-			// bosk for both reads and writes, and forcing this discipline on users might help them avoid
-			// some pretty confusing mistakes.
-			assert ((BoskBase<?>.RootRef) target.root()).bosk() == BoskBase.this : "Reference supplied to driver operation must refer to the correct bosk";
+	}
+
+	/**
+	 * Wraps the hook registrar to establish the bosk's diagnostic context
+	 * and enforce that references belong to this bosk.
+	 */
+	final class IngressRegistrar implements HookRegistrar {
+		final HookRegistrar downstream;
+
+		IngressRegistrar(HookRegistrar downstream) {
+			this.downstream = downstream;
 		}
 
+		@Override
+		public <T> void registerHook(String name, Reference<T> scope, BoskHook<T> hook) {
+			try (var _ = setupMDC(BoskBase.this.name, instanceID)) {
+				assertCorrectBosk(scope);
+				downstream.registerHook(name, scope, hook);
+			}
+		}
+	}
+
+	private void assertCorrectBosk(Reference<?> target) {
+		// TODO: Do we need to be this strict?
+		// On the one hand, we could write conditional updates in a way that don't require the
+		// reference to point to the right bosk.
+		// On the other hand, there's a certain symmetry to requiring the references to have the right
+		// bosk for both reads and writes, and forcing this discipline on users might help them avoid
+		// some pretty confusing mistakes.
+		assert ((BoskBase<?>.RootRef) target.root()).bosk() == this : "Reference supplied to a driver operation or hook registration must refer to the correct bosk";
 	}
 
 	/**

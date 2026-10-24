@@ -3,6 +3,7 @@ package works.bosk;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
@@ -51,6 +52,34 @@ public class BoskContextTest extends AbstractDriverTest {
 		}
 		bosk.driver().flush();
 		assertTrue(diagnosticsVerified.tryAcquire(5, SECONDS));
+	}
+
+	@Test
+	void hookRegistration_establishesBoskMdc() {
+		AtomicReference<String> observedName = new AtomicReference<>();
+		AtomicReference<String> observedId = new AtomicReference<>();
+		Bosk<TestEntity> mdcBosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			this::initialState,
+			BoskConfig.<TestEntity>builder()
+				.registrarFactory((_, downstream) -> new HookRegistrar() {
+					@Override
+					public <T> void registerHook(String name, Reference<T> scope, BoskHook<T> hook) {
+						observedName.set(MDC.get(BOSK_NAME));
+						observedId.set(MDC.get(BOSK_INSTANCE_ID));
+						downstream.registerHook(name, scope, hook);
+					}
+				})
+				.build()
+		);
+
+		mdcBosk.hookRegistrar().registerHook("hook", mdcBosk.rootReference(), _ -> {});
+
+		assertEquals(mdcBosk.name(), observedName.get(),
+			"A custom registrar should see the bosk name in the MDC");
+		assertEquals(mdcBosk.instanceID().toString(), observedId.get(),
+			"A custom registrar should see the bosk instance ID in the MDC");
 	}
 
 	@Test
