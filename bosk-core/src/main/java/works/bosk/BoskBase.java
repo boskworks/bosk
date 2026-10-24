@@ -2,14 +2,13 @@ package works.bosk;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
@@ -56,7 +55,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	final RootRef rootRef;
 	final ThreadLocal<R> rootSnapshot = new ThreadLocal<>();
 	final HookRegistrar hookRegistrar;
-	final Queue<HookRegistration<?>> hooks = new ConcurrentLinkedQueue<>();
+	final List<HookRegistration<?>> hooks = new ArrayList<>();
 	final PathCompiler pathCompiler;
 
 	final Thread.Builder hookThreadBuilder = Thread
@@ -360,10 +359,13 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		}
 
 		/**
-		 * Run the given hook on every existing object that matches its scope.
+		 * Adds the given hook to the registry and runs it on every existing object
+		 * that matches its scope.
 		 */
-		void triggerEverywhere(HookRegistration<?> reg) {
+		<T> void registerHook(String name, Reference<T> scope, BoskHook<T> action) {
 			synchronized (this) {
+				HookRegistration<T> reg = new HookRegistration<>(name, scope, action);
+				hooks.add(reg);
 				triggerQueueingOfHooks(rootRef, null, currentState, reg);
 			}
 			drainQueueIfAllowed();
@@ -440,6 +442,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		}
 
 		private <T> void queueHooks(Reference<T> target, @Nullable R priorRoot) {
+			assert holdsLock(this);
 			R rootForHook = currentRoot();
 			for (HookRegistration<?> reg : hooks) {
 				triggerQueueingOfHooks(target, priorRoot, rootForHook, reg);
@@ -619,11 +622,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 * that simply registers the hook as given.
 	 */
 	final <T> void localRegisterHook(String name, @NonNull Reference<T> scope, @NonNull BoskHook<T> action) {
-		// The cast is safe because BoskBase permits only Bosk as a subclass, and hook
-		// registration happens after construction.
-		HookRegistration<T> reg = new HookRegistration<>(name, requireNonNull(scope), requireNonNull(action));
-		hooks.add(reg);
-		localDriver.triggerEverywhere(reg);
+		localDriver.registerHook(name, requireNonNull(scope), requireNonNull(action));
 	}
 
 	// Inner class can't be a record
