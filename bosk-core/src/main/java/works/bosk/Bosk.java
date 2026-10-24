@@ -5,7 +5,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Type;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
