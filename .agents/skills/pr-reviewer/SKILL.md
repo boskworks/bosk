@@ -17,7 +17,10 @@ reproducible and evaluable.
 
 1. **Review.** Build the review packet for the PR first: `review-agent/corpus/fetch-prs.sh --pr <PR>` to
    bring the PR's current data into the corpus, then `review-agent/corpus/build-packet.py <PR>` to check
-   out the reviewed commit in a worktree and snapshot its GitHub information. Then load
+   out the reviewed commit in a worktree and snapshot its GitHub information. Rebuilding a packet reuses
+   the packet directory but verifies the worktree is clean and at the reviewed head, moving it there when
+   an earlier round left it at an older commit; if the worktree has uncommitted changes the build stops
+   and asks you to rerun with `--cleanup`, rather than discarding work or reviewing stale code. Then load
    `review-agent/review/reviewer.md` and follow it exactly, reviewing against the packet: the repository
    is checked out at the reviewed commit in `review-agent/data/packets/<PR>/worktree`, and the PR's
    GitHub information is in `review-agent/data/packets/<PR>/snapshot.json`. Produce the review as the JSON
