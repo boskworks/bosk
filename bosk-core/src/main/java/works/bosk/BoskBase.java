@@ -13,7 +13,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -457,7 +456,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		 */
 		private <T, S> void triggerQueueingOfHooks(Reference<T> target, @Nullable R priorRoot, R rootForHook, HookRegistration<S> reg) {
 			MapValue<String> attributes = context.getAttributes();
-			reg.triggerAction(priorRoot, rootForHook, target, changedRef -> {
+			reg.triggerAction(priorRoot, rootForHook, target, (changedRef, existedBefore, existsAfter) -> {
 				HOOK_LOGGER.debug("Hook: queue {}({}) due to {}", reg.name(), changedRef, target);
 				hookExecutionQueue.addLast(() -> {
 					// We use two nested try statements here so that the "finally" clause runs within the diagnostic scope
@@ -646,7 +645,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		 * @param target    The object specified by the driver event
 		 * @param action    The operation to perform for each matching object that could have changed
 		 */
-		void triggerAction(@Nullable R priorRoot, R newRoot, Reference<?> target, Consumer<Reference<S>> action) {			Reference<S> effectiveScope;
+		void triggerAction(@Nullable R priorRoot, R newRoot, Reference<?> target, HookAction<S> action) {			Reference<S> effectiveScope;
 			int relativeDepth = target.path().length() - scope.path().length();
 			if (relativeDepth >= 0) {
 				// target may be the scope object or a descendant
@@ -703,6 +702,14 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 
 
 	/**
+	 * Receives each reference whose value changed, along with its existence
+	 * before and after the change.
+	 */
+	interface HookAction<S> {
+		void execute(Reference<S> ref, boolean existedBefore, boolean existsAfter);
+	}
+
+	/**
 	 * Recursive helper routine that calls the given action for all objects matching <code>effectiveScope</code> that
 	 * are different between <code>priorRoot</code> and <code>newRoot</code>.
 	 * Each level of recursion fills in one parameter in <code>effectiveScope</code>;
@@ -716,7 +723,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 * @param action         The operation to perform for each matching object that is different between the two roots
 	 * @param <S>            The type of the hook scope object
 	 */
-	final <S> void triggerCascade(Reference<S> effectiveScope, @Nullable R priorRoot, R newRoot, Consumer<Reference<S>> action) {
+	final <S> void triggerCascade(Reference<S> effectiveScope, @Nullable R priorRoot, R newRoot, HookAction<S> action) {
 		if (effectiveScope.path().numParameters() == 0) {
 			// effectiveScope points at a single node that may have changed
 			//
@@ -726,7 +733,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				LOGGER.debug("Hook: skip unchanged {}", effectiveScope);
 			} else {
 				// We've found something that changed
-				action.accept(effectiveScope);
+				action.execute(effectiveScope, priorValue != null, currentValue != null);
 			}
 		} else {
 			// There's at least one parameter that hasn't been bound yet. This means
