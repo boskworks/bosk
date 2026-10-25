@@ -569,7 +569,7 @@ The hook call-back normally occurs inside a read session containing a state snap
 This means there are no race conditions between bosk reads in a hook versus other bosk updates happening in parallel.
 We call this _standard mode_.
 Under overload, Bosk may enter _overload mode_ and coalesce notifications; see [Overload mode](#overload-mode) below.
-In that case a hook may see a later snapshot, and intermediate states may be skipped.
+In that case a hook may see a later snapshot, may miss intermediate states, and may not run at all for an object that exists only briefly.
 
 Hooks run on separate threads from the one that submitted the triggering update,
 and so they do not inherit that thread's MDC.
@@ -591,12 +591,18 @@ In standard mode, if a single update triggers multiple hooks, the hooks run in t
 
 #### Overload mode
 
-When the hook queue reaches the `hookQueueMaxSize` limit, Bosk stops keeping one queued notification per update and coalesces pending notifications by hook registration and reference.
-It then runs each pending pair at most once against a later state snapshot.
-This bounds memory by the amount of dirty state rather than by the number of updates, at the cost of skipping intermediate states.
-Standard mode keeps one notification per update instead, with the snapshot taken immediately after that update.
+When the hook queue reaches the `hookQueueMaxSize` limit, Bosk enters _overload mode_.
+This bounds memory by the amount of dirty state rather than by the number of updates,
+but it is a degraded mode that gives up some of the determinism hooks normally provide.
+Bosk coalesces notifications by hook registration and reference, and runs each pair at most once against a later state snapshot.
 
-An object created and deleted between observations is not reported, since the hook never saw it.
+In overload mode:
+
+- A hook may see a state from an indeterminate, later point instead of the state immediately after the change that triggered it.
+- Hooks do not fire on every state change; intermediate states may be skipped.
+- A hook may not fire at all if an object in its scope is created and then deleted before the hook runs.
+
+Standard mode keeps one notification per update, with the snapshot taken immediately after that update.
 A deletion of an object that existed before the pending interval is still reported.
 A value that changes and changes back may still cause one call.
 
@@ -616,7 +622,8 @@ If standard mode overflows soon after a successful probation, the next probation
 The probe multiplier doubles after each such early overflow, without a cap.
 After sustained standard-mode work, the multiplier decays linearly by one queue length at a time, so a burst from the distant past does not affect the server forever.
 
-A hook that must observe every intermediate update cannot use overload mode safely; that requires a separate delivery policy.
+A hook that must observe every intermediate update may behave incorrectly in overload mode.
+We recommend that hooks tolerate skipped or coalesced notifications and derive their behaviour from the state in their read session, rather than assuming they will see every transition.
 
 #### Breadth-first ordering
 
