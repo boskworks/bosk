@@ -15,8 +15,9 @@ import static works.bosk.OverloadController.ProbationResult.SUCCEEDED;
  * Overload mode is left through a bounded standard-mode probation. The probation
  * starts when the pending set has drained and there is queued work to test. It
  * succeeds only if at least half of the backlog has drained by the end of its
- * work budget. A successful probation runs one final overload catch-up generation
- * before the driver returns to standard mode.
+ * work budget. A successful probation enters {@link Mode#CATCH_UP}, a transient
+ * mode that runs one final coalesced generation before the driver returns to
+ * standard mode.
  *
  * <p>
  * A standard-mode overflow soon after a successful probation means the probation
@@ -26,15 +27,42 @@ import static works.bosk.OverloadController.ProbationResult.SUCCEEDED;
  */
 final class OverloadController {
 	enum Mode {
+		/**
+		 * Standard delivery: one execution per update, with the state snapshot
+		 * taken immediately after that update.
+		 */
 		STANDARD,
+		/**
+		 * Coalesced delivery: at most one execution per hook registration and
+		 * reference, against a later state snapshot.
+		 */
 		OVERLOAD,
+		/**
+		 * A standard-style trial that keeps one execution per update while
+		 * testing whether the backlog is draining.
+		 */
 		PROBATION,
+		/**
+		 * A final coalesced generation that clears the remaining backlog after
+		 * a successful probation.
+		 */
 		CATCH_UP
 	}
 
 	enum ProbationResult {
+		/**
+		 * The probation still has work budget left, so it remains in progress.
+		 */
 		CONTINUE,
+		/**
+		 * The probation drained at least half its starting backlog and will
+		 * proceed to catch-up.
+		 */
 		SUCCEEDED,
+		/**
+		 * The probation did not drain enough of its starting backlog, so the
+		 * driver returns to overload mode.
+		 */
 		FAILED
 	}
 
