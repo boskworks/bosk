@@ -154,6 +154,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 		bosk.hookRegistrar().registerHook("anyChildString", refs.anyChildString(), ref ->
 			seen.add(ref.valueIfExists()));
 
+		assertEquals(OVERLOAD, bosk.hookMode(), "Registration catch-up should overflow the queue");
 		assertEquals(List.of("child1", "child2", "child3"), seen,
 			"Registration catch-up should call the hook for every matching child");
 	}
