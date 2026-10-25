@@ -75,7 +75,9 @@ final class OverloadController {
 	/**
 	 * The probe budget is this value times {@link #queueMaxSize}. Each doubling
 	 * requires a successful probation that already executed the previous budget,
-	 * so overflow is unreachable in practice; {@link Math#multiplyExact(long, long)}
+	 * so overflow is unreachable in practice. The first multiplication to overflow
+	 * would be {@link #probeBudget()} when this multiplier reaches
+	 * {@code Long.MAX_VALUE / queueMaxSize}; {@link Math#multiplyExact(long, long)}
 	 * makes that assumption explicit.
 	 */
 	private long probeMultiplier = 1;
