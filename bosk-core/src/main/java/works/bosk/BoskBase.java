@@ -688,6 +688,17 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 			}
 		}
 
+		/**
+		 * Whether coalesced overload work remains.
+		 *
+		 * <p>
+		 * This is load-bearing in the drain loop's condition. The mode can be
+		 * read as {@code STANDARD}, then another thread can overflow and
+		 * collapse the queue before {@code pollFirst} runs. Pending work is only
+		 * added under this driver's monitor, and every path that adds it also
+		 * moves the mode out of {@code STANDARD} or {@code PROBATION} under that
+		 * same monitor, so the next iteration handles it instead of spinning.
+		 */
 		private boolean hasPendingHookExecutions() {
 			synchronized (this) {
 				return !overloadPending.isEmpty();

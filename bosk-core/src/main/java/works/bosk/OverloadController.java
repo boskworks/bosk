@@ -72,6 +72,12 @@ final class OverloadController {
 	 * Volatile because the draining thread reads the mode outside the driver's monitor.
 	 */
 	private volatile Mode mode = STANDARD;
+	/**
+	 * The probe budget is this value times {@link #queueMaxSize}. Each doubling
+	 * requires a successful probation that already executed the previous budget,
+	 * so overflow is unreachable in practice; {@link Math#multiplyExact(long, long)}
+	 * makes that assumption explicit.
+	 */
 	private long probeMultiplier = 1;
 	private long probeRemaining;
 	private long probeStartBacklog;

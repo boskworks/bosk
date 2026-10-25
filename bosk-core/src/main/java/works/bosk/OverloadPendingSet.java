@@ -65,6 +65,11 @@ final class OverloadPendingSet {
 	/**
 	 * Adds any still-pending notifications from a detached batch back into this set.
 	 * This is used when a batch is interrupted before all its hooks have run.
+	 *
+	 * <p>
+	 * If the target already has a notification for the same pair, the source
+	 * baseline wins because the source was detached first, so its baseline is
+	 * the earliest observation.
 	 */
 	void merge(Map<Path, PendingHooks> batch) {
 		for (var entry : batch.entrySet()) {

@@ -8,7 +8,9 @@ import static java.util.Objects.requireNonNull;
  * @param hookQueueMaxSize   the maximum number of queued hook executions before the local driver
  *                           switches to overload mode; defaults to 1000. Raising the limit allows
  *                           more state snapshots to accumulate before coalescing, so it also raises
- *                           the queue's memory bound.
+ *                           the queue's memory bound. The same value is the base probation budget
+ *                           and the unit in which the probation multiplier decays, so lowering it
+ *                           also shortens probation.
  */
 public record BoskConfig<R extends StateTreeNode> (
 	DriverFactory<R> driverFactory,
@@ -81,7 +83,8 @@ public record BoskConfig<R extends StateTreeNode> (
 
 		/**
 		 * Sets the number of queued hook executions at which the local driver
-		 * switches to overload mode.
+		 * switches to overload mode. This value is also the base probation budget
+		 * and the unit in which the probation multiplier decays.
 		 */
 		public Builder<R> hookQueueMaxSize(int hookQueueMaxSize) {
 			this.hookQueueMaxSize = hookQueueMaxSize;
