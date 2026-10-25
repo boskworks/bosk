@@ -19,6 +19,24 @@ class OverloadPendingSetTest {
 		pending.add(0, pathA, false, true);
 		pending.add(0, pathA, true, false);
 		assertTrue(pending.isEmpty(), "A created and deleted reference needs no hook call");
+		assertEquals(0, pending.size(), "A cancelled notification should not count toward the backlog");
+	}
+
+	@Test
+	void sizeCountsPendingHookObligations() {
+		pending.add(0, pathA, true, true);
+		assertEquals(1, pending.size(), "One pending hook should count once");
+		pending.add(0, pathA, true, true);
+		assertEquals(1, pending.size(), "A duplicate notification for the same hook should not count again");
+		pending.add(1, pathA, true, true);
+		assertEquals(2, pending.size(), "A second hook should count separately");
+		pending.add(5, pathB, true, true);
+		assertEquals(3, pending.size(), "A notification on another path should count separately");
+
+		Map<Path, OverloadPendingSet.PendingHooks> batch = pending.detach();
+		assertEquals(0, pending.size(), "Detached work should not count toward the pending backlog");
+		pending.merge(batch);
+		assertEquals(3, pending.size(), "Requeued work should count toward the pending backlog again");
 	}
 
 	@Test

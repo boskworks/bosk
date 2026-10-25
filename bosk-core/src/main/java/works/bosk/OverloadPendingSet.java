@@ -19,6 +19,7 @@ import java.util.Map;
  */
 final class OverloadPendingSet {
 	private Map<Path, PendingHooks> pending = new LinkedHashMap<>();
+	private int size;
 
 	/**
 	 * Adds a pending hook notification.
@@ -42,17 +43,23 @@ final class OverloadPendingSet {
 			// The hook never saw this reference: it was absent at baseline and is gone now.
 			hooks.toRun().clear(hookIndex);
 			hooks.existedAtBaseline().clear(hookIndex);
+			size--;
 			if (hooks.toRun().isEmpty()) {
 				pending.remove(path);
 			}
 		} else {
 			hooks.toRun().set(hookIndex);
 			hooks.existedAtBaseline().set(hookIndex, existedBefore);
+			size++;
 		}
 	}
 
 	boolean isEmpty() {
 		return pending.isEmpty();
+	}
+
+	int size() {
+		return size;
 	}
 
 	/**
@@ -67,6 +74,9 @@ final class OverloadPendingSet {
 			}
 			PendingHooks target = pending.computeIfAbsent(entry.getKey(), _ -> new PendingHooks(new BitSet(), new BitSet()));
 			for (int hookIndex = source.toRun().nextSetBit(0); hookIndex >= 0; hookIndex = source.toRun().nextSetBit(hookIndex + 1)) {
+				if (!target.toRun().get(hookIndex)) {
+					size++;
+				}
 				target.toRun().set(hookIndex);
 				target.existedAtBaseline().set(hookIndex, source.existedAtBaseline().get(hookIndex));
 			}
@@ -80,6 +90,7 @@ final class OverloadPendingSet {
 	Map<Path, PendingHooks> detach() {
 		Map<Path, PendingHooks> result = pending;
 		pending = new LinkedHashMap<>();
+		size = 0;
 		return result;
 	}
 

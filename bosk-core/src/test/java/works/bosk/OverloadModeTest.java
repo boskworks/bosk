@@ -16,6 +16,9 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static works.bosk.OverloadController.Mode.OVERLOAD;
+import static works.bosk.OverloadController.Mode.PROBATION;
+import static works.bosk.OverloadController.Mode.STANDARD;
 
 public class OverloadModeTest extends AbstractBoskTest {
 	public interface Refs {
@@ -171,6 +174,82 @@ public class OverloadModeTest extends AbstractBoskTest {
 	}
 
 	@Test
+	void quietBacklogStartsProbationThenCommitsToStandard() throws InterruptedException, InvalidTypeException {
+		Bosk<TestRoot> trialBosk = new Bosk<>(
+			"overload-probation-test",
+			TestRoot.class,
+			AbstractBoskTest::initialState,
+			BoskConfig.<TestRoot>builder().hookQueueMaxSize(3).build());
+		Refs trialRefs = trialBosk.rootReference().buildReferences(Refs.class);
+		Reference<String> stringRef = trialRefs.childString(Identifier.from("child1"));
+
+		BlockingHook hook = new BlockingHook();
+		trialBosk.hookRegistrar().registerHook("string", stringRef, hook);
+		hook.seen.clear();
+
+		hook.blockNext();
+		Thread updater = new Thread(() -> trialBosk.driver().submitReplacement(stringRef, "v1"));
+		updater.start();
+		hook.awaitStarted();
+
+		trialBosk.driver().submitReplacement(stringRef, "v2");
+		trialBosk.driver().submitReplacement(stringRef, "v3");
+		trialBosk.driver().submitReplacement(stringRef, "v4");
+
+		hook.unblock();
+		updater.join(10_000);
+		assertFalse(updater.isAlive(), "The updating thread should finish");
+		assertEquals(List.of("v1", "v4"), hook.seen, "The overload batch should report only the latest state");
+		assertEquals(OVERLOAD, trialBosk.hookMode(), "The empty queue should leave the driver in overload mode");
+
+		trialBosk.driver().submitReplacement(stringRef, "v5");
+		assertEquals(PROBATION, trialBosk.hookMode(), "The first queued update should start a probation");
+		trialBosk.driver().submitReplacement(stringRef, "v6");
+		trialBosk.driver().submitReplacement(stringRef, "v7");
+
+		assertEquals(STANDARD, trialBosk.hookMode(), "A completed probation should enter standard mode");
+		assertEquals(List.of("v1", "v4", "v5", "v6", "v7"), hook.seen,
+			"The probation should deliver each remaining update separately");
+	}
+
+	@Test
+	void probationOverflowReturnsToOverload() throws InterruptedException, InvalidTypeException {
+		Bosk<TestRoot> trialBosk = new Bosk<>(
+			"overload-probation-failure-test",
+			TestRoot.class,
+			AbstractBoskTest::initialState,
+			BoskConfig.<TestRoot>builder().hookQueueMaxSize(3).build());
+		Refs trialRefs = trialBosk.rootReference().buildReferences(Refs.class);
+		Reference<String> stringRef = trialRefs.childString(Identifier.from("child1"));
+
+		BlockingHook hook = new BlockingHook();
+		trialBosk.hookRegistrar().registerHook("string", stringRef, hook);
+		hook.seen.clear();
+
+		startOverloadAndDrainToOverload(trialBosk, stringRef, hook);
+		assertEquals(OVERLOAD, trialBosk.hookMode(), "The empty queue should leave the driver in overload mode");
+
+		hook.blockNext();
+		Thread updater = new Thread(() -> trialBosk.driver().submitReplacement(stringRef, "v8"));
+		updater.start();
+		hook.awaitStarted();
+		assertEquals(PROBATION, trialBosk.hookMode(), "The first queued update should start a trial");
+
+		trialBosk.driver().submitReplacement(stringRef, "v9");
+		trialBosk.driver().submitReplacement(stringRef, "v10");
+		trialBosk.driver().submitReplacement(stringRef, "v11");
+
+		assertEquals(OVERLOAD, trialBosk.hookMode(), "Overflowing during a trial should return to overload mode");
+
+		hook.unblock();
+		updater.join(10_000);
+		assertFalse(updater.isAlive(), "The updating thread should finish");
+		assertEquals(List.of("v1", "v4", "v8", "v11"), hook.seen,
+			"The failed trial should coalesce the queued updates into the latest state");
+		assertEquals(OVERLOAD, trialBosk.hookMode(), "A failed trial should stay in overload mode");
+	}
+
+	@Test
 	void interruptedOverloadBatchRequeuesUnrunHooks() throws InterruptedException {
 		Identifier childID = Identifier.from("interruptedChild");
 		Reference<TestChild> childRef = refs.child(childID);
@@ -200,5 +279,51 @@ public class OverloadModeTest extends AbstractBoskTest {
 		bosk.driver().submitReplacement(stringRef, "afterInterrupt");
 
 		assertTrue(secondHookRan.await(10, SECONDS), "The unrun hook should be requeued and run later");
+	}
+
+	private static void startOverloadAndDrainToOverload(Bosk<TestRoot> bosk, Reference<String> stringRef, BlockingHook hook) throws InterruptedException {
+		hook.blockNext();
+		Thread updater = new Thread(() -> bosk.driver().submitReplacement(stringRef, "v1"));
+		updater.start();
+		hook.awaitStarted();
+
+		bosk.driver().submitReplacement(stringRef, "v2");
+		bosk.driver().submitReplacement(stringRef, "v3");
+		bosk.driver().submitReplacement(stringRef, "v4");
+
+		hook.unblock();
+		updater.join(10_000);
+		assertFalse(updater.isAlive(), "The updating thread should finish");
+		assertEquals(List.of("v1", "v4"), hook.seen, "The overload batch should report only the latest state");
+	}
+
+	private static final class BlockingHook implements BoskHook<String> {
+		final List<String> seen = new CopyOnWriteArrayList<>();
+		final AtomicBoolean blocking = new AtomicBoolean(false);
+		volatile CountDownLatch started;
+		volatile CountDownLatch release;
+
+		void blockNext() {
+			started = new CountDownLatch(1);
+			release = new CountDownLatch(1);
+			blocking.set(true);
+		}
+
+		void awaitStarted() throws InterruptedException {
+			assertTrue(started.await(10, SECONDS), "The blocking hook should start");
+		}
+
+		void unblock() {
+			release.countDown();
+		}
+
+		@Override
+		public void onChanged(Reference<String> reference) throws InterruptedException {
+			seen.add(reference.valueIfExists());
+			if (blocking.compareAndSet(true, false)) {
+				started.countDown();
+				release.await();
+			}
+		}
 	}
 }

@@ -32,6 +32,7 @@ import works.bosk.util.Classes;
 import static java.lang.Thread.holdsLock;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
+import static works.bosk.OverloadController.Mode.PROBATION;
 import static works.bosk.OverloadPendingSet.PendingHooks;
 import static works.bosk.Path.parameterNameFromSegment;
 import static works.bosk.ReferenceUtils.rawClass;
@@ -258,7 +259,14 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 * hooks run against a later snapshot, and updates caused by hooks are handled
 	 * in subsequent catch-up batches. The update-ordering and sequential-hook
 	 * guarantees above still apply; the breadth-first per-event ordering describes
-	 * normal mode. Overload mode ends when the queue drains.
+	 * normal mode.
+	 * <p>
+	 * Once the pending set has drained, the driver runs a bounded probation in
+	 * standard style. The probation succeeds only if at least half its starting
+	 * backlog has drained, and a successful probation is followed by one final
+	 * overload catch-up generation. A failed probation returns to overload mode.
+	 * A standard-mode overflow soon after a successful probation lengthens the
+	 * next probation; sustained standard-mode work shortens it again.
 	 *
 	 * <p>
 	 * Satisfying all of these simultaneously is tricky, especially because we can't just put
@@ -275,7 +283,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		final Deque<HookExecution<?>> hookExecutionQueue = new ArrayDeque<>();
 		final Semaphore hookExecutionPermit = new Semaphore(1);
 		final OverloadPendingSet overloadPending = new OverloadPendingSet();
-		volatile boolean overloadMode;
+		final OverloadController overloadController = new OverloadController(hookQueueMaxSize);
 
 		public LocalDriver(Bosk.DefaultStateFunction<R> initialStateFunction) {
 			this.initialStateFunction = initialStateFunction;
@@ -502,22 +510,38 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		private <S> void enqueueHookExecution(HookRegistration<S> reg, Reference<S> changedRef, R rootForHook, boolean existedBefore, boolean existsAfter, MapValue<String> diagnosticAttributes) {
 			assert holdsLock(this);
 			hookExecutionQueue.addLast(new HookExecution<>(reg, changedRef, rootForHook, existedBefore, existsAfter, diagnosticAttributes));
-			if (hookExecutionQueue.size() >= hookQueueMaxSize) {
-				ensureOverloadMode();
+			switch (overloadController.mode()) {
+				case PROBATION -> {
+					if (hookExecutionQueue.size() >= hookQueueMaxSize) {
+						probationFailed();
+					}
+				}
+				case STANDARD -> {
+					if (hookExecutionQueue.size() >= hookQueueMaxSize) {
+						enterOverloadMode();
+					}
+				}
+				case CATCH_UP -> {
+					if (hookExecutionQueue.size() >= hookQueueMaxSize) {
+						catchUpFailed();
+					}
+				}
+				case OVERLOAD -> {
+					if (hookExecutionQueue.size() >= hookQueueMaxSize) {
+						collapseHookExecutionQueue();
+					}
+				}
 			}
 		}
 
 		/**
-		 * Ensures overload mode is active and collapses the current standard queue
-		 * into the pending set.
+		 * Enters overload mode from standard mode and collapses the current
+		 * standard queue into the pending set.
 		 */
-		private void ensureOverloadMode() {
+		private void enterOverloadMode() {
 			assert holdsLock(this);
-			boolean wasInStandardMode = !overloadMode;
-			overloadMode = true;
-			if (wasInStandardMode) {
-				HOOK_LOGGER.warn("Hook execution queue has exceeded limit ({}); entering overload mode", hookQueueMaxSize);
-			}
+			overloadController.enterOverload();
+			HOOK_LOGGER.warn("Hook execution queue has exceeded limit ({}); entering overload mode", hookQueueMaxSize);
 			collapseHookExecutionQueue();
 		}
 
@@ -589,6 +613,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 			do {
 				if (hookExecutionPermit.tryAcquire()) {
 					try {
+						drain:
 						while (true) {
 							// An interrupt means "stop"; quit before starting another hook,
 							// leaving the remaining queued hooks for a later update.
@@ -596,17 +621,30 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 								HOOK_LOGGER.debug("Interrupted; deferring the remaining queued hooks");
 								return;
 							}
-							if (standardMode()) {
-								HookExecution<?> execution;
-								synchronized (this) {
-									execution = hookExecutionQueue.pollFirst();
+							switch (overloadController.mode()) {
+								case OVERLOAD -> {
+									if (runOverloadBatch() == OverloadBatchResult.IDLE) {
+										break drain;
+									}
 								}
-								if (execution == null) {
-									break;
+								case CATCH_UP -> runCatchUpBatch();
+								case STANDARD, PROBATION -> {
+									HookExecution<?> execution;
+									synchronized (this) {
+										execution = hookExecutionQueue.pollFirst();
+									}
+									if (execution == null) {
+										break drain;
+									}
+									execution.run();
+									switch (overloadController.mode()) {
+										case STANDARD -> overloadController.recordStandardExecution();
+										case PROBATION -> recordProbationExecution();
+										case OVERLOAD, CATCH_UP -> {
+											// The trial or catch-up aborted while the hook was running.
+										}
+									}
 								}
-								execution.run();
-							} else if (!runOverloadBatch()) {
-								continue;
 							}
 						}
 					} catch (InterruptedException e) {
@@ -654,11 +692,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				// if another thread queues another hook after this point, that thread will also
 				// succeed in acquiring the permit and will itself drain the queue.
 
-			} while (hasQueuedHookExecutions() || overloadMode);
-		}
-
-		private boolean standardMode() {
-			return !overloadMode;
+			} while (hasQueuedHookExecutions() || hasPendingHookExecutions());
 		}
 
 		private boolean hasQueuedHookExecutions() {
@@ -667,16 +701,23 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 			}
 		}
 
-		private boolean runOverloadBatch() throws InterruptedException {
+		private boolean hasPendingHookExecutions() {
+			synchronized (this) {
+				return !overloadPending.isEmpty();
+			}
+		}
+
+		private OverloadBatchResult runOverloadBatch() throws InterruptedException {
 			Map<Path, PendingHooks> batch;
 			R snapshot;
 			synchronized (this) {
 				if (overloadPending.isEmpty()) {
 					if (hookExecutionQueue.isEmpty()) {
-						leaveOverloadMode();
-						return false;
+						return OverloadBatchResult.IDLE;
 					}
-					collapseHookExecutionQueue();
+					overloadController.startProbation(backlog());
+					HOOK_LOGGER.debug("Starting standard-mode probation");
+					return OverloadBatchResult.STARTED_PROBATION;
 				}
 				batch = overloadPending.detach();
 				snapshot = currentRoot();
@@ -688,20 +729,90 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				requeueOverloadBatch(batch);
 				throw e;
 			}
-			return true;
+			return OverloadBatchResult.RAN;
 		}
 
-		private void leaveOverloadMode() {
+		private void probationFailed() {
 			assert holdsLock(this);
-			overloadMode = false;
-			HOOK_LOGGER.info("Hook backlog returned to normal; leaving overload mode");
+			overloadController.probationFailed();
+			collapseHookExecutionQueue();
+			HOOK_LOGGER.debug("Standard-mode probation failed; returning to overload mode");
+		}
+
+		private void recordProbationExecution() {
+			synchronized (this) {
+				if (overloadController.mode() != OverloadController.Mode.PROBATION) {
+					return;
+				}
+				switch (overloadController.recordProbationExecution(backlog())) {
+					case CONTINUE -> {
+					}
+					case SUCCEEDED -> HOOK_LOGGER.debug("Standard-mode probation succeeded; starting final catch-up");
+					case FAILED -> {
+						collapseHookExecutionQueue();
+						HOOK_LOGGER.debug("Standard-mode probation did not drain the backlog; returning to overload mode");
+					}
+				}
+			}
+		}
+
+		private void runCatchUpBatch() throws InterruptedException {
+			Map<Path, PendingHooks> batch;
+			R snapshot;
+			synchronized (this) {
+				if (overloadPending.isEmpty()) {
+					if (hookExecutionQueue.size() <= 1) {
+						overloadController.catchUpFinished(true);
+						HOOK_LOGGER.info("Hook backlog returned to normal; leaving overload mode");
+						return;
+					}
+					collapseHookExecutionQueue();
+				}
+				batch = overloadPending.detach();
+				snapshot = currentRoot();
+			}
+			HOOK_LOGGER.debug("Hook: final catch-up batch with {} paths", batch.size());
+			try {
+				runPendingBatch(batch, snapshot);
+			} catch (InterruptedException | RuntimeException | Error e) {
+				requeueOverloadBatch(batch);
+				throw e;
+			}
+			synchronized (this) {
+				if (overloadController.mode() != OverloadController.Mode.CATCH_UP) {
+					return;
+				}
+				if (!overloadPending.isEmpty() || hookExecutionQueue.size() >= hookQueueMaxSize) {
+					catchUpFailed();
+				} else {
+					overloadController.catchUpFinished(true);
+					HOOK_LOGGER.info("Hook backlog returned to normal; leaving overload mode");
+				}
+			}
+		}
+
+		private void catchUpFailed() {
+			assert holdsLock(this);
+			overloadController.catchUpFailed();
+			collapseHookExecutionQueue();
+			HOOK_LOGGER.debug("Final catch-up could not clear the backlog; returning to overload mode");
+		}
+
+		private int backlog() {
+			return hookExecutionQueue.size() + overloadPending.size();
 		}
 
 		private void requeueOverloadBatch(Map<Path, PendingHooks> batch) {
 			synchronized (this) {
 				overloadPending.merge(batch);
-				overloadMode = true;
+				overloadController.returnToOverload();
 			}
+		}
+
+		private enum OverloadBatchResult {
+			RAN,
+			STARTED_PROBATION,
+			IDLE
 		}
 
 		private void runPendingBatch(Map<Path, PendingHooks> batch, R snapshot) throws InterruptedException {
@@ -1314,6 +1425,10 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	@Nullable
 	final R currentRoot() {
 		return currentState;
+	}
+
+	final OverloadController.Mode hookMode() {
+		return localDriver.overloadController.mode();
 	}
 
 	@SuppressWarnings({"unchecked", "rawtypes"})
