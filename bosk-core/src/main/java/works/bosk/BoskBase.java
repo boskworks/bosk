@@ -32,6 +32,7 @@ import works.bosk.util.Classes;
 import static java.lang.Thread.holdsLock;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
+import static works.bosk.OverloadController.Mode.CATCH_UP;
 import static works.bosk.OverloadController.Mode.PROBATION;
 import static works.bosk.OverloadPendingSet.PendingHooks;
 import static works.bosk.Path.parameterNameFromSegment;
@@ -741,7 +742,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 
 		private void recordProbationExecution() {
 			synchronized (this) {
-				if (overloadController.mode() != OverloadController.Mode.PROBATION) {
+				if (overloadController.mode() != PROBATION) {
 					return;
 				}
 				switch (overloadController.recordProbationExecution(backlog())) {
@@ -779,7 +780,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				throw e;
 			}
 			synchronized (this) {
-				if (overloadController.mode() != OverloadController.Mode.CATCH_UP) {
+				if (overloadController.mode() != CATCH_UP) {
 					return;
 				}
 				if (!overloadPending.isEmpty() || hookExecutionQueue.size() >= hookQueueMaxSize) {

@@ -1,5 +1,13 @@
 package works.bosk;
 
+import static works.bosk.OverloadController.Mode.CATCH_UP;
+import static works.bosk.OverloadController.Mode.OVERLOAD;
+import static works.bosk.OverloadController.Mode.PROBATION;
+import static works.bosk.OverloadController.Mode.STANDARD;
+import static works.bosk.OverloadController.ProbationResult.CONTINUE;
+import static works.bosk.OverloadController.ProbationResult.FAILED;
+import static works.bosk.OverloadController.ProbationResult.SUCCEEDED;
+
 /**
  * Decides when the local driver should leave overload mode.
  *
@@ -35,7 +43,7 @@ final class OverloadController {
 	/**
 	 * Volatile because the draining thread reads the mode outside the driver's monitor.
 	 */
-	private volatile Mode mode = Mode.STANDARD;
+	private volatile Mode mode = STANDARD;
 	private long probeMultiplier = 1;
 	private long probeRemaining;
 	private long probeStartBacklog;
@@ -63,11 +71,11 @@ final class OverloadController {
 	 * Enters overload mode after a standard-mode queue overflow.
 	 */
 	synchronized void enterOverload() {
-		assert mode == Mode.STANDARD : "Overload mode is entered from standard mode";
+		assert mode == STANDARD : "Overload mode is entered from standard mode";
 		if (postProbationOverflowWindow) {
 			probeMultiplier = Math.multiplyExact(probeMultiplier, 2);
 		}
-		mode = Mode.OVERLOAD;
+		mode = OVERLOAD;
 		postProbationOverflowWindow = false;
 		standardExecutions = 0;
 		decayExecutions = 0;
@@ -80,8 +88,8 @@ final class OverloadController {
 	 * @param startBacklog the backlog when the probation begins
 	 */
 	synchronized void startProbation(int startBacklog) {
-		assert mode == Mode.OVERLOAD : "Probation starts from overload mode";
-		mode = Mode.PROBATION;
+		assert mode == OVERLOAD : "Probation starts from overload mode";
+		mode = PROBATION;
 		probeStartBacklog = startBacklog;
 		probeRemaining = probeBudget();
 	}
@@ -92,17 +100,17 @@ final class OverloadController {
 	 * @param backlog the backlog after the execution
 	 */
 	synchronized ProbationResult recordProbationExecution(int backlog) {
-		assert mode == Mode.PROBATION : "Probation executions only occur in probation mode";
+		assert mode == PROBATION : "Probation executions only occur in probation mode";
 		probeRemaining--;
 		if (probeRemaining > 0) {
-			return ProbationResult.CONTINUE;
+			return CONTINUE;
 		}
 		if ((long) backlog * 2 <= probeStartBacklog) {
-			mode = Mode.CATCH_UP;
-			return ProbationResult.SUCCEEDED;
+			mode = CATCH_UP;
+			return SUCCEEDED;
 		} else {
-			mode = Mode.OVERLOAD;
-			return ProbationResult.FAILED;
+			mode = OVERLOAD;
+			return FAILED;
 		}
 	}
 
@@ -111,7 +119,7 @@ final class OverloadController {
 	 * adjustment is preserved.
 	 */
 	synchronized void returnToOverload() {
-		mode = Mode.OVERLOAD;
+		mode = OVERLOAD;
 		postProbationOverflowWindow = false;
 		probeRemaining = 0;
 	}
@@ -120,8 +128,8 @@ final class OverloadController {
 	 * Abandons a probation because the queue reached its limit.
 	 */
 	synchronized void probationFailed() {
-		assert mode == Mode.PROBATION : "A probation can only fail while in probation mode";
-		mode = Mode.OVERLOAD;
+		assert mode == PROBATION : "A probation can only fail while in probation mode";
+		mode = OVERLOAD;
 		probeRemaining = 0;
 	}
 
@@ -131,14 +139,14 @@ final class OverloadController {
 	 * @param canUseStandard true if standard mode can take over
 	 */
 	synchronized void catchUpFinished(boolean canUseStandard) {
-		assert mode == Mode.CATCH_UP : "Catch-up completion requires catch-up mode";
+		assert mode == CATCH_UP : "Catch-up completion requires catch-up mode";
 		if (canUseStandard) {
-			mode = Mode.STANDARD;
+			mode = STANDARD;
 			postProbationOverflowWindow = true;
 			standardExecutions = 0;
 			decayExecutions = 0;
 		} else {
-			mode = Mode.OVERLOAD;
+			mode = OVERLOAD;
 			postProbationOverflowWindow = false;
 			probeRemaining = 0;
 		}
@@ -148,8 +156,8 @@ final class OverloadController {
 	 * Abandons the final catch-up generation because the queue overflowed.
 	 */
 	synchronized void catchUpFailed() {
-		assert mode == Mode.CATCH_UP : "Catch-up can only fail while in catch-up mode";
-		mode = Mode.OVERLOAD;
+		assert mode == CATCH_UP : "Catch-up can only fail while in catch-up mode";
+		mode = OVERLOAD;
 		postProbationOverflowWindow = false;
 		probeRemaining = 0;
 	}
@@ -160,7 +168,7 @@ final class OverloadController {
 	 * queue's worth slowly reduces an inflated probe multiplier.
 	 */
 	synchronized void recordStandardExecution() {
-		if (mode != Mode.STANDARD) {
+		if (mode != STANDARD) {
 			return;
 		}
 		if (postProbationOverflowWindow) {
