@@ -511,26 +511,12 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		private <S> void enqueueHookExecution(HookRegistration<S> reg, Reference<S> changedRef, R rootForHook, boolean existedBefore, boolean existsAfter, MapValue<String> diagnosticAttributes) {
 			assert holdsLock(this);
 			hookExecutionQueue.addLast(new HookExecution<>(reg, changedRef, rootForHook, existedBefore, existsAfter, diagnosticAttributes));
-			switch (overloadController.mode()) {
-				case PROBATION -> {
-					if (hookExecutionQueue.size() >= hookQueueMaxSize) {
-						probationFailed();
-					}
-				}
-				case STANDARD -> {
-					if (hookExecutionQueue.size() >= hookQueueMaxSize) {
-						enterOverloadMode();
-					}
-				}
-				case CATCH_UP -> {
-					if (hookExecutionQueue.size() >= hookQueueMaxSize) {
-						catchUpFailed();
-					}
-				}
-				case OVERLOAD -> {
-					if (hookExecutionQueue.size() >= hookQueueMaxSize) {
-						collapseHookExecutionQueue();
-					}
+			if (hookExecutionQueue.size() >= hookQueueMaxSize) {
+				switch (overloadController.mode()) {
+					case STANDARD -> enterOverloadMode();
+					case OVERLOAD -> collapseHookExecutionQueue();
+					case PROBATION -> probationFailed();
+					case CATCH_UP -> catchUpFailed();
 				}
 			}
 		}
