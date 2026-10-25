@@ -162,22 +162,14 @@ final class OverloadController {
 	}
 
 	/**
-	 * Completes the final catch-up generation.
-	 *
-	 * @param canUseStandard true if standard mode can take over
+	 * Completes the final catch-up generation and returns to standard mode.
 	 */
-	synchronized void catchUpFinished(boolean canUseStandard) {
+	synchronized void catchUpFinished() {
 		assert mode == CATCH_UP : "Catch-up completion requires catch-up mode";
-		if (canUseStandard) {
-			mode = STANDARD;
-			postProbationOverflowWindow = true;
-			standardExecutions = 0;
-			decayExecutions = 0;
-		} else {
-			mode = OVERLOAD;
-			postProbationOverflowWindow = false;
-			probeRemaining = 0;
-		}
+		mode = STANDARD;
+		postProbationOverflowWindow = true;
+		standardExecutions = 0;
+		decayExecutions = 0;
 	}
 
 	/**

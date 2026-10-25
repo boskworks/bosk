@@ -724,12 +724,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				snapshot = currentRoot();
 			}
 			HOOK_LOGGER.debug("Hook: overload batch with {} paths", batch.size());
-			try {
-				runPendingBatch(batch, snapshot);
-			} catch (InterruptedException | RuntimeException | Error e) {
-				requeueOverloadBatch(batch);
-				throw e;
-			}
+			runDetachedBatch(batch, snapshot);
 			return OverloadBatchResult.RAN;
 		}
 
@@ -763,7 +758,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 			synchronized (this) {
 				if (overloadPending.isEmpty()) {
 					if (hookExecutionQueue.size() <= 1) {
-						overloadController.catchUpFinished(true);
+						overloadController.catchUpFinished();
 						HOOK_LOGGER.info("Hook backlog returned to normal; leaving overload mode");
 						return;
 					}
@@ -773,12 +768,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				snapshot = currentRoot();
 			}
 			HOOK_LOGGER.debug("Hook: final catch-up batch with {} paths", batch.size());
-			try {
-				runPendingBatch(batch, snapshot);
-			} catch (InterruptedException | RuntimeException | Error e) {
-				requeueOverloadBatch(batch);
-				throw e;
-			}
+			runDetachedBatch(batch, snapshot);
 			synchronized (this) {
 				if (overloadController.mode() != CATCH_UP) {
 					return;
@@ -786,9 +776,18 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				if (!overloadPending.isEmpty() || hookExecutionQueue.size() >= hookQueueMaxSize) {
 					catchUpFailed();
 				} else {
-					overloadController.catchUpFinished(true);
+					overloadController.catchUpFinished();
 					HOOK_LOGGER.info("Hook backlog returned to normal; leaving overload mode");
 				}
+			}
+		}
+
+		private void runDetachedBatch(Map<Path, PendingHooks> batch, R snapshot) throws InterruptedException {
+			try {
+				runPendingBatch(batch, snapshot);
+			} catch (InterruptedException | RuntimeException | Error e) {
+				requeueOverloadBatch(batch);
+				throw e;
 			}
 		}
 

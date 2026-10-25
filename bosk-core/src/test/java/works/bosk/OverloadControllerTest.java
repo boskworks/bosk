@@ -71,7 +71,7 @@ class OverloadControllerTest {
 			controller.recordProbationExecution(5);
 		}
 		controller.recordProbationExecution(5);
-		controller.catchUpFinished(true);
+		controller.catchUpFinished();
 		assertEquals(STANDARD, controller.mode(), "A completed catch-up should enter standard mode");
 	}
 
@@ -148,7 +148,7 @@ class OverloadControllerTest {
 			assertEquals(CONTINUE, controller.recordProbationExecution(5), "The probation should continue");
 		}
 		assertEquals(SUCCEEDED, controller.recordProbationExecution(5), "The probation should succeed");
-		controller.catchUpFinished(true);
+		controller.catchUpFinished();
 		assertEquals(STANDARD, controller.mode(), "The catch-up should enter standard mode");
 	}
 }
