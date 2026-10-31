@@ -555,7 +555,10 @@ final class HookRunner<R extends StateTreeNode> {
 			EnumerableByIdentifier<?> priorContainer = refValueIfExists(containerRef, priorRoot);
 			EnumerableByIdentifier<?> newContainer = refValueIfExists(containerRef, newRoot);
 
-			// TODO: If priorContainer == newContainer, can we stop immediately?
+			if (priorContainer == newContainer) {
+				LOGGER.debug("Hook: container {} unchanged; no entries to visit", containerRef);
+				return;
+			}
 
 			// Process any deleted items first. This can allow the hook to free some memory
 			// that can be used by subsequent hooks.
