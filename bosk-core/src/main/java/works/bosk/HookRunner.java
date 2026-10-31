@@ -555,22 +555,30 @@ final class HookRunner<R extends StateTreeNode> {
 			EnumerableByIdentifier<?> priorContainer = refValueIfExists(containerRef, priorRoot);
 			EnumerableByIdentifier<?> newContainer = refValueIfExists(containerRef, newRoot);
 
-			// TODO: If priorContainer == newContainer, can we stop immediately?
+			if (priorContainer == newContainer) {
+				LOGGER.debug("Hook: container {} unchanged; no entries to visit", containerRef);
+				return;
+			}
 
 			// Process any deleted items first. This can allow the hook to free some memory
 			// that can be used by subsequent hooks.
 			// We do them in reverse order just because that's likely to be the preferred
 			// order for cleanup activities.
 			//
+			// We collect the deleted IDs so we can visit them in reverse order.
+			//
 			// TODO: Should we actually process the hooks themselves in reverse order for the same reason?
 			//
+			List<Identifier> deleted = new ArrayList<>();
 			if (priorContainer != null) {
-				List<Identifier> priorIDs = priorContainer.ids();
-				for (Identifier id : priorIDs.reversed()) {
+				for (Identifier id : priorContainer.ids()) {
 					if (newContainer == null || newContainer.get(id) == null) {
-						triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
+						deleted.add(id);
 					}
 				}
+			}
+			for (int i = deleted.size() - 1; i >= 0; i--) {
+				triggerCascade(effectiveScope.boundTo(deleted.get(i)), priorRoot, newRoot, action);
 			}
 
 			// Then process updated items

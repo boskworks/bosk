@@ -129,9 +129,8 @@ class CatalogTest {
 	@MethodSource("allCases")
 	void ids_matchesLinkedHashSet(BasicEntity[] contents) {
 		Catalog<BasicEntity> catalog = fromContents(contents);
-		List<Identifier> IDs = catalog.ids();
 		List<Identifier> expected = linkedHashSetFromContents(contents).stream().map(Entity::id).collect(toList());
-		assertEquals(expected, IDs);
+		assertEquals(expected, List.copyOf(catalog.ids()));
 	}
 
 	@ParameterizedTest

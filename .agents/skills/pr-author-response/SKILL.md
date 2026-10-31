@@ -1,6 +1,6 @@
 ---
 name: pr-author-response
-description: Respond to the review comments on your own pull request as the PR author: address or refute each comment, push the fixes, reply to every thread, and resolve the ones you close out. Use when asked to respond to the review comments on a pull request.
+description: Respond to the review comments on your own pull request as the PR author: address or refute each comment, push the fixes, and reply to every thread. Use when asked to respond to the review comments on a pull request.
 ---
 
 Respond to the review comments on your own pull request as the PR author.
@@ -37,9 +37,9 @@ Pay particular attention to comments from the maintainer (login `prdoyle`). They
 - Confirm success from the call itself: append `--jq '.id'` to the POST and check the printed id and exit status.
 - Gate on the exit status (`set -e`, or `if ! gh api ...; then`). A non-zero exit means the call failed; read the error.
 - After posting, verify the end state with a read-back (list the comments again and confirm each reply is on its thread). Only report success after that verification.
-- Don't resolve threads. The threads you reply to are the review agent's, and it decides whether your
-  response is acceptable and resolves each thread itself after verifying; resolving a thread yourself
-  pre-empts that verification.
+- Don't resolve threads; whoever raised a thread resolves it. The review agent resolves its own threads
+  after verifying your response. A thread the maintainer raised belongs to the maintainer: they raised
+  the objection, so they decide when it is settled. Resolving a thread yourself pre-empts that.
 - Keep the PR description current. After each push, if the new commits change what the PR does or which
   files it touches, update the description (`gh pr edit <PR> --body "..."`); the description should
   describe the PR as it now stands, not as it was when it opened.

@@ -3,7 +3,6 @@ package works.bosk;
 import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.Collection;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -49,7 +48,7 @@ public final class SideTable<K extends Entity, V> implements EnumerableByIdentif
 		return domain;
 	}
 
-	public List<Identifier> ids() { return List.copyOf(valuesById.keySet()); }
+	public Collection<Identifier> ids() { return valuesById.keySet(); }
 	public Listing<K> keys() { return new Listing<>(domain, OrderedPSet.from(valuesById.keySet())); }
 	public Collection<V> values() { return valuesById.values(); }
 

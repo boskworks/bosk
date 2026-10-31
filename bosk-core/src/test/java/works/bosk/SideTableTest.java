@@ -153,13 +153,13 @@ class SideTableTest extends AbstractBoskTest {
 
 		assertEquals(expected.isEmpty(), actual.isEmpty());
 		assertEquals(expected.size(), actual.size());
-		assertEquals(new ArrayList<>(expected.keySet()), actual.ids());
+		assertEquals(new ArrayList<>(expected.keySet()), List.copyOf(actual.ids()));
 		assertEquals(Listing.of(refs.entities(), actual.ids()), actual.keys());
 		assertEquals(new ArrayList<>(expected.values()), new ArrayList<>(actual.values()));
 		assertEquals(new ArrayList<>(expected.entrySet()), new ArrayList<>(actual.idEntrySet()));
 
 		ArrayList<Identifier> expectedIDs = new ArrayList<>(expected.keySet());
-		assertEquals(expectedIDs, actual.ids());
+		assertEquals(expectedIDs, List.copyOf(actual.ids()));
 		assertEquals(expectedIDs, actual.keys().idStream().collect(toList()));
 
 		expected.forEach((id,value) -> {
