@@ -19,7 +19,7 @@ import static works.bosk.OverloadController.Mode.CATCH_UP;
 import static works.bosk.OverloadController.Mode.OVERLOAD;
 import static works.bosk.OverloadController.Mode.PROBATION;
 import static works.bosk.OverloadController.Mode.STANDARD;
-import static works.bosk.PendingHookSet.PendingHooks;
+import static works.bosk.PendingHookSet.PendingPaths;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
@@ -324,9 +324,10 @@ final class HookRunner<R extends StateTreeNode> {
 	}
 
 	/**
-	 * One batch: the pending notifications to run, and the state they run against.
+	 * One batch: the pending notifications to run, grouped by hook registration,
+	 * and the state they run against.
 	 */
-	private record CompactedBatch<RR>(Map<Path, PendingHooks> pending, RR snapshot) {}
+	private record CompactedBatch<RR>(Map<Integer, PendingPaths> pending, RR snapshot) {}
 
 	/**
 	 * Builds the next batch: the queue's leftovers, if there are any, otherwise the
@@ -351,7 +352,7 @@ final class HookRunner<R extends StateTreeNode> {
 			for (HookTrigger<R> trigger : queued) {
 				compact(trigger, flushed);
 			}
-			Map<Path, PendingHooks> pending = flushed.detach();
+			Map<Integer, PendingPaths> pending = flushed.detach();
 			if (!pending.isEmpty()) {
 				return new CompactedBatch<>(pending, queueSnapshot);
 			}
@@ -395,17 +396,16 @@ final class HookRunner<R extends StateTreeNode> {
 	 */
 	private void runPendingBatch(CompactedBatch<R> batch) throws InterruptedException {
 		try {
-			for (var entry : batch.pending().entrySet()) {
-				Path path = entry.getKey();
-				PendingHooks hooks = entry.getValue();
-				for (int hookIndex = hooks.toRun().nextSetBit(0); hookIndex >= 0; hookIndex = hooks.toRun().nextSetBit(hookIndex + 1)) {
+			for (var hookEntry : batch.pending().entrySet()) {
+				HookRegistration<?> reg = hookAt(hookEntry.getKey());
+				for (var iterator = hookEntry.getValue().entrySet().iterator(); iterator.hasNext(); ) {
+					var entry = iterator.next();
 					if (Thread.currentThread().isInterrupted()) {
 						throw new InterruptedException();
 					}
-					boolean existedAtBaseline = hooks.existedAtBaseline().get(hookIndex);
-					hooks.toRun().clear(hookIndex);
-					hooks.existedAtBaseline().clear(hookIndex);
-					runPendingHook(hookAt(hookIndex), path, batch.snapshot(), existedAtBaseline);
+					boolean existedAtBaseline = entry.getValue();
+					iterator.remove();
+					runPendingHook(reg, entry.getKey(), batch.snapshot(), existedAtBaseline);
 				}
 			}
 		} catch (RuntimeException e) {
