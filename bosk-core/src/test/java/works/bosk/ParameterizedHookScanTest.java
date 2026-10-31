@@ -2,6 +2,8 @@ package works.bosk;
 
 import com.sun.management.ThreadMXBean;
 import java.lang.management.ManagementFactory;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -92,6 +94,33 @@ public class ParameterizedHookScanTest extends AbstractBoskTest {
 		bosk.driver().submitReplacement(refs.parent(), parentWithChangedChild(parent, measuredID, "measured"));
 
 		assertEquals(1, hookCalls.get(), "The changed child should trigger the child hook once");
+	}
+
+	@Test
+	void ids_doesNotCopyTheIdentifiers() throws InvalidTypeException {
+		int childCount = 10_000;
+		Bosk<TestRoot> bosk = new Bosk<>(
+			"allocation-free-ids",
+			TestRoot.class,
+			b -> initialRoot(b, childCount),
+			BoskConfig.<TestRoot>builder().build());
+		Refs refs = bosk.rootReference().buildReferences(Refs.class);
+
+		Catalog<TestChild> children;
+		try (var _ = bosk.readSession()) {
+			children = refs.parent().value().children();
+		}
+
+		assumeTrue(threadAllocatedBytes() >= 0, "Thread allocation measurement is unavailable");
+		long before = threadAllocatedBytes();
+		Collection<Identifier> ids = children.ids();
+		long allocated = threadAllocatedBytes() - before;
+
+		assertEquals(childCount, ids.size());
+		assertTrue(allocated < 10_000,
+			"ids() must not copy the identifiers; allocated " + allocated + " bytes");
+		assertEquals(Identifier.from("child0"), List.copyOf(ids).getFirst());
+		assertEquals(Identifier.from("child9999"), List.copyOf(ids).getLast());
 	}
 
 	private static TestEntity parentWithChangedChild(TestEntity parent, Identifier childID, String value) {

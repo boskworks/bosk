@@ -565,15 +565,20 @@ final class HookRunner<R extends StateTreeNode> {
 			// We do them in reverse order just because that's likely to be the preferred
 			// order for cleanup activities.
 			//
+			// We collect the deleted IDs so we can visit them in reverse order.
+			//
 			// TODO: Should we actually process the hooks themselves in reverse order for the same reason?
 			//
+			List<Identifier> deleted = new ArrayList<>();
 			if (priorContainer != null) {
-				List<Identifier> priorIDs = priorContainer.ids();
-				for (Identifier id : priorIDs.reversed()) {
+				for (Identifier id : priorContainer.ids()) {
 					if (newContainer == null || newContainer.get(id) == null) {
-						triggerCascade(effectiveScope.boundTo(id), priorRoot, newRoot, action);
+						deleted.add(id);
 					}
 				}
+			}
+			for (int i = deleted.size() - 1; i >= 0; i--) {
+				triggerCascade(effectiveScope.boundTo(deleted.get(i)), priorRoot, newRoot, action);
 			}
 
 			// Then process updated items
