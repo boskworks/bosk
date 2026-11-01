@@ -20,6 +20,7 @@ import works.bosk.junit.InjectorMethod;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.slf4j.event.Level.WARN;
 import static works.bosk.drivers.mongo.internal.TestParameters.LONG_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -35,7 +36,7 @@ public class ReinitializationTest extends AbstractMongoDriverTest {
 	@BeforeEach
 	void overrideLogging() {
 		// This test deliberately provokes disconnections, so log errors only
-		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		suppressLogging(WARN, MainDriver.class, ChangeReceiver.class);
 	}
 
 	@InjectorMethod

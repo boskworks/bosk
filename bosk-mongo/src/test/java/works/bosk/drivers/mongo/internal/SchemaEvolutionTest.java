@@ -78,8 +78,8 @@ public class SchemaEvolutionTest {
 		toHelper  .setupDriverFactory(testInfo);
 
 		// Changing formats often causes events that are not understood by other FormatDrivers
-		fromHelper.suppressLogging(Level.ERROR, ChangeReceiver.class);
-		toHelper.suppressLogging(Level.ERROR, ChangeReceiver.class);
+		fromHelper.suppressLogging(Level.WARN, ChangeReceiver.class);
+		toHelper.suppressLogging(Level.WARN, ChangeReceiver.class);
 
 		fromHelper.clearTearDown(testInfo);
 		toHelper  .clearTearDown(testInfo);

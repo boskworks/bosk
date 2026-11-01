@@ -26,6 +26,7 @@ import works.bosk.spring.boot.ReadSessionFilter;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.slf4j.event.Level.ERROR;
+import static org.slf4j.event.Level.WARN;
 import static org.springframework.http.HttpHeaders.CACHE_CONTROL;
 import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -209,7 +210,7 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void put_wrongContentType_reportsError() throws Exception {
-		logController.suppressLogging(ERROR, DefaultHandlerExceptionResolver.class);
+		logController.suppressLogging(WARN, DefaultHandlerExceptionResolver.class);
 		mvc.perform(put("/bosk/state/targets/" + INITIAL_TARGET.id())
 				.with(bearer())
 				.contentType(APPLICATION_FORM_URLENCODED)

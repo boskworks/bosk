@@ -31,6 +31,7 @@ import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.util.Classes;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.slf4j.event.Level.WARN;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 
@@ -64,7 +65,7 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 
 	@Test
 	void initialStateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException {
-		suppressLogging(ERROR, StateTreeSerializer.class);
+		suppressLogging(WARN, StateTreeSerializer.class);
 
 		// Upon creating bosk, the initial value will be saved to MongoDB
 		new Bosk<>(
@@ -93,7 +94,7 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 
 	@Test
 	void updateHasNonexistentFields_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		suppressLogging(ERROR, StateTreeSerializer.class);
+		suppressLogging(WARN, StateTreeSerializer.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("Newer"),
@@ -128,7 +129,7 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 
 	@Test
 	void updateNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		suppressLogging(ERROR, AbstractFormatDriver.class, StateTreeSerializer.class);
+		suppressLogging(WARN, AbstractFormatDriver.class, StateTreeSerializer.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("Newer"),
@@ -164,7 +165,7 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 
 	@Test
 	void deleteNonexistentField_ignored(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		suppressLogging(ERROR, StateTreeSerializer.class);
+		suppressLogging(WARN, StateTreeSerializer.class);
 
 		Bosk<TestEntity> newerBosk = new Bosk<>(
 			boskName("Newer"),
@@ -196,7 +197,7 @@ public class SchemaCompatibilityTest extends AbstractMongoDriverTest {
 
 	@Test
 	void databaseMissingField_fallsBackToDefaultState(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
-		suppressLogging(ERROR, ChangeReceiver.class);
+		suppressLogging(WARN, ChangeReceiver.class);
 
 		LOGGER.debug("Set up database with entity that has no string field");
 		Bosk<OptionalEntity> setupBosk = new Bosk<>(

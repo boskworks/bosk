@@ -26,6 +26,7 @@ import works.bosk.testing.drivers.state.TestEntity;
 import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.slf4j.event.Level.WARN;
 import static works.bosk.drivers.sql.SqlTestService.sqlDriverFactory;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -49,7 +50,7 @@ public class SqlDriverDurabilityTest extends AbstractDriverTest {
 
 	@InjectedTest
 	void tablesDropped_recovers() throws SQLException, IOException, InterruptedException {
-		logController.suppressLogging(ERROR, SqlDriverImpl.class); // We're expecting disruption here
+		logController.suppressLogging(WARN, SqlDriverImpl.class); // We're expecting disruption here
 
 		LOGGER.debug("Initialize database");
 		var factory = DriverStack.of(

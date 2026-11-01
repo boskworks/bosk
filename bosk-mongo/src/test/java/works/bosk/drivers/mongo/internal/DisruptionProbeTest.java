@@ -38,7 +38,7 @@ class DisruptionProbeTest extends AbstractMongoDriverTest {
 		// This test deliberately forces initialization to fail, so the resulting
 		// "Failed to initialize database" warning is expected; suppress it so it
 		// doesn't clutter the test output.
-		suppressLogging(Level.ERROR, MainDriver.class);
+		suppressLogging(Level.WARN, MainDriver.class);
 
 		// Force the init transaction's commit to fail, and fail on the resulting disruption.
 		MainDriver.setProbes(TestProbes.noop()

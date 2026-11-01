@@ -15,6 +15,7 @@ import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.slf4j.event.Level.WARN;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL_FAST;
 import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
@@ -43,7 +44,7 @@ public class InitializationFailureTest extends AbstractMongoDriverTest {
 	@Test
 	@DisruptsMongoProxy
 	void initialOutage_throws(TestInfo testInfo) {
-		logController.suppressLogging(ERROR, ChangeReceiver.class);
+		logController.suppressLogging(WARN, ChangeReceiver.class);
 		mongoService.disruptConnection(failureMode);
 		tearDownActions.add(()->mongoService.restoreConnection(failureMode));
 		assertThrows(InitialStateFailureException.class, ()->{
