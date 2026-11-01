@@ -25,7 +25,6 @@ import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 
-import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.TypeValidation.validateType;
@@ -69,7 +68,7 @@ public class MetadataTest extends AbstractMongoDriverTest {
 
 	@Test
 	void revisionFieldWrongType_flushThrowsFlushFailureException() throws InvalidTypeException, IOException, InterruptedException {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("revisionWrongType"),
@@ -98,7 +97,7 @@ public class MetadataTest extends AbstractMongoDriverTest {
 
 	@Test
 	void manifestVersionBump_disconnects(TestInfo testInfo) throws IOException, InterruptedException {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),

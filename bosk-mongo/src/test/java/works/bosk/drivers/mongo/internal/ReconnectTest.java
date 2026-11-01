@@ -49,7 +49,6 @@ import works.bosk.logback.BoskLogFilter;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 
-import static ch.qos.logback.classic.Level.ERROR;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -59,6 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.slf4j.event.Level.ERROR;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
@@ -117,7 +117,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 	@InjectedTest
 	@DisruptsMongoProxy
 	void networkOutage_boskRecovers(@Injected MongoService.FailureMode failureMode) throws InvalidTypeException, InterruptedException, IOException {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName("Main"),
@@ -172,7 +172,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 	@InjectedTest
 	@DisruptsMongoProxy
 	void hookInterrupted_whenReceiverDisconnects(@Injected MongoService.FailureMode failureMode) throws InvalidTypeException, InterruptedException, IOException {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),
@@ -247,7 +247,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 	@InjectedTest
 	@DisruptsMongoProxy
 	void hookRegisteredDuringNetworkOutage_works(@Injected MongoService.FailureMode failureMode) throws InvalidTypeException, InterruptedException, IOException {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),
@@ -310,7 +310,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 	@InjectedTest
 	@DisruptsMongoProxy
 	void downstreamInitialStateThrows_wrappedInIllegalArgumentException(@Injected MongoService.FailureMode failureMode) {
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		// Force the downstream driver to be used for initial state
 		mongoService.disruptConnection(failureMode);
@@ -362,7 +362,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		//          double-check: not DisconnectedDriver -> skip await
 		//          retry operation
 
-		setLogging(ERROR, ChangeReceiver.class);
+		suppressLogging(ERROR, ChangeReceiver.class);
 
 		AtomicBoolean initializationDone = new AtomicBoolean(false);
 		CountDownLatch disconnected = new CountDownLatch(1);
@@ -472,7 +472,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		//     -> waitAndRetry
 		//          recovered driver is healthy: no wait, retry immediately
 
-		setLogging(ERROR, ChangeReceiver.class, MainDriver.class);
+		suppressLogging(ERROR, ChangeReceiver.class, MainDriver.class);
 
 		AtomicBoolean armed = new AtomicBoolean(false);
 		AtomicInteger connectCount = new AtomicInteger();
@@ -559,7 +559,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		// We gate the change event for a submitted update so the flush has to wait for
 		// it, interrupt the flush, then release the event and confirm the driver never
 		// disconnected.
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class);
 
 		// Use a longer timescale so the flush has a generous timeout while it's blocked
 		// waiting for the gated event.
@@ -688,7 +688,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		//                                   onHasBeenApplied (releases the flush)
 		//   flush() returns; a read session sees the fresh state
 
-		setLogging(ERROR, MainDriver.class, ChangeReceiver.class, AbstractFormatDriver.class);
+		suppressLogging(ERROR, MainDriver.class, ChangeReceiver.class, AbstractFormatDriver.class);
 
 		// Use a longer timescale so the retrying flush has a generous timeout while it's
 		// blocked waiting for the gated state application.

@@ -24,9 +24,8 @@ import works.bosk.hello.state.Target;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.spring.boot.ReadSessionFilter;
 
-import static ch.qos.logback.classic.Level.ERROR;
-import static ch.qos.logback.classic.Level.OFF;
 import static org.hamcrest.Matchers.containsString;
+import static org.slf4j.event.Level.ERROR;
 import static org.springframework.http.HttpHeaders.CACHE_CONTROL;
 import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -147,7 +146,7 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void get_nonexistentTarget_reportsError() throws Exception {
-		logController.setLogging(OFF, ReadSessionFilter.class);
+		logController.suppressLogging(ERROR, ReadSessionFilter.class);
 		mvc.perform(get("/bosk/state/targets/nonexistent").with(bearer()))
 			.andExpect(status().isNotFound());
 	}
@@ -210,7 +209,7 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void put_wrongContentType_reportsError() throws Exception {
-		logController.setLogging(ERROR, DefaultHandlerExceptionResolver.class);
+		logController.suppressLogging(ERROR, DefaultHandlerExceptionResolver.class);
 		mvc.perform(put("/bosk/state/targets/" + INITIAL_TARGET.id())
 				.with(bearer())
 				.contentType(APPLICATION_FORM_URLENCODED)
@@ -235,7 +234,7 @@ public class HelloMaintenanceEndpointsTest {
 
 	@Test
 	void postWithoutReadSession_reportsError() throws Exception {
-		logController.setLogging(OFF, ReadSessionFilter.class);
+		logController.suppressLogging(ERROR, ReadSessionFilter.class);
 		mvc.perform(post("/api/noReadSession").with(csrf()))
 			.andExpect(status().isInternalServerError());
 	}

@@ -17,7 +17,6 @@ import works.bosk.drivers.mongo.exceptions.InitialCursorTimeoutException;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.state.TestEntity;
 
-import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.FAIL_FAST;
@@ -66,7 +65,7 @@ public class ServerMisconfigurationTest {
 	private Bosk<TestEntity> createBosk(MongoClientSettings clientSettings) {
 		// We're expecting some timeout warnings from the Mongo driver;
 		BoskLogFilter.LogController logController = new BoskLogFilter.LogController();
-		logController.setLogging(ERROR, "com.mongodb");
+		logController.suppressLogging(ERROR, "com.mongodb");
 
 		return new Bosk<>(
 			ServerMisconfigurationTest.class.getSimpleName(),

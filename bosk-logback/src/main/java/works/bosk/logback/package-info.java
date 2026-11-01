@@ -4,7 +4,7 @@
  * Provides two features:
  * <ol>
  *   <li>
- *     <b>Per-bosk log control:</b> Suppresses expected warnings during testing.
+ *     <b>Per-bosk log suppression:</b> Suppresses expected warnings during testing.
  *   </li>
  *   <li>
  *     <b>Log replay on failure:</b> Captures log events that would otherwise be filtered out,
@@ -12,13 +12,13 @@
  *   </li>
  * </ol>
  *
- * <h2>Per-bosk log control</h2>
+ * <h2>Per-bosk log suppression</h2>
  * <p>
- * {@link works.bosk.logback.BoskLogFilter} provides per-bosk logging control, intended to suppress expected warnings
+ * {@link works.bosk.logback.BoskLogFilter} provides per-bosk log suppression, intended to suppress expected warnings
  * and errors during testing.
  * <p>
  * A {@link works.bosk.Bosk Bosk} whose driver stack includes {@link works.bosk.logback.BoskLogFilter#withController}
- * can set log levels using {@link works.bosk.logback.BoskLogFilter.LogController#setLogging LogController.setLogging} without affecting other logs.
+ * can suppress expected events using {@link works.bosk.logback.BoskLogFilter.LogController#suppressLogging LogController.suppressLogging} without affecting other logs.
  * The driver sets the MDC key {@link works.bosk.logging.MdcKeys#BOSK_INSTANCE_ID BOSK_INSTANCE_ID},
  * and the filter uses that to determine the correct {@code LogController} object to adjust log levels for that bosk.
  *
