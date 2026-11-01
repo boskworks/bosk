@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.boot.web.context.servlet.AnnotationConfigServletWebApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.web.FilterChainProxy;
@@ -16,9 +17,11 @@ import works.bosk.Entity;
 import works.bosk.Identifier;
 import works.bosk.StateTreeNode;
 import works.bosk.jackson.JacksonSerializer;
+import works.bosk.logback.SuppressLogs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SuppressLogs(AnnotationConfigServletWebApplicationContext.class)
 class BoskMaintenanceAutoConfigurationTest {
 	private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
 		.withConfiguration(AutoConfigurations.of(BoskMaintenanceAutoConfiguration.class))
