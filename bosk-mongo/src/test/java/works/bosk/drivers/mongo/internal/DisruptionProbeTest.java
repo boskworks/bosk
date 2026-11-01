@@ -1,11 +1,11 @@
 package works.bosk.drivers.mongo.internal;
 
-import ch.qos.logback.classic.Level;
 import com.mongodb.MongoException;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
@@ -38,7 +38,7 @@ class DisruptionProbeTest extends AbstractMongoDriverTest {
 		// This test deliberately forces initialization to fail, so the resulting
 		// "Failed to initialize database" warning is expected; suppress it so it
 		// doesn't clutter the test output.
-		setLogging(Level.ERROR, MainDriver.class);
+		suppressLogging(Level.WARN, MainDriver.class);
 
 		// Force the init transaction's commit to fail, and fail on the resulting disruption.
 		MainDriver.setProbes(TestProbes.noop()

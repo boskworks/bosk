@@ -47,11 +47,11 @@ import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.state.TestEntity;
 
-import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.slf4j.event.Level.WARN;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.drivers.mongo.internal.MongoService.FailureMode.CLOSE;
@@ -81,7 +81,7 @@ class RecoveryTest {
 		@BeforeEach
 		void overrideLogging() {
 			// These tests deliberately provoke a lot of warnings, so log errors only
-			setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+			suppressLogging(WARN, MainDriver.class, ChangeReceiver.class);
 		}
 
 		@BeforeEach

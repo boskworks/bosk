@@ -1,6 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
 import java.io.IOException;
@@ -19,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.Reference;
@@ -78,8 +78,8 @@ public class SchemaEvolutionTest {
 		toHelper  .setupDriverFactory(testInfo);
 
 		// Changing formats often causes events that are not understood by other FormatDrivers
-		fromHelper.setLogging(Level.ERROR, ChangeReceiver.class);
-		toHelper.setLogging(Level.ERROR, ChangeReceiver.class);
+		fromHelper.suppressLogging(Level.WARN, ChangeReceiver.class);
+		toHelper.suppressLogging(Level.WARN, ChangeReceiver.class);
 
 		fromHelper.clearTearDown(testInfo);
 		toHelper  .clearTearDown(testInfo);
@@ -236,7 +236,7 @@ public class SchemaEvolutionTest {
 		changeReceiverLogger.addAppender(warningRecorder);
 		try {
 			// The class-level setup suppresses these; allow warnings through so we can detect them.
-			fromHelper.setLogging(Level.INFO, ChangeReceiver.class);
+			fromHelper.suppressLogging(Level.INFO, ChangeReceiver.class);
 
 			LOGGER.debug("Refurbish toBosk to a different format ({})", toConfig);
 			newBosk(toHelper).getDriver(MongoDriver.class).refurbish();

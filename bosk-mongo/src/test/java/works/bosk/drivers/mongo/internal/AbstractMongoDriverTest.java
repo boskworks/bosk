@@ -1,6 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import ch.qos.logback.classic.Level;
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -14,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 import works.bosk.Bosk;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
@@ -175,8 +175,8 @@ abstract class AbstractMongoDriverTest {
 		@ReferencePath("/values/string") Reference<String> valuesString();
 	}
 
-	protected void setLogging(Level level, Class<?>... loggers) {
-		logController.setLogging(level, loggers);
+	protected void suppressLogging(Level level, Class<?>... loggers) {
+		logController.suppressLogging(level, loggers);
 	}
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractMongoDriverTest.class);

@@ -16,8 +16,8 @@ import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 
-import static ch.qos.logback.classic.Level.ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.slf4j.event.Level.WARN;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
@@ -52,7 +52,7 @@ public class InitializationAtomicityTest extends AbstractMongoDriverTest {
 	@Test
 	void failedInitialization_leavesCollectionEmpty() {
 		// This test deliberately provokes a disconnect, so log errors only
-		logController.setLogging(ERROR, MainDriver.class, ChangeReceiver.class);
+		logController.suppressLogging(WARN, MainDriver.class, ChangeReceiver.class);
 
 		MainDriver.setProbes(TestProbes.noop()
 			.withWriteInterceptor(filter -> {

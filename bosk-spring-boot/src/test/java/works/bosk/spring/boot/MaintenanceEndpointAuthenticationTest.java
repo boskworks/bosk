@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.boot.web.context.servlet.AnnotationConfigServletWebApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,6 +20,7 @@ import works.bosk.Entity;
 import works.bosk.Identifier;
 import works.bosk.StateTreeNode;
 import works.bosk.jackson.JacksonSerializer;
+import works.bosk.logback.SuppressLogs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Verifies the startup check that {@link MaintenanceAccess#AUTHENTICATED} mode performs: the
  * application must have a filter chain that denies unauthenticated access to the maintenance path.
  */
+@SuppressLogs(AnnotationConfigServletWebApplicationContext.class)
 class MaintenanceEndpointAuthenticationTest {
 	public record Target(Identifier id, String name) implements Entity {}
 
