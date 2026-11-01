@@ -232,8 +232,11 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
   - With few exceptions, tests should use `assertEquals` rather than complex Hamcrest matchers; the latter is taken as an indication that the API being tested is too complicated
   - Mocks are avoided not because they're inherently bad, but because our components should be designed in a way that doesn't need them, since we favour immutable components and data structures
 - Tests should be parallelizable, and they should be self-contained in that a failing test can be re-run on its own
-- Tests should not emit logs unless something unexpected occurs
-  - use `bosk-logback/src/main/java/works/bosk/logback/BoskLogFilter.java` in tests to suppress logs that we do want in production
+- Tests should not emit logs unless something unexpected occurs,
+  including logs the test deliberately provokes.
+  When a test checks that an expected log occurs, suppress it for the duration of the test:
+  - Use `BoskLogFilter` for expected logs that a bosk emits from its own threads.
+  - Use `@SuppressLogs` for expected logs emitted by the thread running the test.
 - "Meta-tests" verify that a test is working correctly, like `bosk-testing/src/test/java/works/bosk/testing/drivers/ConformanceMetaTest.java`
 - Tests should be deterministic, and they should not rely on timing except in rare cases where there is no alternative, or where timeout behaviour is specifically being tested
   - Where components have timeout settings, tests should adjust those settings to be very short or very long as appropriate to make spurious failures vanishingly rare
