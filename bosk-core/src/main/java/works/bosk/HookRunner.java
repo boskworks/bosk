@@ -6,6 +6,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.PrimitiveIterator;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
@@ -398,13 +399,15 @@ final class HookRunner<R extends StateTreeNode> {
 			for (var entry : batch.pending().entrySet()) {
 				Path path = entry.getKey();
 				PendingHooks hooks = entry.getValue();
-				for (int hookIndex = hooks.toRun().nextSetBit(0); hookIndex >= 0; hookIndex = hooks.toRun().nextSetBit(hookIndex + 1)) {
+				PrimitiveIterator.OfInt iterator = hooks.toRun().iterator();
+				while (iterator.hasNext()) {
 					if (Thread.currentThread().isInterrupted()) {
 						throw new InterruptedException();
 					}
-					boolean existedAtBaseline = hooks.existedAtBaseline().get(hookIndex);
-					hooks.toRun().clear(hookIndex);
-					hooks.existedAtBaseline().clear(hookIndex);
+					int hookIndex = iterator.nextInt();
+					boolean existedAtBaseline = hooks.existedAtBaseline(hookIndex);
+					iterator.remove();
+					hooks.setExistedAtBaseline(hookIndex, false);
 					runPendingHook(hookAt(hookIndex), path, batch.snapshot(), existedAtBaseline);
 				}
 			}

@@ -1,17 +1,18 @@
 package works.bosk;
 
-import java.util.BitSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Pending hook calls, with one bit per hook registration and reference.
+ * Pending hook calls, with one entry per hook registration and reference.
  *
  * <p>
- * Each path keeps one bit per hook registration. A hook's first pending
- * notification records whether the reference existed before that notification.
- * If a reference is created and then deleted before the hook runs, the pending
- * bit is removed: the hook never observed the reference and has nothing to do.
+ * Each path keeps the set of hook registrations with a pending call, and the
+ * registrations whose reference did not exist at their first pending change.
+ * A registration is nonexistent at baseline when the hook was first notified
+ * of a creation; if the reference is created and then deleted before the hook
+ * runs, that registration is removed: the hook has nothing to do.
  *
  * <p>
  * Notifications accumulate in the <em>active</em> set until a batch detaches
@@ -40,22 +41,22 @@ final class PendingHookSet {
 		assert existedBefore || existsAfter : "A hook notification must describe an actual change";
 		PendingHooks hooks = active.get(path);
 		if (hooks == null) {
-			hooks = new PendingHooks(new BitSet(), new BitSet());
+			hooks = new PendingHooks();
 			active.put(path, hooks);
 		}
-		if (hooks.toRun().get(hookIndex)) {
-			if (hooks.existedAtBaseline().get(hookIndex) || existsAfter) {
+		if (hooks.toRun().contains(hookIndex)) {
+			if (hooks.existedAtBaseline(hookIndex) || existsAfter) {
 				return;
 			}
 			// The hook never saw this reference: it was absent at baseline and is gone now.
-			hooks.toRun().clear(hookIndex);
-			hooks.existedAtBaseline().clear(hookIndex);
+			hooks.toRun().remove(hookIndex);
+			hooks.setExistedAtBaseline(hookIndex, false);
 			if (hooks.toRun().isEmpty()) {
 				active.remove(path);
 			}
 		} else {
-			hooks.toRun().set(hookIndex);
-			hooks.existedAtBaseline().set(hookIndex, existedBefore);
+			hooks.toRun().add(hookIndex);
+			hooks.setExistedAtBaseline(hookIndex, existedBefore);
 		}
 	}
 
@@ -77,11 +78,11 @@ final class PendingHookSet {
 			if (earlier.toRun().isEmpty()) {
 				continue;
 			}
-			PendingHooks target = active.computeIfAbsent(entry.getKey(), _ -> new PendingHooks(new BitSet(), new BitSet()));
-			for (int hookIndex = earlier.toRun().nextSetBit(0); hookIndex >= 0; hookIndex = earlier.toRun().nextSetBit(hookIndex + 1)) {
-				target.toRun().set(hookIndex);
-				target.existedAtBaseline().set(hookIndex, earlier.existedAtBaseline().get(hookIndex));
-			}
+			PendingHooks target = active.computeIfAbsent(entry.getKey(), _ -> new PendingHooks());
+			earlier.toRun().forEachInt(hookIndex -> {
+				target.toRun().add(hookIndex);
+				target.setExistedAtBaseline(hookIndex, earlier.existedAtBaseline(hookIndex));
+			});
 		}
 	}
 
@@ -99,5 +100,50 @@ final class PendingHookSet {
 		active = new LinkedHashMap<>();
 	}
 
-	record PendingHooks(BitSet toRun, BitSet existedAtBaseline) {}
+	static final class PendingHooks {
+		private final IntSet toRun = new IntSet();
+		/**
+		 * The registrations whose reference did not exist at baseline, or
+		 * {@code null} if none were. This can include registrations that are no
+		 * longer pending; a later notification overwrites the entry.
+		 *
+		 * <p>
+		 * Null stands for the empty set. That is not the usual style in this
+		 * codebase, but an absent baseline is the uncommon case, and this avoids
+		 * allocating an empty {@code IntSet} for every changed reference.
+		 */
+		@Nullable private IntSet nonexistentAtBaseline;
+
+		IntSet toRun() {
+			return toRun;
+		}
+
+		/**
+		 * @return whether the reference existed before this hook's first pending
+		 * change, which is true unless the hook was first notified of a creation
+		 */
+		boolean existedAtBaseline(int hookIndex) {
+			return nonexistentAtBaseline == null || !nonexistentAtBaseline.contains(hookIndex);
+		}
+
+		/**
+		 * Records whether the reference existed before this hook's first pending
+		 * change.
+		 */
+		void setExistedAtBaseline(int hookIndex, boolean existed) {
+			if (existed) {
+				if (nonexistentAtBaseline != null) {
+					nonexistentAtBaseline.remove(hookIndex);
+					if (nonexistentAtBaseline.isEmpty()) {
+						nonexistentAtBaseline = null;
+					}
+				}
+			} else {
+				if (nonexistentAtBaseline == null) {
+					nonexistentAtBaseline = new IntSet();
+				}
+				nonexistentAtBaseline.add(hookIndex);
+			}
+		}
+	}
 }
