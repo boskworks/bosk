@@ -2,7 +2,6 @@ package works.bosk;
 
 import java.util.AbstractSet;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.PrimitiveIterator;
 import java.util.Spliterator;
@@ -194,7 +193,7 @@ final class IntSet extends AbstractSet<Integer> {
 	}
 
 	@Override
-	public Iterator<Integer> iterator() {
+	public PrimitiveIterator.OfInt iterator() {
 		return new IntIterator();
 	}
 

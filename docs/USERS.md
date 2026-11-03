@@ -584,7 +584,8 @@ that information belongs in the bosk state tree, which the hook's read session m
 rather than in the diagnostic attributes.
 
 In standard mode, if a single update triggers multiple hooks, the hooks run in the order they were registered.
-Overload mode gives up that ordering guarantee because it compacts notifications.
+Overload mode gives up that ordering guarantee because it compacts notifications:
+the order in which compacted notifications are delivered is unspecified.
 
 #### Breadth-first ordering
 

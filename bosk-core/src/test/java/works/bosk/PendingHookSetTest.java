@@ -26,8 +26,8 @@ class PendingHookSetTest {
 		pending.add(0, pathA, true, false);
 		assertFalse(pending.isEmpty(), "A deleted pre-existing reference needs a deletion call");
 		PendingHookSet.PendingHooks hooks = pending.detach().get(pathA);
-		assertTrue(hooks.toRun().get(0), "Hook should be pending");
-		assertTrue(hooks.existedAtBaseline().get(0), "Reference existed before the first notification");
+		assertTrue(hooks.toRun().contains(0), "Hook must be pending");
+		assertTrue(hooks.existedAtBaseline(0), "The reference must have existed before the first notification");
 	}
 
 	@Test
@@ -35,16 +35,16 @@ class PendingHookSetTest {
 		pending.add(0, pathA, false, true);
 		pending.add(0, pathA, true, true);
 		PendingHookSet.PendingHooks hooks = pending.detach().get(pathA);
-		assertFalse(hooks.existedAtBaseline().get(0), "Baseline comes from the first pending change");
+		assertFalse(hooks.existedAtBaseline(0), "The baseline must come from the first pending change");
 	}
 
 	@Test
-	void nonzeroHookIndexStoredAtItsBit() {
+	void nonzeroHookIndexIsStored() {
 		pending.add(5, pathA, true, true);
 		PendingHookSet.PendingHooks hooks = pending.detach().get(pathA);
-		assertFalse(hooks.toRun().get(0), "Hook index 0 should not be set");
-		assertTrue(hooks.toRun().get(5), "Hook index 5 should be set");
-		assertTrue(hooks.existedAtBaseline().get(5), "Baseline for hook index 5 should be set");
+		assertFalse(hooks.toRun().contains(0), "Hook index 0 must not be pending");
+		assertTrue(hooks.toRun().contains(5), "Hook index 5 must be pending");
+		assertTrue(hooks.existedAtBaseline(5), "The baseline for hook index 5 must be present");
 	}
 
 	@Test
@@ -53,28 +53,28 @@ class PendingHookSetTest {
 		pending.add(1, pathA, true, true);
 		pending.add(0, pathA, true, false);
 		PendingHookSet.PendingHooks hooks = pending.detach().get(pathA);
-		assertFalse(hooks.toRun().get(0), "Hook 0 saw only a created-then-deleted reference");
-		assertTrue(hooks.toRun().get(1), "Hook 1 saw a pre-existing reference and needs a deletion call");
-		assertTrue(hooks.existedAtBaseline().get(1), "Hook 1 baseline is independent of hook 0");
+		assertFalse(hooks.toRun().contains(0), "Hook 0 must have nothing pending after a created-then-deleted reference");
+		assertTrue(hooks.toRun().contains(1), "Hook 1 must have a pending deletion call");
+		assertTrue(hooks.existedAtBaseline(1), "Hook 1's baseline must be independent of hook 0's");
 	}
 
 	@Test
 	void recreatedReference_startsWithFreshBaseline() {
 		pending.add(0, pathA, false, true);
 		pending.add(0, pathA, true, false);
-		assertTrue(pending.isEmpty(), "Transient reference should be discarded");
+		assertTrue(pending.isEmpty(), "Transient reference must be discarded");
 		pending.add(0, pathA, false, true);
 		PendingHookSet.PendingHooks hooks = pending.detach().get(pathA);
-		assertTrue(hooks.toRun().get(0), "Recreated reference should be pending again");
-		assertFalse(hooks.existedAtBaseline().get(0), "Recreation starts a fresh baseline");
+		assertTrue(hooks.toRun().contains(0), "Recreated reference must be pending again");
+		assertFalse(hooks.existedAtBaseline(0), "A recreation must start a fresh baseline");
 	}
 
 	@Test
 	void detach_clearsPendingSet() {
 		pending.add(0, pathA, true, true);
 		Map<Path, PendingHookSet.PendingHooks> batch = pending.detach();
-		assertEquals(List.of(pathA), new ArrayList<>(batch.keySet()), "Batch should contain the pending path");
-		assertTrue(pending.isEmpty(), "Detached work should leave the pending set empty");
+		assertEquals(List.of(pathA), new ArrayList<>(batch.keySet()), "Batch must contain the pending path");
+		assertTrue(pending.isEmpty(), "Detached work must leave the pending set empty");
 	}
 
 	@Test
@@ -82,7 +82,7 @@ class PendingHookSetTest {
 		pending.add(0, pathB, true, true);
 		pending.add(0, pathA, true, true);
 		Map<Path, PendingHookSet.PendingHooks> batch = pending.detach();
-		assertEquals(List.of(pathB, pathA), new ArrayList<>(batch.keySet()), "Paths should be in first-seen order");
+		assertEquals(List.of(pathB, pathA), new ArrayList<>(batch.keySet()), "Paths must be in first-seen order");
 	}
 
 	@Test
@@ -92,17 +92,27 @@ class PendingHookSetTest {
 		pending.add(0, pathA, true, true);
 		pending.mergeEarlier(batch);
 		PendingHookSet.PendingHooks hooks = pending.detach().get(pathA);
-		assertTrue(hooks.toRun().get(0), "Unrun notification should be restored");
-		assertFalse(hooks.existedAtBaseline().get(0), "The earlier batch baseline should win");
+		assertTrue(hooks.toRun().contains(0), "Unrun notification must be restored");
+		assertFalse(hooks.existedAtBaseline(0), "The earlier batch's baseline must win");
 	}
 
 	@Test
 	void mergeEarlierIgnoresNotificationsThatAlreadyRan() {
 		pending.add(0, pathA, false, true);
 		Map<Path, PendingHookSet.PendingHooks> batch = pending.detach();
-		batch.get(pathA).toRun().clear(0);
-		batch.get(pathA).existedAtBaseline().clear(0);
+		batch.get(pathA).toRun().remove(0);
+		batch.get(pathA).setExistedAtBaseline(0, false);
 		pending.mergeEarlier(batch);
-		assertTrue(pending.isEmpty(), "A cleared notification should not be restored");
+		assertTrue(pending.isEmpty(), "A cleared notification must not be restored");
+	}
+
+	@Test
+	void mergeEarlier_earlierPresentBaselineWins() {
+		pending.add(0, pathA, true, true);
+		Map<Path, PendingHookSet.PendingHooks> batch = pending.detach();
+		pending.add(0, pathA, false, true);
+		pending.mergeEarlier(batch);
+		PendingHookSet.PendingHooks hooks = pending.detach().get(pathA);
+		assertTrue(hooks.existedAtBaseline(0), "The earlier batch's baseline must win");
 	}
 }
