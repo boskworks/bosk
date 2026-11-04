@@ -12,6 +12,7 @@ module works.bosk.testing {
 
 	exports works.bosk.testing;
 	exports works.bosk.testing.drivers;
+	exports works.bosk.testing.drivers.fuzz;
 	exports works.bosk.testing.drivers.state;
 	exports works.bosk.testing.drivers.operations;
 }
