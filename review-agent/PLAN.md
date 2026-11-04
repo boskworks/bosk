@@ -183,10 +183,12 @@ One run produces **one proposed patch** to `review-agent/review/reviewer.md`, wi
   `original_line` (or the span `original_start_line`..`original_line`) within its `diff_hunk`, plus
   `original_commit_id` — filtered by review round) plus a fresh worktree at the
   commit being reviewed. The same packet procedure is used in production (current state) and in the eval
-  (round N). In the eval the generation runs without GitHub credentials, so the agent cannot read the PR's
-  review thread — which contains the gold findings it is scored against. A finding whose file is not in
-  the snapshot's changed-file list is unreachable and excluded from the denominator (the reachability
-  guard).
+  (round N). Rebuilding a packet verifies that an existing worktree is clean and at the reviewed head,
+  moving it there when a previous round left it at an older commit. It fails rather than review stale
+  code, and refuses to discard uncommitted changes without `--cleanup`. In the eval the generation runs
+  without GitHub credentials, so the agent cannot read the PR's review thread — which contains the gold
+  findings it is scored against. A finding whose file is not in the snapshot's changed-file list is
+  unreachable and excluded from the denominator (the reachability guard).
 - **Base-branch changes.** A PR whose base branch changed (`base_ref_changed`) is excluded at fetch:
   `merge-base(PR.base.sha, anchor)` would be meaningless for its early comments. A PR that merged changes
   from main into its branch is *not* a problem: GitHub's own diff semantics treat the merged-in content as
@@ -210,8 +212,10 @@ One run produces **one proposed patch** to `review-agent/review/reviewer.md`, wi
   git-derived review-time contexts — losslessly recreatable from GitHub plus the repo's git history.
   `data/eval/` holds *run artifacts* (virtual reviews, match results, logs), keyed by prompt hash and
   model so prompt versions can be compared; they are regenerable, but not losslessly recreatable, since
-  generation is stochastic. Only `review/`, `eval/`, `calibrate/`, and `corpus/` under `review-agent/` (and
-  this plan) are committed.
+  generation is stochastic. `data/reviews/` holds the posted reviews: the latest round at `<PR>.json` and
+  superseded rounds under `archive/<PR>/<timestamp>.json`, so a new post never destroys the review the
+  previous round was calibrated from. Only `review/`, `eval/`, `calibrate/`, and `corpus/` under
+  `review-agent/` (and this plan) are committed.
 
 ## Deliverables
 
@@ -246,6 +250,8 @@ review-agent/
     corpus/<PR>/…          # reference data: metadata, comments, reactions, classifications, contexts
     eval/<key>/<PR>.{json,log,stats,match*}   # run artifacts: virtual reviews, generation logs and stats, match results
     eval/archive-<ts>/<key>/…                 # superseded generations, preserved for post hoc analysis
+    reviews/<PR>.json                         # current posted review (the calibration tools read this)
+    reviews/archive/<PR>/<timestamp>.json     # earlier posted reviews, preserved per round
     reports/               # evidence output
 ```
 
