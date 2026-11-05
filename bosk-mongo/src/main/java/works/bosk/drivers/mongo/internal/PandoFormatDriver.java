@@ -55,6 +55,7 @@ import static java.util.stream.Collectors.toList;
 import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
+import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.DocumentFieldTracker.TrackedField.DIAGNOSTICS;
 import static works.bosk.util.Classes.enumerableByIdentifier;
 
@@ -121,7 +122,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		collection.ensureTransactionStarted();
 		Reference<?> mainRef = mainRef(target);
 		BsonDocument filter = documentFilter(mainRef)
-			.append(BsonFormatter.dottedFieldNameOf(target, mainRef), new BsonDocument("$exists", TRUE));
+			.append(dottedFieldNameOf(target, mainRef), new BsonDocument("$exists", TRUE));
 		if (documentExists(filter)) {
 			LOGGER.debug("Already exists: {}", filter);
 			collection.abortTransaction();
@@ -586,12 +587,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 		if (rootRef.equals(mainRef)) {
 			LOGGER.debug("| Root ref is main ref");
-			LOGGER.debug("| Pre-delete on root document");
-			String key = BsonFormatter.dottedFieldNameOf(target, rootRef);
-			LOGGER.debug("| Pre-delete field {}", key);
-			doUpdate( // Important: don't bump the revision field because that's how we identify the last event in a transaction
-				new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)),
-				standardRootPreconditions(target));
+			preDeleteField(target, rootRef, documentFilter(rootRef));
 			LOGGER.debug("| Update root document");
 			boolean applied = doUpdate(replacementDoc(target, value, rootRef), standardRootPreconditions(target));
 			if (!applied) {
@@ -599,7 +595,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				collection.abortTransaction();
 			}
 		} else {
-// Note: don't use mainPart's ID. TODO: Is this ok? Why is the ID wrong?
+			// Note: don't use mainPart's ID. TODO: Is this ok? Why is the ID wrong?
 			BsonDocument filter = documentFilter(mainRef);
 			if (target.equals(mainRef)) {
 				// Upsert the main doc
@@ -623,10 +619,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 
 			// Update part of the main doc (which must already exist)
-			String key = BsonFormatter.dottedFieldNameOf(target, mainRef);
-			LOGGER.debug("| Pre-delete field {} in {}", key, mainRef);
-			BsonDocument preDelete = new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE));
-			doUpdate(preDelete, standardPreconditions(target, mainRef, filter));
+			String key = dottedFieldNameOf(target, mainRef);
+			preDeleteField(target, mainRef, filter);
 			LOGGER.debug("| Set field {} in {}: {}", key, mainRef, value);
 			BsonDocument mainUpdate = new BsonDocument("$set", new BsonDocument(key, value));
 			// If the main document doesn't exist (or its structure doesn't match), the
@@ -677,7 +671,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private boolean preconditionFailed(Reference<Identifier> precondition, Identifier requiredValue) {
 		Reference<?> mainRef = mainRef(precondition);
 		BsonDocument filter = documentFilter(mainRef)
-			.append(BsonFormatter.dottedFieldNameOf(precondition, mainRef), new BsonString(requiredValue.toString()));
+			.append(dottedFieldNameOf(precondition, mainRef), new BsonString(requiredValue.toString()));
 		LOGGER.debug("Precondition filter: {}", filter);
 		boolean result = !documentExists(filter);
 		if (result) {
@@ -734,9 +728,20 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return standardPreconditions(target, rootRef, documentFilter(rootRef));
 	}
 
+	private <T> void preDeleteField(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
+		String key = dottedFieldNameOf(target, startingRef);
+		preDelete(target, startingRef, filter, key, new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)));
+	}
+
+	private <T> void preDelete(Reference<T> target, Reference<?> startingRef, BsonDocument filter, String key, BsonDocument update) {
+		LOGGER.debug("| Pre-delete field {} in {}", key, startingRef);
+		// Important: don't bump the revision field because that's how we identify the last event in a transaction
+		doUpdate(update, standardPreconditions(target, startingRef, filter));
+	}
+
 	private <T> BsonDocument standardPreconditions(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
 		if (!target.path().equals(startingRef.path())) {
-			String enclosingObjectKey = BsonFormatter.dottedFieldNameOf(target.enclosingReference(Object.class), startingRef);
+			String enclosingObjectKey = dottedFieldNameOf(target.enclosingReference(Object.class), startingRef);
 			BsonDocument condition = new BsonDocument("$type", new BsonString("object"));
 			filter.put(enclosingObjectKey, condition);
 			LOGGER.debug("| Precondition: {} {}", enclosingObjectKey, condition);
