@@ -52,6 +52,7 @@ import static java.util.Collections.singletonList;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
+import static org.bson.BsonBoolean.FALSE;
 import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
@@ -629,7 +630,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			// Update part of the main doc (which must already exist)
 			String key = dottedFieldNameOf(target, mainRef);
 			if (preDeleteIsStub) {
-				preDeleteField(target, mainRef, filter);
+				preDeleteStub(target, mainRef, filter);
 			} else if (hasSubParts) {
 				preDeleteField(target, mainRef, filter);
 			} else {
@@ -745,6 +746,13 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private <T> void preDeleteField(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
 		String key = dottedFieldNameOf(target, startingRef);
 		preDelete(target, startingRef, filter, key, new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)));
+	}
+
+	private <T> void preDeleteStub(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
+		String key = dottedFieldNameOf(target, startingRef);
+		// A FALSE stub has the same size as TRUE, so this avoids changing the parent document length,
+		// which can make the update very expensive.
+		preDelete(target, startingRef, filter, key, new BsonDocument("$set", new BsonDocument(key, FALSE)));
 	}
 
 	private <T> void preDelete(Reference<T> target, Reference<?> startingRef, BsonDocument filter, String key, BsonDocument update) {
