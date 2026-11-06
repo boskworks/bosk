@@ -104,8 +104,11 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 	}
 
 	@AfterEach
-	void runTearDown() {
+	void runTearDown(TestInfo testInfo) throws InterruptedException {
 		tearDownActions.forEach(Runnable::run);
+		// Check before dropping the collection: an open transaction would make
+		// the drop wait for the server to reap it.
+		mongoService.assertNoOpenTransactions(MongoService.clientApplicationName(testInfo));
 		mongoService.client()
 			.getDatabase(driverSettings.database())
 			.getCollection(driverSettings.collection())

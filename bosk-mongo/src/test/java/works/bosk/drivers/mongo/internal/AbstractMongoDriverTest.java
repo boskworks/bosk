@@ -1,8 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import java.lang.reflect.Method;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.Optional;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
@@ -11,15 +8,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 import works.bosk.Bosk;
 import works.bosk.Catalog;
 import works.bosk.CatalogReference;
-import works.bosk.DriverFactory;
-import works.bosk.DriverStack;
-import works.bosk.Entity;
 import works.bosk.Identifier;
 import works.bosk.Listing;
 import works.bosk.ListingEntry;
@@ -28,27 +19,14 @@ import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.TaggedUnion;
 import works.bosk.annotations.ReferencePath;
-import works.bosk.drivers.mongo.BsonSerializer;
-import works.bosk.drivers.mongo.MongoDriver;
-import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.junit.Injected;
-import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
 
-abstract class AbstractMongoDriverTest {
+abstract class AbstractMongoDriverTest extends MongoDriverFixture {
 	protected static final Identifier entity123 = Identifier.from("123");
 	protected static final Identifier entity124 = Identifier.from("124");
 	protected static final Identifier rootID = Identifier.from("root");
-
-	protected static MongoService mongoService;
-	protected @Injected ParameterSet parameters;
-	protected BoskLogFilter.LogController logController;
-	protected DriverFactory<TestEntity> driverFactory;
-	protected Deque<Runnable> tearDownActions;
-	protected MongoDriverSettings driverSettings;
 
 	protected AbstractMongoDriverTest() {
 	}
@@ -59,49 +37,23 @@ abstract class AbstractMongoDriverTest {
 	}
 
 	@BeforeEach
-	void setupDriverFactory(TestInfo testInfo) {
-		this.driverSettings = parameters.driverSettingsBuilder().build();
-		logController = new BoskLogFilter.LogController();
-		driverFactory = createDriverFactory(logController, testInfo);
-
-		// Start with a clean slate
-		mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(driverSettings.collection())
-			.drop();
-	}
-
-	@BeforeEach
-	void clearTearDown(TestInfo testInfo) {
-		logTest("/=== Start", testInfo);
-		tearDownActions = new ArrayDeque<>();
-//		tearDownActions.addLast(() ->  {
-//			try {
-//				LOGGER.debug("Sleeping after teardown");
-//				Thread.sleep(10_000);
-//			} catch (InterruptedException e) {
-//				LOGGER.debug("Interrupted", e);
-//				Thread.interrupted();
-//			} finally {
-//				LOGGER.debug("Done sleeping");
-//			}
-//		});
+	void setUp(TestInfo testInfo) {
+		setupDriverFactory(testInfo);
+		clearTearDown(testInfo);
 	}
 
 	@AfterEach
-	void runTearDown(TestInfo testInfo) {
-		tearDownActions.forEach(Runnable::run);
-		logTest("\\=== Done", testInfo);
+	void runTearDown(TestInfo testInfo) throws InterruptedException {
+		tearDown(testInfo);
+		assertNoOpenTransactions(testInfo);
 	}
 
-	public static void logTest(String verb, TestInfo testInfo) {
-		String method =
-			testInfo.getTestClass().map(Class::getSimpleName).orElse(null)
-				+ "."
-				+ testInfo.getTestMethod().map(Method::getName).orElse(null);
-		LOGGER.info("{} {} {}", verb, method, testInfo.getDisplayName());
+	/**
+	 * Fails if a client of this test left a transaction open on the server.
+	 */
+	protected static void assertNoOpenTransactions(TestInfo testInfo) throws InterruptedException {
+		mongoService.assertNoOpenTransactions(MongoService.clientApplicationName(testInfo));
 	}
-
 
 	public static TestEntity initialState(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
 		return initialRoot(testEntityBosk);
@@ -143,22 +95,6 @@ abstract class AbstractMongoDriverTest {
 		);
 	}
 
-	protected <E extends Entity> DriverFactory<E> createDriverFactory(BoskLogFilter.LogController logController, TestInfo testInfo) {
-		DriverFactory<E> mongoDriverFactory = (boskInfo, downstream) -> {
-			MongoDriver driver = MongoDriver.<E>factory(
-				mongoService.clientSettings(testInfo),
-				driverSettings,
-				new BsonSerializer()
-			).build(boskInfo, downstream);
-			tearDownActions.addFirst(driver::close);
-			return driver;
-		};
-		return DriverStack.of(
-			BoskLogFilter.withController(logController),
-			mongoDriverFactory
-		);
-	}
-
 	/**
 	 * A filter selecting the root state document(s), whose {@code path} is {@code "/"}.
 	 */
@@ -174,10 +110,4 @@ abstract class AbstractMongoDriverTest {
 		@ReferencePath("/values") Reference<TestValues> values();
 		@ReferencePath("/values/string") Reference<String> valuesString();
 	}
-
-	protected void suppressLogging(Level level, Class<?>... loggers) {
-		logController.suppressLogging(level, loggers);
-	}
-
-	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractMongoDriverTest.class);
 }

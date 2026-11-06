@@ -86,9 +86,12 @@ public class SchemaEvolutionTest {
 	}
 
 	@AfterEach
-	void afterEach(TestInfo testInfo) {
-		fromHelper.runTearDown(testInfo);
-		toHelper  .runTearDown(testInfo);
+	void afterEach(TestInfo testInfo) throws InterruptedException {
+		fromHelper.tearDown(testInfo);
+		toHelper  .tearDown(testInfo);
+		// Both helpers share one application name and one database, so neither
+		// can check on its own: the other one's clients are still open.
+		AbstractMongoDriverTest.assertNoOpenTransactions(testInfo);
 	}
 
 	@Test
@@ -340,7 +343,7 @@ public class SchemaEvolutionTest {
 		PandoFormat.withGraftPoints("/catalog", "/sideTable")
 	).map(Configuration::new).toList();
 
-	static final class Helper extends AbstractMongoDriverTest {
+	static final class Helper extends MongoDriverFixture {
 		final String name;
 
 		public Helper(Configuration config, int dbCounter) {
