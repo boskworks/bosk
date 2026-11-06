@@ -50,9 +50,11 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.RetryableFlushException;
+import works.bosk.exceptions.RetryableUpdateException;
 import works.bosk.logging.MappedDiagnosticContext.MDCScope;
 import works.bosk.util.TunneledCheckedException;
 
+import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static com.mongodb.client.model.Sorts.ascending;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -887,6 +889,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			RetryableOperation<X,Y> operation = operationFactory.apply(driverInUse);
 			try {
 				operation.run();
+			} catch (RetryableUpdateException e) {
+				throw e;
 			} catch (DisconnectedException e) {
 				LOGGER.debug("Driver is disconnected; will wait and retry operation ({})", e.getMessage());
 				waitAndRetry(operation, description, args);
@@ -932,8 +936,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * The client library starts the transaction, retries the whole body when it
 	 * sees a transient transaction error, retries commits whose result is
 	 * unknown, and gives up when the transaction options' {@code timeoutMS}
-	 * budget is exhausted. All failures, including connectivity outages, take
-	 * the usual disconnect path.
+	 * budget is exhausted. If the budget was exhausted by write conflicts, we
+	 * raise {@link RetryableUpdateException} without disconnecting. Other
+	 * failures, including connectivity outages, take the usual disconnect path.
 	 */
 	private void runUpdateInClientLibraryTransaction(Runnable operation, FormatDriver<R> driverInUse, String description) {
 		runInClientLibraryTransaction(
@@ -977,13 +982,40 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	/**
 	 * Chooses the exception that the update path should throw for a failed
-	 * transaction. Every failure is a database-health failure that disconnects.
+	 * transaction. Write-conflict exhaustion is retryable and leaves the Bosk
+	 * driver connected; everything else is a database-health failure that
+	 * disconnects.
 	 */
 	private RuntimeException updateFailure(MongoException e, FormatDriver<R> driverInUse, String description) {
+		if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL) && isWriteConflict(e)) {
+			// The transaction kept losing to other writers. That's contention,
+			// not a database-health problem, so leave the Bosk driver connected and
+			// let the caller retry later.
+			LOGGER.warn("Exhausted transaction conflict retries for {} after {} ms", description, timescaleMS, e);
+			return new RetryableUpdateException(
+				"Unable to complete update after transaction conflict retries",
+				e, Duration.ofMillis(timescaleMS));
+		}
 		LOGGER.debug("MongoException is not recoverable; disconnecting", e);
 		logTimeoutDiagnostics(description, e);
 		setDisconnectedDriver(e, driverInUse);
 		return new DisconnectedException(e);
+	}
+
+	/**
+	 * The client library's {@code withTransaction} puts the
+	 * transient-transaction-error label on connectivity failures as well as on
+	 * write conflicts, but a connectivity failure means the change receiver is
+	 * probably broken and must still take the disconnect path. Only a genuine
+	 * write conflict is safe to report as a retryable update.
+	 */
+	private static boolean isWriteConflict(Throwable e) {
+		for (Throwable t = e; t != null; t = t.getCause()) {
+			if (t instanceof MongoException m && m.getCode() == WRITE_CONFLICT_CODE) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private <X extends Exception, Y extends Exception> void waitAndRetry(RetryableOperation<X, Y> operation, String description, Object... args) throws X, Y {
@@ -1160,6 +1192,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	public static final BsonString MANIFEST_ID = new BsonString("!Manifest");
+	/**
+	 * The server's {@code WriteConflict} error code, from
+	 * <a href="https://www.mongodb.com/docs/manual/reference/error-codes/">MongoDB's error codes table</a>.
+	 * The client library has no constant for it. We need the code as well as the
+	 * transient-transaction-error label because the library attaches that label
+	 * to connectivity failures too.
+	 */
+	private static final int WRITE_CONFLICT_CODE = 112;
 	private static final Exception FAILURE_TO_COMPUTE_INITIAL_STATE = new IllegalStateException("Failure to compute initial state");
 	private static final Logger LOGGER = LoggerFactory.getLogger(MainDriver.class);
 	private static final Logger UNINITIALIZED_COLLECTION_LOGGER = LoggerFactory.getLogger(UNINITIALIZED_COLLECTION_LOGGER_NAME);
