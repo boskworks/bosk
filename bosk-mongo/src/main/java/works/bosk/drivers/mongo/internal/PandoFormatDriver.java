@@ -110,6 +110,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
+	public boolean updatesAreTransactional() {
+		return true;
+	}
+
+	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
 		doReplacement(target, newValue);
 	}
