@@ -833,36 +833,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// is in flight, then a failure in this operation shouldn't disconnect the replacement,
 			// or else we'd tear down a healthy driver and force an unnecessary reconnect cycle.
 			FormatDriver<R> driverInUse = formatDriver;
-			RetryableOperation<X,Y> operationInSession = () -> {
-				int immediateRetriesLeft = 2;
-				while (true) {
-					try (var session = queryCollection.newSession()) {
-						operation.run();
-						session.commitTransactionIfAny();
-					} catch (FailedMongoClientSessionException e) {
-						setDisconnectedDriver(e, driverInUse);
-						throw new DisconnectedException(e);
-					} catch (MongoException e) {
-						if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL)) {
-							if (immediateRetriesLeft >= 1) {
-								immediateRetriesLeft--;
-								LOGGER.debug("Transient transaction error; retrying immediately", e);
-								continue;
-							} else {
-								LOGGER.warn("Exhausted immediate retry attempts for transient transaction error", e);
-								setDisconnectedDriver(e, driverInUse);
-								throw new DisconnectedException(e);
-							}
-						} else {
-							LOGGER.debug("MongoException is not recoverable; disconnecting", e);
-							logTimeoutDiagnostics(description, e);
-							setDisconnectedDriver(e, driverInUse);
-							throw new DisconnectedException(e);
-						}
-					}
-					break;
-				}
-			};
+			RetryableOperation<X,Y> operationInSession = () -> runWithManualCommit(operation, driverInUse, description);
 			try {
 				operationInSession.run();
 			} catch (DisconnectedException e) {
@@ -886,6 +857,42 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			} finally {
 				LOGGER.debug("Finished operation " + description, args);
 			}
+		}
+	}
+
+	/**
+	 * Runs an operation in a session, committing it ourselves if the operation
+	 * started a transaction. Retries transient transaction errors twice before
+	 * disconnecting.
+	 */
+	private <X extends Exception, Y extends Exception> void runWithManualCommit(RetryableOperation<X,Y> operation, FormatDriver<R> driverInUse, String description) throws X,Y {
+		int immediateRetriesLeft = 2;
+		while (true) {
+			try (var session = queryCollection.newSession()) {
+				operation.run();
+				session.commitTransactionIfAny();
+			} catch (FailedMongoClientSessionException e) {
+				setDisconnectedDriver(e, driverInUse);
+				throw new DisconnectedException(e);
+			} catch (MongoException e) {
+				if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL)) {
+					if (immediateRetriesLeft >= 1) {
+						immediateRetriesLeft--;
+						LOGGER.debug("Transient transaction error; retrying immediately", e);
+						continue;
+					} else {
+						LOGGER.warn("Exhausted immediate retry attempts for transient transaction error", e);
+						setDisconnectedDriver(e, driverInUse);
+						throw new DisconnectedException(e);
+					}
+				} else {
+					LOGGER.debug("MongoException is not recoverable; disconnecting", e);
+					logTimeoutDiagnostics(description, e);
+					setDisconnectedDriver(e, driverInUse);
+					throw new DisconnectedException(e);
+				}
+			}
+			break;
 		}
 	}
 
