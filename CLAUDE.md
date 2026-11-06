@@ -181,7 +181,10 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 - **Exception while a PR is under review:** respond to review comments with new commits, one per logical change, and leave the existing commits alone. Don't squash review fixes into the commits that introduced the bugs, and don't rebase the branch, until the maintainer explicitly says it's time to tidy up the history. The guidelines below describe that final tidy-up, not the review process itself.
 
 - Each **logical change** gets its own commit: one commit per bug fix (fix + test), one per refactoring, one per feature.
+- Preparatory refactoring commits should start their summary with `Refactor: `, which is reserved for pure code rearrangements: a refactoring must never change behaviour. If a commit changes behaviour, even as a step toward the goal, it is a feature or a bug fix, not a refactor.
+- Fixes for pre-existing bugs can start their summary with `Fix: `.
 - Tests belong in the same commit as the code that motivated them (not in a separate "Tests" commit).
+- The commit that introduces a new feature should also introduce at least one real use of it, so the commit is self-contained and testable. Don't land an API in one commit and its first caller in another. The exception to this rule is a facility that is clearly generally useful on its own, such as a general-purpose utility, which needs no motivating caller.
 - Commits should be in this overall order:
   1. Fixes for existing bugs (including new tests for those bugs)
   2. Refactoring to make subsequent work easier
