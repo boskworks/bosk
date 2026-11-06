@@ -2,8 +2,10 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoException;
+import com.mongodb.TransactionOptions;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.TransactionBody;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
@@ -49,6 +51,7 @@ import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.RetryableFlushException;
 import works.bosk.logging.MappedDiagnosticContext.MDCScope;
+import works.bosk.util.TunneledCheckedException;
 
 import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static com.mongodb.client.model.Sorts.ascending;
@@ -374,53 +377,61 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Refurbish is the one operation that always <em>must</em> happen in a transaction,
-	 * or else we could fail after deleting the existing contents but before rewriting them,
-	 * which would be catastrophic.
+	 * Runs the refurbish transaction and returns the driver for the new format.
 	 * <p>
-	 * <em>Design note:</em> This operation shouldn't do any special coordination with
-	 * the receiver/listener system, because other replicas won't.
-	 * That system needs to cope with refurbish operations without any help.
+	 * The transaction body can't throw checked exceptions, so it tunnels them
+	 * through {@link TunneledCheckedException}; this method is both the method
+	 * that contains the throws and the method that catches them, which unwraps
+	 * back to the checked {@link IOException} that our callers expect.
 	 */
-	private void refurbishTransaction() throws IOException {
-		queryCollection.ensureTransactionStarted();
-		LOGGER.debug("Refurbishing to {}", driverSettings.preferredDatabaseFormat());
+	private FormatDriver<R> refurbishTransaction(FormatDriver<R> driverInUse, String description) throws IOException {
 		try {
-			FormatDriver<R> newFormatDriver;
+			return runInClientLibraryTransaction(
+				() -> {
+					LOGGER.debug("Refurbishing to {}", driverSettings.preferredDatabaseFormat());
+					try {
+						// The calls to loadAllState and writeAllState must occur atomically
+						// with respect to event processing, because both of them have side effects
+						// that affect event processing (field tracking and flush locks, respectively).
+						synchronized (receiver) {
+							StateAndMetadata<R> allState = formatDriver.loadAllState();
+							FormatDriver<R> newFormatDriver = newPreferredFormatDriver();
 
-			// The calls to loadAllState and writeAllState must occur atomically
-			// with respect to event processing, because both of them have side effects
-			// that affect event processing (field tracking and flush locks, respectively).
-			synchronized (receiver) {
-				StateAndMetadata<R> allState = formatDriver.loadAllState();
-				newFormatDriver = newPreferredFormatDriver();
+							// The manifest is replaced by writeManifest anyway,
+							// so deleting it has no value; and if we do delete it, then every
+							// FormatDriver must cope with deletions of the manifest document
+							// to avoid disconnection during refurbish operations,
+							// which is a burden. Let's just not.
+							BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
+							LOGGER.trace("Deleting state documents: {}", deletionFilter);
+							testProbes.beforeRefurbishDelete().run();
+							queryCollection.deleteMany(deletionFilter);
 
-				// The manifest is replaced by writeManifest anyway,
-				// so deleting it has no value; and if we do delete it, then every
-				// FormatDriver must cope with deletions of the manifest document
-				// to avoid disconnection during refurbish operations,
-				// which is a burden. Let's just not.
-				BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
-				LOGGER.trace("Deleting state documents: {}", deletionFilter);
-				testProbes.beforeRefurbishDelete().run();
-				queryCollection.deleteMany(deletionFilter);
-
-				newFormatDriver.writeAllState(allState);
-				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
-			}
-
-			// We must rudely commit the transaction here, since correctness requires that
-			// the database updates commit before we publish newFormatDriver.
-			queryCollection.commitTransactionIfAny();
-
-			publishFormatDriver(newFormatDriver);
-
-			// Refurbish doesn't actually change what state has been applied to the bosk.
-			// No need to do any downstream submit/flush, nor call onHasBeenApplied.
-		} catch (InvalidCollectionContentsException e) {
-			throw new IOException("Unable to refurbish database collection with invalid contents", e);
+							newFormatDriver.writeAllState(allState);
+							writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
+							return newFormatDriver;
+						}
+					} catch (InvalidCollectionContentsException e) {
+						throw new TunneledCheckedException(new IOException("Unable to refurbish database collection with invalid contents", e));
+					} catch (IOException e) {
+						throw new TunneledCheckedException(e);
+					}
+				},
+				// Refurbish loads and rewrites the whole state, so it gets the
+				// same budget as a reconnect-and-reload rather than the client
+				// library's fixed 120-second default, which wouldn't scale with
+				// timescaleMS.
+				TransactionOptions.builder()
+					.timeout(reinitializationTimeout.toMillis(), MILLISECONDS)
+					.build(),
+				driverInUse,
+				e -> refurbishFailure(e, driverInUse, description));
+		} catch (TunneledCheckedException e) {
+			// The body only tunnels IOExceptions, so this cast is safe.
+			throw (IOException) e.getCause();
 		}
 	}
+
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
@@ -495,11 +506,28 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 	}
 
+	/**
+	 * Refurbish is the one operation that always <em>must</em> happen in a transaction,
+	 * or else we could fail after deleting the existing contents but before rewriting them,
+	 * which would be catastrophic.
+	 * <p>
+	 * <em>Design note:</em> This operation shouldn't do any special coordination with
+	 * the receiver/listener system, because other replicas won't.
+	 * That system needs to cope with refurbish operations without any help.
+	 */
 	@Override
 	public void refurbish() throws IOException {
-		doRetryableDriverOperation(
-			driverInUse -> () -> runWithManualCommit(this::refurbishTransaction, driverInUse, "refurbish"),
-			"refurbish");
+		doRetryableDriverOperation(driverInUse -> () -> {
+			// refurbishTransaction doesn't return until the transaction has
+			// committed, so we publish the new driver only after the database
+			// changes are durable.
+			FormatDriver<R> newFormatDriver = refurbishTransaction(driverInUse, "refurbish");
+			publishFormatDriver(newFormatDriver);
+
+			// Refurbish doesn't actually change what state has been applied to
+			// the bosk, so there's no downstream submit/flush and no call to
+			// onHasBeenApplied.
+		}, "refurbish");
 	}
 
 	@Override
@@ -878,6 +906,29 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				LOGGER.debug("Finished operation " + description, args);
 			}
 		}
+	}
+
+	/**
+	 * Runs {@code body} in a transaction owned by MongoDB's client library.
+	 * Session-creation failures disconnect the driver; a transaction failure is
+	 * translated by {@code failure}.
+	 */
+	private <T> T runInClientLibraryTransaction(TransactionBody<T> body, TransactionOptions options, FormatDriver<R> driverInUse, Function<MongoException, RuntimeException> failure) {
+		try (var session = queryCollection.newSession()) {
+			return queryCollection.withTransaction(options, body);
+		} catch (FailedMongoClientSessionException e) {
+			setDisconnectedDriver(e, driverInUse);
+			throw new DisconnectedException(e);
+		} catch (MongoException e) {
+			throw failure.apply(e);
+		}
+	}
+
+	private RuntimeException refurbishFailure(MongoException e, FormatDriver<R> driverInUse, String description) {
+		LOGGER.debug("MongoException is not recoverable; disconnecting", e);
+		logTimeoutDiagnostics(description, e);
+		setDisconnectedDriver(e, driverInUse);
+		return new DisconnectedException(e);
 	}
 
 	/**

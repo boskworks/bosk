@@ -1,6 +1,10 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoException;
+import com.mongodb.ReadConcern;
+import com.mongodb.ReadPreference;
+import com.mongodb.TransactionOptions;
+import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.CountOptions;
@@ -18,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.drivers.mongo.internal.TransactionalCollection.Session;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -376,6 +381,21 @@ class TransactionalCollectionTest {
 			.findLatest(new BsonDocument("_id", new BsonString("commitDoc"))).cursor()
 		) {
 			assertTrue(cursor.hasNext(), "Committed data must be visible");
+		}
+	}
+
+	@Test
+	void withTransaction_mergesSessionDefaultOptions() throws FailedMongoClientSessionException {
+		try (Session session = collection.newSession()) {
+			collection.withTransaction(
+				TransactionOptions.builder().timeout(10_000L, MILLISECONDS).build(),
+				() -> {
+					TransactionOptions options = session.clientSession.getTransactionOptions();
+					assertEquals(WriteConcern.MAJORITY, options.getWriteConcern());
+					assertEquals(ReadConcern.MAJORITY, options.getReadConcern());
+					assertEquals(ReadPreference.primary(), options.getReadPreference());
+					return null;
+				});
 		}
 	}
 

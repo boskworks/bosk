@@ -11,6 +11,7 @@ import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
+import com.mongodb.client.TransactionBody;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
@@ -58,6 +59,30 @@ class TransactionalCollection {
 
 	public Session newReadOnlySession() throws FailedMongoClientSessionException {
 		return new Session(true);
+	}
+
+	/**
+	 * Runs {@code body} in a transaction managed by MongoDB's client library
+	 * via {@link ClientSession#withTransaction}, which owns
+	 * starting the transaction, retrying it on transient errors, and committing it.
+	 * <p>
+	 * The caller must already have an open writable {@link Session}. The body runs
+	 * with that session current on this thread, so an
+	 * {@link #ensureTransactionStarted()} call within the body will see the
+	 * driver's transaction already in progress and leave it alone.
+	 * <p>
+	 * Because the client library commits internally, this bypasses
+	 * {@link Session#commitTransactionIfAny()} and therefore the
+	 * {@link CommitInterceptor}.
+	 */
+	public <T> T withTransaction(TransactionOptions options, TransactionBody<T> body) {
+		Session session = currentSession.get();
+		if (session == null) {
+			throw new IllegalStateException("No active session");
+		} else if (session.isReadOnly) {
+			throw new IllegalStateException("Cannot write in a read-only session");
+		}
+		return session.clientSession.withTransaction(body, options);
 	}
 
 	/**
