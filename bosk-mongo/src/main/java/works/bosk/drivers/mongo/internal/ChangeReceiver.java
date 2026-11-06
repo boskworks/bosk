@@ -15,6 +15,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 import org.bson.BsonDocument;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -68,6 +69,12 @@ class ChangeReceiver implements Closeable {
 	private final ChangeStreamIterable<BsonDocument> changeStreamIterable;
 	private volatile @Nullable Thread thread = null;
 	private volatile boolean isClosed = false;
+	/**
+	 * Held while {@link ChangeListener#onConnectionSucceeded()} runs, so that
+	 * {@link #close()} can wait for it to finish. See
+	 * {@link #awaitConnectionSetup()} for why that matters.
+	 */
+	private final ReentrantLock connectionSetupLock = new ReentrantLock();
 
 	ChangeReceiver(String boskName, Identifier boskID, ChangeListener listener, MongoDriverSettings settings, long changeStreamMaxAwaitTimeMS, MongoCollection<BsonDocument> collection) {
 		this.boskName = boskName;
@@ -122,8 +129,37 @@ class ChangeReceiver implements Closeable {
 	@Override
 	public void close() {
 		isClosed = true;
+		awaitConnectionSetup();
 		ex.shutdownNow();
 		// Note: don't awaitTermination. It seems like a good idea, but it makes the tests crawl, and it doesn't matter for correctness
+	}
+
+	/**
+	 * Gives an in-flight {@link ChangeListener#onConnectionSucceeded()} one
+	 * {@link MongoDriverSettings#timescaleMS() timescale} to finish before the
+	 * caller proceeds with its interrupt.
+	 * <p>
+	 * Interrupting a database command partway through leaves the MongoDB client
+	 * library unable to abort the transaction that command belongs to: it only
+	 * sends the abort if it believes a message has been sent, and a command that
+	 * fails this way never updates that belief. The server then holds the
+	 * transaction's locks until it reaps the transaction, up to a minute later.
+	 * <p>
+	 * In practice the setup finishes much sooner; the timeout only matters when
+	 * something has gone wrong, and then it's a fair chance rather than a
+	 * guarantee.
+	 */
+	private void awaitConnectionSetup() {
+		try {
+			if (connectionSetupLock.tryLock(settings.timescaleMS(), MILLISECONDS)) {
+				connectionSetupLock.unlock();
+			} else {
+				LOGGER.debug("Timed out waiting for connection setup to finish");
+			}
+		} catch (InterruptedException e) {
+			// We were asked to stop waiting; stop, and let close() proceed.
+			currentThread().interrupt();
+		}
 	}
 
 	/**
@@ -167,7 +203,14 @@ class ChangeReceiver implements Closeable {
 					try (var cursor = openCursor()) {
 						try {
 							try {
-								listener.onConnectionSucceeded();
+								connectionSetupLock.lock();
+								try {
+									if (!isClosed) {
+										listener.onConnectionSucceeded();
+									}
+								} finally {
+									connectionSetupLock.unlock();
+								}
 
 								// Note that eventLoop does not throw RuntimeException; therefore,
 								// any RuntimeException must have occurred before this point.
