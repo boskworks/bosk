@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoClientSettings;
+import com.mongodb.MongoException;
 import com.mongodb.ServerAddress;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -19,7 +20,12 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
+import org.bson.Document;
+import org.bson.types.Binary;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
@@ -50,6 +56,16 @@ import static java.util.Collections.singletonList;
 public class MongoService implements Closeable {
 	// We do logging in some static initializers, so this needs to be initialized first
 	private static final Logger LOGGER = LoggerFactory.getLogger(MongoService.class);
+
+	/**
+	 * How long to keep looking for a transaction that may be in the process of
+	 * closing, and how many times to look, before deciding it is really open.
+	 * A transaction that was aborted disappears from the server's list promptly
+	 * but not instantaneously; a leaked one stays for a minute.
+	 */
+	private static final int OPEN_TRANSACTION_SETTLING_CHECKS = 4;
+	private static final long OPEN_TRANSACTION_SETTLING_TIME_MS = 250;
+
 	private final MongoClient mongoClient = MongoClients.create(normalClientSettings);
 
 	// We need this in static initializers too
@@ -194,7 +210,107 @@ public class MongoService implements Closeable {
 	}
 
 	public MongoClientSettings clientSettings(TestInfo testInfo) {
-		return testInfo.getTags().contains(DisruptsMongoProxy.TAG) ? disruptableClientSettings : normalClientSettings;
+		MongoClientSettings base = testInfo.getTags().contains(DisruptsMongoProxy.TAG) ? disruptableClientSettings : normalClientSettings;
+		return MongoClientSettings.builder(base)
+			.applicationName(clientApplicationName(testInfo))
+			.build();
+	}
+
+	/**
+	 * The {@code applicationName} given to the clients a test creates, so that
+	 * {@link #assertNoOpenTransactions} can tell their transactions apart from
+	 * those of tests running in parallel.
+	 * <p>
+	 * Test methods in a class run one at a time (see
+	 * {@code junit-platform.properties}), so a class name is enough to attribute a
+	 * transaction to the class that is currently running. (It has to be a per-class
+	 * name rather than a per-client one, because {@code MongoDriverConformanceTest}
+	 * deliberately shares one client among all its tests to avoid opening a
+	 * connection pool per test method.)
+	 * <p>
+	 * MongoDB limits application names to 128 bytes; the simple class names in
+	 * this module are far shorter than that.
+	 */
+	static String clientApplicationName(TestInfo testInfo) {
+		return "bosk-test:" + testInfo.getTestClass()
+			.map(Class::getSimpleName)
+			.orElse("unknown");
+	}
+
+	/**
+	 * Fails if the server still has a transaction open for a client with the
+	 * given application name.
+	 * <p>
+	 * Call this after closing the clients that used that name. A transaction that
+	 * was just aborted takes a moment to disappear from the server's list, so this
+	 * allows it time to settle before reporting it. A transaction that was never
+	 * aborted, by contrast, stays open until the server reaps it
+	 * ({@code transactionLifetimeLimitSeconds}, 60&nbsp;s by default), holding
+	 * collection locks the whole time; that is what makes a later test's
+	 * {@code drop()} hang.
+	 */
+	void assertNoOpenTransactions(String applicationName) throws InterruptedException {
+		List<Document> open;
+		try {
+			open = openTransactions(applicationName);
+			for (int checks = 0; checks < OPEN_TRANSACTION_SETTLING_CHECKS && !open.isEmpty(); checks++) {
+				Thread.sleep(OPEN_TRANSACTION_SETTLING_TIME_MS);
+				open = openTransactions(applicationName);
+			}
+		} catch (MongoException e) {
+			// A test that broke the database connection may still be restoring it.
+			// That test has already failed for its own reasons, so don't pile on.
+			LOGGER.warn("Unable to check for transactions left open by {}", applicationName, e);
+			return;
+		}
+		if (!open.isEmpty()) {
+			throw new AssertionError(describeOpenTransactions(applicationName, open));
+		}
+	}
+
+	/**
+	 * Returns the transactions currently open on the server for a client with the
+	 * given application name, whether they are active or sitting idle holding
+	 * locks.
+	 */
+	private List<Document> openTransactions(String applicationName) {
+		return mongoClient.getDatabase("admin")
+			.aggregate(List.of(
+				new Document("$currentOp", new Document("allUsers", true)
+					.append("idleSessions", true)),
+				new Document("$match", new Document("appName", applicationName)
+					.append("transaction", new Document("$exists", true)))
+			))
+			.into(new ArrayList<>());
+	}
+
+	private static String describeOpenTransactions(String applicationName, List<Document> open) {
+		StringBuilder message = new StringBuilder()
+			.append(open.size())
+			.append(open.size() == 1 ? " transaction is" : " transactions are")
+			.append(" still open after teardown for a client with appName=")
+			.append(applicationName)
+			.append(". The server holds the transaction's collection locks until it reaps the")
+			.append(" transaction (transactionLifetimeLimitSeconds, 60s by default),")
+			.append(" so later tests can hang. Details:\n");
+		for (Document op : open) {
+			Document transaction = op.get("transaction", Document.class);
+			Document parameters = transaction.get("parameters", Document.class);
+			Document lsid = op.get("lsid", Document.class);
+			Binary id = lsid.get("id", Binary.class);
+			message.append("  lsid=")
+				.append(id == null ? "?" : HexFormat.of().formatHex(id.getData()))
+				.append(" txnNumber=")
+				.append(parameters.get("txnNumber"))
+				.append(" openFor=")
+				.append(((Number) transaction.get("timeOpenMicros", 0)).longValue() / 1.0e6)
+				.append("s readConcern=")
+				.append(parameters.get("readConcern"))
+				.append(" locks=")
+				.append(op.get("locks"))
+				.append('\n');
+		}
+		return message.toString();
 	}
 
 	public MongoClient client() {

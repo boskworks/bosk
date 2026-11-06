@@ -86,9 +86,12 @@ public class SchemaEvolutionTest {
 	}
 
 	@AfterEach
-	void afterEach(TestInfo testInfo) {
+	void afterEach(TestInfo testInfo) throws InterruptedException {
 		fromHelper.tearDown(testInfo);
 		toHelper  .tearDown(testInfo);
+		// Both helpers share one application name and one database, so neither
+		// can check on its own: the other one's clients are still open.
+		AbstractMongoDriverTest.assertNoOpenTransactions(testInfo);
 	}
 
 	@Test

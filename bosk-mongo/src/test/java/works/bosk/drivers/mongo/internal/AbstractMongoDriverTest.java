@@ -43,8 +43,16 @@ abstract class AbstractMongoDriverTest extends MongoDriverFixture {
 	}
 
 	@AfterEach
-	void runTearDown(TestInfo testInfo) {
+	void runTearDown(TestInfo testInfo) throws InterruptedException {
 		tearDown(testInfo);
+		assertNoOpenTransactions(testInfo);
+	}
+
+	/**
+	 * Fails if a client of this test left a transaction open on the server.
+	 */
+	protected static void assertNoOpenTransactions(TestInfo testInfo) throws InterruptedException {
+		mongoService.assertNoOpenTransactions(MongoService.clientApplicationName(testInfo));
 	}
 
 	public static TestEntity initialState(Bosk<TestEntity> testEntityBosk) throws InvalidTypeException {
