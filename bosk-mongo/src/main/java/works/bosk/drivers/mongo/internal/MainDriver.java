@@ -424,7 +424,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		doRetryableDriverOperation(()->{
+		doRetryableUpdateOperation(()->{
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitReplacement(target, newValue);
 		}, "submitReplacement({})", target);
@@ -432,7 +432,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		doRetryableDriverOperation(()->{
+		doRetryableUpdateOperation(()->{
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		}, "submitConditionalReplacement({}, {}={})", target, precondition, requiredValue);
@@ -440,7 +440,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		doRetryableDriverOperation(()->{
+		doRetryableUpdateOperation(()->{
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalCreation(target, newValue);
 		}, "submitConditionalCreation({})", target);
@@ -448,7 +448,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		doRetryableDriverOperation(()->{
+		doRetryableUpdateOperation(()->{
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitDeletion(target);
 		}, "submitDeletion({})", target);
@@ -456,7 +456,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		doRetryableDriverOperation(() -> {
+		doRetryableUpdateOperation(() -> {
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalDeletion(target, precondition, requiredValue);
 		}, "submitConditionalDeletion({}, {}={})", target, precondition, requiredValue);
@@ -497,9 +497,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public void refurbish() throws IOException {
-		doRetryableDriverOperation(() -> {
-			refurbishTransaction();
-		}, "refurbish");
+		doRetryableDriverOperation(
+			driverInUse -> () -> runWithManualCommit(this::refurbishTransaction, driverInUse, "refurbish"),
+			"refurbish");
 	}
 
 	@Override
@@ -827,18 +827,38 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		return ex;
 	}
 
+	/**
+	 * Runs an update operation, conventionally a {@link BoskDriver} submit method,
+	 * which doesn't declare checked exceptions.
+	 */
+	private void doRetryableUpdateOperation(Runnable operation, String description, Object... args) {
+		doRetryableDriverOperation(
+			driverInUse -> () -> runWithManualCommit(operation::run, driverInUse, description),
+			description, args);
+	}
+
 	private <X extends Exception, Y extends Exception> void doRetryableDriverOperation(RetryableOperation<X,Y> operation, String description, Object... args) throws X,Y {
+		doRetryableDriverOperation(ignored -> operation, description, args);
+	}
+
+	/**
+	 * Runs an operation under the driver's disconnect/retry policy.
+	 * <p>
+	 * This wrapper deliberately knows nothing about sessions or transactions:
+	 * each operation decides for itself whether it needs either. The factory
+	 * receives the format driver that was current when the operation started,
+	 * so a failure in this operation doesn't tear down a replacement driver and
+	 * force an unnecessary reconnect cycle.
+	 */
+	private <X extends Exception, Y extends Exception> void doRetryableDriverOperation(Function<FormatDriver<R>, RetryableOperation<X,Y>> operationFactory, String description, Object... args) throws X,Y {
 		try (var _ = beginDriverOperation(description, args)) {
-			// The driver the operation is about to use. If it's replaced while the operation
-			// is in flight, then a failure in this operation shouldn't disconnect the replacement,
-			// or else we'd tear down a healthy driver and force an unnecessary reconnect cycle.
 			FormatDriver<R> driverInUse = formatDriver;
-			RetryableOperation<X,Y> operationInSession = () -> runWithManualCommit(operation, driverInUse, description);
+			RetryableOperation<X,Y> operation = operationFactory.apply(driverInUse);
 			try {
-				operationInSession.run();
+				operation.run();
 			} catch (DisconnectedException e) {
 				LOGGER.debug("Driver is disconnected; will wait and retry operation ({})", e.getMessage());
-				waitAndRetry(operationInSession, description, args);
+				waitAndRetry(operation, description, args);
 			} catch (Exception e) {
 				if (e instanceof InterruptedException) {
 					// We can't catch InterruptedException in its own clause, because the operation's
@@ -847,12 +867,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					// a healthy driver. Retry immediately (waitAndRetry skips its wait
 					// because the driver is healthy).
 					LOGGER.debug("Interrupted during driver operation; will retry without disconnecting", e);
-					waitAndRetry(operationInSession, description, args);
+					waitAndRetry(operation, description, args);
 				} else {
 					LOGGER.debug("Unexpected exception; will disconnect and retry operation", e);
 					logTimeoutDiagnostics(description, e);
 					setDisconnectedDriver(e, driverInUse);
-					waitAndRetry(operationInSession, description, args);
+					waitAndRetry(operation, description, args);
 				}
 			} finally {
 				LOGGER.debug("Finished operation " + description, args);
@@ -861,9 +881,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Runs an operation in a session, committing it ourselves if the operation
-	 * started a transaction. Retries transient transaction errors twice before
-	 * disconnecting.
+	 * Runs an operation with a session whose commit we manage ourselves.
+	 * <p>
+	 * Used by updates and by refurbish, which must commit before it publishes
+	 * the new format driver.
 	 */
 	private <X extends Exception, Y extends Exception> void runWithManualCommit(RetryableOperation<X,Y> operation, FormatDriver<R> driverInUse, String description) throws X,Y {
 		int immediateRetriesLeft = 2;
