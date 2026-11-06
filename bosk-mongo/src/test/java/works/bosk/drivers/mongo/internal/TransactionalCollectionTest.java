@@ -119,6 +119,26 @@ class TransactionalCollectionTest {
 	}
 
 	@Test
+	void requireNoTransaction_allowsNoSession() {
+		assertDoesNotThrow(collection::requireNoTransaction);
+	}
+
+	@Test
+	void requireNoTransaction_allowsSessionWithoutTransaction() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newSession()) {
+			assertDoesNotThrow(collection::requireNoTransaction);
+		}
+	}
+
+	@Test
+	void requireNoTransaction_throwsInsideTransaction() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newSession()) {
+			collection.ensureTransactionStarted();
+			assertThrows(IllegalStateException.class, collection::requireNoTransaction);
+		}
+	}
+
+	@Test
 	void sessionCreation_afterClose_allowed() throws FailedMongoClientSessionException {
 		try (Session _ = collection.newSession()) { }
 		assertDoesNotThrow(() -> {

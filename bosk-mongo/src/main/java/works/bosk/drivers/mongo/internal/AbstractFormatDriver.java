@@ -262,11 +262,10 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
+		// The revision read uses findLatest, which bypasses the session and reads
+		// the latest committed value, so flush needs no session or transaction.
+		collection.requireNoTransaction();
 		BsonInt64 revision = readRevisionNumberToFlush();
-
-		// Don't hold a database transaction while waiting for the flush lock
-		// or flushing downstream.
-		collection.commitTransactionIfAny();
 
 		LOGGER.debug("Revision to flush: {}", revision);
 		flushLock.get().awaitRevision(revision);

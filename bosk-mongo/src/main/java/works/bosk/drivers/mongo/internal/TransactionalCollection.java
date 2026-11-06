@@ -226,6 +226,20 @@ class TransactionalCollection {
 	}
 
 	/**
+	 * Fails if the current thread is inside a transaction.
+	 * <p>
+	 * Use this for operations that must not hold a transaction while doing
+	 * something slow or non-database-related. A thread with no session at all
+	 * has no transaction, so that case is allowed.
+	 */
+	public void requireNoTransaction() {
+		Session session = currentSession.get();
+		if (session != null && session.clientSession.hasActiveTransaction()) {
+			throw new IllegalStateException("Operation must not run inside a transaction");
+		}
+	}
+
+	/**
 	 * This method kind of breaks the abstraction we're trying to build here.
 	 * <p>
 	 * Calling this is not usually recommended because it ends the transaction,

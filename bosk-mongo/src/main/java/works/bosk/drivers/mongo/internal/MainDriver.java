@@ -465,8 +465,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public void flush() throws IOException, InterruptedException {
 		try {
-			// TODO: This could use a read-only session, but doRetryableDriverOperation uses a normal read-write session
-			//  because it was designed for updates rather than flushes.
 			this.<InterruptedException, IOException>doRetryableDriverOperation(() -> {
 				formatDriver.flush();
 			}, "flush");
