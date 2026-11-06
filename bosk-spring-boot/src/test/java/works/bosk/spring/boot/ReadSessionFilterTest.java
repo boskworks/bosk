@@ -21,6 +21,7 @@ import works.bosk.drivers.ForwardingDriver;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.NoReadSessionException;
 import works.bosk.exceptions.RetryableFlushException;
+import works.bosk.exceptions.RetryableUpdateException;
 import works.bosk.testing.drivers.ReportingDriver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -89,6 +90,18 @@ class ReadSessionFilterTest {
 			+ "\"message\":\"The server could not confirm that the state is up to date.\","
 			+ "\"retryAfterSeconds\":" + RETRY_AFTER_HINT.toSeconds() + "}", res.getContentAsString());
 		assertTrue(events.isEmpty(), "The filter chain must not be called after a flush failure");
+	}
+
+	@Test
+	void retryableUpdate_returns503WithRetryAfter() throws IOException {
+		filter.handleRetryableUpdate(new RetryableUpdateException("Retry later", RETRY_AFTER_HINT), res);
+		assertEquals(503, res.getStatus());
+		assertEquals(Long.toString(RETRY_AFTER_HINT.toSeconds()), res.getHeader(RETRY_AFTER));
+		assertTrue(res.getContentType().startsWith(APPLICATION_JSON_VALUE),
+			"The 503 response should have a JSON content type");
+		assertEquals("{\"error\":\"bosk_update_failed\","
+			+ "\"message\":\"The update could not be completed; retry later.\","
+			+ "\"retryAfterSeconds\":" + RETRY_AFTER_HINT.toSeconds() + "}", res.getContentAsString());
 	}
 
 	@Test

@@ -2,8 +2,10 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoException;
+import com.mongodb.TransactionOptions;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.TransactionBody;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.result.UpdateResult;
@@ -48,7 +50,9 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.RetryableFlushException;
+import works.bosk.exceptions.RetryableUpdateException;
 import works.bosk.logging.MappedDiagnosticContext.MDCScope;
+import works.bosk.util.TunneledCheckedException;
 
 import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static com.mongodb.client.model.Sorts.ascending;
@@ -374,57 +378,65 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Refurbish is the one operation that always <em>must</em> happen in a transaction,
-	 * or else we could fail after deleting the existing contents but before rewriting them,
-	 * which would be catastrophic.
+	 * Runs the refurbish transaction and returns the driver for the new format.
 	 * <p>
-	 * <em>Design note:</em> This operation shouldn't do any special coordination with
-	 * the receiver/listener system, because other replicas won't.
-	 * That system needs to cope with refurbish operations without any help.
+	 * The transaction body can't throw checked exceptions, so it tunnels them
+	 * through {@link TunneledCheckedException}; this method is both the method
+	 * that contains the throws and the method that catches them, which unwraps
+	 * back to the checked {@link IOException} that our callers expect.
 	 */
-	private void refurbishTransaction() throws IOException {
-		queryCollection.ensureTransactionStarted();
-		LOGGER.debug("Refurbishing to {}", driverSettings.preferredDatabaseFormat());
+	private FormatDriver<R> refurbishTransaction(FormatDriver<R> driverInUse, String description) throws IOException {
 		try {
-			FormatDriver<R> newFormatDriver;
+			return runInClientLibraryTransaction(
+				() -> {
+					LOGGER.debug("Refurbishing to {}", driverSettings.preferredDatabaseFormat());
+					try {
+						// The calls to loadAllState and writeAllState must occur atomically
+						// with respect to event processing, because both of them have side effects
+						// that affect event processing (field tracking and flush locks, respectively).
+						synchronized (receiver) {
+							StateAndMetadata<R> allState = formatDriver.loadAllState();
+							FormatDriver<R> newFormatDriver = newPreferredFormatDriver();
 
-			// The calls to loadAllState and writeAllState must occur atomically
-			// with respect to event processing, because both of them have side effects
-			// that affect event processing (field tracking and flush locks, respectively).
-			synchronized (receiver) {
-				StateAndMetadata<R> allState = formatDriver.loadAllState();
-				newFormatDriver = newPreferredFormatDriver();
+							// The manifest is replaced by writeManifest anyway,
+							// so deleting it has no value; and if we do delete it, then every
+							// FormatDriver must cope with deletions of the manifest document
+							// to avoid disconnection during refurbish operations,
+							// which is a burden. Let's just not.
+							BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
+							LOGGER.trace("Deleting state documents: {}", deletionFilter);
+							testProbes.beforeRefurbishDelete().run();
+							queryCollection.deleteMany(deletionFilter);
 
-				// The manifest is replaced by writeManifest anyway,
-				// so deleting it has no value; and if we do delete it, then every
-				// FormatDriver must cope with deletions of the manifest document
-				// to avoid disconnection during refurbish operations,
-				// which is a burden. Let's just not.
-				BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
-				LOGGER.trace("Deleting state documents: {}", deletionFilter);
-				testProbes.beforeRefurbishDelete().run();
-				queryCollection.deleteMany(deletionFilter);
-
-				newFormatDriver.writeAllState(allState);
-				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
-			}
-
-			// We must rudely commit the transaction here, since correctness requires that
-			// the database updates commit before we publish newFormatDriver.
-			queryCollection.commitTransactionIfAny();
-
-			publishFormatDriver(newFormatDriver);
-
-			// Refurbish doesn't actually change what state has been applied to the bosk.
-			// No need to do any downstream submit/flush, nor call onHasBeenApplied.
-		} catch (InvalidCollectionContentsException e) {
-			throw new IOException("Unable to refurbish database collection with invalid contents", e);
+							newFormatDriver.writeAllState(allState);
+							writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
+							return newFormatDriver;
+						}
+					} catch (InvalidCollectionContentsException e) {
+						throw new TunneledCheckedException(new IOException("Unable to refurbish database collection with invalid contents", e));
+					} catch (IOException e) {
+						throw new TunneledCheckedException(e);
+					}
+				},
+				// Refurbish loads and rewrites the whole state, so it gets the
+				// same budget as a reconnect-and-reload rather than the client
+				// library's fixed 120-second default, which wouldn't scale with
+				// timescaleMS.
+				TransactionOptions.builder()
+					.timeout(reinitializationTimeout.toMillis(), MILLISECONDS)
+					.build(),
+				driverInUse,
+				e -> refurbishFailure(e, driverInUse, description));
+		} catch (TunneledCheckedException e) {
+			// The body only tunnels IOExceptions, so this cast is safe.
+			throw (IOException) e.getCause();
 		}
 	}
 
+
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		doRetryableDriverOperation(()->{
+		doRetryableUpdateOperation(()->{
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitReplacement(target, newValue);
 		}, "submitReplacement({})", target);
@@ -432,7 +444,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		doRetryableDriverOperation(()->{
+		doRetryableUpdateOperation(()->{
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		}, "submitConditionalReplacement({}, {}={})", target, precondition, requiredValue);
@@ -440,7 +452,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		doRetryableDriverOperation(()->{
+		doRetryableUpdateOperation(()->{
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalCreation(target, newValue);
 		}, "submitConditionalCreation({})", target);
@@ -448,7 +460,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		doRetryableDriverOperation(()->{
+		doRetryableUpdateOperation(()->{
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitDeletion(target);
 		}, "submitDeletion({})", target);
@@ -456,7 +468,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		doRetryableDriverOperation(() -> {
+		doRetryableUpdateOperation(() -> {
 			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
 			formatDriver.submitConditionalDeletion(target, precondition, requiredValue);
 		}, "submitConditionalDeletion({}, {}={})", target, precondition, requiredValue);
@@ -465,8 +477,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public void flush() throws IOException, InterruptedException {
 		try {
-			// TODO: This could use a read-only session, but doRetryableDriverOperation uses a normal read-write session
-			//  because it was designed for updates rather than flushes.
 			this.<InterruptedException, IOException>doRetryableDriverOperation(() -> {
 				formatDriver.flush();
 			}, "flush");
@@ -497,10 +507,27 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 	}
 
+	/**
+	 * Refurbish is the one operation that always <em>must</em> happen in a transaction,
+	 * or else we could fail after deleting the existing contents but before rewriting them,
+	 * which would be catastrophic.
+	 * <p>
+	 * <em>Design note:</em> This operation shouldn't do any special coordination with
+	 * the receiver/listener system, because other replicas won't.
+	 * That system needs to cope with refurbish operations without any help.
+	 */
 	@Override
 	public void refurbish() throws IOException {
-		doRetryableDriverOperation(() -> {
-			refurbishTransaction();
+		doRetryableDriverOperation(driverInUse -> () -> {
+			// refurbishTransaction doesn't return until the transaction has
+			// committed, so we publish the new driver only after the database
+			// changes are durable.
+			FormatDriver<R> newFormatDriver = refurbishTransaction(driverInUse, "refurbish");
+			publishFormatDriver(newFormatDriver);
+
+			// Refurbish doesn't actually change what state has been applied to
+			// the bosk, so there's no downstream submit/flush and no call to
+			// onHasBeenApplied.
 		}, "refurbish");
 	}
 
@@ -829,47 +856,44 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		return ex;
 	}
 
+	/**
+	 * Runs an update operation, conventionally a {@link BoskDriver} submit method,
+	 * which doesn't declare checked exceptions.
+	 */
+	private void doRetryableUpdateOperation(Runnable operation, String description, Object... args) {
+		doRetryableDriverOperation(driverInUse -> () -> {
+			if (formatDriver.updatesAreTransactional()) {
+				runUpdateInClientLibraryTransaction(operation, driverInUse, description);
+			} else {
+				runWithSession(operation, driverInUse);
+			}
+		}, description, args);
+	}
+
 	private <X extends Exception, Y extends Exception> void doRetryableDriverOperation(RetryableOperation<X,Y> operation, String description, Object... args) throws X,Y {
+		doRetryableDriverOperation(ignored -> operation, description, args);
+	}
+
+	/**
+	 * Runs an operation under the driver's disconnect/retry policy.
+	 * <p>
+	 * This wrapper deliberately knows nothing about sessions or transactions:
+	 * each operation decides for itself whether it needs either. The factory
+	 * receives the format driver that was current when the operation started,
+	 * so a failure in this operation doesn't tear down a replacement driver and
+	 * force an unnecessary reconnect cycle.
+	 */
+	private <X extends Exception, Y extends Exception> void doRetryableDriverOperation(Function<FormatDriver<R>, RetryableOperation<X,Y>> operationFactory, String description, Object... args) throws X,Y {
 		try (var _ = beginDriverOperation(description, args)) {
-			// The driver the operation is about to use. If it's replaced while the operation
-			// is in flight, then a failure in this operation shouldn't disconnect the replacement,
-			// or else we'd tear down a healthy driver and force an unnecessary reconnect cycle.
 			FormatDriver<R> driverInUse = formatDriver;
-			RetryableOperation<X,Y> operationInSession = () -> {
-				int immediateRetriesLeft = 2;
-				while (true) {
-					try (var session = queryCollection.newSession()) {
-						operation.run();
-						session.commitTransactionIfAny();
-					} catch (FailedMongoClientSessionException e) {
-						setDisconnectedDriver(e, driverInUse);
-						throw new DisconnectedException(e);
-					} catch (MongoException e) {
-						if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL)) {
-							if (immediateRetriesLeft >= 1) {
-								immediateRetriesLeft--;
-								LOGGER.debug("Transient transaction error; retrying immediately", e);
-								continue;
-							} else {
-								LOGGER.warn("Exhausted immediate retry attempts for transient transaction error", e);
-								setDisconnectedDriver(e, driverInUse);
-								throw new DisconnectedException(e);
-							}
-						} else {
-							LOGGER.debug("MongoException is not recoverable; disconnecting", e);
-							logTimeoutDiagnostics(description, e);
-							setDisconnectedDriver(e, driverInUse);
-							throw new DisconnectedException(e);
-						}
-					}
-					break;
-				}
-			};
+			RetryableOperation<X,Y> operation = operationFactory.apply(driverInUse);
 			try {
-				operationInSession.run();
+				operation.run();
+			} catch (RetryableUpdateException e) {
+				throw e;
 			} catch (DisconnectedException e) {
 				LOGGER.debug("Driver is disconnected; will wait and retry operation ({})", e.getMessage());
-				waitAndRetry(operationInSession, description, args);
+				waitAndRetry(operation, description, args);
 			} catch (Exception e) {
 				if (e instanceof InterruptedException) {
 					// We can't catch InterruptedException in its own clause, because the operation's
@@ -878,17 +902,120 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					// a healthy driver. Retry immediately (waitAndRetry skips its wait
 					// because the driver is healthy).
 					LOGGER.debug("Interrupted during driver operation; will retry without disconnecting", e);
-					waitAndRetry(operationInSession, description, args);
+					waitAndRetry(operation, description, args);
 				} else {
 					LOGGER.debug("Unexpected exception; will disconnect and retry operation", e);
 					logTimeoutDiagnostics(description, e);
 					setDisconnectedDriver(e, driverInUse);
-					waitAndRetry(operationInSession, description, args);
+					waitAndRetry(operation, description, args);
 				}
 			} finally {
 				LOGGER.debug("Finished operation " + description, args);
 			}
 		}
+	}
+
+	/**
+	 * Runs an update in a session without starting a transaction. Sequoia's
+	 * single-document writes are retried by the client library's retryable
+	 * writes mechanism, and the outer wrapper handles disconnects.
+	 */
+	private void runWithSession(Runnable operation, FormatDriver<R> driverInUse) {
+		try (var session = queryCollection.newSession()) {
+			operation.run();
+		} catch (FailedMongoClientSessionException e) {
+			setDisconnectedDriver(e, driverInUse);
+			throw new DisconnectedException(e);
+		}
+	}
+
+	/**
+	 * Runs an update inside a transaction owned by MongoDB's client library
+	 * via {@link com.mongodb.client.ClientSession#withTransaction}.
+	 * <p>
+	 * The client library starts the transaction, retries the whole body when it
+	 * sees a transient transaction error, retries commits whose result is
+	 * unknown, and gives up when the transaction options' {@code timeoutMS}
+	 * budget is exhausted. If the budget was exhausted by write conflicts, we
+	 * raise {@link RetryableUpdateException} without disconnecting. Other
+	 * failures, including connectivity outages, take the usual disconnect path.
+	 */
+	private void runUpdateInClientLibraryTransaction(Runnable operation, FormatDriver<R> driverInUse, String description) {
+		runInClientLibraryTransaction(
+			// withTransaction needs its body to return a value, so we use
+			// Void/null to say that there's no result.
+			() -> {
+				operation.run();
+				return null;
+			},
+			// The client library's withTransaction treats timeoutMS as the total
+			// budget for all attempts, which matches the intent of timescaleMS.
+			TransactionOptions.builder()
+				.timeout(timescaleMS, MILLISECONDS)
+				.build(),
+			driverInUse,
+			e -> updateFailure(e, driverInUse, description));
+	}
+
+	/**
+	 * Runs {@code body} in a transaction owned by MongoDB's client library.
+	 * Session-creation failures disconnect the driver; a transaction failure is
+	 * translated by {@code failure}.
+	 */
+	private <T> T runInClientLibraryTransaction(TransactionBody<T> body, TransactionOptions options, FormatDriver<R> driverInUse, Function<MongoException, RuntimeException> failure) {
+		try (var session = queryCollection.newSession()) {
+			return queryCollection.withTransaction(options, body);
+		} catch (FailedMongoClientSessionException e) {
+			setDisconnectedDriver(e, driverInUse);
+			throw new DisconnectedException(e);
+		} catch (MongoException e) {
+			throw failure.apply(e);
+		}
+	}
+
+	private RuntimeException refurbishFailure(MongoException e, FormatDriver<R> driverInUse, String description) {
+		LOGGER.debug("MongoException is not recoverable; disconnecting", e);
+		logTimeoutDiagnostics(description, e);
+		setDisconnectedDriver(e, driverInUse);
+		return new DisconnectedException(e);
+	}
+
+	/**
+	 * Chooses the exception that the update path should throw for a failed
+	 * transaction. Write-conflict exhaustion is retryable and leaves the Bosk
+	 * driver connected; everything else is a database-health failure that
+	 * disconnects.
+	 */
+	private RuntimeException updateFailure(MongoException e, FormatDriver<R> driverInUse, String description) {
+		if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL) && isWriteConflict(e)) {
+			// The transaction kept losing to other writers. That's contention,
+			// not a database-health problem, so leave the Bosk driver connected and
+			// let the caller retry later.
+			LOGGER.warn("Exhausted transaction conflict retries for {} after {} ms", description, timescaleMS, e);
+			return new RetryableUpdateException(
+				"Unable to complete update after transaction conflict retries",
+				e, Duration.ofMillis(timescaleMS));
+		}
+		LOGGER.debug("MongoException is not recoverable; disconnecting", e);
+		logTimeoutDiagnostics(description, e);
+		setDisconnectedDriver(e, driverInUse);
+		return new DisconnectedException(e);
+	}
+
+	/**
+	 * The client library's {@code withTransaction} puts the
+	 * transient-transaction-error label on connectivity failures as well as on
+	 * write conflicts, but a connectivity failure means the change receiver is
+	 * probably broken and must still take the disconnect path. Only a genuine
+	 * write conflict is safe to report as a retryable update.
+	 */
+	private static boolean isWriteConflict(Throwable e) {
+		for (Throwable t = e; t != null; t = t.getCause()) {
+			if (t instanceof MongoException m && m.getCode() == WRITE_CONFLICT_CODE) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private <X extends Exception, Y extends Exception> void waitAndRetry(RetryableOperation<X, Y> operation, String description, Object... args) throws X, Y {
@@ -1065,6 +1192,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	public static final BsonString MANIFEST_ID = new BsonString("!Manifest");
+	/**
+	 * The server's {@code WriteConflict} error code, from
+	 * <a href="https://www.mongodb.com/docs/manual/reference/error-codes/">MongoDB's error codes table</a>.
+	 * The client library has no constant for it. We need the code as well as the
+	 * transient-transaction-error label because the library attaches that label
+	 * to connectivity failures too.
+	 */
+	private static final int WRITE_CONFLICT_CODE = 112;
 	private static final Exception FAILURE_TO_COMPUTE_INITIAL_STATE = new IllegalStateException("Failure to compute initial state");
 	private static final Logger LOGGER = LoggerFactory.getLogger(MainDriver.class);
 	private static final Logger UNINITIALIZED_COLLECTION_LOGGER = LoggerFactory.getLogger(UNINITIALIZED_COLLECTION_LOGGER_NAME);

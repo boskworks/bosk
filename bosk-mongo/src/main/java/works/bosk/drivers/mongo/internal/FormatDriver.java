@@ -38,6 +38,15 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException;
 
 	/**
+	 * @return true if update operations must run inside a multi-document
+	 * transaction, which lets the transaction be owned and retried by the
+	 * MongoDB client library's {@code withTransaction} machinery
+	 */
+	default boolean updatesAreTransactional() {
+		return false;
+	}
+
+	/**
 	 * Reads all state documents in the entire collection and, as a side effect,
 	 * updates the driver's internal state in the expectation that the loaded state
 	 * is to be considered the "current" state with respect to subsequent change stream events.

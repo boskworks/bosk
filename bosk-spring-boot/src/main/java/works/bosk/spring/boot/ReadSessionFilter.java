@@ -17,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import works.bosk.Bosk;
 import works.bosk.exceptions.NoReadSessionException;
 import works.bosk.exceptions.RetryableFlushException;
+import works.bosk.exceptions.RetryableUpdateException;
 
 import static org.springframework.http.HttpHeaders.CACHE_CONTROL;
 import static org.springframework.http.HttpHeaders.RETRY_AFTER;
@@ -67,16 +68,28 @@ public class ReadSessionFilter extends OncePerRequestFilter {
 	}
 
 	private static void writeFlushFailure(HttpServletResponse response, RetryableFlushException e) throws IOException {
-		long retryAfterSeconds = retryAfterSeconds(e.retryAfter());
+		writeRetryableFailure(response, "bosk_flush_failed",
+			"The server could not confirm that the state is up to date.", e.retryAfter());
+		LOGGER.debug("Flush failed; returning 503", e);
+	}
+
+	@ExceptionHandler(RetryableUpdateException.class)
+	void handleRetryableUpdate(RetryableUpdateException e, HttpServletResponse response) throws IOException {
+		writeRetryableFailure(response, "bosk_update_failed",
+			"The update could not be completed; retry later.", e.retryAfter());
+		LOGGER.debug("Update failed; returning 503", e);
+	}
+
+	private static void writeRetryableFailure(HttpServletResponse response, String error, String message, Duration retryAfter) throws IOException {
+		long retryAfterSeconds = retryAfterSeconds(retryAfter);
 		response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
 		response.setHeader(RETRY_AFTER, Long.toString(retryAfterSeconds));
 		response.setContentType(APPLICATION_JSON_VALUE);
 		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		response.getWriter().write(
-			"{\"error\":\"bosk_flush_failed\","
-				+ "\"message\":\"The server could not confirm that the state is up to date.\","
+			"{\"error\":\"" + error + "\","
+				+ "\"message\":\"" + message + "\","
 				+ "\"retryAfterSeconds\":" + retryAfterSeconds + "}");
-		LOGGER.debug("Flush failed; returning 503 with retryAfterSeconds={}", retryAfterSeconds, e);
 	}
 
 	private static long retryAfterSeconds(Duration retryAfter) {
