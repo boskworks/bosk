@@ -109,7 +109,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				document.getString("_id"),
 				formatter.epochOf(document),
 				document.getInt64(DocumentFields.revision.name()),
-				Formatter.getDiagnosticAttributesIfAny(document),
 				document.getDocument(DocumentFields.state.name())
 			);
 		} catch (NoSuchElementException e) {
@@ -131,17 +130,15 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes this state document write and the manifest write atomic.
-		try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
-			BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, DOCUMENT_ID));
-			BsonDocument filter = documentFilter();
-			UpdateOptions options = new UpdateOptions().upsert(true);
-			LOGGER.debug("** Initial upsert for {}", DOCUMENT_ID);
-			LOGGER.trace("| Filter: {}", filter);
-			LOGGER.trace("| Update: {}", update);
-			LOGGER.trace("| Options: {}", options);
-			UpdateResult result = collection.updateOne(filter, update, options);
-			LOGGER.debug("| Result: {}", result);
-		}
+		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, DOCUMENT_ID));
+		BsonDocument filter = documentFilter();
+		UpdateOptions options = new UpdateOptions().upsert(true);
+		LOGGER.debug("** Initial upsert for {}", DOCUMENT_ID);
+		LOGGER.trace("| Filter: {}", filter);
+		LOGGER.trace("| Update: {}", update);
+		LOGGER.trace("| Options: {}", options);
+		UpdateResult result = collection.updateOne(filter, update, options);
+		LOGGER.debug("| Result: {}", result);
 
 		// Update the state that we "know about"
 		finishedRevision(newRevision);

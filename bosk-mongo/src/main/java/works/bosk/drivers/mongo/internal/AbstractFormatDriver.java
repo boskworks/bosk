@@ -20,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
-import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
@@ -107,14 +106,10 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		// such flushes wait until MainDriver calls onHasBeenApplied, which advances the
 		// lock once the loaded state has actually been applied downstream.
 		replaceFlushLock(bsm.epoch(), new BsonInt64(bsm.revision().longValue() - 1));
-		fieldTracker.process(bsm);
 
 		R root = formatter.document2object(bsm.state(), rootRef);
-		MapValue<String> diagnosticAttributes = bsm.diagnosticAttributes() == null
-			? MapValue.empty() // It's not clear what missing attributes mean, but using null here would have the effect of leaving the old attributes in place, which seems flaky
-			: formatter.decodeDiagnosticAttributes(bsm.diagnosticAttributes());
 
-		return new StateAndMetadata<>(root, bsm.epoch(), bsm.revision(), diagnosticAttributes);
+		return new StateAndMetadata<>(root, bsm.epoch(), bsm.revision());
 	}
 
 	@Override
@@ -305,7 +300,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		BsonString _id,
 		Optional<BsonString> epoch,
 		BsonInt64 revision,
-		BsonDocument diagnosticAttributes,
 		BsonDocument state
 	){}
 

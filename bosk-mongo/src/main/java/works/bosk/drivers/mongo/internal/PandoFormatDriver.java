@@ -185,14 +185,13 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 						throw new InvalidCollectionContentsException(format,
 							"State document is missing required fields: " + id);
 					}
-					BsonDocument diagnosticAttributes = Formatter.getDiagnosticAttributesIfAny(lastPart);
 
 					BsonDocument state = gather(partsBuffer); // mutates partsBuffer!
 
 					bsm = new BsonStateAndMetadata(
 						id,
 						formatter.epochOf(lastPart),
-						revision, diagnosticAttributes, state
+						revision, state
 					);
 
 					// For historical reasons, this code is written as though there may be multiple independent
@@ -233,19 +232,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		replaceFlushLock(Optional.of(epoch), priorContents.revision());
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		BsonInt64 revision = nextRevision(priorContents.revision());
-		try (var _ = context.withOnly(priorContents.diagnosticAttributes())) {
+		LOGGER.debug("** Initial upsert");
+		writeAllState(initialState, epoch, revision);
 
-			LOGGER.debug("** Initial upsert");
-			writeAllState(initialState, epoch, revision);
-
-			// When writing the state, whether for initialState() or for refurbish(),
-			// the local state will be up to date with no need to process a change stream event.
-			finishedRevision(revision);
-		}
+		// When writing the state, whether for initialState() or for refurbish(),
+		// the local state will be up to date with no need to process a change stream event.
+		finishedRevision(revision);
 	}
 
 	private void writeAllState(BsonValue initialState, BsonString epoch, BsonInt64 newRevision) {
-		// Note that priorContents.diagnosticAttributes are ignored, and we use the attributes from this thread
+		// The diagnostic attributes come from the current thread.
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes these state document writes and the manifest write atomic.
 		if (initialState instanceof BsonDocument) {

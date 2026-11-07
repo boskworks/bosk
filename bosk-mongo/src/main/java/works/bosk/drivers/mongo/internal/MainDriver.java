@@ -342,14 +342,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				var session = queryCollection.newSession()
 			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
-				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), REVISION_ZERO, diagnosticAttributes);
+				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), REVISION_ZERO);
 
 				// The state document(s) and the manifest must be written atomically,
 				// so that a failure partway through initialization doesn't leave the
 				// collection half-initialized. This is the one place where MainDriver
 				// starts a transaction itself: refurbish already starts its own.
 				queryCollection.ensureTransactionStarted();
-				preferredDriver.writeAllState(priorContents);
+				try (var _ = boskInfo.context().withOnly(diagnosticAttributes)) {
+					preferredDriver.writeAllState(priorContents);
+				}
 				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
 				session.commitTransactionIfAny();
 				// We can now publish the driver knowing that the transaction has committed
@@ -625,16 +627,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 				publishFormatDriver(newDriver);
 
-				// TODO: It's not clear we actually want loadedState.diagnosticAttributes here.
-				// This causes downstream.submitReplacement to be associated with the last update to the state,
-				// which is of dubious relevance. We might just want to use the context from the current thread,
-				// which is probably empty because this runs on the ChangeReceiver thread.
-				try (
-					var _ = boskInfo.context().withOnly(allState.diagnosticAttributes())
-				) {
-					downstream.submitReplacement(boskInfo.rootReference(), allState.state());
-					LOGGER.debug("Done submitting downstream");
-				}
+				downstream.submitReplacement(boskInfo.rootReference(), allState.state());
+				LOGGER.debug("Done submitting downstream");
 
 				downstream.flush();
 				newDriver.onHasBeenApplied(allState);

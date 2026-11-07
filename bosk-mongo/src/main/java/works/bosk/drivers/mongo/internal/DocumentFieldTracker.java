@@ -9,9 +9,6 @@ import org.bson.BsonDocument;
 import org.bson.BsonValue;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
-import works.bosk.drivers.mongo.internal.AbstractFormatDriver.BsonStateAndMetadata;
-
-import static works.bosk.drivers.mongo.internal.DocumentFieldTracker.TrackedField.DIAGNOSTICS;
 
 /**
  * Tracks certain document fields across change stream events for a single collection.
@@ -62,21 +59,6 @@ final class DocumentFieldTracker {
 			case DROP, DROP_DATABASE -> fieldsByDocId.clear();
 			case null, default -> { /* OTHER, INVALIDATE — ignore */ }
 		}
-	}
-
-	/**
-	 * Infers the latest values of tracked fields from the containing document.
-	 */
-	public void processDocument(BsonDocument fullDocument) {
-		trackFields(fullDocument.get("_id"), fullDocument);
-	}
-
-	public void process(BsonStateAndMetadata bsm) {
-		// The easiest way to deal with a BsonStateAndMetadata is to fake up a document with the fields we care about
-		processDocument(new BsonDocument()
-			.append("_id", bsm._id())
-			.append(DIAGNOSTICS.fieldName, bsm.diagnosticAttributes())
-		);
 	}
 
 	private void processUpdateEvent(BsonValue docId, ChangeStreamDocument<BsonDocument> event) {
