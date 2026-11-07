@@ -166,13 +166,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Set field {}: {}", key, value);
 		BsonDocument result = blankUpdateDoc();
-		result.compute("$set", (_, existing) -> {
-			if (existing == null) {
-				return new BsonDocument(key, value);
-			} else {
-				return existing.asDocument().append(key, value);
-			}
-		});
+		result.getDocument("$set").append(key, value);
 		return result;
 	}
 

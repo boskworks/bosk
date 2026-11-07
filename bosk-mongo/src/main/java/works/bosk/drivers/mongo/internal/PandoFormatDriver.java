@@ -412,19 +412,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					throw new UnprocessableEventException("Missing state field", topmostEvent.getOperationType());
 				}
 
-				Reference<?> topmostRef;
+				Reference<?> topmostRef = documentIdToRef(documentIdOf(topmostEvent).getValue(), topmostEvent);
 				BsonDocument bsonState;
-				if (priorEvents == null) {
+				List<BsonDocument> parts = subpartDocuments(priorEvents);
+				if (parts.isEmpty()) {
 					LOGGER.debug("No prior events");
 					bsonState = state;
-					topmostRef = documentIdToRef(documentIdOf(topmostEvent).getValue(), topmostEvent);
 				} else {
-					LOGGER.debug("{} prior events", priorEvents.size());
-					List<BsonDocument> parts = subpartDocuments(priorEvents);
+					LOGGER.debug("{} prior events", parts.size());
 					parts.add(fullDocument);
-					String id = documentIdOf(topmostEvent).getValue();
 					bsonState = gather(parts); // Mutates parts
-					topmostRef = documentIdToRef(id, topmostEvent);
 				}
 
 				LOGGER.debug("| Replace downstream {}", topmostRef);
