@@ -321,8 +321,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	private void processTree(List<ChangeStreamDocument<BsonDocument>> treeEvents) throws UnprocessableEventException {
-		if (!treeEvents.isEmpty()) {
-			ChangeStreamDocument<BsonDocument> finalEvent = treeEvents.getLast();
+		if (treeEvents.isEmpty()) {
+			return;
+		}
+		ChangeStreamDocument<BsonDocument> finalEvent = treeEvents.getLast();
+		MapValue<String> diagnosticAttributes = diagnosticAttributesFor(documentIdOf(finalEvent));
+		try (
+			var _ = context.withOnly(diagnosticAttributes)
+		) {
 			switch (finalEvent.getOperationType()) {
 				case INSERT: case REPLACE: {
 					BsonDocument fullDocument = finalEvent.getFullDocument();
@@ -330,31 +336,25 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 						throw new UnprocessableEventException("Missing fullDocument on final event", finalEvent.getOperationType());
 					}
 
-					MapValue<String> diagnosticAttributes = diagnosticAttributesFor(documentIdOf(finalEvent));
-
 					Optional<BsonString> epoch = formatter.epochOf(fullDocument);
 					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
-					try (
-						var _ = context.withOnly(diagnosticAttributes)
-					) {
-						if (shouldSkip(epoch, revision)) {
-							LOGGER.debug("Skipping revision {}", revision.longValue());
-							return;
-						}
+					if (shouldSkip(epoch, revision)) {
+						LOGGER.debug("Skipping revision {}", revision.longValue());
+						return;
+					}
 
-						BsonDocument state = fullDocument.getDocument(DocumentFields.state.name());
-						if (state == null) {
-							// Final event has only the new revision number; the previous event is the topmost event.
-							// A standalone INSERT/REPLACE always has a state field; lacking one is nonsensical
-							// and implies a programming error or an unexpected database state.
-							assert treeEvents.size() >= 2 : "INSERT/REPLACE without state needs a prior topmost event";
-							ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.get(treeEvents.size() - 2);
-							LOGGER.debug("Topmost event is {} on {}", topmostEvent.getOperationType(), topmostEvent.getDocumentKey());
-							propagateDownstream(topmostEvent, treeEvents.subList(0, treeEvents.size() - 2));
-						} else {
-							LOGGER.debug("Topmost event is final event");
-							propagateDownstream(finalEvent, treeEvents.subList(0, treeEvents.size() - 1));
-						}
+					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name());
+					if (state == null) {
+						// Final event has only the new revision number; the previous event is the topmost event.
+						// A standalone INSERT/REPLACE always has a state field; lacking one is nonsensical
+						// and implies a programming error or an unexpected database state.
+						assert treeEvents.size() >= 2 : "INSERT/REPLACE without state needs a prior topmost event";
+						ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.get(treeEvents.size() - 2);
+						LOGGER.debug("Topmost event is {} on {}", topmostEvent.getOperationType(), topmostEvent.getDocumentKey());
+						propagateDownstream(topmostEvent, treeEvents.subList(0, treeEvents.size() - 2));
+					} else {
+						LOGGER.debug("Topmost event is final event");
+						propagateDownstream(finalEvent, treeEvents.subList(0, treeEvents.size() - 1));
 					}
 
 					if (!flushLock.get().epochMatches(epoch)) {
@@ -364,28 +364,21 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					finishedRevision(revision);
 				} break;
 				case UPDATE: {
-					// TODO: Combine code with INSERT and REPLACE events
-					MapValue<String> attributes = diagnosticAttributesFor(documentIdOf(finalEvent));
-					BsonInt64 revision;
-					try (
-						var _ = context.withOnly(attributes)
-					) {
-						revision = formatter.getRevisionFromUpdateEvent(finalEvent);
-						if (shouldSkip(flushLock.get().epoch(), revision)) {
-							LOGGER.debug("Skipping revision {}", revision.longValue());
-							return;
-						}
-						boolean topmostEventIsFinalEvent = updateEventHasField(finalEvent, DocumentFields.state); // If the final update changes only the revision field, then it's not the topmost event
-						if (topmostEventIsFinalEvent) {
-							LOGGER.debug("Topmost event is final event");
-							propagateDownstream(finalEvent, treeEvents.subList(0, treeEvents.size() - 1));
-						} else if (treeEvents.size() < 2) {
-							LOGGER.debug("Topmost event is a no-op");
-						} else {
-							ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.get(treeEvents.size() - 2);
-							LOGGER.debug("Topmost event is {} on {}", topmostEvent.getOperationType(), topmostEvent.getDocumentKey());
-							propagateDownstream(topmostEvent, treeEvents.subList(0, treeEvents.size() - 2));
-						}
+					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(finalEvent);
+					if (shouldSkip(flushLock.get().epoch(), revision)) {
+						LOGGER.debug("Skipping revision {}", revision.longValue());
+						return;
+					}
+					boolean topmostEventIsFinalEvent = updateEventHasField(finalEvent, DocumentFields.state); // If the final update changes only the revision field, then it's not the topmost event
+					if (topmostEventIsFinalEvent) {
+						LOGGER.debug("Topmost event is final event");
+						propagateDownstream(finalEvent, treeEvents.subList(0, treeEvents.size() - 1));
+					} else if (treeEvents.size() < 2) {
+						LOGGER.debug("Topmost event is a no-op");
+					} else {
+						ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.get(treeEvents.size() - 2);
+						LOGGER.debug("Topmost event is {} on {}", topmostEvent.getOperationType(), topmostEvent.getDocumentKey());
+						propagateDownstream(topmostEvent, treeEvents.subList(0, treeEvents.size() - 2));
 					}
 					finishedRevision(revision);
 				} break;
