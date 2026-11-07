@@ -251,7 +251,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (initialState instanceof BsonDocument) {
 			upsertAndRemoveSubParts(rootRef, initialState.asDocument()); // Mutates initialState!
 		}
-		BsonString documentId = new BsonString("|");
+		BsonString documentId = ROOT_DOCUMENT_ID;
 		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, documentId));
 		BsonDocument filter = rootDocumentsFilter();
 		filter.put("_id", documentId);
@@ -313,14 +313,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * The final event updates the revision field of the root document.
 	 */
 	private boolean isFinalEventOfTree(ChangeStreamDocument<BsonDocument> event) {
-		// Only the root document has a bson path ending with "|" because every other document
-		// has a bson path ending with the last path segment.
 		if (event.getOperationType() == DELETE) {
-			return event.getDocumentKey().get("_id").asString().getValue().endsWith("|");
+			return isRootDocumentEvent(event);
 		}
 		return
-			event.getDocumentKey().get("_id").asString().getValue().endsWith("|")
+			isRootDocumentEvent(event)
 				&& updateEventHasField(event, DocumentFields.revision);
+	}
+
+	private static boolean isRootDocumentEvent(ChangeStreamDocument<BsonDocument> event) {
+		return ROOT_DOCUMENT_ID.equals(event.getDocumentKey().getString("_id"));
 	}
 
 	private void processTree(List<ChangeStreamDocument<BsonDocument>> treeEvants) throws UnprocessableEventException {
@@ -736,7 +738,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public BsonDocument rootDocumentsFilter() {
-		return new BsonDocument("_id", new BsonString("|"));
+		return new BsonDocument("_id", ROOT_DOCUMENT_ID);
 	}
 
 	private BsonDocument documentFilter(Reference<?> docRef) {
