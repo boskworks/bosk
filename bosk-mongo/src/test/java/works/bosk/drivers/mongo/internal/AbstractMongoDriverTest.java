@@ -1,6 +1,8 @@
 package works.bosk.drivers.mongo.internal;
 
+import java.util.List;
 import java.util.Optional;
+import org.bson.BsonArray;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
 import org.jspecify.annotations.NonNull;
@@ -96,10 +98,11 @@ abstract class AbstractMongoDriverTest extends MongoDriverFixture {
 	}
 
 	/**
-	 * A filter selecting the root state document(s), whose {@code path} is {@code "/"}.
+	 * A filter selecting the root state document.
 	 */
 	protected @NonNull BsonDocument rootDocumentsFilter() {
-		return new BsonDocument("path", new BsonString("/"));
+		return new BsonDocument("_id", new BsonDocument("$in",
+			new BsonArray(List.of(new BsonString("|"), new BsonString("boskDocument")))));
 	}
 
 	public interface Refs {

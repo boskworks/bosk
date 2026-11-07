@@ -25,7 +25,6 @@ import org.bson.codecs.configuration.CodecRegistry;
 import works.bosk.BoskContext;
 import works.bosk.BoskInfo;
 import works.bosk.Listing;
-import works.bosk.Path;
 import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeSerializer;
@@ -304,12 +303,6 @@ public class BsonFormatter {
 		 * We put the whole path in _id so that it will be present in change stream documents.
 		 */
 		_id,
-
-		/**
-		 * The {@link Path#urlEncoded() url encoded} {@link Path path} of the location of
-		 * this document's state within the bosk tree.
-		 */
-		path,
 
 		/**
 		 * The BSON-encoded portion of the bosk state represented by this document.

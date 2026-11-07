@@ -12,7 +12,6 @@ import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonNull;
-import org.bson.BsonString;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -447,14 +446,14 @@ class RecoveryTest {
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection());
 			AtomicReference<Document> originalDocument = new AtomicReference<>();
-			BsonDocument rootDocumentsFilter = new BsonDocument("path", new BsonString("/"));
+			BsonDocument rootFilter = rootDocumentsFilter();
 			testRecovery(() -> {
 				LOGGER.debug("Save original document");
-				try (var cursor = collection.find(rootDocumentsFilter).cursor()) {
+				try (var cursor = collection.find(rootFilter).cursor()) {
 					originalDocument.set(cursor.next());
 				}
 				LOGGER.debug("Delete document");
-				collection.deleteMany(rootDocumentsFilter);
+				collection.deleteMany(rootFilter);
 			}, (b) -> {
 				LOGGER.debug("Restore original document");
 				// NOTE: This doesn't actually work cleanly with Pando, because restoring the root document by itself

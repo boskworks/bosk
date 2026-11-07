@@ -71,7 +71,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private final Demultiplexer demultiplexer = new Demultiplexer();
 	private final List<Reference<? extends EnumerableByIdentifier<?>>> graftPoints;
 
-	private static final BsonString ROOT_PATH = new BsonString("/");
+	private static final BsonString ROOT_DOCUMENT_ID = new BsonString("|");
 
 
 	PandoFormatDriver(
@@ -173,20 +173,19 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		) {
 			while (cursor.hasNext()) {
 				BsonDocument lastPart = cursor.next();
+				BsonString id = lastPart.getString("_id");
 				partsBuffer.add(lastPart);
-				// Only the root/main document has a path field, and it's always "/";
-				// sub-part documents have no path field at all.
-				if (ROOT_PATH.equals(lastPart.getString(DocumentFields.path.name(), null))) {
-					// The lastPart is a main part
+				// The root document sorts last by _id.
+				if (ROOT_DOCUMENT_ID.equals(id)) {
+					// The lastPart is the root document
 
 					// Pull what we need from the parts before gather() mutates them
 					BsonInt64 revision = lastPart.getInt64(DocumentFields.revision.name(), null);
 					if (revision == null) {
 						throw new InvalidCollectionContentsException(format,
-							"State document is missing required fields: " + lastPart.getString("_id"));
+							"State document is missing required fields: " + id);
 					}
 					BsonDocument diagnosticAttributes = Formatter.getDiagnosticAttributesIfAny(lastPart);
-					BsonString id = lastPart.getString("_id");
 
 					BsonDocument state = gather(partsBuffer); // mutates partsBuffer!
 

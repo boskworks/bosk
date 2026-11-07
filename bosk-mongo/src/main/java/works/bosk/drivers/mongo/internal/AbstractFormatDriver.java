@@ -286,7 +286,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected BsonDocument initialDocument(BsonValue initialState, BsonString epoch, BsonInt64 revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
-		fieldValues.put(DocumentFields.path.name(), new BsonString("/"));
 		fieldValues.put(DocumentFields.state.name(), initialState);
 		fieldValues.put(DocumentFields.epoch.name(), epoch);
 		fieldValues.put(DocumentFields.revision.name(), revision);

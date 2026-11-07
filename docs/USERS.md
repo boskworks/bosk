@@ -946,10 +946,9 @@ The format of the database is described by a manifest document whose ID is `!Man
 
 For Sequoia, the bosk state is stored in a single document within a single collection.
 The collection is named `boskCollection` by default, and can be renamed with `MongoDriverSettings.collection()`.
-The document has four fields:
+The document has three fields:
 
 - `_id`: this is always `boskDocument`
-- `path`: this is always `/`
 - `state`: contains the entire bosk state tree
 - `revision`: an incrementing version number; used to implement `flush()`
 
