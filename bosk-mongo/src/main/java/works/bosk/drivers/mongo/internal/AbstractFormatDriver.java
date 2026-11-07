@@ -128,7 +128,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	abstract BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException;
 
-	protected BsonDocument blankUpdateDoc() {
+	protected BsonDocument revisionBump() {
 		return new BsonDocument()
 			.append("$inc", new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
 			.append("$set", new BsonDocument()
@@ -165,7 +165,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Set field {}: {}", key, value);
-		BsonDocument result = blankUpdateDoc();
+		BsonDocument result = revisionBump();
 		result.getDocument("$set").append(key, value);
 		return result;
 	}
@@ -173,7 +173,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected <T> BsonDocument deletionDoc(Reference<T> target, Reference<?> startingRef) {
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Unset field {}", key);
-		return blankUpdateDoc().append("$unset", new BsonDocument(key, BsonNull.VALUE));
+		return revisionBump().append("$unset", new BsonDocument(key, BsonNull.VALUE));
 	}
 
 	/**

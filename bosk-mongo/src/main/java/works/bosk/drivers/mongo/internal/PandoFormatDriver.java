@@ -633,7 +633,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 			if (applied) {
 				LOGGER.debug("| Bump revision on root document");
-				doUpdate(blankUpdateDoc(), documentFilter(rootRef));
+				doUpdate(revisionBump(), documentFilter(rootRef));
 			} else {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
 				collection.abortTransaction();
@@ -663,7 +663,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (doUpdate(deletionDoc(target, topmostRef), standardPreconditions(target, topmostRef, documentFilter(topmostRef)))) {
 			if (!rootRef.equals(topmostRef)) {
 				LOGGER.debug("| Deletion succeeded; bumping revision number in root document");
-				doUpdate(blankUpdateDoc(), documentFilter(rootRef));
+				doUpdate(revisionBump(), documentFilter(rootRef));
 			}
 		} else {
 			LOGGER.debug("| Deletion had no effect; aborting transaction");
