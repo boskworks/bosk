@@ -319,12 +319,40 @@ public class BsonFormatter {
 		 * because the start-over is a genuinely new initialization.
 		 *
 		 * <p>
+		 * Only the root document has an epoch.
+		 *
+		 * <p>
 		 * A missing value indicates a legacy database that predates the epoch mechanism.
 		 */
 		epoch,
 
 		/**
-		 * An ever-increasing 64-bit long that is incremented every time the document changes.
+		 * A UUID identifying one lifetime of this document's
+		 * {@link #revision revision} counter.
+		 *
+		 * <p>
+		 * A new value is generated whenever the document is created, and again
+		 * whenever it is re-created, at which time the revision counter resets to
+		 * 1. Because the incarnation is generated for the new document rather than
+		 * derived from the old one, it does not depend on the old document still
+		 * existing. A target from an old incarnation can therefore be recognized
+		 * as old even though its revision number may be higher than the new
+		 * document's.
+		 *
+		 * <p>
+		 * This field is required on every state document.
+		 */
+		incarnation,
+
+		/**
+		 * A 64-bit long that is incremented every time this document is the
+		 * <em>topmost</em> document changed by an update: that is, the shallowest
+		 * document whose {@code state} changes. Other documents written by the
+		 * same update keep their revisions.
+		 *
+		 * <p>
+		 * A newly created document starts at 1. This field is required on every
+		 * state document.
 		 */
 		revision,
 

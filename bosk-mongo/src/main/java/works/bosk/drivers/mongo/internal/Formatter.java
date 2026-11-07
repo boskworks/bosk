@@ -1,7 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.client.model.changestream.ChangeStreamDocument;
-import com.mongodb.client.model.changestream.UpdateDescription;
 import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.List;
@@ -12,7 +10,6 @@ import org.bson.BsonBinaryWriter;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
 import org.bson.BsonInt32;
-import org.bson.BsonInt64;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.bson.codecs.BsonValueCodec;
@@ -42,37 +39,6 @@ final class Formatter extends BsonFormatter {
 	Formatter(BoskInfo<?> boskInfo, BsonSerializer bsonSerializer) {
 		super(boskInfo, bsonSerializer);
 	}
-
-	/**
-	 * Revision number zero represents a nonexistent version number,
-	 * consistent with the behaviour of the MongoDB <code>$inc</code> operator,
-	 * which treats a nonexistent field as a zero.
-	 * For us, this occurs in two situations:
-	 *
-	 * <ol><li>
-	 *     Initialization: There is no state information yet because the document doesn't exist
-	 * </li><li>
-	 *     Legacy: The database collection pre-dates revision numbers and doesn't have one
-	 * </li></ol>
-	 *
-	 * The revision field in the database is never less than this value;
-	 * in fact, it is initialized to 1 and incremented thereafter,
-	 * so any initialized database has a revision strictly greater than zero.
-	 * The revision value is conceptually zero only briefly during edge cases
-	 * like initialization and refurbishing.
-	 * Waiting for a revision greater than or equal to this is
-	 * equivalent to waiting for any update at all.
-	 */
-	static final BsonInt64 REVISION_ZERO = new BsonInt64(0);
-
-	/**
-	 * A revision number guaranteed strictly less than any revision number we could possibly encounter.
-	 * <p>
-	 * A revision of zero is impossible in most circumstances, but there are some edge cases
-	 * where the revision could be briefly considered to be zero, like immediately before initialization.
-	 * This value is always, always less than any valid revision number.
-	 */
-	static final BsonInt64 REVISION_BEFORE_ANY = new BsonInt64(-1);
 
 	private static final Set<BsonInt32> SUPPORTED_MANIFEST_VERSIONS = Set.of(new BsonInt32(1));
 
@@ -162,55 +128,11 @@ final class Formatter extends BsonFormatter {
 		}
 	}
 
-	BsonInt64 getRevisionFromFullDocument(BsonDocument fullDocument) {
-		if (fullDocument == null) {
-			return null;
-		}
-		return fullDocument.getInt64(DocumentFields.revision.name(), null);
-	}
-
 	Optional<BsonString> epochOf(BsonDocument fullDocument) {
 		if (fullDocument == null) {
 			return Optional.empty();
 		}
 		return Optional.ofNullable(fullDocument.getString(DocumentFields.epoch.name(), null));
-	}
-
-	MapValue<String> getDiagnosticAttributesFromFullDocument(BsonDocument fullDocument) {
-		BsonDocument diagnostics = getDiagnosticAttributesIfAny(fullDocument);
-		return diagnostics == null ? null : decodeDiagnosticAttributes(diagnostics);
-	}
-
-	BsonInt64 getRevisionFromUpdateEvent(ChangeStreamDocument<BsonDocument> event) {
-		BsonDocument updatedFields = getUpdatedFieldsIfAny(event);
-		if (updatedFields == null) {
-			return null;
-		}
-		return updatedFields.getInt64(DocumentFields.revision.name(), null);
-	}
-
-	MapValue<String> getDiagnosticAttributesFromUpdateEvent(ChangeStreamDocument<BsonDocument> event) {
-		BsonDocument updatedFields = getUpdatedFieldsIfAny(event);
-		BsonDocument diagnostics = getDiagnosticAttributesIfAny(updatedFields);
-		return diagnostics == null ? null : decodeDiagnosticAttributes(diagnostics);
-	}
-
-	private static BsonDocument getUpdatedFieldsIfAny(ChangeStreamDocument<BsonDocument> event) {
-		if (event == null) {
-			return null;
-		}
-		UpdateDescription updateDescription = event.getUpdateDescription();
-		if (updateDescription == null) {
-			return null;
-		}
-		return updateDescription.getUpdatedFields();
-	}
-
-	static BsonDocument getDiagnosticAttributesIfAny(BsonDocument fullDocument) {
-		if (fullDocument == null) {
-			return null;
-		}
-		return fullDocument.getDocument(DocumentFields.diagnostics.name(), null);
 	}
 
 }

@@ -18,6 +18,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -61,7 +62,6 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static works.bosk.ReferenceUtils.rawClass;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.DISCONNECT;
-import static works.bosk.drivers.mongo.internal.Formatter.REVISION_ZERO;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
@@ -342,7 +342,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				var session = queryCollection.newSession()
 			) {
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
-				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), REVISION_ZERO);
+				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), Map.of());
 
 				// The state document(s) and the manifest must be written atomically,
 				// so that a failure partway through initialization doesn't leave the

@@ -1,5 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoException;
+import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
@@ -10,8 +12,11 @@ import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +24,7 @@ import java.util.regex.Pattern;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
+import org.bson.BsonInvalidOperationException;
 import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
@@ -42,14 +48,18 @@ import works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
+import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
 
 import static com.mongodb.client.model.Filters.regex;
+import static com.mongodb.client.model.Projections.fields;
+import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.DELETE;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static java.util.Collections.singletonList;
 import static java.util.Comparator.comparing;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static org.bson.BsonBoolean.FALSE;
@@ -165,6 +175,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException {
 		BsonStateAndMetadata bsm = null;
 		List<BsonDocument> partsBuffer = new ArrayList<>();
+		Map<BsonString, RevisionTuple> revisions = new HashMap<>();
 		try (DocCursor cursor = collection
 			.find(regex("_id", "^[|]"))
 			.sort(new BsonDocument("_id", new BsonInt32(-1))) // Root doc last
@@ -173,24 +184,20 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			while (cursor.hasNext()) {
 				BsonDocument lastPart = cursor.next();
 				BsonString id = lastPart.getString("_id");
+				RevisionTuple revision = revisionOf(lastPart);
+				revisions.put(id, revision);
 				partsBuffer.add(lastPart);
 				// The root document sorts last by _id.
 				if (ROOT_DOCUMENT_ID.equals(id)) {
 					// The lastPart is the root document
 
 					// Pull what we need from the parts before gather() mutates them
-					BsonInt64 revision = lastPart.getInt64(DocumentFields.revision.name(), null);
-					if (revision == null) {
-						throw new InvalidCollectionContentsException(format,
-							"State document is missing required fields: " + id);
-					}
-
 					BsonDocument state = gather(partsBuffer); // mutates partsBuffer!
 
 					bsm = new BsonStateAndMetadata(
-						id,
+						state,
 						formatter.epochOf(lastPart),
-						revision, state
+						Map.copyOf(revisions)
 					);
 
 					// For historical reasons, this code is written as though there may be multiple independent
@@ -214,6 +221,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return bsm;
 	}
 
+	private RevisionTuple revisionOf(BsonDocument document) throws InvalidCollectionContentsException {
+		try {
+			return RevisionTuple.from(document);
+		} catch (BsonInvalidOperationException e) {
+			throw new InvalidCollectionContentsException(format,
+				"State document has malformed revision fields: " + document.getString("_id"), e);
+		}
+	}
+
 	/**
 	 * For efficiency, this modifies <code>partsList</code> in-place.
 	 */
@@ -228,38 +244,42 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	@Override
 	public void writeAllState(StateAndMetadata<R> priorContents) {
 		BsonString epoch = priorContents.epoch().orElseGet(() -> new BsonString(UUID.randomUUID().toString()));
-		replaceFlushLock(Optional.of(epoch), priorContents.revision());
+		replaceFlushLock(Optional.of(epoch), priorContents.documentRevisions());
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
-		BsonInt64 revision = nextRevision(priorContents.revision());
+		RevisionTuple rootRevision = RevisionTuple.nextAfter(
+			priorContents.documentRevisions().get(ROOT_DOCUMENT_ID));
+		Map<BsonString, RevisionTuple> written = new HashMap<>();
+
 		LOGGER.debug("** Initial upsert");
-		writeAllState(initialState, epoch, revision);
+		writeAllState(initialState, epoch, rootRevision, written);
 
 		// When writing the state, whether for initialState() or for refurbish(),
 		// the local state will be up to date with no need to process a change stream event.
-		finishedRevision(revision);
+		finishedRevisions(written);
 	}
 
-	private void writeAllState(BsonValue initialState, BsonString epoch, BsonInt64 newRevision) {
+	private void writeAllState(
+		BsonValue initialState,
+		BsonString epoch,
+		RevisionTuple newRevision,
+		Map<BsonString, RevisionTuple> writtenRevisions
+	) {
 		// The diagnostic attributes come from the current thread.
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes these state document writes and the manifest write atomic.
 		if (initialState instanceof BsonDocument) {
-			upsertAndRemoveSubParts(rootRef, initialState.asDocument()); // Mutates initialState!
+			upsertAndRemoveSubParts(rootRef, initialState.asDocument(), writtenRevisions); // Mutates initialState!
 		}
-		BsonString documentId = ROOT_DOCUMENT_ID;
-		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, documentId));
+		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, ROOT_DOCUMENT_ID));
 		BsonDocument filter = rootDocumentsFilter();
-		filter.put("_id", documentId);
+		filter.put("_id", ROOT_DOCUMENT_ID);
 		UpdateOptions options = new UpdateOptions().upsert(true);
 		LOGGER.trace("| Filter: {}", filter);
 		LOGGER.trace("| Update: {}", update);
 		LOGGER.trace("| Options: {}", options);
 		UpdateResult result = collection.updateOne(filter, update, options);
 		LOGGER.debug("| Result: {}", result);
-	}
-
-	private static @NonNull BsonInt64 nextRevision(BsonInt64 priorRevision) {
-		return new BsonInt64(1 + priorRevision.longValue());
+		writtenRevisions.put(ROOT_DOCUMENT_ID, newRevision);
 	}
 
 	/**
@@ -305,96 +325,137 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	/**
-	 * The final event updates the revision field of the root document.
+	 * The final event of a transaction is the topmost document's revision bump.
+	 * <p>
+	 * For an {@code UPDATE}, that means the update includes the revision field.
+	 * Only the topmost write bumps a revision, and the topmost document always
+	 * already exists, so a normal transaction's final event is an {@code UPDATE}.
+	 * <p>
+	 * The exception is root initialization (and refurbish), which may insert the
+	 * root document. Sub-document {@code INSERT}s also carry revisions, because
+	 * every document has them, so they must not be mistaken for the final event.
+	 * That is why an {@code INSERT} or {@code REPLACE} is final only for the root.
 	 */
 	private boolean isFinalEventOfTree(ChangeStreamDocument<BsonDocument> event) {
-		if (event.getOperationType() == DELETE) {
-			return isRootDocumentEvent(event);
-		}
-		return
-			isRootDocumentEvent(event)
-				&& updateEventHasField(event, DocumentFields.revision);
+		return switch (event.getOperationType()) {
+			case UPDATE -> updateEventHasField(event, DocumentFields.revision);
+			case INSERT, REPLACE, DELETE -> isRootDocumentEvent(event);
+			default -> false;
+		};
 	}
 
 	private static boolean isRootDocumentEvent(ChangeStreamDocument<BsonDocument> event) {
-		return ROOT_DOCUMENT_ID.equals(event.getDocumentKey().getString("_id"));
+		if (event.getDocumentKey() == null) {
+			return false;
+		}
+		return ROOT_DOCUMENT_ID.equals(documentIdOf(event));
 	}
 
 	private void processTree(List<ChangeStreamDocument<BsonDocument>> treeEvents) throws UnprocessableEventException {
 		if (treeEvents.isEmpty()) {
 			return;
 		}
-		ChangeStreamDocument<BsonDocument> finalEvent = treeEvents.getLast();
-		MapValue<String> diagnosticAttributes = diagnosticAttributesFor(documentIdOf(finalEvent));
+		// In the per-document revision design, the final event is always the
+		// topmost event: the write that changed the shallowest document's state
+		// also bumped its revision. (Initialization is the same: the root write
+		// carries both the state and the revision.)
+		ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.getLast();
+		List<ChangeStreamDocument<BsonDocument>> priorEvents = treeEvents.subList(0, treeEvents.size() - 1);
+		BsonString docId = documentIdOf(topmostEvent);
+		MapValue<String> diagnosticAttributes = diagnosticAttributesFor(docId);
+
 		try (
 			var _ = context.withOnly(diagnosticAttributes)
 		) {
-			switch (finalEvent.getOperationType()) {
-				case INSERT: case REPLACE: {
-					BsonDocument fullDocument = finalEvent.getFullDocument();
+			switch (topmostEvent.getOperationType()) {
+				case INSERT, REPLACE: {
+					BsonDocument fullDocument = topmostEvent.getFullDocument();
 					if (fullDocument == null) {
-						throw new UnprocessableEventException("Missing fullDocument on final event", finalEvent.getOperationType());
+						throw new UnprocessableEventException("Missing fullDocument on final event", topmostEvent.getOperationType());
 					}
-
 					Optional<BsonString> epoch = formatter.epochOf(fullDocument);
-					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
-					if (shouldSkip(epoch, revision)) {
-						LOGGER.debug("Skipping revision {}", revision.longValue());
+					RevisionTuple revision = RevisionTuple.from(fullDocument);
+					if (shouldSkip(epoch, docId, revision)) {
+						LOGGER.debug("Skipping revision {} for {}", revision, docId);
 						return;
 					}
 
-					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name());
-					if (state == null) {
-						// Final event has only the new revision number; the previous event is the topmost event.
-						// A standalone INSERT/REPLACE always has a state field; lacking one is nonsensical
-						// and implies a programming error or an unexpected database state.
-						assert treeEvents.size() >= 2 : "INSERT/REPLACE without state needs a prior topmost event";
-						ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.get(treeEvents.size() - 2);
-						LOGGER.debug("Topmost event is {} on {}", topmostEvent.getOperationType(), topmostEvent.getDocumentKey());
-						propagateDownstream(topmostEvent, treeEvents.subList(0, treeEvents.size() - 2));
-					} else {
-						LOGGER.debug("Topmost event is final event");
-						propagateDownstream(finalEvent, treeEvents.subList(0, treeEvents.size() - 1));
-					}
+					LOGGER.debug("Topmost event is {}", topmostEvent.getOperationType());
+					propagateDownstream(topmostEvent, priorEvents);
 
 					if (!flushLock.get().epochMatches(epoch)) {
 						// Adopt the new epoch so future flushes don't needlessly reconnect
-						replaceFlushLock(epoch, revision);
+						replaceFlushLock(epoch, Map.of());
 					}
-					finishedRevision(revision);
+					recordRevisions(priorEvents);
+					finishedRevision(docId, revision);
 				} break;
 				case UPDATE: {
-					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(finalEvent);
-					if (shouldSkip(flushLock.get().epoch(), revision)) {
-						LOGGER.debug("Skipping revision {}", revision.longValue());
+					RevisionTuple revision = revisionFromUpdateEvent(docId, topmostEvent);
+					if (shouldSkip(flushLock.get().epoch(), docId, revision)) {
+						LOGGER.debug("Skipping revision {} for {}", revision, docId);
 						return;
 					}
-					boolean topmostEventIsFinalEvent = updateEventHasField(finalEvent, DocumentFields.state); // If the final update changes only the revision field, then it's not the topmost event
-					if (topmostEventIsFinalEvent) {
-						LOGGER.debug("Topmost event is final event");
-						propagateDownstream(finalEvent, treeEvents.subList(0, treeEvents.size() - 1));
-					} else if (treeEvents.size() < 2) {
-						LOGGER.debug("Topmost event is a no-op");
-					} else {
-						ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.get(treeEvents.size() - 2);
-						LOGGER.debug("Topmost event is {} on {}", topmostEvent.getOperationType(), topmostEvent.getDocumentKey());
-						propagateDownstream(topmostEvent, treeEvents.subList(0, treeEvents.size() - 2));
-					}
-					finishedRevision(revision);
+
+					LOGGER.debug("Topmost event is final event");
+					propagateDownstream(topmostEvent, priorEvents);
+					recordRevisions(priorEvents);
+					finishedRevision(docId, revision);
 				} break;
 				case DELETE: {
 					// No other events in the transaction matter if the root document is gone.
 					// This can happen during a refurbish, so we don't want to throw UnprocessableEventException
 					// even though it's highly disruptive.
-					// We deliberately do not reset alreadySeen: the never-backward semantics
-					// in FlushLock ensure that a deleted-and-reinitialized document still causes
-					// flushes to wait, and the epoch mechanism detects that the collection
-					// has been reinitialized.
-					LOGGER.debug("Document containing revision field has been deleted");
+					// We deliberately don't clear the applied revisions: the re-created
+					// document's revision and the epoch mechanism together ensure that
+					// flushes still wait for the re-initialized collection.
+					LOGGER.debug("Root document has been deleted");
 				} break;
 				default: {
-					throw new UnprocessableEventException("Cannot process event", finalEvent.getOperationType());
+					throw new UnprocessableEventException("Cannot process event", topmostEvent.getOperationType());
 				}
+			}
+		}
+	}
+
+	/**
+	 * @return the revision for the document whose revision was bumped by
+	 * {@code event}, combining the event's new revision number with the
+	 * document's current incarnation (a plain revision bump does not change the
+	 * incarnation)
+	 */
+	private RevisionTuple revisionFromUpdateEvent(BsonString docId, ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+		UpdateDescription updateDescription = event.getUpdateDescription();
+		if (updateDescription == null) {
+			throw new UnprocessableEventException("Missing update description on final event", event.getOperationType());
+		}
+		BsonDocument updatedFields = updateDescription.getUpdatedFields();
+		BsonInt64 revision = updatedFields.getInt64(DocumentFields.revision.name(), null);
+		if (revision == null) {
+			throw new UnprocessableEventException("Final event does not carry a revision", event.getOperationType());
+		}
+		BsonString incarnation = updatedFields.getString(DocumentFields.incarnation.name(), null);
+		String incarnationValue = incarnation == null
+			? requireNonNull(flushLock.get().currentIncarnation(docId), "Current incarnation")
+			: incarnation.getValue();
+		return new RevisionTuple(incarnationValue, revision.longValue());
+	}
+
+	/**
+	 * Records the revisions carried by documents written earlier in the same
+	 * transaction, so future flushes can wait for them even though only the
+	 * topmost document's revision advances on ordinary updates.
+	 */
+	private void recordRevisions(List<ChangeStreamDocument<BsonDocument>> priorEvents) {
+		for (ChangeStreamDocument<BsonDocument> event: priorEvents) {
+			switch (event.getOperationType()) {
+				case INSERT, REPLACE -> {
+					BsonDocument fullDocument = event.getFullDocument();
+					if (fullDocument != null) {
+						finishedRevision(documentIdOf(event), RevisionTuple.from(fullDocument));
+					}
+				}
+				default -> { /* Other events do not carry a revision number */ }
 			}
 		}
 	}
@@ -412,7 +473,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					throw new UnprocessableEventException("Missing state field", topmostEvent.getOperationType());
 				}
 
-				Reference<?> topmostRef = documentIdToRef(documentIdOf(topmostEvent).getValue(), topmostEvent);
+				Reference<?> topmostRef = documentIdToRef(
+					documentIdOf(topmostEvent).getValue(), topmostEvent);
 				BsonDocument bsonState;
 				List<BsonDocument> parts = subpartDocuments(priorEvents);
 				if (parts.isEmpty()) {
@@ -528,27 +590,17 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	/**
 	 * A note on <em>pre-delete</em> operations:
 	 * <p>
-	 * We are changing a target field located either in the root document or in a sub-document.
-	 * We distinguish these cases based on whether the root document's update event contains
-	 * the {@code state} field: if it does, then that's the topmost event;
-	 * if it doesn't, then that event is simply transmitting the new revision number,
-	 * and the previous event is the topmost event.
+	 * A replacement that has sub-parts writes those sub-parts as separate
+	 * documents, then sets the target field to a stub in the topmost document.
+	 * The topmost document's update carries the revision bump that makes the
+	 * transaction's final event identifiable.
 	 * <p>
-	 * This algorithm falls down in the following case:
-	 * if, say, an entire {@code Catalog} in the root document is replaced by one that has
-	 * the same domain and the same number of entries with the same IDs,
-	 * then the root document's update should be considered the topmost event,
-	 * yet because the document's contents are actually unchanged,
-	 * MongoDB will suppress that event, and we're left with no topmost event!
-	 * <p>
-	 * To prevent this suppression, we delete the target fields before setting them.
-	 * In this way, the update operation is never a no-op even if the document ends up unchanged.
-	 * This seems slightly sensitive to the exact behaviour of MongoDB transactions,
-	 * but if this stops working, there are alternatives we could consider.
-	 * For example, the revision field could become an object that contains the path
-	 * to the updated field, like <code>{ "12345": "/path/to/target" }</code>.
-	 * Since the revision field always changes on every update, no amount of cleverness
-	 * could end up suppressing this update.
+	 * Before setting the field, we pre-delete it: we unset it, or set its stub
+	 * to false. This ensures the field changes even when the new value equals
+	 * the old one, so the final event's {@code updatedFields} includes it and we
+	 * can gather the sub-parts into the value we send downstream. Without this,
+	 * an update whose value happened to be unchanged could leave us unable to
+	 * tell which state field changed.
 	 * <p>
 	 * <em>Implementation note</em>: While {@link SequoiaFormatDriver} has calls like <code>doUpdate</code>,
 	 * Pando uses <code>doReplacement</code> and <code>doDelete</code>.
@@ -570,7 +622,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		boolean hasSubParts;
 		if (value instanceof BsonDocument b) {
 			deletePartsUnder(target);
-			hasSubParts = upsertAndRemoveSubParts(target, b);
+			hasSubParts = upsertAndRemoveSubParts(target, b, null);
 			// Note that value will now have the sub-parts removed
 		} else {
 			hasSubParts = false;
@@ -597,12 +649,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				// Upsert the target document
 				// TODO: merge this with the same code in upsertAndRemoveSubParts
 				LOGGER.debug("| Pre-delete target document");
-				collection.deleteOne(filter);
+				collection.findOneAndDelete(filter);
+				RevisionTuple newRevision = RevisionTuple.newLifetime();
 
 				LOGGER.debug("| Update target document");
-				BsonDocument update = new BsonDocument("$set",
-					filter.clone()
-						.append(DocumentFields.state.name(), value));
+				BsonDocument fieldValues = filter.clone()
+					.append(DocumentFields.state.name(), value);
+				newRevision.putInto(fieldValues);
+				BsonDocument update = new BsonDocument("$set", fieldValues);
 				LOGGER.debug("| Update: {}", update);
 				LOGGER.debug("| Filter: {}", filter);
 				collection.updateOne(filter, update, new UpdateOptions().upsert(true));
@@ -624,17 +678,20 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				LOGGER.debug("| Skipping pre-delete for {}: no sub-parts", target);
 			}
 			LOGGER.debug("| Set field {} in {}: {}", key, topmostRef, value);
-			BsonDocument topmostUpdate = new BsonDocument("$set", new BsonDocument(key, value));
+			// This is the topmost write, so it carries the revision bump and the
+			// diagnostics. No other document is written.
+			BsonDocument topmostUpdate = new BsonDocument("$inc",
+				new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
+				.append("$set", new BsonDocument()
+					.append(key, value)
+					.append(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes())));
 			// If the topmost document doesn't exist (or its structure doesn't match), the
 			// write is silently ignored, just as the local driver ignores writes to
 			// nonexistent nodes. Such a no-op must not bump the revision or emit a
 			// spurious change-stream event.
 			boolean applied = doUpdate(topmostUpdate, standardPreconditions(target, topmostRef, filter));
 
-			if (applied) {
-				LOGGER.debug("| Bump revision on root document");
-				doUpdate(revisionBump(), documentFilter(rootRef));
-			} else {
+			if (!applied) {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
 				collection.abortTransaction();
 			}
@@ -660,12 +717,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			LOGGER.debug("| Move up to enclosing topmost reference {}", topmostRef);
 		}
 
-		if (doUpdate(deletionDoc(target, topmostRef), standardPreconditions(target, topmostRef, documentFilter(topmostRef)))) {
-			if (!rootRef.equals(topmostRef)) {
-				LOGGER.debug("| Deletion succeeded; bumping revision number in root document");
-				doUpdate(revisionBump(), documentFilter(rootRef));
-			}
-		} else {
+		// The deletion is the topmost write: it unsets the field and bumps the
+		// topmost document's revision. No other document is written.
+		if (!doUpdate(deletionDoc(target, topmostRef), standardPreconditions(target, topmostRef, documentFilter(topmostRef)))) {
 			LOGGER.debug("| Deletion had no effect; aborting transaction");
 			collection.abortTransaction();
 		}
@@ -721,6 +775,47 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	@Override
 	public BsonDocument rootDocumentsFilter() {
 		return new BsonDocument("_id", ROOT_DOCUMENT_ID);
+	}
+
+	@Override
+	protected FlushRevisions readRevisionsToFlush() throws FlushFailureException, InterruptedException {
+		LOGGER.debug("readRevisionsToFlush");
+		try (DocCursor cursor = collection
+			.findLatest(regex("_id", "^[|]"))
+			.projection(fields(include(
+				"_id",
+				DocumentFields.epoch.name(),
+				DocumentFields.incarnation.name(),
+				DocumentFields.revision.name())))
+			.sort(new BsonDocument("_id", new BsonInt32(-1))) // Bottom-up: root last
+			.cursor()
+		) {
+			List<FlushLock.Target> bottomUp = new ArrayList<>();
+			Optional<BsonString> epoch = Optional.empty();
+			boolean foundRoot = false;
+			while (cursor.hasNext()) {
+				BsonDocument document = cursor.next();
+				BsonString id = document.getString("_id");
+				bottomUp.add(new FlushLock.Target(id, RevisionTuple.from(document)));
+				if (isRootDocumentId(id)) {
+					epoch = formatter.epochOf(document);
+					foundRoot = true;
+				}
+			}
+			if (!foundRoot) {
+				throw new RevisionFieldDisruptedException("No root documents found");
+			}
+			// Wait top-down: ancestors before descendants.
+			Collections.reverse(bottomUp);
+			return new FlushRevisions(epoch, bottomUp);
+		} catch (MongoInterruptedException e) {
+			Thread.interrupted();
+			InterruptedException exception = new InterruptedException("Interrupted while reading revisions");
+			exception.initCause(e);
+			throw exception;
+		} catch (MongoException e) {
+			throw new FlushFailureException("Failed to read revisions", e);
+		}
 	}
 
 	private BsonDocument documentFilter(Reference<?> docRef) {
@@ -894,8 +989,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	/**
 	 * @param value is mutated to stub-out the parts written to the database
+	 * @param writtenRevisions if non-null, receives the revision assigned to each
+	 * sub-part written
 	 */
-	private <T> boolean upsertAndRemoveSubParts(Reference<T> target, BsonDocument value) {
+	private <T> boolean upsertAndRemoveSubParts(
+		Reference<T> target,
+		BsonDocument value,
+		@Nullable Map<BsonString, RevisionTuple> writtenRevisions
+	) {
 		List<BsonDocument> allParts = scatter(target, value);
 		// NOTE: `value` has now been mutated so the parts have been stubbed out
 
@@ -907,10 +1008,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			BsonString id = part.getString("_id");
 			BsonDocument filter = new BsonDocument("_id", id);
 			LOGGER.debug("Pre-delete sub-part: filter={}", filter);
-			collection.deleteOne(filter);
+			collection.findOneAndDelete(filter);
+			RevisionTuple newRevision = RevisionTuple.newLifetime();
+			newRevision.putInto(part);
 			LOGGER.debug("Insert sub-part: filter={} replacement={}", filter, part);
 			InsertOneResult result = collection.insertOne(part); // we _must_ get the precise full document for sub-parts in the event stream, or we can't form the whole
 			LOGGER.debug("| Insert result: {}", result);
+			if (writtenRevisions != null) {
+				writtenRevisions.put(id, newRevision);
+			}
 		}
 
 		return !subParts.isEmpty();

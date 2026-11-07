@@ -1,5 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoException;
+import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
@@ -28,8 +30,12 @@ import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
+import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
+import static com.mongodb.client.model.Projections.fields;
+import static com.mongodb.client.model.Projections.include;
+import static java.util.Objects.requireNonNull;
 import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
@@ -105,11 +111,12 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			.cursor()
 		) {
 			BsonDocument document = cursor.next();
+			BsonString id = document.getString("_id");
+			RevisionTuple revision = RevisionTuple.from(document);
 			return new BsonStateAndMetadata(
-				document.getString("_id"),
+				document.getDocument(DocumentFields.state.name()),
 				formatter.epochOf(document),
-				document.getInt64(DocumentFields.revision.name()),
-				document.getDocument(DocumentFields.state.name())
+				Map.of(id, revision)
 			);
 		} catch (NoSuchElementException e) {
 			throw new InvalidCollectionContentsException(SEQUOIA, "State document not found: " + DOCUMENT_ID, e);
@@ -122,11 +129,12 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public void writeAllState(StateAndMetadata<R> priorContents) {
 		BsonString epoch = priorContents.epoch().orElseGet(() -> new BsonString(UUID.randomUUID().toString()));
-		replaceFlushLock(Optional.of(epoch), priorContents.revision());
+		replaceFlushLock(Optional.of(epoch), priorContents.documentRevisions());
 
 		// Sequoia has only one document
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
-		BsonInt64 newRevision = new BsonInt64(1 + priorContents.revision().longValue());
+		RevisionTuple newRevision = RevisionTuple.nextAfter(
+			priorContents.documentRevisions().get(DOCUMENT_ID));
 
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes this state document write and the manifest write atomic.
@@ -141,7 +149,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		LOGGER.debug("| Result: {}", result);
 
 		// Update the state that we "know about"
-		finishedRevision(newRevision);
+		finishedRevision(DOCUMENT_ID, newRevision);
 	}
 
 	/**
@@ -184,52 +192,62 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				try (
 					var _ = context.withOnly(diagnosticAttributes)
 				) {
-					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
+					RevisionTuple revision = RevisionTuple.from(fullDocument);
 					Optional<BsonString> epoch = formatter.epochOf(fullDocument);
 					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name(), null);
 					if (state == null) {
 						throw new UnprocessableEventException("Missing state field", event.getOperationType());
 					}
 					R newRoot = formatter.document2object(state, rootRef);
-					// Note that we do not check revisionToSkip here. We probably should... but this actually
+					// Note that we do not check the revision here. We probably should... but this actually
 					// saves us in MongoDriverResiliencyTest.documentReappears_recovers because when the doc
-					// disappears, we don't null out revisionToSkip. TODO: Rethink what's the right way to handle this.
+					// disappears, we don't null out the applied revisions. TODO: Rethink what's the right way to handle this.
 					LOGGER.debug("| Replace {}", rootRef);
 					downstream.submitReplacement(rootRef, newRoot);
 					if (!flushLock.get().epochMatches(epoch)) {
 						// Adopt the new epoch so future flushes don't needlessly reconnect
-						replaceFlushLock(epoch, revision);
+						replaceFlushLock(epoch, Map.of());
 					}
-					finishedRevision(revision);
+					finishedRevision(docId, revision);
 				}
 			} break;
 			case UPDATE: {
 				UpdateDescription updateDescription = event.getUpdateDescription();
 				if (updateDescription != null) {
-					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(event);
 					BsonString updateDocId = documentIdOf(event);
+					BsonDocument updatedFields = updateDescription.getUpdatedFields();
+					BsonInt64 revisionValue = updatedFields.getInt64(DocumentFields.revision.name(), null);
+					if (revisionValue == null) {
+						throw new UnprocessableEventException("Sequoia update does not carry a revision", event.getOperationType());
+					}
+					BsonString incarnationValue = updatedFields.getString(DocumentFields.incarnation.name(), null);
+					RevisionTuple revision = new RevisionTuple(
+						incarnationValue == null
+							? requireNonNull(flushLock.get().currentIncarnation(updateDocId), "Current incarnation")
+							: incarnationValue.getValue(),
+						revisionValue.longValue());
+
 					MapValue<String> diagnosticAttributes = diagnosticAttributesFor(updateDocId);
 					try (
 						var _ = context.withOnly(diagnosticAttributes)
 					) {
-						if (shouldSkip(flushLock.get().epoch(), revision)) {
-							LOGGER.debug("Skipping revision {}", revision.longValue());
+						if (shouldSkip(flushLock.get().epoch(), updateDocId, revision)) {
+							LOGGER.debug("Skipping revision {} for {}", revision, updateDocId);
 							return;
 						}
 
 						replaceUpdatedFields(updateDescription.getUpdatedFields());
 						deleteRemovedFields(updateDescription.getRemovedFields(), event.getOperationType());
 					}
-					finishedRevision(revision);
+					finishedRevision(updateDocId, revision);
 				}
 			} break;
 			case DELETE: {
-				// The revision field has been deleted along with the document.
-				// We deliberately do not reset alreadySeen: the never-backward semantics
-				// in FlushLock ensure that a deleted-and-reinitialized document still causes
-				// flushes to wait, and the epoch mechanism detects that the collection
-				// has been reinitialized.
-				LOGGER.debug("Document containing revision field has been deleted");
+				// The revision number and incarnation have been deleted along with
+				// the document. We deliberately don't clear the applied revisions:
+				// the re-created document's revision and the epoch mechanism together
+				// ensure that flushes still wait for the re-initialized collection.
+				LOGGER.debug("Document containing the revision has been deleted");
 			} break;
 			default: {
 				throw new UnprocessableEventException("Cannot process event", event.getOperationType());
@@ -248,6 +266,37 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public BsonDocument rootDocumentsFilter() {
 		return DOCUMENT_FILTER;
+	}
+
+	@Override
+	protected FlushRevisions readRevisionsToFlush() throws FlushFailureException, InterruptedException {
+		LOGGER.debug("readRevisionsToFlush");
+		try (DocCursor cursor = collection
+			.findLatest(documentFilter())
+			.limit(1)
+			.projection(fields(include(
+				"_id",
+				DocumentFields.epoch.name(),
+				DocumentFields.incarnation.name(),
+				DocumentFields.revision.name())))
+			.cursor()
+		) {
+			if (!cursor.hasNext()) {
+				throw new RevisionFieldDisruptedException("No state document found");
+			}
+			BsonDocument document = cursor.next();
+			BsonString id = document.getString("_id");
+			return new FlushRevisions(
+				formatter.epochOf(document),
+				List.of(new FlushLock.Target(id, RevisionTuple.from(document))));
+		} catch (MongoInterruptedException e) {
+			Thread.interrupted();
+			InterruptedException exception = new InterruptedException("Interrupted while reading revisions");
+			exception.initCause(e);
+			throw exception;
+		} catch (MongoException e) {
+			throw new FlushFailureException("Failed to read revisions", e);
+		}
 	}
 
 	private <T> BsonDocument standardPreconditions(Reference<T> target) {

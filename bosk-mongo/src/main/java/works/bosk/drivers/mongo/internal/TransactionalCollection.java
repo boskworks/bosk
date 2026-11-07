@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
 import org.bson.conversions.Bson;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -335,6 +336,16 @@ class TransactionalCollection {
 		requireWritable();
 		writeInterceptor.beforeWrite(filter);
 		return this.downstream.deleteOne(currentSession(), filter);
+	}
+
+	/**
+	 * Deletes the first document matching {@code filter} and returns it, or null
+	 * if there was no match. Used when a document is about to be re-created.
+	 */
+	public @Nullable BsonDocument findOneAndDelete(Bson filter) {
+		requireWritable();
+		writeInterceptor.beforeWrite(filter);
+		return this.downstream.findOneAndDelete(currentSession(), filter);
 	}
 
 	public DeleteResult deleteMany(Bson filter) {

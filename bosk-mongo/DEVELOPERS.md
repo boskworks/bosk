@@ -85,7 +85,7 @@ We can state this as a set of properties that a running `MongoDriver` is expecte
   not of constructing a new `Bosk`.
 
 One subtlety is worth calling out because it is easy to get wrong:
-`flush()` is the only driver operation that reads the revision number,
+`flush()` is the only driver operation that reads the per-document revision numbers,
 so some problems (for example, a missing revision field or a changed epoch)
 are naturally noticed there first.
 The same problems must also be detected asynchronously,
@@ -201,7 +201,7 @@ collection half-initialized (state documents with no manifest, or vice versa).
 In this way, two complex bosk operations filled with error handling and inter-thread coordination
 are reduced to simpler database operations easily implemented by the `FormatDriver`.
 
-#### `onEvent` and `onRevisionToSkip`
+#### `onEvent` and revision tracking
 
 The second feature that distinguishes a `FormatDriver` from a `MongoDriver`
 is that `FormatDriver` is expected to respond to change stream events.
@@ -218,9 +218,15 @@ This is expected rather than exceptional;
 it happens in particular when another bosk performs a `refurbish` to a different format.
 The `ChangeReceiver` reloads the state and continues without treating it as a problem.
 
-The `onRevisionToSkip` method is called whenever the state is loaded via `loadAllState`.
-This communicates to the `FormatDriver` that subsequent events should be ignored if they are older than
-the revision found when the state was read from the database.
+The `FormatDriver` keeps a `FlushLock` that tracks the revision number of every state document
+that has been applied downstream.
+When `loadAllState` reads the database, it seeds the lock one revision short of each
+loaded revision; `onHasBeenApplied` then advances the lock once `MainDriver` has applied the
+loaded state to the in-memory tree.
+This prevents a flush that is retrying across a reconnect from reporting success while the
+in-memory state is still stale.
+Each change event advances the revisions it carries, and `flush()` waits for the revisions it
+reads from the database to appear in the lock.
 
 #### Division of responsibilities
 

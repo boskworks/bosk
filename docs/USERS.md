@@ -946,11 +946,13 @@ The format of the database is described by a manifest document whose ID is `!Man
 
 For Sequoia, the bosk state is stored in a single document within a single collection.
 The collection is named `boskCollection` by default, and can be renamed with `MongoDriverSettings.collection()`.
-The document has three fields:
+The document has these fields:
 
 - `_id`: this is always `boskDocument`
 - `state`: contains the entire bosk state tree
-- `revision`: an incrementing version number; used to implement `flush()`
+- `epoch`: a UUID identifying this initialization of the collection
+- `incarnation`, `revision`: the document's revision number and incarnation
+- `diagnostics`: diagnostic attributes from the most recent update
 
 The format of the `state` field is determined by `BsonSerializer` and `Formatter`.
 The code will have the details, but some high-level points about the BSON format:
@@ -961,10 +963,18 @@ The code will have the details, but some high-level points about the BSON format
 For Pando, the situation is similar, except that instead of having a single document with an `_id` of `boskDocument`,
 there are multiple documents with `_id` values that start with `|` (vertical bar)
 and that describe where the document fits within the overall BSON structure.
+Every one of those documents carries its own `incarnation` and `revision`.
+The `incarnation` is a UUID identifying one lifetime of the document;
+re-creating a document gives it a fresh incarnation and resets its `revision` to 1.
+Only the topmost document changed by an update has its `revision` incremented:
+that is, the shallowest document whose `state` changes.
+Updates to different parts of the tree therefore write different documents and do not conflict
+on a shared document.
 
 `MongoDriver` is designed to tolerate some amount of manual intervention in the database by an operator.
 If something has gone wrong and you need to do an emergency repair,
-`MongoDriver` will try to accommodate your changes, especially if you increment the `revision` number.
+`MongoDriver` will try to accommodate your changes, especially if you increment the `revision`
+number of the topmost document you changed.
 See `MongoDriverRecoveryTest` for some of the scenarios we've envisaged and tested.
 
 ##### Format evolution

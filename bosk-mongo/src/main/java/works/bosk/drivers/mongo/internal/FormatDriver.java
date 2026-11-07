@@ -63,7 +63,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * <em>Maintenance note:</em> This method's contract is pretty weird,
 	 * especially with its side effect. It's a struggle to make a clean separation
 	 * between the format driver and the main driver, and this particular compromise
-	 * was a consequence of encapsulating the revision number logic inside the format driver.
+	 * was a consequence of encapsulating the revision tracking logic inside the format driver.
 	 * Hopefully some day we can arrive at a cleaner interface.
 	 * In the meantime, we've tried to hint at the significance by
 	 * calling this operation "load" instead of just "read".
@@ -86,7 +86,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * The manifest is written by {@link MainDriver}, not here.
 	 * @param priorContents the desired state, with metadata representing a (possibly hypothetical)
 	 * "prior" state of the database; in particular, the epoch should be preserved if it exists,
-	 * and the revision number should be incremented so that a {@link #flush} after
+	 * and the revision numbers should be advanced so that a {@link #flush} after
 	 * a {@link #refurbish} succeeds in waiting for the new state.
 	 */
 	void writeAllState(StateAndMetadata<R> priorContents);
