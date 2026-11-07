@@ -213,17 +213,17 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 		assertEquals(expected, actual);
 	}
 
-	private void assertRoundTripWorks(Reference<?> mainRef) {
+	private void assertRoundTripWorks(Reference<?> targetRef) {
 		BsonDocument entireDoc;
 		try (var _ = bosk.readSession()) {
-			entireDoc = (BsonDocument) formatter.object2bsonValue(mainRef.value(), mainRef.targetType());
+			entireDoc = (BsonDocument) formatter.object2bsonValue(targetRef.value(), targetRef.targetType());
 		}
 
-		List<BsonDocument> parts = surgeon.scatter(mainRef, entireDoc.clone());
+		List<BsonDocument> parts = surgeon.scatter(targetRef, entireDoc.clone());
 
-		BsonString mainPath = new BsonString(docBsonPath(mainRef, bosk.rootReference()));
-		assertEquals(mainPath, parts.get(parts.size()-1).getString("_id"),
-			"Last part must correspond to the main doc");
+		BsonString targetPath = new BsonString(docBsonPath(targetRef, bosk.rootReference()));
+		assertEquals(targetPath, parts.get(parts.size()-1).getString("_id"),
+			"Last part must correspond to the target document");
 
 		JsonWriterSettings jsonWriterSettings = JsonWriterSettings.builder().indent(true).build();
 		LOGGER.debug("== Parts ==");

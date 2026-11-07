@@ -48,7 +48,7 @@ The driver is allowed to leave the `B` document intact.
 
 Dangling documents can be cleared via `refurbish()` if desired.
 
-An explicit `submitDeletion` shouldn't leave the main document behind,
+An explicit `submitDeletion` shouldn't leave the target document behind,
 but is allowed to, if it finds some other way to communicate the deletion via change streams.
 
 ## Database contents

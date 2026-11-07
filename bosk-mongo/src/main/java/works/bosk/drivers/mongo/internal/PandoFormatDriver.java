@@ -126,9 +126,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			return;
 		}
 		collection.ensureTransactionStarted();
-		Reference<?> mainRef = mainRef(target);
-		BsonDocument filter = documentFilter(mainRef)
-			.append(dottedFieldNameOf(target, mainRef), new BsonDocument("$exists", TRUE));
+		Reference<?> targetDocRef = targetDocumentRef(target);
+		BsonDocument filter = documentFilter(targetDocRef)
+			.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
 		if (documentExists(filter)) {
 			LOGGER.debug("Already exists: {}", filter);
 			collection.abortTransaction();
@@ -205,7 +205,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 
 		if (!partsBuffer.isEmpty()) {
-			throw new IllegalStateException("Found parts without a main document: "
+			throw new IllegalStateException("Found parts without a root document: "
 				+ partsBuffer.stream().map(part -> part.get("_id")).toList());
 		}
 
@@ -321,9 +321,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return ROOT_DOCUMENT_ID.equals(event.getDocumentKey().getString("_id"));
 	}
 
-	private void processTree(List<ChangeStreamDocument<BsonDocument>> treeEvants) throws UnprocessableEventException {
-		if (!treeEvants.isEmpty()) {
-			ChangeStreamDocument<BsonDocument> finalEvent = treeEvants.getLast();
+	private void processTree(List<ChangeStreamDocument<BsonDocument>> treeEvents) throws UnprocessableEventException {
+		if (!treeEvents.isEmpty()) {
+			ChangeStreamDocument<BsonDocument> finalEvent = treeEvents.getLast();
 			switch (finalEvent.getOperationType()) {
 				case INSERT: case REPLACE: {
 					BsonDocument fullDocument = finalEvent.getFullDocument();
@@ -348,16 +348,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 						BsonDocument state = fullDocument.getDocument(DocumentFields.state.name());
 						if (state == null) {
-							// Final event has only the new revision number; the previous event is the main event.
+							// Final event has only the new revision number; the previous event is the topmost event.
 							// A standalone INSERT/REPLACE always has a state field; lacking one is nonsensical
 							// and implies a programming error or an unexpected database state.
-							assert treeEvants.size() >= 2 : "INSERT/REPLACE without state needs a prior main event";
-							ChangeStreamDocument<BsonDocument> mainEvent = treeEvants.get(treeEvants.size() - 2);
-							LOGGER.debug("Main event is {} on {}", mainEvent.getOperationType(), mainEvent.getDocumentKey());
-							propagateDownstream(mainEvent, treeEvants.subList(0, treeEvants.size() - 2));
+							assert treeEvents.size() >= 2 : "INSERT/REPLACE without state needs a prior topmost event";
+							ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.get(treeEvents.size() - 2);
+							LOGGER.debug("Topmost event is {} on {}", topmostEvent.getOperationType(), topmostEvent.getDocumentKey());
+							propagateDownstream(topmostEvent, treeEvents.subList(0, treeEvents.size() - 2));
 						} else {
-							LOGGER.debug("Main event is final event");
-							propagateDownstream(finalEvent, treeEvants.subList(0, treeEvants.size() - 1));
+							LOGGER.debug("Topmost event is final event");
+							propagateDownstream(finalEvent, treeEvents.subList(0, treeEvents.size() - 1));
 						}
 					}
 
@@ -381,16 +381,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 							LOGGER.debug("Skipping revision {}", revision.longValue());
 							return;
 						}
-						boolean mainEventIsFinalEvent = updateEventHasField(finalEvent, DocumentFields.state); // If the final update changes only the revision field, then it's not the main event
-						if (mainEventIsFinalEvent) {
-							LOGGER.debug("Main event is final event");
-							propagateDownstream(finalEvent, treeEvants.subList(0, treeEvants.size() - 1));
-						} else if (treeEvants.size() < 2) {
-							LOGGER.debug("Main event is a no-op");
+						boolean topmostEventIsFinalEvent = updateEventHasField(finalEvent, DocumentFields.state); // If the final update changes only the revision field, then it's not the topmost event
+						if (topmostEventIsFinalEvent) {
+							LOGGER.debug("Topmost event is final event");
+							propagateDownstream(finalEvent, treeEvents.subList(0, treeEvents.size() - 1));
+						} else if (treeEvents.size() < 2) {
+							LOGGER.debug("Topmost event is a no-op");
 						} else {
-							ChangeStreamDocument<BsonDocument> mainEvent = treeEvants.get(treeEvants.size() - 2);
-							LOGGER.debug("Main event is {} on {}", mainEvent.getOperationType(), mainEvent.getDocumentKey());
-							propagateDownstream(mainEvent, treeEvants.subList(0, treeEvants.size() - 2));
+							ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.get(treeEvents.size() - 2);
+							LOGGER.debug("Topmost event is {} on {}", topmostEvent.getOperationType(), topmostEvent.getDocumentKey());
+							propagateDownstream(topmostEvent, treeEvents.subList(0, treeEvents.size() - 2));
 						}
 					}
 					finishedRevision(revision);
@@ -412,53 +412,53 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
-	private void propagateDownstream(ChangeStreamDocument<BsonDocument> mainEvent, List<ChangeStreamDocument<BsonDocument>> priorEvents) throws UnprocessableEventException {
-		switch (mainEvent.getOperationType()) {
+	private void propagateDownstream(ChangeStreamDocument<BsonDocument> topmostEvent, List<ChangeStreamDocument<BsonDocument>> priorEvents) throws UnprocessableEventException {
+		switch (topmostEvent.getOperationType()) {
 			case INSERT: case REPLACE: {
-				BsonDocument fullDocument = mainEvent.getFullDocument();
+				BsonDocument fullDocument = topmostEvent.getFullDocument();
 				if (fullDocument == null) {
-					throw new UnprocessableEventException("Missing fullDocument on main event", mainEvent.getOperationType());
+					throw new UnprocessableEventException("Missing fullDocument on topmost event", topmostEvent.getOperationType());
 				}
 
 				BsonDocument state = fullDocument.getDocument(DocumentFields.state.name(), null);
 				if (state == null) {
-					throw new UnprocessableEventException("Missing state field", mainEvent.getOperationType());
+					throw new UnprocessableEventException("Missing state field", topmostEvent.getOperationType());
 				}
 
-				Reference<?> mainRef;
+				Reference<?> topmostRef;
 				BsonDocument bsonState;
 				if (priorEvents == null) {
 					LOGGER.debug("No prior events");
 					bsonState = state;
-					mainRef = documentID2MainRef(mainEvent.getDocumentKey().getString("_id").getValue(), mainEvent);
+					topmostRef = documentIdToRef(topmostEvent.getDocumentKey().getString("_id").getValue(), topmostEvent);
 				} else {
 					LOGGER.debug("{} prior events", priorEvents.size());
 					List<BsonDocument> parts = subpartDocuments(priorEvents);
 					parts.add(fullDocument);
 					String id = fullDocument.getString("_id").getValue();
 					bsonState = gather(parts); // Mutates parts
-					mainRef = documentID2MainRef(id, mainEvent);
+					topmostRef = documentIdToRef(id, topmostEvent);
 				}
 
-				LOGGER.debug("| Replace downstream {}", mainRef);
-				submitReplacementDownstream(mainRef, bsonState);
+				LOGGER.debug("| Replace downstream {}", topmostRef);
+				submitReplacementDownstream(topmostRef, bsonState);
 			} break;
 			case UPDATE: {
-				Reference<?> mainRef = documentID2MainRef(mainEvent.getDocumentKey().getString("_id").getValue(), mainEvent);
-				UpdateDescription updateDescription = mainEvent.getUpdateDescription();
+				Reference<?> topmostRef = documentIdToRef(topmostEvent.getDocumentKey().getString("_id").getValue(), topmostEvent);
+				UpdateDescription updateDescription = topmostEvent.getUpdateDescription();
 				if (updateDescription != null) {
-					replaceUpdatedFields(mainRef, updateDescription.getUpdatedFields(), subpartDocuments(priorEvents), mainEvent.getOperationType());
-					deleteRemovedFields(mainRef, updateDescription.getRemovedFields(), mainEvent.getOperationType());
+					replaceUpdatedFields(topmostRef, updateDescription.getUpdatedFields(), subpartDocuments(priorEvents), topmostEvent.getOperationType());
+					deleteRemovedFields(topmostRef, updateDescription.getRemovedFields(), topmostEvent.getOperationType());
 				}
 			} break;
 			case DELETE: {
-				// No other events in the transaction matter if the main document is deleted
-				Reference<?> mainRef = mainRef(documentID2MainRef(mainEvent.getDocumentKey().getString("_id").getValue(), mainEvent));
-				LOGGER.debug("| Delete downstream {}", mainRef);
-				downstream.submitDeletion(mainRef);
+				// No other events in the transaction matter if the topmost document is deleted
+				Reference<?> deletedDocRef = targetDocumentRef(documentIdToRef(topmostEvent.getDocumentKey().getString("_id").getValue(), topmostEvent));
+				LOGGER.debug("| Delete downstream {}", deletedDocRef);
+				downstream.submitDeletion(deletedDocRef);
 			} break;
 			default: {
-				throw new UnprocessableEventException("Cannot process event", mainEvent.getOperationType());
+				throw new UnprocessableEventException("Cannot process event", topmostEvent.getOperationType());
 			}
 		}
 	}
@@ -481,12 +481,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	/**
 	 * This lets us use Java generics to avoid some ugly typecasts
 	 */
-	private <T> void submitReplacementDownstream(Reference<T> mainRef, BsonDocument bsonState) {
-		T newValue = formatter.document2object(bsonState, mainRef);
-		downstream.submitReplacement(mainRef, newValue);
+	private <T> void submitReplacementDownstream(Reference<T> topmostRef, BsonDocument bsonState) {
+		T newValue = formatter.document2object(bsonState, topmostRef);
+		downstream.submitReplacement(topmostRef, newValue);
 	}
 
-	private Reference<?> documentID2MainRef(String documentId, ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
+	private Reference<?> documentIdToRef(String documentId, ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 		// referenceTo does everything we need already. Build a fake dotted field name and use that
 		String dottedName = "state" + documentId
 			.replace('|', '.');
@@ -546,16 +546,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * <p>
 	 * We are changing a target field located either in the root document or in a sub-document.
 	 * We distinguish these cases based on whether the root document's update event contains
-	 * the {@code state} field: if it does, then that's the main event;
+	 * the {@code state} field: if it does, then that's the topmost event;
 	 * if it doesn't, then that event is simply transmitting the new revision number,
-	 * and the previous event is the main event.
+	 * and the previous event is the topmost event.
 	 * <p>
 	 * This algorithm falls down in the following case:
 	 * if, say, an entire {@code Catalog} in the root document is replaced by one that has
 	 * the same domain and the same number of entries with the same IDs,
-	 * then the root document's update should be considered the main event,
+	 * then the root document's update should be considered the topmost event,
 	 * yet because the document's contents are actually unchanged,
-	 * MongoDB will suppress that event, and we're left with no main event!
+	 * MongoDB will suppress that event, and we're left with no topmost event!
 	 * <p>
 	 * To prevent this suppression, we delete the target fields before setting them.
 	 * In this way, the update operation is never a no-op even if the document ends up unchanged.
@@ -581,7 +581,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private <T> void doReplacement(Reference<T> target, T newValue) {
 		collection.ensureTransactionStarted();
 		LOGGER.debug("doReplacement({})", target);
-		Reference<?> mainRef = mainRef(target);
+		Reference<?> targetDocRef = targetDocumentRef(target);
 		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
 		boolean hasSubParts;
 		if (value instanceof BsonDocument b) {
@@ -591,8 +591,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		} else {
 			hasSubParts = false;
 		}
-		if (rootRef.equals(mainRef)) {
-			LOGGER.debug("| Root ref is main ref");
+		if (rootRef.equals(targetDocRef)) {
+			LOGGER.debug("| Root ref is topmost");
 			if (hasSubParts) {
 				preDeleteField(target, rootRef, documentFilter(rootRef));
 			} else {
@@ -605,16 +605,17 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				collection.abortTransaction();
 			}
 		} else {
-			// Note: don't use mainPart's ID. TODO: Is this ok? Why is the ID wrong?
-			BsonDocument filter = documentFilter(mainRef);
-			boolean preDeleteIsStub = target.equals(mainRef);
+			// Note: don't use the target document's ID. TODO: Is this ok? Why is the ID wrong?
+			Reference<?> topmostRef = targetDocRef;
+			BsonDocument filter = documentFilter(topmostRef);
+			boolean preDeleteIsStub = target.equals(topmostRef);
 			if (preDeleteIsStub) {
-				// Upsert the main doc
+				// Upsert the target document
 				// TODO: merge this with the same code in upsertAndRemoveSubParts
-				LOGGER.debug("| Pre-delete main document");
+				LOGGER.debug("| Pre-delete target document");
 				collection.deleteOne(filter);
 
-				LOGGER.debug("| Update main document");
+				LOGGER.debug("| Update target document");
 				BsonDocument update = new BsonDocument("$set",
 					filter.clone()
 						.append(DocumentFields.state.name(), value));
@@ -623,28 +624,28 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				collection.updateOne(filter, update, new UpdateOptions().upsert(true));
 
 				// Move up to the parent document to set the "true" stub
-				mainRef = mainRef(mainRef.enclosingReference(Object.class));
-				filter = documentFilter(mainRef);
+				topmostRef = targetDocumentRef(topmostRef.enclosingReference(Object.class));
+				filter = documentFilter(topmostRef);
 				value = TRUE;
-				LOGGER.debug("| Move up to enclosing main reference {}", mainRef);
+				LOGGER.debug("| Move up to enclosing topmost reference {}", topmostRef);
 			}
 
-			// Update part of the main doc (which must already exist)
-			String key = dottedFieldNameOf(target, mainRef);
+			// Update part of the topmost document (which must already exist)
+			String key = dottedFieldNameOf(target, topmostRef);
 			if (preDeleteIsStub) {
-				preDeleteStub(target, mainRef, filter);
+				preDeleteStub(target, topmostRef, filter);
 			} else if (hasSubParts) {
-				preDeleteField(target, mainRef, filter);
+				preDeleteField(target, topmostRef, filter);
 			} else {
 				LOGGER.debug("| Skipping pre-delete for {}: no sub-parts", target);
 			}
-			LOGGER.debug("| Set field {} in {}: {}", key, mainRef, value);
-			BsonDocument mainUpdate = new BsonDocument("$set", new BsonDocument(key, value));
-			// If the main document doesn't exist (or its structure doesn't match), the
+			LOGGER.debug("| Set field {} in {}: {}", key, topmostRef, value);
+			BsonDocument topmostUpdate = new BsonDocument("$set", new BsonDocument(key, value));
+			// If the topmost document doesn't exist (or its structure doesn't match), the
 			// write is silently ignored, just as the local driver ignores writes to
 			// nonexistent nodes. Such a no-op must not bump the revision or emit a
 			// spurious change-stream event.
-			boolean applied = doUpdate(mainUpdate, standardPreconditions(target, mainRef, filter));
+			boolean applied = doUpdate(topmostUpdate, standardPreconditions(target, topmostRef, filter));
 
 			if (applied) {
 				LOGGER.debug("| Bump revision on root document");
@@ -659,8 +660,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private <T> void doDelete(Reference<T> target) {
 		collection.ensureTransactionStarted();
 		deletePartsUnder(target);
-		Reference<?> mainRef = mainRef(target);
-		if (mainRef.equals(target)) {
+		Reference<?> targetDocRef = targetDocumentRef(target);
+		Reference<?> topmostRef = targetDocRef;
+		if (targetDocRef.equals(target)) {
 			// Delete the whole document
 			if (settings.experimental().orphanDocumentMode() == OrphanDocumentMode.HASTY) {
 				LOGGER.debug("Skipping deleting document({}) in {} mode", target, OrphanDocumentMode.HASTY);
@@ -668,14 +670,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				throw new NotYetImplementedException("Earnest mode not yet implemented");
 			}
 
-			assert !mainRef.path().isEmpty(): "Can't delete the root reference";
+			assert !targetDocRef.path().isEmpty(): "Can't delete the root reference";
 			// Move up to the parent document to delete the "true" stub
-			mainRef = mainRef(mainRef.enclosingReference(Object.class));
-			LOGGER.debug("| Move up to enclosing main reference {}", mainRef);
+			topmostRef = targetDocumentRef(targetDocRef.enclosingReference(Object.class));
+			LOGGER.debug("| Move up to enclosing topmost reference {}", topmostRef);
 		}
 
-		if (doUpdate(deletionDoc(target, mainRef), standardPreconditions(target, mainRef, documentFilter(mainRef)))) {
-			if (!rootRef.equals(mainRef)) {
+		if (doUpdate(deletionDoc(target, topmostRef), standardPreconditions(target, topmostRef, documentFilter(topmostRef)))) {
+			if (!rootRef.equals(topmostRef)) {
 				LOGGER.debug("| Deletion succeeded; bumping revision number in root document");
 				doUpdate(blankUpdateDoc(), documentFilter(rootRef));
 			}
@@ -686,9 +688,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	private boolean preconditionFailed(Reference<Identifier> precondition, Identifier requiredValue) {
-		Reference<?> mainRef = mainRef(precondition);
-		BsonDocument filter = documentFilter(mainRef)
-			.append(dottedFieldNameOf(precondition, mainRef), new BsonString(requiredValue.toString()));
+		Reference<?> preconditionDocRef = targetDocumentRef(precondition);
+		BsonDocument filter = documentFilter(preconditionDocRef)
+			.append(dottedFieldNameOf(precondition, preconditionDocRef), new BsonString(requiredValue.toString()));
 		LOGGER.debug("Precondition filter: {}", filter);
 		boolean result = !documentExists(filter);
 		if (result) {
@@ -705,12 +707,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * @return {@link Reference} to the bosk object corresponding to the document
 	 * that contains the given <code>target</code>.
 	 */
-	private Reference<?> mainRef(Reference<?> target) {
+	private Reference<?> targetDocumentRef(Reference<?> target) {
 		if (target.path().isEmpty()) {
 			return rootRef;
 		}
 
-		// The main reference is the "deepest" one that matches the target reference.
+		// The target document reference is the "deepest" one that matches the target reference.
 		// graftPoints is in descending order of depth.
 		// TODO: This could be done more efficiently, perhaps using a trie
 		int targetPathLength = target.path().length();
@@ -724,7 +726,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 							target.path().segment(containerPathLength)
 						);
 					} catch (InvalidTypeException e) {
-						throw new AssertionError("Unexpected exception forming mainRef from container " + candidateContainer + " and target " + target);
+						throw new AssertionError("Unexpected exception forming targetDocumentRef from container " + candidateContainer + " and target " + target);
 					}
 				}
 			}
@@ -803,7 +805,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * Call <code>downstream.{@link BoskDriver#submitReplacement submitReplacement}</code>
 	 * for each updated field.
 	 */
-	private void replaceUpdatedFields(Reference<?> mainRef, @Nullable BsonDocument updatedFields, List<BsonDocument> subParts, OperationType operationType) throws UnprocessableEventException {
+	private void replaceUpdatedFields(Reference<?> topmostRef, @Nullable BsonDocument updatedFields, List<BsonDocument> subParts, OperationType operationType) throws UnprocessableEventException {
 		if (updatedFields != null) {
 			boolean alreadyUsedSubparts = false;
 			for (Entry<String, BsonValue> entry : updatedFields.entrySet()) {
@@ -811,7 +813,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				if (dottedName.startsWith(DocumentFields.state.name())) {
 					Reference<Object> ref;
 					try {
-						ref = BsonFormatter.referenceTo(dottedName, mainRef);
+						ref = BsonFormatter.referenceTo(dottedName, topmostRef);
 					} catch (InvalidTypeException e) {
 						logNonexistentField(dottedName, e);
 						continue;
@@ -826,13 +828,13 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					BsonValue replacementValue = entry.getValue();
 					if (replacementValue instanceof BsonDocument) {
 						LOGGER.debug("Replacement value is a document; gather along with {} subparts", subParts.size());
-						String mainID = docBsonPath(ref, mainRef);
-						BsonDocument mainDocument = new BsonDocument()
-							.append("_id", new BsonString(mainID))
+						String partID = docBsonPath(ref, topmostRef);
+						BsonDocument partDocument = new BsonDocument()
+							.append("_id", new BsonString(partID))
 							.append("state", replacementValue);
 						ArrayList<BsonDocument> parts = new ArrayList<>(subParts.size() + 1);
 						parts.addAll(subParts);
-						parts.add(mainDocument);
+						parts.add(partDocument);
 
 						replacementValue = gather(parts);
 					} else if (subParts.isEmpty()) {
@@ -858,13 +860,13 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * Call <code>downstream.{@link BoskDriver#submitDeletion submitDeletion}</code>
 	 * for each removed field.
 	 */
-	private void deleteRemovedFields(Reference<?> mainRef, @Nullable List<String> removedFields, OperationType operationType) throws UnprocessableEventException {
+	private void deleteRemovedFields(Reference<?> topmostRef, @Nullable List<String> removedFields, OperationType operationType) throws UnprocessableEventException {
 		if (removedFields != null) {
 			for (String dottedName : removedFields) {
 				if (dottedName.startsWith(DocumentFields.state.name())) {
 					Reference<Object> ref;
 					try {
-						ref = BsonFormatter.referenceTo(dottedName, mainRef);
+						ref = BsonFormatter.referenceTo(dottedName, topmostRef);
 					} catch (InvalidTypeException e) {
 						logNonexistentField(dottedName, e);
 						continue;
@@ -880,28 +882,28 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	private <T> void deletePartsUnder(Reference<T> target) {
 		// This whole method is pretty "best-effort" right now. More work to do if we really want to be EARNEST
-		Reference<?> mainRef = mainRef(target);
-		if (mainRef.equals(target)) {
+		Reference<?> targetDocRef = targetDocumentRef(target);
+		if (targetDocRef.equals(target)) {
 			if (settings.experimental().orphanDocumentMode() == OrphanDocumentMode.HASTY) {
 				LOGGER.debug("Skipping deletePartsUnder({}) in {} mode", target, OrphanDocumentMode.HASTY);
 			} else {
 				String prefix;
-				if (mainRef.path().isEmpty()) {
+				if (targetDocRef.path().isEmpty()) {
 					prefix = "|";
 				} else {
-					prefix = docBsonPath(mainRef, rootRef) + "|";
+					prefix = docBsonPath(targetDocRef, rootRef) + "|";
 				}
 
 				// Every doc whose ID starts with the prefix and has at least one more character
 				Bson filter = regex("_id", "^" + Pattern.quote(prefix) + ".");
 
 				DeleteResult result = collection.deleteMany(filter);
-				LOGGER.debug("deletePartsUnder({}) result: {} filter: {}", mainRef, result, filter);
+				LOGGER.debug("deletePartsUnder({}) result: {} filter: {}", targetDocRef, result, filter);
 			}
 		} else {
 			// TODO!
 			assert settings.experimental().orphanDocumentMode() == OrphanDocumentMode.HASTY;
-			LOGGER.debug("Skipping deletePartsUnder({}) because mainRef is different: {}", target, mainRef);
+			LOGGER.debug("Skipping deletePartsUnder({}) because target document is different: {}", target, targetDocRef);
 		}
 	}
 

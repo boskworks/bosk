@@ -40,8 +40,8 @@ import static works.bosk.drivers.mongo.internal.BsonFormatter.undottedFieldNameS
  * <dl>
  *     <dt>Root document</dt>
  *     <dd>BSON document corresponding to the bosk root reference</dd>
- *     <dt>Main document</dt>
- *     <dd>BSON document corresponding to the part of the state tree being described</dd>
+ *     <dt>Target document</dt>
+ *     <dd>BSON document containing the target reference's state node</dd>
  * </dl>
  */
 class BsonSurgeon {
@@ -100,7 +100,7 @@ class BsonSurgeon {
 	 * @param docRef   the bosk node corresponding to <code>document</code>
 	 * @param document will be modified!
 	 * @return list of {@link BsonDocument}s which, when passed to {@link #gather}, combine to form the original <code>document</code>.
-	 * The main document, document corresponding to <code>docRef</code>, will be at the end of the list.
+	 * The target document, document corresponding to <code>docRef</code>, will be at the end of the list.
 	 * @see #gather
 	 */
 	public List<BsonDocument> scatter(Reference<?> docRef, BsonDocument document) {

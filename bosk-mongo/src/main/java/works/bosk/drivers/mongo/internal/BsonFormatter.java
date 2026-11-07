@@ -289,18 +289,20 @@ public class BsonFormatter {
 	}
 
 	/**
-	 * The fields of the main MongoDB document.  Case-sensitive.
+	 * The fields of a state document.  Case-sensitive.
 	 *
 	 * <p>
 	 * No field name should be a prefix of any other.
 	 */
 	public enum DocumentFields {
 		/**
-		 * The location of this document's state within the conceptual giant document.
-		 * A pipe-separated list of BSON field names.
+		 * The document's identity, which is present in change stream documents.
 		 *
 		 * <p>
-		 * We put the whole path in _id so that it will be present in change stream documents.
+		 * Pando puts the document's location within the conceptual giant document
+		 * in _id so that the location is present in change stream events. The
+		 * location is a pipe-separated list of BSON field names. Sequoia has only
+		 * one state document, so it uses a fixed ID.
 		 */
 		_id,
 
