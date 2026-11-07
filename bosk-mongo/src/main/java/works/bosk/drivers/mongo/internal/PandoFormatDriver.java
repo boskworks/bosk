@@ -57,7 +57,6 @@ import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
-import static works.bosk.drivers.mongo.internal.DocumentFieldTracker.TrackedField.DIAGNOSTICS;
 import static works.bosk.util.Classes.enumerableByIdentifier;
 
 /**
@@ -331,10 +330,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 						throw new UnprocessableEventException("Missing fullDocument on final event", finalEvent.getOperationType());
 					}
 
-					// Grab the diagnostics early
-					BsonString docId = finalEvent.getDocumentKey().getString("_id");
-					BsonDocument attrsBson = fieldTracker.getFieldAsDocument(docId, DIAGNOSTICS);
-					MapValue<String> diagnosticAttributes = attrsBson == null ? MapValue.empty() : formatter.decodeDiagnosticAttributes(attrsBson);
+					MapValue<String> diagnosticAttributes = diagnosticAttributesFor(documentIdOf(finalEvent));
 
 					Optional<BsonString> epoch = formatter.epochOf(fullDocument);
 					BsonInt64 revision = formatter.getRevisionFromFullDocument(fullDocument);
@@ -369,9 +365,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				} break;
 				case UPDATE: {
 					// TODO: Combine code with INSERT and REPLACE events
-					BsonString docId = finalEvent.getDocumentKey().getString("_id");
-					BsonDocument attrsBson = fieldTracker.getFieldAsDocument(docId, DIAGNOSTICS);
-					MapValue<String> attributes = attrsBson == null ? MapValue.empty() : formatter.decodeDiagnosticAttributes(attrsBson);
+					MapValue<String> attributes = diagnosticAttributesFor(documentIdOf(finalEvent));
 					BsonInt64 revision;
 					try (
 						var _ = context.withOnly(attributes)
@@ -430,12 +424,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				if (priorEvents == null) {
 					LOGGER.debug("No prior events");
 					bsonState = state;
-					topmostRef = documentIdToRef(topmostEvent.getDocumentKey().getString("_id").getValue(), topmostEvent);
+					topmostRef = documentIdToRef(documentIdOf(topmostEvent).getValue(), topmostEvent);
 				} else {
 					LOGGER.debug("{} prior events", priorEvents.size());
 					List<BsonDocument> parts = subpartDocuments(priorEvents);
 					parts.add(fullDocument);
-					String id = fullDocument.getString("_id").getValue();
+					String id = documentIdOf(topmostEvent).getValue();
 					bsonState = gather(parts); // Mutates parts
 					topmostRef = documentIdToRef(id, topmostEvent);
 				}
@@ -444,7 +438,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				submitReplacementDownstream(topmostRef, bsonState);
 			} break;
 			case UPDATE: {
-				Reference<?> topmostRef = documentIdToRef(topmostEvent.getDocumentKey().getString("_id").getValue(), topmostEvent);
+				Reference<?> topmostRef = documentIdToRef(documentIdOf(topmostEvent).getValue(), topmostEvent);
 				UpdateDescription updateDescription = topmostEvent.getUpdateDescription();
 				if (updateDescription != null) {
 					replaceUpdatedFields(topmostRef, updateDescription.getUpdatedFields(), subpartDocuments(priorEvents), topmostEvent.getOperationType());
@@ -453,7 +447,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			} break;
 			case DELETE: {
 				// No other events in the transaction matter if the topmost document is deleted
-				Reference<?> deletedDocRef = targetDocumentRef(documentIdToRef(topmostEvent.getDocumentKey().getString("_id").getValue(), topmostEvent));
+				Reference<?> deletedDocRef = targetDocumentRef(documentIdToRef(documentIdOf(topmostEvent).getValue(), topmostEvent));
 				LOGGER.debug("| Delete downstream {}", deletedDocRef);
 				downstream.submitDeletion(deletedDocRef);
 			} break;

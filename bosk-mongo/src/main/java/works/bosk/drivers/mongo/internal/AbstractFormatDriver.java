@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
+import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
@@ -37,6 +38,7 @@ import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
+import static works.bosk.drivers.mongo.internal.DocumentFieldTracker.TrackedField.DIAGNOSTICS;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 
 abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implements FormatDriver<R> {
@@ -135,6 +137,22 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 					formatter.encodeDiagnostics(context.getAttributes())
 				)
 			);
+	}
+
+	/**
+	 * @return the diagnostic attributes last seen for {@code documentId}, or an
+	 * empty set if none are known
+	 */
+	protected MapValue<String> diagnosticAttributesFor(BsonString documentId) {
+		BsonDocument attributes = fieldTracker.getFieldAsDocument(
+			documentId, DIAGNOSTICS);
+		return attributes == null
+			? MapValue.empty()
+			: formatter.decodeDiagnosticAttributes(attributes);
+	}
+
+	protected static BsonString documentIdOf(ChangeStreamDocument<BsonDocument> event) {
+		return event.getDocumentKey().getString("_id");
 	}
 
 	protected void logNonexistentField(String dottedName, InvalidTypeException e) {

@@ -179,9 +179,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					// also REPLACE. That would imply that this case is impossible.
 					throw new UnprocessableEventException("Missing fullDocument", event.getOperationType());
 				}
-				BsonString docId = event.getDocumentKey().getString("_id");
-				BsonDocument attrsBson = fieldTracker.getFieldAsDocument(docId, DocumentFieldTracker.TrackedField.DIAGNOSTICS);
-				MapValue<String> diagnosticAttributes = attrsBson == null ? MapValue.empty() : formatter.decodeDiagnosticAttributes(attrsBson);
+				BsonString docId = documentIdOf(event);
+				MapValue<String> diagnosticAttributes = diagnosticAttributesFor(docId);
 				try (
 					var _ = context.withOnly(diagnosticAttributes)
 				) {
@@ -208,9 +207,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				UpdateDescription updateDescription = event.getUpdateDescription();
 				if (updateDescription != null) {
 					BsonInt64 revision = formatter.getRevisionFromUpdateEvent(event);
-					BsonString updateDocId = event.getDocumentKey().getString("_id");
-					BsonDocument updateAttrsBson = fieldTracker.getFieldAsDocument(updateDocId, DocumentFieldTracker.TrackedField.DIAGNOSTICS);
-					MapValue<String> diagnosticAttributes = updateAttrsBson == null ? MapValue.empty() : formatter.decodeDiagnosticAttributes(updateAttrsBson);
+					BsonString updateDocId = documentIdOf(event);
+					MapValue<String> diagnosticAttributes = diagnosticAttributesFor(updateDocId);
 					try (
 						var _ = context.withOnly(diagnosticAttributes)
 					) {
