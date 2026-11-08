@@ -139,10 +139,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (target.equals(targetDocRef)) {
 			// The target is itself a graft-point entry. Its own document may be
 			// an orphan left behind by a HASTY deletion, so membership comes
-			// from the container's stub.
-			Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
-			if (hasStub(target, containerRef)) {
+			// from the container's stub, and the whole ancestor chain must
+			// exist before we can create it.
+			if (entryExists(target)) {
 				LOGGER.debug("Already exists: {}", target);
+				collection.abortTransaction();
+				return;
+			}
+			if (!canCreateEntry(target)) {
+				LOGGER.debug("Parent does not exist: {}", target);
 				collection.abortTransaction();
 				return;
 			}
@@ -722,6 +727,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		} else {
 			return entryExists(containerRef);
 		}
+	}
+
+	/**
+	 * @return true if the entry's container exists, so the entry can be created
+	 */
+	private boolean canCreateEntry(Reference<?> entryRef) {
+		Reference<?> containerRef = targetDocumentRef(entryRef.enclosingReference(Object.class));
+		return containerRef.isRoot() || entryExists(containerRef);
 	}
 
 	private boolean hasStub(Reference<?> entryRef, Reference<?> containerRef) {
