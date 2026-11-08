@@ -862,20 +862,23 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
-		if (result.wasAcknowledged()) {
-			long matchedCount = result.getMatchedCount();
-			if (matchedCount == 0) {
-				LOGGER.debug("| -> No documents were updated; double-checking that the root document still exists");
-				try (var cursor = collection.find(documentFilter(rootRef)).limit(1).cursor()) {
-					if (!cursor.hasNext()) {
-						throw new IllegalStateException("Root document disappeared");
-					}
+		requireAcknowledged(result, filter, updateDoc, "Update");
+		long matchedCount = result.getMatchedCount();
+		if (matchedCount == 0) {
+			LOGGER.debug("| -> No documents were updated; double-checking that the root document still exists");
+			try (var cursor = collection.find(documentFilter(rootRef)).limit(1).cursor()) {
+				if (!cursor.hasNext()) {
+					throw new IllegalStateException("Root document disappeared");
 				}
 			}
-			return matchedCount >= 1;
-		} else {
+		}
+		return matchedCount >= 1;
+	}
+
+	private static void requireAcknowledged(UpdateResult result, BsonDocument filter, BsonDocument change, String description) {
+		if (!result.wasAcknowledged()) {
 			LOGGER.error("MongoDB write was not acknowledged");
-			LOGGER.trace("Details of MongoDB write not acknowledged:\n\tFilter: {}\n\tUpdate: {}\n\tResult: {}", filter, updateDoc, result);
+			LOGGER.trace("Details of MongoDB write not acknowledged:\n\tFilter: {}\n\t{}: {}\n\tResult: {}", filter, description, change, result);
 			throw new IllegalStateException("Mongo write was not acknowledged: " + result);
 		}
 	}
