@@ -139,8 +139,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (target.equals(targetDocRef)) {
 			// The target is itself a graft-point entry. Its own document may be
 			// an orphan left behind by a HASTY deletion, so membership comes
-			// from the container's stub.
+			// from the container's stub, and the whole ancestor chain must
+			// exist before we can create it.
 			Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
+			if (!containerExists(containerRef)) {
+				LOGGER.debug("Parent does not exist: {}", target);
+				collection.abortTransaction();
+				return;
+			}
 			if (hasStub(target, containerRef)) {
 				LOGGER.debug("Already exists: {}", target);
 				collection.abortTransaction();
@@ -677,10 +683,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	/**
 	 * Replaces a whole state document, which is an entry in a graft-point container.
 	 * <p>
-	 * If the container has a stub for the entry, the entry already exists, and the
-	 * replacement is an update of the entry's own document: it keeps the document's
-	 * incarnation, bumps its revision, and leaves the container untouched. The
-	 * entry's document is then the topmost document of the transaction.
+	 * If the container does not exist, the replacement is ignored and the
+	 * transaction is aborted.
+	 * <p>
+	 * Otherwise, if the container has a stub for the entry, the entry already
+	 * exists, and the replacement is an update of the entry's own document: it
+	 * keeps the document's incarnation, bumps its revision, and leaves the
+	 * container untouched. The entry's document is then the topmost document of
+	 * the transaction.
 	 * <p>
 	 * Otherwise, the entry is being created. Its document is written with a fresh
 	 * lifetime, and the container's stub is added as the transaction's topmost
@@ -690,6 +700,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 */
 	private <T> void replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
 		Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
+		if (!containerExists(containerRef)) {
+			LOGGER.debug("Parent does not exist; ignoring replacement of {}", target);
+			collection.abortTransaction();
+			return;
+		}
 		if (hasStub(target, containerRef)) {
 			updateGraftPointEntry(target, value, hasSubParts);
 		} else {
@@ -712,6 +727,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		} else {
 			return entryExists(containerRef);
 		}
+	}
+
+	/**
+	 * @return true if the entry's container exists, so the entry can be created
+	 * or updated
+	 */
+	private boolean containerExists(Reference<?> containerRef) {
+		return containerRef.isRoot() || entryExists(containerRef);
 	}
 
 	private boolean hasStub(Reference<?> entryRef, Reference<?> containerRef) {
