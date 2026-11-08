@@ -144,6 +144,19 @@ public class SerialFractionExperiment extends AbstractMongoDriverTest {
 			Refs refs = bosk.buildReferences(Refs.class);
 			bosk.driver().flush();
 
+			int rootDocumentBytes;
+			{
+				BsonDocument sizeDocument = mongoService.client()
+					.getDatabase(driverSettings.database())
+					.getCollection(driverSettings.collection(), BsonDocument.class)
+					.aggregate(List.of(
+						new BsonDocument("$match", new BsonDocument("_id", new BsonString("|"))),
+						new BsonDocument("$project", new BsonDocument("size",
+							new BsonDocument("$bsonSize", new BsonString("$$ROOT"))))))
+					.first();
+				rootDocumentBytes = sizeDocument == null ? -1 : sizeDocument.getInt32("size").getValue();
+			}
+
 			// Warm up the change stream.
 			if (!dropEvents) {
 				bosk.driver().submitReplacement(
@@ -256,11 +269,11 @@ public class SerialFractionExperiment extends AbstractMongoDriverTest {
 				});
 			}
 
-			System.out.printf("SERIAL mode=%s threads=%d catalogSize=%d downstream=%s receiver=%s raw=%s txn=%s wc=%s "
+			System.out.printf("SERIAL mode=%s threads=%d catalogSize=%d rootBytes=%d downstream=%s receiver=%s raw=%s txn=%s wc=%s "
 					+ "trimmedMeanUpdatesPerSec=%.1f trimmedMeanEventsPerSec=%.1f trimmedMeanEventBusy=%.3f "
 					+ "trimmedMeanNsPerEvent=%.0f trimmedMeanNsPerDownstream=%.0f trimmedMeanDownstreamCallsPerEvent=%.3f "
 					+ "maxLag=%d rates=[%s] eventRates=[%s] busy=[%s] lag=[%s] warmupMs=%d measureMs=%d%n",
-				mode, experimentThreads, catalogSize, downstreamMode, receiverMode,
+				mode, experimentThreads, catalogSize, rootDocumentBytes, downstreamMode, receiverMode,
 				raw, raw ? rawTransactions : "-", raw ? rawWriteConcern : "-",
 				trimmedMean(ratesPerRep), trimmedMean(eventRatesPerRep), trimmedMean(busyPerRep),
 				trimmedMean(nsPerEventPerRep), trimmedMean(nsPerDownstreamPerRep), trimmedMean(downstreamCallsPerEventPerRep),
