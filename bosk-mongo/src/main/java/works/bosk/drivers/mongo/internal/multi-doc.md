@@ -48,7 +48,7 @@ The driver is allowed to leave the `B` document intact.
 
 Dangling documents can be cleared via `refurbish()` if desired.
 
-An explicit `submitDeletion` shouldn't leave the main document behind,
+An explicit `submitDeletion` shouldn't leave the target document behind,
 but is allowed to, if it finds some other way to communicate the deletion via change streams.
 
 ## Database contents
@@ -74,15 +74,40 @@ Fields:
 - `_id`: always `|`
 - `state`: the bosk state
 - Any graft points (Catalogs or SideTables) map IDs to the value `true` (rather than containing the actual tree node)
-- `revision`: the revision number for the entire collection; used to implement flush
+- `epoch`: identifies the collection initialization; used to detect a collection that has been deleted and re-created
+- `incarnation`, `revision`: the root document's revision number and incarnation (see below)
+- `diagnostics`: the diagnostic attributes from the most recent update for which this document was topmost
 
 #### Sub-part documents
 
 - `_id`: a pipe-delimited BSON path to the location of this document's state within the overall BSON structure
 - `state`: the state of the particular node represented by this document
-
-Sub-parts may also have a `revision` field, which is currently ignored.
+- `incarnation`, `revision`: the document's revision number and incarnation
 
 Often, the BSON path for a particular state tree node looks like its bosk path with slashes replaced by pipe characters.
 They will differ for nodes under `SideTable` nodes,
 because the BSON representation for those nodes adds an additional field `valuesById`.
+
+#### Revision numbers and incarnations
+
+Every state document carries `incarnation` and `revision` fields.
+Only the **topmost** document changed by an update has its `revision` incremented:
+that is, the shallowest document whose `state` field changes.
+Sub-parts written by the same update keep their revisions.
+This means unrelated updates to different graft documents do not conflict on a shared document.
+
+A document created for the first time has a fresh incarnation (a UUID) and revision 1.
+When a document is deleted and re-created, it gets another fresh incarnation and
+its revision resets to 1. Incarnations are identities, not ordered values, so a
+re-created document's revision 1 is not mistaken for an old revision 1.
+A flush target is satisfied when the applied incarnation differs, which means the
+target belongs to a superseded lifetime, or when both share an incarnation and
+the applied revision is at least the target revision. A flush waits for
+ancestors before descendants, so the incarnation change has been applied before a
+descendant's incarnation is compared.
+
+`flush()` reads every document's revision number and incarnation in bottom-up
+order (descendants before ancestors) using `ReadConcern.LOCAL`; it is read-only.
+It then waits for them in top-down order (ancestors before descendants).
+Waiting for each document's revision means a flush observes changes to graft
+documents that do not touch the root.

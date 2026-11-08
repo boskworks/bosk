@@ -25,7 +25,6 @@ import org.bson.codecs.configuration.CodecRegistry;
 import works.bosk.BoskContext;
 import works.bosk.BoskInfo;
 import works.bosk.Listing;
-import works.bosk.Path;
 import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeSerializer;
@@ -290,26 +289,22 @@ public class BsonFormatter {
 	}
 
 	/**
-	 * The fields of the main MongoDB document.  Case-sensitive.
+	 * The fields of a state document.  Case-sensitive.
 	 *
 	 * <p>
 	 * No field name should be a prefix of any other.
 	 */
 	public enum DocumentFields {
 		/**
-		 * The location of this document's state within the conceptual giant document.
-		 * A pipe-separated list of BSON field names.
+		 * The document's identity, which is present in change stream documents.
 		 *
 		 * <p>
-		 * We put the whole path in _id so that it will be present in change stream documents.
+		 * Pando puts the document's location within the conceptual giant document
+		 * in _id so that the location is present in change stream events. The
+		 * location is a pipe-separated list of BSON field names. Sequoia has only
+		 * one state document, so it uses a fixed ID.
 		 */
 		_id,
-
-		/**
-		 * The {@link Path#urlEncoded() url encoded} {@link Path path} of the location of
-		 * this document's state within the bosk tree.
-		 */
-		path,
 
 		/**
 		 * The BSON-encoded portion of the bosk state represented by this document.
@@ -324,12 +319,40 @@ public class BsonFormatter {
 		 * because the start-over is a genuinely new initialization.
 		 *
 		 * <p>
+		 * Only the root document has an epoch.
+		 *
+		 * <p>
 		 * A missing value indicates a legacy database that predates the epoch mechanism.
 		 */
 		epoch,
 
 		/**
-		 * An ever-increasing 64-bit long that is incremented every time the document changes.
+		 * A UUID identifying one lifetime of this document's
+		 * {@link #revision revision} counter.
+		 *
+		 * <p>
+		 * A new value is generated whenever the document is created, and again
+		 * whenever it is re-created, at which time the revision counter resets to
+		 * 1. Because the incarnation is generated for the new document rather than
+		 * derived from the old one, it does not depend on the old document still
+		 * existing. A target from an old incarnation can therefore be recognized
+		 * as old even though its revision number may be higher than the new
+		 * document's.
+		 *
+		 * <p>
+		 * This field is required on every state document.
+		 */
+		incarnation,
+
+		/**
+		 * A 64-bit long that is incremented every time this document is the
+		 * <em>topmost</em> document changed by an update: that is, the shallowest
+		 * document whose {@code state} changes. Other documents written by the
+		 * same update keep their revisions.
+		 *
+		 * <p>
+		 * A newly created document starts at 1. This field is required on every
+		 * state document.
 		 */
 		revision,
 

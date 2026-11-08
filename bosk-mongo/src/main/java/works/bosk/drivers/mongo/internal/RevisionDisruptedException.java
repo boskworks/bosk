@@ -8,9 +8,10 @@ import works.bosk.exceptions.FlushFailureException;
  * and the driver must reconnect and reload the state from the database.
  * <p>
  * A disruption is only ever detected by {@link AbstractFormatDriver#flush}, the
- * only driver method that reads the revision number. Retrying that flush would fail
- * the same way every time, so the driver could only spin in a busy loop; a reconnect,
- * by contrast, cannot encounter a disruption, so it can proceed immediately.
+ * only driver method that reads the per-document revision numbers. Retrying that
+ * flush would fail the same way every time, so the driver could only spin in a
+ * busy loop; a reconnect, by contrast, cannot encounter a disruption, so it can
+ * proceed immediately.
  */
 abstract class RevisionDisruptedException extends FlushFailureException {
 	public RevisionDisruptedException(String message) {

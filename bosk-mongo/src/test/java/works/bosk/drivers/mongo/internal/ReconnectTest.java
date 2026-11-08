@@ -789,7 +789,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection(), BsonDocument.class)
 				.updateOne(
-					new BsonDocument("path", new BsonString("/")),
+					rootDocumentsFilter(),
 					new BsonDocument("$set", new BsonDocument("state.string", new BsonString("fresh after reconnect")))
 						.append("$inc", new BsonDocument("revision", new BsonInt64(1)))
 				);
