@@ -652,6 +652,20 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
+	@InjectedTest
+	void conditionalReplaceAfterDeletion_preconditionOnDeletedNode_doesNothing(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		Reference<TestEntity> deletedNode = catalogRef.then(child1ID);
+		Reference<Identifier> deletedNodeID = deletedNode.then(Identifier.class, TestEntity.Fields.id);
+		driver.submitDeletion(deletedNode);
+		driver.submitConditionalReplacement(
+			deletedNode,
+			emptyEntityAt(deletedNode).withString("should not appear"),
+			deletedNodeID,
+			child1ID);
+		assertCorrectBoskContents();
+	}
+
 	@Test
 	void replaceRoot() throws InvalidTypeException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
