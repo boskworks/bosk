@@ -643,6 +643,15 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
+	@InjectedTest
+	void conditionalCreateAfterDeletion_createsNode(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		Reference<TestEntity> deletedNode = catalogRef.then(child1ID);
+		driver.submitDeletion(deletedNode);
+		driver.submitConditionalCreation(deletedNode, emptyEntityAt(deletedNode).withString("created after deletion"));
+		assertCorrectBoskContents();
+	}
+
 	@Test
 	void replaceRoot() throws InvalidTypeException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));

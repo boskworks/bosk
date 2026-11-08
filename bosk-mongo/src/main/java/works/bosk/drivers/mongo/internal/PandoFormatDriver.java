@@ -136,14 +136,26 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 		collection.ensureTransactionStarted();
 		Reference<?> targetDocRef = targetDocumentRef(target);
-		BsonDocument filter = documentFilter(targetDocRef)
-			.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
-		if (documentExists(filter)) {
-			LOGGER.debug("Already exists: {}", filter);
-			collection.abortTransaction();
-			return;
+		if (target.equals(targetDocRef)) {
+			// The target is itself a graft-point entry. Its own document may be
+			// an orphan left behind by a HASTY deletion, so membership comes
+			// from the container's stub.
+			if (entryExists(target)) {
+				LOGGER.debug("Already exists: {}", target);
+				collection.abortTransaction();
+				return;
+			}
+			doReplacement(target, newValue, false);
+		} else {
+			BsonDocument filter = documentFilter(targetDocRef)
+				.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
+			if (documentExists(filter)) {
+				LOGGER.debug("Already exists: {}", filter);
+				collection.abortTransaction();
+				return;
+			}
+			doReplacement(target, newValue);
 		}
-		doReplacement(target, newValue);
 	}
 
 	@Override
@@ -615,6 +627,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 *  It's complicated by the fact that the zero-match case in Sequoia is highly ambiguous.
 	 */
 	private <T> void doReplacement(Reference<T> target, T newValue) {
+		doReplacement(target, newValue, null);
+	}
+
+	/**
+	 * @param entryExistsHint whether the target is already present in its
+	 * graft-point container, or {@code null} to check; only meaningful when the
+	 * target is itself a graft-point entry
+	 */
+	private <T> void doReplacement(Reference<T> target, T newValue, @Nullable Boolean entryExistsHint) {
 		collection.ensureTransactionStarted();
 		LOGGER.debug("doReplacement({})", target);
 		Reference<?> targetDocRef = targetDocumentRef(target);
@@ -641,7 +662,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				collection.abortTransaction();
 			}
 		} else if (target.equals(targetDocRef)) {
-			replaceGraftPointEntry(target, value, hasSubParts);
+			replaceGraftPointEntry(target, value, hasSubParts, entryExistsHint);
 		} else {
 			// Update part of the topmost document (which must already exist)
 			BsonDocument filter = documentFilter(targetDocRef);
@@ -675,16 +696,30 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * an orphan, so the presence of the document alone does not mean the entry
 	 * exists.
 	 */
-	private <T> void replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+	private <T> void replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts, @Nullable Boolean entryExistsHint) {
 		Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
-		String stubKey = dottedFieldNameOf(target, containerRef);
-		BsonDocument stubFilter = documentFilter(containerRef)
-			.append(stubKey, new BsonDocument("$exists", TRUE));
-		if (documentExists(stubFilter)) {
+		boolean exists = entryExistsHint == null ? entryExists(target, containerRef) : entryExistsHint;
+		if (exists) {
 			updateGraftPointEntry(target, value, hasSubParts);
 		} else {
 			createGraftPointEntryAndStub(target, containerRef, value);
 		}
+	}
+
+	/**
+	 * A whole graft-point entry exists iff its container has a stub for it.
+	 * The entry's own document may be an orphan left behind by a HASTY deletion,
+	 * so its presence alone does not mean the entry exists.
+	 */
+	private boolean entryExists(Reference<?> entryRef) {
+		return entryExists(entryRef, targetDocumentRef(entryRef.enclosingReference(Object.class)));
+	}
+
+	private boolean entryExists(Reference<?> entryRef, Reference<?> containerRef) {
+		String stubKey = dottedFieldNameOf(entryRef, containerRef);
+		BsonDocument stubFilter = documentFilter(containerRef)
+			.append(stubKey, new BsonDocument("$exists", TRUE));
+		return documentExists(stubFilter);
 	}
 
 	private <T> void updateGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
