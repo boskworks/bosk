@@ -34,16 +34,16 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 /**
  * A write that cannot be applied (because its path passes through an absent
  * catalog entry) is silently ignored by the driver: it must not advance the
- * root document's revision, and must not leave orphaned sub-part documents
- * behind. The two variants differ only in the Pando graft-point configuration,
- * so each lives in its own {@link Nested} class.
+ * root document's revision, and must not leave orphaned documents behind.
+ * The variants differ in the Pando graft-point configuration, so each lives in
+ * its own {@link Nested} class.
  */
 public class NoOpWriteTest {
 
 	@Nested
 	@ReplayLogsOnFailure
 	@InjectFields
-	class ScalarWrite extends AbstractMongoDriverTest {
+	class ScalarWrite extends Base {
 		@InjectorMethod
 		static Stream<ParameterSet> parameterSets() {
 			return Stream.of(new ParameterSet(
@@ -76,21 +76,12 @@ public class NoOpWriteTest {
 			assertEquals(revisionBefore, rootDocumentRevision(),
 				"A write that cannot be applied must not advance the revision");
 		}
-
-		private BsonInt64 rootDocumentRevision() {
-			MongoCollection<BsonDocument> collection = mongoService.client()
-				.getDatabase(driverSettings.database())
-				.getCollection(driverSettings.collection(), BsonDocument.class);
-			try (var cursor = collection.find(new BsonDocument("_id", new BsonString("|"))).cursor()) {
-				return cursor.next().getInt64(BsonFormatter.DocumentFields.revision.name());
-			}
-		}
 	}
 
 	@Nested
 	@ReplayLogsOnFailure
 	@InjectFields
-	class RecordWrite extends AbstractMongoDriverTest {
+	class RecordWrite extends Base {
 		@InjectorMethod
 		static Stream<ParameterSet> parameterSets() {
 			return Stream.of(new ParameterSet(
@@ -135,14 +126,57 @@ public class NoOpWriteTest {
 			assertTrue(countDocumentsWithIdPrefix("|catalog|ghost|") == 0,
 				"No sub-part documents may be left behind under the nonexistent entry");
 		}
+	}
 
-		private TestEntity singleEntryInitialState(Bosk<TestEntity> bosk) throws InvalidTypeException {
+	@Nested
+	@ReplayLogsOnFailure
+	@InjectFields
+	class GraftPointEntryWrite extends Base {
+		@InjectorMethod
+		static Stream<ParameterSet> parameterSets() {
+			return Stream.of(new ParameterSet(
+				"NoOpWriteTestGraftPointEntry",
+				MongoDriverSettings.builder()
+					.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog", "/catalog/-x-/catalog"))
+					.timescaleMS(LONG_TIMESCALE)
+					.database("NoOpWriteTestGraftPointEntry")));
+		}
+
+		@Test
+		void entryDocumentInsideNonexistentContainer_leavesNoOrphans() throws InvalidTypeException, IOException, InterruptedException {
+			Bosk<TestEntity> bosk = new Bosk<>(
+				boskName(),
+				TestEntity.class,
+				this::singleEntryInitialState,
+				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+			bosk.driver().flush();
+
+			Refs refs = bosk.buildReferences(Refs.class);
+			Identifier ghostID = Identifier.from("ghost");
+			Identifier entryID = Identifier.from("g1");
+			Reference<TestEntity> ghostEntry = refs.childCatalog(ghostID).then(entryID);
+
+			BsonInt64 revisionBefore = rootDocumentRevision();
+
+			bosk.driver().submitReplacement(ghostEntry,
+				TestEntity.empty(entryID, refs.childCatalog(entryID)));
+			bosk.driver().flush();
+
+			assertEquals(revisionBefore, rootDocumentRevision(),
+				"A write that cannot be applied must not advance the revision");
+			assertTrue(countDocumentsWithIdPrefix("|catalog|ghost|") == 0,
+				"The entry document must be rolled back along with the failed container write");
+		}
+	}
+
+	abstract static class Base extends AbstractMongoDriverTest {
+		protected TestEntity singleEntryInitialState(Bosk<TestEntity> bosk) throws InvalidTypeException {
 			Refs refs = bosk.buildReferences(Refs.class);
 			return initialRootWithEmptyCatalog(bosk)
 				.withCatalog(Catalog.of(TestEntity.empty(entity123, refs.childCatalog(entity123))));
 		}
 
-		private BsonInt64 rootDocumentRevision() {
+		protected BsonInt64 rootDocumentRevision() {
 			MongoCollection<BsonDocument> collection = mongoService.client()
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection(), BsonDocument.class);
@@ -151,7 +185,7 @@ public class NoOpWriteTest {
 			}
 		}
 
-		private long countDocumentsWithIdPrefix(String prefix) {
+		protected long countDocumentsWithIdPrefix(String prefix) {
 			MongoCollection<BsonDocument> collection = mongoService.client()
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection(), BsonDocument.class);
@@ -159,5 +193,4 @@ public class NoOpWriteTest {
 				new BsonRegularExpression("^" + Pattern.quote(prefix))));
 		}
 	}
-
 }

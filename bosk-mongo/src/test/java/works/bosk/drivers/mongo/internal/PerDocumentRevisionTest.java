@@ -18,7 +18,6 @@ import java.util.stream.Stream;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonString;
-import org.bson.BsonValue;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -156,25 +155,106 @@ public class PerDocumentRevisionTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
-	void recreatedDocument_changesIncarnationAndResetsRevision() throws Exception {
+	void wholeDocumentReplacement_keepsIncarnationAndBumpsRevision() throws Exception {
 		Bosk<TestEntity> bosk = newBosk();
 		Refs refs = bosk.buildReferences(Refs.class);
 		bosk.driver().flush();
 
-		BsonDocument before = stateDocument("|catalog|123");
-		String incarnationBefore = revisionOf(before).incarnation();
+		RevisionTuple revisionBefore = revisionOf(stateDocument("|catalog|123"));
+		TestEntity replacement = TestEntity.empty(entity123, refs.childCatalog(entity123))
+			.withString("replacement");
 
-		// Replacing a whole graft document deletes and re-creates its document.
+		bosk.driver().submitReplacement(refs.catalog().then(entity123), replacement);
+		bosk.driver().flush();
+
+		RevisionTuple revisionAfter = revisionOf(stateDocument("|catalog|123"));
+		assertEquals(revisionBefore.incarnation(), revisionAfter.incarnation(),
+			"Replacing an existing entry must keep its incarnation");
+		assertEquals(revisionBefore.revision() + 1, revisionAfter.revision(),
+			"Replacing an existing entry must bump its revision");
+		try (var _ = bosk.readSession()) {
+			assertEquals(replacement, refs.catalog().then(entity123).value(),
+				"The replacement must be applied downstream");
+		}
+	}
+
+	@Test
+	void wholeDocumentReplacement_writesOnlyItsOwnDocument() throws Exception {
+		RecordingWrites writes = new RecordingWrites();
+		MainDriver.setProbes(TestProbes.noop().withWriteInterceptor(writes));
+		Bosk<TestEntity> bosk = newBosk();
+		Refs refs = bosk.buildReferences(Refs.class);
+		bosk.driver().flush();
+
+		BsonInt64 parentRevisionBefore = rootRevision();
+		writes.clear();
+
+		bosk.driver().submitReplacement(refs.catalog().then(entity123),
+			TestEntity.empty(entity123, refs.childCatalog(entity123)).withString("replacement"));
+		bosk.driver().flush();
+
+		assertEquals(List.of("|catalog|123"), writes.documentIds(),
+			"Replacing an existing entry must write only that entry's document");
+		assertEquals(parentRevisionBefore, rootRevision(),
+			"Replacing an existing entry must not advance the container's revision");
+	}
+
+	@Test
+	void creatingEntry_writesDocumentThenParentStub() throws Exception {
+		Identifier newEntity = Identifier.from("125");
+		RecordingWrites writes = new RecordingWrites();
+		MainDriver.setProbes(TestProbes.noop().withWriteInterceptor(writes));
+		Bosk<TestEntity> bosk = newBosk();
+		Refs refs = bosk.buildReferences(Refs.class);
+		bosk.driver().flush();
+
+		long parentRevisionBefore = rootRevision().getValue();
+		writes.clear();
+
+		TestEntity newValue = TestEntity.empty(newEntity, refs.childCatalog(newEntity))
+			.withString("new");
+		bosk.driver().submitReplacement(refs.catalog().then(newEntity), newValue);
+		bosk.driver().flush();
+
+		assertEquals(List.of("|catalog|125", "|"), writes.documentIds(),
+			"Creating an entry must write its document and then the container's stub");
+		assertEquals(parentRevisionBefore + 1, rootRevision().getValue(),
+			"Creating an entry must bump the container's revision");
+		assertEquals(1, revisionOf(stateDocument("|catalog|125")).revision(),
+			"A new entry document must have revision 1");
+		try (var _ = bosk.readSession()) {
+			assertEquals(newValue, refs.catalog().then(newEntity).value(),
+				"The new entry must be applied downstream");
+		}
+	}
+
+	@Test
+	void replacementAfterDeletion_getsFreshIncarnation() throws Exception {
+		Bosk<TestEntity> bosk = newBosk();
+		Refs refs = bosk.buildReferences(Refs.class);
+		bosk.driver().flush();
+
+		String incarnationBefore = revisionOf(stateDocument("|catalog|123")).incarnation();
+
+		bosk.driver().submitDeletion(refs.catalog().then(entity123));
+		bosk.driver().flush();
+		assertEquals(1, collection().countDocuments(new BsonDocument("_id", new BsonString("|catalog|123"))),
+			"The deleted entry's document is left behind, so the entry must not be considered present merely because its document exists");
+
 		TestEntity replacement = TestEntity.empty(entity123, refs.childCatalog(entity123))
 			.withString("replacement");
 		bosk.driver().submitReplacement(refs.catalog().then(entity123), replacement);
 		bosk.driver().flush();
 
-		BsonDocument after = stateDocument("|catalog|123");
-		assertNotEquals(incarnationBefore, revisionOf(after).incarnation(),
-			"Re-creating a document must give it a new incarnation");
-		assertEquals(1, revisionOf(after).revision(),
-			"Re-creating a document must reset its revision");
+		RevisionTuple revisionAfter = revisionOf(stateDocument("|catalog|123"));
+		assertNotEquals(incarnationBefore, revisionAfter.incarnation(),
+			"Re-creating a deleted entry must give it a fresh incarnation");
+		assertEquals(1, revisionAfter.revision(),
+			"Re-creating a deleted entry must reset its revision");
+		try (var _ = bosk.readSession()) {
+			assertEquals(replacement, refs.catalog().then(entity123).value(),
+				"The re-created entry must be applied downstream");
+		}
 	}
 
 	@Test
@@ -206,11 +286,10 @@ public class PerDocumentRevisionTest extends AbstractMongoDriverTest {
 		assertTrue(revisionOf(stateDocument("|catalog|123")).revision() >= 3,
 			"The old incarnation must have a revision higher than the new one will reach");
 
-		// Delete the entry, then remove the orphan document as a hard delete
-		// would, so the re-creation is a genuinely new lifetime.
+		// Delete the entry. Its document is left behind as an orphan, but the
+		// re-creation must still be a genuinely new lifetime.
 		bosk.driver().submitDeletion(refs.catalog().then(entity123));
 		bosk.driver().flush();
-		collection().deleteOne(new BsonDocument("_id", new BsonString("|catalog|123")));
 
 		// Re-create the entry and let the re-creation be applied.
 		bosk.driver().submitReplacement(refs.catalog().then(entity123),
@@ -447,31 +526,6 @@ public class PerDocumentRevisionTest extends AbstractMongoDriverTest {
 				event.getOperationType(),
 				event.getDocumentKey().getString("_id").getValue(),
 				hasRevision);
-		}
-	}
-
-	/**
-	 * Records the {@code _id} of every document the driver writes.
-	 */
-	static final class RecordingWrites implements WriteInterceptor {
-		private final List<String> documentIds = new CopyOnWriteArrayList<>();
-
-		@Override
-		public void beforeWrite(Bson filter) {
-			BsonDocument filterDocument = filter.toBsonDocument(
-				BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
-			BsonValue id = filterDocument.get("_id");
-			if (id instanceof BsonString s) {
-				documentIds.add(s.getValue());
-			}
-		}
-
-		List<String> documentIds() {
-			return List.copyOf(documentIds);
-		}
-
-		void clear() {
-			documentIds.clear();
 		}
 	}
 }

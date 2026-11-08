@@ -106,6 +106,16 @@ the applied revision is at least the target revision. A flush waits for
 ancestors before descendants, so the incarnation change has been applied before a
 descendant's incarnation is compared.
 
+Replacing a whole entry that a graft point stores separately is an update of the
+entry's document: the entry keeps its incarnation, its revision is incremented,
+and the container is not written, so the entry's document is the topmost document
+of the transaction. If the container has no stub for the entry, the entry is
+being created: its document gets a fresh incarnation and revision 1, and the
+container's stub is added as the transaction's topmost write. Deleting an entry
+leaves its document behind but removes the container's stub (see
+[Deleted nodes can be left behind](#deleted-nodes-can-be-left-behind)), so the
+presence of the document alone does not mean the entry exists.
+
 `flush()` reads every document's revision number and incarnation in bottom-up
 order (descendants before ancestors) using `ReadConcern.LOCAL`; it is read-only.
 It then waits for them in top-down order (ancestors before descendants).
