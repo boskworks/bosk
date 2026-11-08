@@ -31,9 +31,8 @@ reproducible and evaluable.
    while the current one stays easy to find. The maintainer usually asks for a review expecting it to be
    posted, so default to posting; only hold off, and say why, if you're clearly unsure that's what they
    want.
-   - Approval is the handoff signal: the maintainer treats `APPROVE` as their cue to do their own review,
-     so post it only for a clean review (no findings). On the author's own account, GitHub refuses
-     `APPROVE` and `REQUEST_CHANGES`; fall back to `COMMENT` and say so.
+   - Post the review as a `COMMENT`. The review agent reports findings; it does not approve, request
+     changes, or explain that GitHub forbids either. The maintainer decides what to do and when.
 3. **Verify responses.** When the maintainer asks to check the responses (for example, "check the responses
    again, resolving the conversation thread if you agree or replying if you disagree"), do it for every
    thread under the discipline above:
@@ -49,13 +48,14 @@ reproducible and evaluable.
      array with one entry per thread, each `{"comment_id": <int>, "reply": "<string>", "resolve": <bool>}`,
      where `comment_id` is the thread's root comment id from the snapshot and `resolve` marks accepted
      threads. Post it with `review-agent/review/post-responses.py <PR> <path>`, which is the only thing
-     that touches GitHub. The posting script stamps every reply with the `[review]` marker (the reviewer
-     and the author share an account), so do not include the marker in the responses JSON yourself.
+     that touches GitHub. The posting script stamps the summary and every reply with the `[review]`
+     marker (the reviewer and the author share an account), so do not include the marker in the review
+     JSON or responses JSON yourself.
      Thread resolution is yours alone: the author's skill leaves threads open, so set `resolve: true`
      only after you have verified the response actually addresses the comment.
 4. **Fresh review.** When every thread is resolved, run the full review again at the new head — fixes can
-   introduce new issues — and repeat the cycle. A clean pass posts `APPROVE` (handing off to the
-   maintainer); anything else continues the cycle.
+   introduce new issues — and repeat the cycle. A clean pass is a `COMMENT` with no findings; anything
+   else continues the cycle.
 
 ## Suggest improvements
 

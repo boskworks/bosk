@@ -256,7 +256,8 @@ review-agent/
 ```
 
 The review agent's output is a JSON document — `{summary, verdict, prompt, comments: [{path, line, body}]}` —
-written to a path, never posted directly. `review-agent/review/post-review.py` is the only path to GitHub; `eval.py`
+written to a path, never posted directly. The review agent always sets `verdict: COMMENT`; it reports findings
+and does not approve or request changes. `review-agent/review/post-review.py` is the only path to GitHub; `eval.py`
 consumes the same JSON without posting. A review JSON that is never posted is a *virtual review*. The response cycle
 follows the same rule: the agent reads the current threads from the packet and writes its decisions as a responses
 JSON, which `review-agent/review/post-responses.py` posts.

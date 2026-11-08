@@ -178,9 +178,8 @@ reference. They show both the voice and the kinds of findings the maintainer mak
 
 Produce the review as a JSON document with four fields:
 
-- **summary** — open with one sentence that says where the PR stands, so the maintainer knows how to act
-  without reading further: "Mergeable as is, with a few optional nits", "A couple of areas I'm concerned
-  about before we merge", "Nothing blocking; happy to approve". Only then, and only when they exist, the
+- **summary** — open with one sentence that states the review's outcome: "No blocking findings", "A
+  couple of areas I'm concerned about", "A few optional nits". Only then, and only when they exist, the
   overview of the review: PR-wide concerns not attached to a particular diff hunk (say, the whole approach
   breaking an established design principle), flaws in the PR description or title, and a brief
   characterization of the comments to follow ("just a few nits", "some concerns about test coverage").
@@ -189,20 +188,22 @@ Produce the review as a JSON document with four fields:
   belongs anywhere. Include concerns only when they exist — don't manufacture them to fill the summary,
   and a clean or mostly-positive review should read as such. Don't describe what the change does — the
   PR description already does that — and don't repeat the specifics of the comments below, except to
-  explain why the PR should not merge until a problem is addressed. Add a sentence for anything else
-  that genuinely belongs in the summary.
-- **verdict** — one of `APPROVE`, `REQUEST_CHANGES`, `COMMENT`. Request changes only for genuine blockers.
-  `APPROVE` is reserved for a review with no findings at all: the maintainer uses the reviewer's approval as
-  the signal that the PR is ready for their own review, so approving anything with open findings would pull
-  them in too early. Any comment that asks for action means `COMMENT` (or `REQUEST_CHANGES`), never
-  `APPROVE`. (When posting under the author's own account, GitHub refuses `APPROVE` and `REQUEST_CHANGES`
-  anyway; fall back to `COMMENT` and say so.)
+  explain why a problem should be addressed before merging. Do not tell the maintainer when to review,
+  approve, or merge, and do not use handoff phrasing such as "ready for your review", "over to you", or
+  "your call". The maintainer decides when to act. Add a sentence for anything else that genuinely belongs
+  in the summary.
+- **verdict** — always `COMMENT`. The review agent reports findings; it does not approve, request changes,
+  or explain that GitHub forbids either. A clean review is a `COMMENT` with no comments and a summary that
+  says there are no blocking findings.
 - **prompt** — the short hash of this prompt's contents (see Attribution).
 - **comments** — one entry per finding, each `{"path", "line", "body"}`, with `subject_type` `"line"` by
   default or `"file"` for a point about a whole file (in which case omit `line`). Each is anchored to the
   line it is about and addresses a single thing. A review that has findings but no comments is a failure:
-  a wall of text defeats per-comment reactions and cannot be reviewed quickly. A clean review approved with
-  zero comments is not a failure — don't invent comments just to avoid an empty comment list.
+  a wall of text defeats per-comment reactions and cannot be reviewed quickly. A clean review with zero
+  comments is not a failure — don't invent comments just to avoid an empty comment list.
+
+The posting script prepends `[review]` to the summary and to each comment. Do not include the marker in
+the JSON yourself.
 
 Write the JSON document to the path you were given. Do not post anything to GitHub yourself; posting is a
 separate step performed by the posting helper.
