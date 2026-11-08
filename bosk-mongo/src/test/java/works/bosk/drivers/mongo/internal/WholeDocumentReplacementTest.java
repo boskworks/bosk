@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.CatalogReference;
+import works.bosk.Identifier;
 import works.bosk.SideTable;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
@@ -79,6 +81,24 @@ public class WholeDocumentReplacementTest {
 		}
 
 		@Test
+		void replacementWritesOneOperationPerSubPart() throws Exception {
+			AtomicInteger writeCount = new AtomicInteger();
+			MainDriver.setProbes(TestProbes.noop()
+				.withWriteInterceptor(_ -> writeCount.incrementAndGet()));
+			Bosk<TestEntity> bosk = newBosk();
+			Refs refs = bosk.buildReferences(Refs.class);
+			bosk.driver().flush();
+
+			int subPartCount = 3;
+			writeCount.set(0);
+			bosk.driver().submitReplacement(refs.catalog().then(entity123), replacement(refs, subPartCount));
+			bosk.driver().flush();
+
+			assertEquals(subPartCount + 2, writeCount.get(),
+				"The replacement must write one document per sub-part, plus the pre-delete and the entry's own update");
+		}
+
+		@Test
 		void replacementAfterDeletionWritesEntryAndSubPart_butNotContainer() throws Exception {
 			ErrorRecordingChangeListener.ErrorRecorder errors = new ErrorRecordingChangeListener.ErrorRecorder();
 			RecordingWrites writes = new RecordingWrites();
@@ -111,6 +131,16 @@ public class WholeDocumentReplacementTest {
 			CatalogReference<TestEntity> childCatalog = refs.childCatalog(entity123);
 			return TestEntity.empty(entity123, childCatalog)
 				.withSideTable(SideTable.of(childCatalog, entity124, TestEntity.empty(entity124, childCatalog)));
+		}
+
+		private TestEntity replacement(Refs refs, int subPartCount) {
+			CatalogReference<TestEntity> childCatalog = refs.childCatalog(entity123);
+			SideTable<TestEntity, TestEntity> sideTable = SideTable.empty(childCatalog);
+			for (int i = 0; i < subPartCount; i++) {
+				Identifier id = Identifier.from("s" + i);
+				sideTable = sideTable.with(id, TestEntity.empty(id, childCatalog));
+			}
+			return TestEntity.empty(entity123, childCatalog).withSideTable(sideTable);
 		}
 
 		private Bosk<TestEntity> newBosk() throws InvalidTypeException {

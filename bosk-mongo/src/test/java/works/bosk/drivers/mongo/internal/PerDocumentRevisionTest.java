@@ -433,10 +433,10 @@ public class PerDocumentRevisionTest extends AbstractMongoDriverTest {
 			"The revision-bearing UPDATE must be the topmost document");
 
 		assertTrue(events.stream().anyMatch(event ->
-				event.operationType() == OperationType.INSERT
+				(event.operationType() == OperationType.INSERT || event.operationType() == OperationType.REPLACE)
 					&& event.hasRevision()
 					&& !event.documentId().equals("|")),
-			"Sub-document inserts carry revisions, so finality must not be based on the revision alone: " + events);
+			"Sub-document inserts and replaces carry revisions, so finality must not be based on the revision alone: " + events);
 	}
 
 	@Test
