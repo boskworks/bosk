@@ -213,6 +213,32 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 		assertEquals(expected, actual);
 	}
 
+	/**
+	 * A HASTY deletion can leave a whole subtree of documents behind, including
+	 * descendants whose container document is itself dangling.
+	 */
+	@Test
+	void danglingPartWithMissingContainer_ignored() {
+		BsonDocument actual = surgeon.gather(asList(
+			new BsonDocument()
+				.append("_id", new BsonString("|catalog|dangling|catalog|nested"))
+				.append("state", new BsonDocument()),
+			new BsonDocument()
+				.append("_id", new BsonString("|catalog|dangling"))
+				.append("state", new BsonDocument()),
+			new BsonDocument()
+				.append("_id", new BsonString("|"))
+				.append("state", new BsonDocument()
+					.append("_id", new BsonString("rootID"))
+					.append("catalog", new BsonDocument(/* empty */))
+				))
+		);
+		BsonDocument expected = new BsonDocument()
+			.append("_id", new BsonString("rootID"))
+			.append("catalog", new BsonDocument(/* empty */));
+		assertEquals(expected, actual);
+	}
+
 	private void assertRoundTripWorks(Reference<?> targetRef) {
 		BsonDocument entireDoc;
 		try (var _ = bosk.readSession()) {

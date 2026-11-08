@@ -11,6 +11,7 @@ import org.bson.BsonDocument;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonString;
 import org.bson.BsonValue;
+import org.jspecify.annotations.Nullable;
 import works.bosk.EnumerableByIdentifier;
 import works.bosk.Identifier;
 import works.bosk.Path;
@@ -189,6 +190,23 @@ class BsonSurgeon {
 	}
 
 	/**
+	 * @return the document at {@code segments}, or null if the path is absent or
+	 * does not lead to a document
+	 */
+	private static @Nullable BsonDocument lookupOrNull(BsonDocument entireDoc, List<String> segments) {
+		BsonDocument result = entireDoc;
+		for (String segment: segments) {
+			BsonValue value = result.get(segment);
+			if (value instanceof BsonDocument document) {
+				result = document;
+			} else {
+				return null;
+			}
+		}
+		return result;
+	}
+
+	/**
 	 * For efficiency, this modifies <code>partsList</code> in-place.
 	 *
 	 * <p>
@@ -242,7 +260,13 @@ class BsonSurgeon {
 			String key = bsonSegments.getLast();
 			BsonValue value = requireNonNull(entry.get(STATE_FIELD));
 
-			BsonDocument container = lookup(whole, bsonSegments.subList(prefix.size(), bsonSegments.size() - 1));
+			BsonDocument container = lookupOrNull(whole, bsonSegments.subList(prefix.size(), bsonSegments.size() - 1));
+			if (container == null) {
+				// The part's container is itself missing or dangling, so this part
+				// is dangling too. A HASTY deletion can leave a whole subtree of
+				// documents behind this way.
+				continue;
+			}
 
 			// If the container already has a placeholder entry for `key`, replace it
 			// (which, incidentally, maintains the key order).
