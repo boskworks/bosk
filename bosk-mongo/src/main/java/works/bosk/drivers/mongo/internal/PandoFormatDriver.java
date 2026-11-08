@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.MongoException;
 import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.model.CountOptions;
+import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
@@ -57,12 +58,12 @@ import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.DELETE;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
+import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.singletonList;
 import static java.util.Comparator.comparing;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
-import static org.bson.BsonBoolean.FALSE;
 import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
@@ -595,8 +596,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * The topmost document's update carries the revision bump that makes the
 	 * transaction's final event identifiable.
 	 * <p>
-	 * Before setting the field, we pre-delete it: we unset it, or set its stub
-	 * to false. This ensures the field changes even when the new value equals
+	 * Before setting the field, we pre-delete it: we unset it.
+	 * This ensures the field changes even when the new value equals
 	 * the old one, so the final event's {@code updatedFields} includes it and we
 	 * can gather the sub-parts into the value we send downstream. Without this,
 	 * an update whose value happened to be unchanged could leave us unable to
@@ -640,61 +641,80 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
 				collection.abortTransaction();
 			}
+		} else if (target.equals(targetDocRef)) {
+			replaceGraftPointEntry(target, value, hasSubParts);
 		} else {
-			// Note: don't use the target document's ID. TODO: Is this ok? Why is the ID wrong?
-			Reference<?> topmostRef = targetDocRef;
-			BsonDocument filter = documentFilter(topmostRef);
-			boolean preDeleteIsStub = target.equals(topmostRef);
-			if (preDeleteIsStub) {
-				// Upsert the target document
-				// TODO: merge this with the same code in upsertAndRemoveSubParts
-				LOGGER.debug("| Pre-delete target document");
-				collection.findOneAndDelete(filter);
-				RevisionTuple newRevision = RevisionTuple.newLifetime();
-
-				LOGGER.debug("| Update target document");
-				BsonDocument fieldValues = filter.clone()
-					.append(DocumentFields.state.name(), value);
-				newRevision.putInto(fieldValues);
-				BsonDocument update = new BsonDocument("$set", fieldValues);
-				LOGGER.debug("| Update: {}", update);
-				LOGGER.debug("| Filter: {}", filter);
-				collection.updateOne(filter, update, new UpdateOptions().upsert(true));
-
-				// Move up to the parent document to set the "true" stub
-				topmostRef = targetDocumentRef(topmostRef.enclosingReference(Object.class));
-				filter = documentFilter(topmostRef);
-				value = TRUE;
-				LOGGER.debug("| Move up to enclosing topmost reference {}", topmostRef);
-			}
-
 			// Update part of the topmost document (which must already exist)
-			String key = dottedFieldNameOf(target, topmostRef);
-			if (preDeleteIsStub) {
-				preDeleteStub(target, topmostRef, filter);
-			} else if (hasSubParts) {
-				preDeleteField(target, topmostRef, filter);
+			BsonDocument filter = documentFilter(targetDocRef);
+			if (hasSubParts) {
+				preDeleteField(target, targetDocRef, filter);
 			} else {
 				LOGGER.debug("| Skipping pre-delete for {}: no sub-parts", target);
 			}
-			LOGGER.debug("| Set field {} in {}: {}", key, topmostRef, value);
 			// This is the topmost write, so it carries the revision bump and the
 			// diagnostics. No other document is written.
-			BsonDocument topmostUpdate = new BsonDocument("$inc",
-				new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
-				.append("$set", new BsonDocument()
-					.append(key, value)
-					.append(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes())));
-			// If the topmost document doesn't exist (or its structure doesn't match), the
-			// write is silently ignored, just as the local driver ignores writes to
-			// nonexistent nodes. Such a no-op must not bump the revision or emit a
-			// spurious change-stream event.
-			boolean applied = doUpdate(topmostUpdate, standardPreconditions(target, topmostRef, filter));
+			boolean applied = doUpdate(replacementDoc(target, value, targetDocRef), standardPreconditions(target, targetDocRef, filter));
 
 			if (!applied) {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
 				collection.abortTransaction();
 			}
+		}
+	}
+
+	/**
+	 * Replaces a whole state document, which is an entry in a graft-point container.
+	 * <p>
+	 * If the container has a stub for the entry, the entry already exists, and the
+	 * replacement is an update of the entry's own document: it keeps the document's
+	 * incarnation, bumps its revision, and leaves the container untouched. The
+	 * entry's document is then the topmost document of the transaction.
+	 * <p>
+	 * Otherwise, the entry is being created. Its document is written with a fresh
+	 * lifetime, and the container's stub is added as the transaction's topmost
+	 * write. That applies also when a deleted entry's document is still present as
+	 * an orphan, so the presence of the document alone does not mean the entry
+	 * exists.
+	 */
+	private <T> void replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+		Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
+		String stubKey = dottedFieldNameOf(target, containerRef);
+		BsonDocument stubFilter = documentFilter(containerRef)
+			.append(stubKey, new BsonDocument("$exists", TRUE));
+		if (documentExists(stubFilter)) {
+			updateGraftPointEntry(target, value, hasSubParts);
+		} else {
+			createGraftPointEntryAndStub(target, containerRef, value);
+		}
+	}
+
+	private <T> void updateGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+		LOGGER.debug("| Replacing existing document {}", target);
+		if (hasSubParts) {
+			preDeleteField(target, target, documentFilter(target));
+		}
+		BsonDocument update = replacementDoc(target, value, target);
+		// The container has a stub for this entry, so its document exists:
+		// creation and deletion write the two atomically.
+		if (!doUpdate(update, documentFilter(target))) {
+			LOGGER.debug("| Replacement had no effect; aborting transaction");
+			collection.abortTransaction();
+		}
+	}
+
+	private <T> void createGraftPointEntryAndStub(Reference<T> target, Reference<?> containerRef, BsonValue value) {
+		LOGGER.debug("| Creating document {}", target);
+		BsonDocument document = documentFilter(target).clone()
+			.append(DocumentFields.state.name(), value)
+			.append(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
+		RevisionTuple.newLifetime().putInto(document);
+		doReplace(documentFilter(target), document);
+
+		// The container's stub is the transaction's topmost write.
+		BsonDocument containerUpdate = replacementDoc(target, TRUE, containerRef);
+		if (!doUpdate(containerUpdate, standardPreconditions(target, containerRef, documentFilter(containerRef)))) {
+			LOGGER.debug("| Container write had no effect; aborting transaction");
+			collection.abortTransaction();
 		}
 	}
 
@@ -831,13 +851,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		preDelete(target, startingRef, filter, key, new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)));
 	}
 
-	private <T> void preDeleteStub(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
-		String key = dottedFieldNameOf(target, startingRef);
-		// A FALSE stub has the same size as TRUE, so this avoids changing the parent document length,
-		// which can make the update very expensive.
-		preDelete(target, startingRef, filter, key, new BsonDocument("$set", new BsonDocument(key, FALSE)));
-	}
-
 	private <T> void preDelete(Reference<T> target, Reference<?> startingRef, BsonDocument filter, String key, BsonDocument update) {
 		LOGGER.debug("| Pre-delete field {} in {}", key, startingRef);
 		// Important: don't bump the revision field because that's how we identify the last event in a transaction
@@ -862,20 +875,36 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
-		if (result.wasAcknowledged()) {
-			long matchedCount = result.getMatchedCount();
-			if (matchedCount == 0) {
-				LOGGER.debug("| -> No documents were updated; double-checking that the root document still exists");
-				try (var cursor = collection.find(documentFilter(rootRef)).limit(1).cursor()) {
-					if (!cursor.hasNext()) {
-						throw new IllegalStateException("Root document disappeared");
-					}
+		requireAcknowledged(result, filter, updateDoc, "Update");
+		long matchedCount = result.getMatchedCount();
+		if (matchedCount == 0) {
+			LOGGER.debug("| -> No documents were updated; double-checking that the root document still exists");
+			try (var cursor = collection.find(documentFilter(rootRef)).limit(1).cursor()) {
+				if (!cursor.hasNext()) {
+					throw new IllegalStateException("Root document disappeared");
 				}
 			}
-			return matchedCount >= 1;
-		} else {
+		}
+		return matchedCount >= 1;
+	}
+
+	/**
+	 * Replaces a whole document, creating it if it does not exist.
+	 * <p>
+	 * Unlike {@link #doUpdate}, which does nothing unless the document already
+	 * exists, this creates the document when it is absent.
+	 */
+	private void doReplace(BsonDocument filter, BsonDocument replacement) {
+		LOGGER.debug("| Replace: filter={} replacement={}", filter, replacement);
+		UpdateResult result = collection.replaceOne(filter, replacement, new ReplaceOptions().upsert(true));
+		LOGGER.debug("| Replace result: {}", result);
+		requireAcknowledged(result, filter, replacement, "Replacement");
+	}
+
+	private static void requireAcknowledged(UpdateResult result, BsonDocument filter, BsonDocument change, String description) {
+		if (!result.wasAcknowledged()) {
 			LOGGER.error("MongoDB write was not acknowledged");
-			LOGGER.trace("Details of MongoDB write not acknowledged:\n\tFilter: {}\n\tUpdate: {}\n\tResult: {}", filter, updateDoc, result);
+			LOGGER.trace("Details of MongoDB write not acknowledged:\n\tFilter: {}\n\t{}: {}\n\tResult: {}", filter, description, change, result);
 			throw new IllegalStateException("Mongo write was not acknowledged: " + result);
 		}
 	}
@@ -907,7 +936,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					BsonValue replacementValue = entry.getValue();
 					if (replacementValue instanceof BsonDocument) {
 						LOGGER.debug("Replacement value is a document; gather along with {} subparts", subParts.size());
-						String partID = docBsonPath(ref, topmostRef);
+						// Sub-part document IDs are absolute BSON paths, so the
+						// synthetic part for the replaced value must be absolute too.
+						String partID = docBsonPath(ref, rootRef);
 						BsonDocument partDocument = new BsonDocument()
 							.append("_id", new BsonString(partID))
 							.append("state", replacementValue);
@@ -1032,6 +1063,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return description;
 	}
 
-	private static final EnumSet<OperationType> OPERATIONS_TO_INCLUDE_IN_GATHER = EnumSet.of(INSERT);
+	// A created entry's document is written with replaceOne, which produces an
+	// INSERT when the document is absent and a REPLACE when it is an orphan left
+	// behind by a deletion. Both carry the full document we need to gather.
+	private static final EnumSet<OperationType> OPERATIONS_TO_INCLUDE_IN_GATHER = EnumSet.of(INSERT, REPLACE);
 	private static final Logger LOGGER = LoggerFactory.getLogger(PandoFormatDriver.class);
 }

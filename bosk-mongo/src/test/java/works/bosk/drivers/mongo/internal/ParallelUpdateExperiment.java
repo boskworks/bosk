@@ -53,6 +53,10 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * distinct document per thread, show that updates are not contending on a
  * shared document.
  * <p>
+ * {@code EXPERIMENT_MODE} selects what each update replaces: {@code field}
+ * (the default) replaces one field of an existing entry, and {@code replace}
+ * replaces a whole entry.
+ * <p>
  * This is deliberately a timing-based experiment rather than a correctness
  * test. It exists to compare driver designs, not to catch regressions.
  */
@@ -73,6 +77,7 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 	@EnabledIfEnvironmentVariable(named = "EXPERIMENT_THREADS", matches = ".+")
 	void experiment() throws Exception {
 		experimentThreads = Integer.parseInt(System.getenv("EXPERIMENT_THREADS"));
+		String mode = System.getenv().getOrDefault("EXPERIMENT_MODE", "field");
 		warmupMs = Integer.parseInt(System.getenv().getOrDefault("EXPERIMENT_WARMUP_MS", "30000"));
 		measureMs = Integer.parseInt(System.getenv().getOrDefault("EXPERIMENT_MEASURE_MS", "2000"));
 		reps = Integer.parseInt(System.getenv().getOrDefault("EXPERIMENT_REPS", "5"));
@@ -110,12 +115,19 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 			for (int t = 0; t < experimentThreads; t++) {
 				Identifier id = Identifier.from("e" + t);
 				Reference<String> field = refs.catalog().then(id).then(String.class, "string");
+				Reference<TestEntity> entry = refs.catalog().then(id);
+				TestEntity baseValue = TestEntity.empty(id, refs.childCatalog(id));
 				int threadIndex = t;
 				workers.add(new Thread(() -> {
 					try {
 						start.await();
 						for (long i = 0; !stop.get(); i++) {
-							bosk.driver().submitReplacement(field, "value-" + threadIndex + "-" + i);
+							String value = "value-" + threadIndex + "-" + i;
+							if (mode.equals("replace")) {
+								bosk.driver().submitReplacement(entry, baseValue.withString(value));
+							} else {
+								bosk.driver().submitReplacement(field, value);
+							}
 							updateCount.incrementAndGet();
 						}
 					} catch (Throwable e) {
@@ -164,7 +176,8 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 					bestRep = rep;
 				}
 			}
-			System.out.printf("EXPERIMENT threads=%d medianUpdatesPerSec=%.1f medianWritesPerUpdate=%.3f fastestUpdatesPerSec=%.1f fastestWritesPerUpdate=%.3f rates=[%s] writeRatios=[%s] distinctDocs=%d warmupMs=%d measureMs=%d%n",
+			System.out.printf("EXPERIMENT mode=%s threads=%d medianUpdatesPerSec=%.1f medianWritesPerUpdate=%.3f fastestUpdatesPerSec=%.1f fastestWritesPerUpdate=%.3f rates=[%s] writeRatios=[%s] distinctDocs=%d warmupMs=%d measureMs=%d%n",
+				mode,
 				experimentThreads,
 				median(ratesPerRep), median(writeRatiosPerRep),
 				ratesPerRep[bestRep], writeRatiosPerRep[bestRep],
