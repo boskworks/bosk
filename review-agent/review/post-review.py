@@ -55,19 +55,29 @@ def load_review(path: Path) -> dict:
             "comments": comments}
 
 
+def marked(text: str, mark: bool) -> str:
+    if mark and not text.startswith(MARK):
+        return f"{MARK} {text}"
+    return text
+
+
 def comment_payload(c: dict, mark: bool) -> dict:
-    body = f"{MARK} {c['body']}" if mark else c["body"]
+    body = marked(c["body"], mark)
     if c.get("subject_type") == "file":
         return {"path": c["path"], "subject_type": "file", "body": body}
     return {"path": c["path"], "line": c["line"], "side": "RIGHT", "body": body}
 
 
-def post_review(repo: str, pr: int, review: dict, mark: bool) -> None:
-    payload = {
-        "body": review["summary"],
+def review_payload(review: dict, mark: bool) -> dict:
+    return {
+        "body": marked(review["summary"], mark),
         "event": review["verdict"],
         "comments": [comment_payload(c, mark) for c in review["comments"]],
     }
+
+
+def post_review(repo: str, pr: int, review: dict, mark: bool) -> None:
+    payload = review_payload(review, mark)
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
         json.dump(payload, f)
         tmp = Path(f.name)
@@ -139,7 +149,7 @@ def main():
     parser.add_argument("--per-comment", action="store_true",
                         help="post each comment individually, skipping ones with bad line anchors")
     parser.add_argument("--no-mark", action="store_true",
-                        help=f"don't prepend '{MARK}' to posted comments")
+                        help=f"don't prepend '{MARK}' to the summary or posted comments")
     args = parser.parse_args()
 
     try:
