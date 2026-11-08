@@ -88,6 +88,12 @@ Often, the BSON path for a particular state tree node looks like its bosk path w
 They will differ for nodes under `SideTable` nodes,
 because the BSON representation for those nodes adds an additional field `valuesById`.
 
+Replacing a whole entry rewrites each of its sub-parts, whether or not the
+sub-part's state changed, because the change events for those documents are
+what let the receiver gather the new value. Each sub-part is written with a
+single upserting replace, which produces an `INSERT` or a `REPLACE` carrying
+the full document.
+
 #### Revision numbers and incarnations
 
 Every state document carries `incarnation` and `revision` fields.

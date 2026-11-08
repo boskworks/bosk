@@ -9,7 +9,6 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
 import com.mongodb.client.model.changestream.UpdateDescription;
 import com.mongodb.client.result.DeleteResult;
-import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -1038,13 +1037,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			// scatter() already prepended idPrefix to the _id; don't prepend it again
 			BsonString id = part.getString("_id");
 			BsonDocument filter = new BsonDocument("_id", id);
-			LOGGER.debug("Pre-delete sub-part: filter={}", filter);
-			collection.findOneAndDelete(filter);
 			RevisionTuple newRevision = RevisionTuple.newLifetime();
 			newRevision.putInto(part);
-			LOGGER.debug("Insert sub-part: filter={} replacement={}", filter, part);
-			InsertOneResult result = collection.insertOne(part); // we _must_ get the precise full document for sub-parts in the event stream, or we can't form the whole
-			LOGGER.debug("| Insert result: {}", result);
+			// We _must_ get the precise full document for sub-parts in the event
+			// stream, or we can't form the whole. Both an INSERT (when the part is
+			// absent) and a REPLACE (when it already exists) carry it, so one
+			// upserting replace suffices; a delete followed by an insert would be
+			// two writes per part.
+			LOGGER.debug("Upsert sub-part: filter={} replacement={}", filter, part);
+			UpdateResult result = collection.replaceOne(filter, part, new ReplaceOptions().upsert(true));
+			LOGGER.debug("| Upsert result: {}", result);
 			if (writtenRevisions != null) {
 				writtenRevisions.put(id, newRevision);
 			}
