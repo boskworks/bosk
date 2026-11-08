@@ -907,7 +907,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					BsonValue replacementValue = entry.getValue();
 					if (replacementValue instanceof BsonDocument) {
 						LOGGER.debug("Replacement value is a document; gather along with {} subparts", subParts.size());
-						String partID = docBsonPath(ref, topmostRef);
+						// Sub-part document IDs are absolute BSON paths, so the
+						// synthetic part for the replaced value must be absolute too.
+						String partID = docBsonPath(ref, rootRef);
 						BsonDocument partDocument = new BsonDocument()
 							.append("_id", new BsonString(partID))
 							.append("state", replacementValue);

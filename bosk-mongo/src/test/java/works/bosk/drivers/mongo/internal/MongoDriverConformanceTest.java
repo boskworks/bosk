@@ -84,6 +84,7 @@ class MongoDriverConformanceTest extends PolyfillDriverConformanceTest {
 	private static Stream<DatabaseFormat> pandoFormats() {
 		return Stream.of(
 			PandoFormat.oneBigDocument(),
+			PandoFormat.withGraftPoints("/catalog", "/catalog/-x-/catalog"), // Graft point inside a graft-point entry
 			PandoFormat.withGraftPoints("/catalog", "/sideTable"), // Exercises pre-deletion
 			PandoFormat.withGraftPoints("/nestedSideTable/-x-"), // Graft points are side table entries
 			PandoFormat.withGraftPoints("/nestedSideTable"), // Documents are themselves side tables
