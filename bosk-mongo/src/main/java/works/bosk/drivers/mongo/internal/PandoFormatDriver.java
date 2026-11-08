@@ -136,14 +136,27 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 		collection.ensureTransactionStarted();
 		Reference<?> targetDocRef = targetDocumentRef(target);
-		BsonDocument filter = documentFilter(targetDocRef)
-			.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
-		if (documentExists(filter)) {
-			LOGGER.debug("Already exists: {}", filter);
-			collection.abortTransaction();
-			return;
+		if (target.equals(targetDocRef)) {
+			// The target is itself a graft-point entry. Its own document may be
+			// an orphan left behind by a HASTY deletion, so membership comes
+			// from the container's stub.
+			Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
+			if (hasStub(target, containerRef)) {
+				LOGGER.debug("Already exists: {}", target);
+				collection.abortTransaction();
+				return;
+			}
+			doReplacement(target, newValue);
+		} else {
+			BsonDocument filter = documentFilter(targetDocRef)
+				.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
+			if (documentExists(filter)) {
+				LOGGER.debug("Already exists: {}", filter);
+				collection.abortTransaction();
+				return;
+			}
+			doReplacement(target, newValue);
 		}
-		doReplacement(target, newValue);
 	}
 
 	@Override
@@ -677,14 +690,35 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 */
 	private <T> void replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
 		Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
-		String stubKey = dottedFieldNameOf(target, containerRef);
-		BsonDocument stubFilter = documentFilter(containerRef)
-			.append(stubKey, new BsonDocument("$exists", TRUE));
-		if (documentExists(stubFilter)) {
+		if (hasStub(target, containerRef)) {
 			updateGraftPointEntry(target, value, hasSubParts);
 		} else {
 			createGraftPointEntryAndStub(target, containerRef, value);
 		}
+	}
+
+	/**
+	 * A whole graft-point entry exists iff its container has a stub for it and
+	 * that container itself exists. The entry's own document may be an orphan
+	 * left behind by a HASTY deletion, so its presence alone does not mean the
+	 * entry exists, and a whole deleted subtree can remain on disk.
+	 */
+	private boolean entryExists(Reference<?> entryRef) {
+		Reference<?> containerRef = targetDocumentRef(entryRef.enclosingReference(Object.class));
+		if (!hasStub(entryRef, containerRef)) {
+			return false;
+		} else if (containerRef.isRoot()) {
+			return true;
+		} else {
+			return entryExists(containerRef);
+		}
+	}
+
+	private boolean hasStub(Reference<?> entryRef, Reference<?> containerRef) {
+		String stubKey = dottedFieldNameOf(entryRef, containerRef);
+		BsonDocument stubFilter = documentFilter(containerRef)
+			.append(stubKey, new BsonDocument("$exists", TRUE));
+		return documentExists(stubFilter);
 	}
 
 	private <T> void updateGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
@@ -746,6 +780,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	private boolean preconditionFailed(Reference<Identifier> precondition, Identifier requiredValue) {
 		Reference<?> preconditionDocRef = targetDocumentRef(precondition);
+		if (!preconditionDocRef.isRoot() && !entryExists(preconditionDocRef)) {
+			LOGGER.debug("Precondition fail: {} does not exist", preconditionDocRef);
+			return true;
+		}
 		BsonDocument filter = documentFilter(preconditionDocRef)
 			.append(dottedFieldNameOf(precondition, preconditionDocRef), new BsonString(requiredValue.toString()));
 		LOGGER.debug("Precondition filter: {}", filter);
