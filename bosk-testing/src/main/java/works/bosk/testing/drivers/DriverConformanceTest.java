@@ -643,6 +643,83 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		assertCorrectBoskContents();
 	}
 
+	@InjectedTest
+	void conditionalCreateAfterDeletion_createsNode(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		Reference<TestEntity> deletedNode = catalogRef.then(child1ID);
+		driver.submitDeletion(deletedNode);
+		driver.submitConditionalCreation(deletedNode, emptyEntityAt(deletedNode).withString("created after deletion"));
+		assertCorrectBoskContents();
+	}
+
+	@InjectedTest
+	void conditionalReplaceAfterDeletion_preconditionOnDeletedNode_doesNothing(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		Reference<TestEntity> deletedNode = catalogRef.then(child1ID);
+		Reference<Identifier> deletedNodeID = deletedNode.then(Identifier.class, TestEntity.Fields.id);
+		driver.submitDeletion(deletedNode);
+		driver.submitConditionalReplacement(
+			deletedNode,
+			emptyEntityAt(deletedNode).withString("should not appear"),
+			deletedNodeID,
+			child1ID);
+		assertCorrectBoskContents();
+	}
+
+	@InjectedTest
+	void conditionalReplaceAfterDeletion_preconditionOnNestedDeletedNode_doesNothing(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		Reference<TestEntity> deletedParent = catalogRef.then(child1ID);
+		CatalogReference<TestEntity> deletedParentCatalog = deletedParent.thenCatalog(TestEntity.class, TestEntity.Fields.catalog);
+		Identifier nestedID = Identifier.from("nested");
+		Reference<TestEntity> nested = deletedParentCatalog.then(nestedID);
+
+		driver.submitReplacement(deletedParent, emptyEntityAt(deletedParent)
+			.withString("parent")
+			.withCatalog(Catalog.of(emptyEntityAt(nested).withString("nested"))));
+		assertCorrectBoskContents();
+
+		driver.submitDeletion(deletedParent);
+		assertCorrectBoskContents();
+
+		driver.submitConditionalReplacement(
+			catalogRef.then(child2ID),
+			newEntity(child2ID, catalogRef).withString("should not appear"),
+			nested.then(Identifier.class, TestEntity.Fields.id),
+			nestedID);
+		assertCorrectBoskContents();
+	}
+
+	@InjectedTest
+	void conditionalCreateAfterRemovalByCatalogReplacement_createsNode(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		Reference<TestEntity> removedNode = catalogRef.then(child1ID);
+		driver.submitReplacement(catalogRef, Catalog.of(newEntity(child2ID, catalogRef)));
+		driver.submitConditionalCreation(removedNode, emptyEntityAt(removedNode).withString("created after replacement"));
+		assertCorrectBoskContents();
+	}
+
+	@InjectedTest
+	void conditionalCreateAfterDeletion_withSubParts_createsNode(@EnclosingCatalog Path enclosingCatalogPath) throws InvalidTypeException {
+		CatalogReference<TestEntity> catalogRef = initializeBoskWithCatalog(enclosingCatalogPath);
+		Reference<TestEntity> parent = catalogRef.then(child1ID);
+		CatalogReference<TestEntity> childCatalog = parent.thenCatalog(TestEntity.class, TestEntity.Fields.catalog);
+		Reference<TestEntity> child = childCatalog.then(child2ID);
+
+		driver.submitReplacement(parent, emptyEntityAt(parent)
+			.withString("old parent")
+			.withCatalog(Catalog.of(emptyEntityAt(child).withString("old child")))
+			.withSideTable(SideTable.of(childCatalog, child2ID, emptyEntityAt(child).withString("old side table value"))));
+		assertCorrectBoskContents();
+
+		driver.submitDeletion(parent);
+		driver.submitConditionalCreation(parent, emptyEntityAt(parent)
+			.withString("new parent")
+			.withCatalog(Catalog.of(emptyEntityAt(child).withString("new child")))
+			.withSideTable(SideTable.of(childCatalog, child2ID, emptyEntityAt(child).withString("new side table value"))));
+		assertCorrectBoskContents();
+	}
+
 	@Test
 	void replaceRoot() throws InvalidTypeException {
 		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
