@@ -123,7 +123,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
-		return transactional(_ -> doReplacement(target, newValue));
+		PreparedReplacement prepared = prepareReplacement(target, newValue);
+		return transactional(_ -> doReplacement(prepared));
 	}
 
 	@Override
@@ -133,8 +134,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				// Root node always already exists
 				return ABORT;
 			}
-			Reference<?> targetDocRef = targetDocumentRef(target);
-			if (target.equals(targetDocRef)) {
+			PreparedReplacement prepared = prepareReplacement(target, newValue);
+			if (prepared.target().equals(prepared.targetDocRef())) {
 				// The target is itself a graft-point entry. Its own document may be
 				// an orphan left behind by a HASTY deletion, so membership comes
 				// from the container's stub, and the whole ancestor chain must
@@ -148,15 +149,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					LOGGER.debug("Already exists: {}", target);
 					return ABORT;
 				}
-				return doReplacement(target, newValue);
+				return doReplacement(prepared);
 			} else {
-				BsonDocument filter = documentFilter(targetDocRef)
-					.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
+				BsonDocument filter = documentFilter(prepared.targetDocRef())
+					.append(dottedFieldNameOf(target, prepared.targetDocRef()), new BsonDocument("$exists", TRUE));
 				if (documentExists(filter)) {
 					LOGGER.debug("Already exists: {}", filter);
 					return ABORT;
 				}
-				return doReplacement(target, newValue);
+				return doReplacement(prepared);
 			}
 		});
 	}
@@ -168,11 +169,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+		PreparedReplacement prepared = prepareReplacement(target, newValue);
 		return transactional(_ -> {
 			if (preconditionFailed(precondition, requiredValue)) {
 				return ABORT;
 			}
-			return doReplacement(target, newValue);
+			return doReplacement(prepared);
 		});
 	}
 
@@ -184,6 +186,28 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 			return doDelete(target);
 		});
+	}
+
+	private <T> PreparedReplacement prepareReplacement(Reference<T> target, T newValue) {
+		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
+		List<BsonDocument> subParts = List.of();
+		if (value instanceof BsonDocument b) {
+			List<BsonDocument> allParts = scatter(target, b);
+			subParts = List.copyOf(allParts.subList(0, allParts.size() - 1));
+			// `value` has now been stubbed-out to match the sub-parts
+		}
+		return new PreparedReplacement(target, targetDocumentRef(target), value, subParts);
+	}
+
+	private record PreparedReplacement(
+		Reference<?> target,
+		Reference<?> targetDocRef,
+		BsonValue value,
+		List<BsonDocument> subParts
+	) {
+		boolean hasSubParts() {
+			return !subParts.isEmpty();
+		}
 	}
 
 	private static TransactionalUpdateOperation transactional(TransactionalUpdateOperation operation) {
@@ -286,8 +310,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		// The diagnostic attributes come from the current thread.
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes these state document writes and the manifest write atomic.
-		if (initialState instanceof BsonDocument) {
-			upsertAndRemoveSubParts(rootRef, initialState.asDocument(), writtenRevisions); // Mutates initialState!
+		if (initialState instanceof BsonDocument initialStateDocument) {
+			List<BsonDocument> allParts = scatter(rootRef, initialStateDocument);
+			writeSubParts(allParts.subList(0, allParts.size() - 1), writtenRevisions);
+			// initialState has now been stubbed-out where the sub-parts were written
 		}
 		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, ROOT_DOCUMENT_ID));
 		BsonDocument filter = rootDocumentsFilter();
@@ -633,17 +659,17 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 *  accepted filter arguments (which Pando simply wouldn't use).
 	 *  It's complicated by the fact that the zero-match case in Sequoia is highly ambiguous.
 	 */
-	private <T> Outcome doReplacement(Reference<T> target, T newValue) {
+	private Outcome doReplacement(PreparedReplacement prepared) {
+		Reference<?> target = prepared.target();
+		Reference<?> targetDocRef = prepared.targetDocRef();
+		BsonValue value = prepared.value();
+		boolean hasSubParts = prepared.hasSubParts();
 		LOGGER.debug("doReplacement({})", target);
-		Reference<?> targetDocRef = targetDocumentRef(target);
-		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
-		boolean hasSubParts;
-		if (value instanceof BsonDocument b) {
+		if (value instanceof BsonDocument) {
 			deletePartsUnder(target);
-			hasSubParts = upsertAndRemoveSubParts(target, b, null);
-			// Note that value will now have the sub-parts removed
-		} else {
-			hasSubParts = false;
+		}
+		if (hasSubParts) {
+			writeSubParts(prepared.subParts(), null);
 		}
 		if (rootRef.equals(targetDocRef)) {
 			LOGGER.debug("| Root ref is topmost");
@@ -1066,20 +1092,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 
 	/**
-	 * @param value is mutated to stub-out the parts written to the database
+	 * Writes the sub-part documents produced by {@link #scatter}.
+	 *
 	 * @param writtenRevisions if non-null, receives the revision assigned to each
 	 * sub-part written
 	 */
-	private <T> boolean upsertAndRemoveSubParts(
-		Reference<T> target,
-		BsonDocument value,
+	private void writeSubParts(
+		List<BsonDocument> subParts,
 		@Nullable Map<BsonString, RevisionTuple> writtenRevisions
 	) {
-		List<BsonDocument> allParts = scatter(target, value);
-		// NOTE: `value` has now been mutated so the parts have been stubbed out
-
-		List<BsonDocument> subParts = allParts.subList(0, allParts.size() - 1);
-
 		LOGGER.debug("Document has {} sub-parts", subParts.size());
 		for (BsonDocument part: subParts) {
 			// scatter() already prepended idPrefix to the _id; don't prepend it again
@@ -1099,8 +1120,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				writtenRevisions.put(id, newRevision);
 			}
 		}
-
-		return !subParts.isEmpty();
 	}
 
 	@Override
