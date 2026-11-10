@@ -654,7 +654,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				LOGGER.debug("| Skipping root pre-delete for {}: no sub-parts", target);
 			}
 			LOGGER.debug("| Update root document");
-			boolean applied = doUpdate(replacementDoc(target, value, rootRef), standardRootPreconditions(target));
+			boolean applied = doUpdate(replacementDoc(target, value, rootRef), standardPreconditions(target, rootRef, documentFilter(rootRef)));
 			if (!applied) {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
 				collection.abortTransaction();
@@ -898,12 +898,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
-	private BsonDocument documentFilter(Reference<?> docRef) {
+	@Override
+	protected BsonDocument documentFilter(Reference<?> docRef) {
 		return new BsonDocument("_id", new BsonString(docBsonPath(docRef, rootRef)));
-	}
-
-	private <T> BsonDocument standardRootPreconditions(Reference<T> target) {
-		return standardPreconditions(target, rootRef, documentFilter(rootRef));
 	}
 
 	private <T> void preDeleteField(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
@@ -917,20 +914,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		doUpdate(update, standardPreconditions(target, startingRef, filter));
 	}
 
-	private <T> BsonDocument standardPreconditions(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
-		if (!target.path().equals(startingRef.path())) {
-			String enclosingObjectKey = dottedFieldNameOf(target.enclosingReference(Object.class), startingRef);
-			BsonDocument condition = new BsonDocument("$type", new BsonString("object"));
-			filter.put(enclosingObjectKey, condition);
-			LOGGER.debug("| Precondition: {} {}", enclosingObjectKey, condition);
-		}
-		return filter;
-	}
-
 	/**
 	 * @return true if something changed
 	 */
-	private boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
+	@Override
+	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
@@ -959,14 +947,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		UpdateResult result = collection.replaceOne(filter, replacement, new ReplaceOptions().upsert(true));
 		LOGGER.debug("| Replace result: {}", result);
 		requireAcknowledged(result, filter, replacement, "Replacement");
-	}
-
-	private static void requireAcknowledged(UpdateResult result, BsonDocument filter, BsonDocument change, String description) {
-		if (!result.wasAcknowledged()) {
-			LOGGER.error("MongoDB write was not acknowledged");
-			LOGGER.trace("Details of MongoDB write not acknowledged:\n\tFilter: {}\n\t{}: {}\n\tResult: {}", filter, description, change, result);
-			throw new IllegalStateException("Mongo write was not acknowledged: " + result);
-		}
 	}
 
 	/**

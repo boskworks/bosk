@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.HashMap;
@@ -15,10 +16,12 @@ import org.bson.BsonInt64;
 import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.BoskContext;
 import works.bosk.BoskDriver;
+import works.bosk.Identifier;
 import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.RootReference;
@@ -34,6 +37,7 @@ import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
+import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.DocumentFieldTracker.TrackedField.DIAGNOSTICS;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
@@ -144,6 +148,18 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	abstract BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException;
 
 	/**
+	 * @return a filter selecting the state document corresponding to {@code documentRef}
+	 */
+	protected abstract BsonDocument documentFilter(Reference<?> documentRef);
+
+	/**
+	 * Applies one database update.
+	 *
+	 * @return true if the update matched at least one document
+	 */
+	protected abstract boolean doUpdate(BsonDocument updateDoc, BsonDocument filter);
+
+	/**
 	 * Reads every state document's revision number and incarnation, in bottom-up
 	 * order (descendants before ancestors), for {@link #flush()} to wait on.
 	 * <p>
@@ -209,6 +225,97 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Unset field {}", key);
 		return revisionBump().append("$unset", new BsonDocument(key, BsonNull.VALUE));
+	}
+
+	/**
+	 * Replaces {@code target} in one conditional update against {@code documentRef}.
+	 * All preconditions are expressed in the filter, so the update result tells
+	 * us whether the write applied without a separate read.
+	 *
+	 * @return true if the update applied
+	 */
+	protected <T> boolean replaceInDocument(
+		Reference<T> target,
+		BsonValue value,
+		Reference<?> documentRef,
+		@Nullable Reference<Identifier> precondition,
+		@Nullable Identifier requiredValue
+	) {
+		BsonDocument filter = preconditions(target, documentRef, documentFilter(documentRef), precondition, requiredValue);
+		return doUpdate(replacementDoc(target, value, documentRef), filter);
+	}
+
+	/**
+	 * Creates {@code target} in one conditional update against {@code documentRef},
+	 * provided the target field does not already exist.
+	 *
+	 * @return true if the update applied
+	 */
+	protected <T> boolean createInDocument(Reference<T> target, BsonValue value, Reference<?> documentRef) {
+		BsonDocument filter = documentFilter(documentRef)
+			.append(dottedFieldNameOf(target, documentRef), new BsonDocument("$exists", FALSE));
+		filter = standardPreconditions(target, documentRef, filter);
+		return doUpdate(replacementDoc(target, value, documentRef), filter);
+	}
+
+	/**
+	 * Deletes {@code target} in one conditional update against {@code documentRef}.
+	 *
+	 * @return true if the update applied
+	 */
+	protected <T> boolean deleteInDocument(
+		Reference<T> target,
+		Reference<?> documentRef,
+		@Nullable Reference<Identifier> precondition,
+		@Nullable Identifier requiredValue
+	) {
+		BsonDocument filter = preconditions(target, documentRef, documentFilter(documentRef), precondition, requiredValue);
+		return doUpdate(deletionDoc(target, documentRef), filter);
+	}
+
+	private <T> BsonDocument preconditions(
+		Reference<T> target,
+		Reference<?> startingRef,
+		BsonDocument filter,
+		@Nullable Reference<Identifier> precondition,
+		@Nullable Identifier requiredValue
+	) {
+		if (precondition == null) {
+			return standardPreconditions(target, startingRef, filter);
+		} else {
+			return explicitPreconditions(target, precondition, requireNonNull(requiredValue), startingRef, filter);
+		}
+	}
+
+	protected <T> BsonDocument standardPreconditions(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
+		if (!target.path().equals(startingRef.path())) {
+			String enclosingObjectKey = dottedFieldNameOf(target.enclosingReference(Object.class), startingRef);
+			BsonDocument condition = new BsonDocument("$type", new BsonString("object"));
+			filter.put(enclosingObjectKey, condition);
+			LOGGER.debug("| Precondition: {} {}", enclosingObjectKey, condition);
+		}
+		return filter;
+	}
+
+	protected <T> BsonDocument explicitPreconditions(
+		Reference<T> target,
+		Reference<Identifier> precondition,
+		Identifier requiredValue,
+		Reference<?> startingRef,
+		BsonDocument filter
+	) {
+		BsonDocument result = standardPreconditions(target, startingRef, filter);
+		result.put(dottedFieldNameOf(precondition, startingRef),
+			new BsonDocument("$eq", new BsonString(requiredValue.toString())));
+		return result;
+	}
+
+	protected static void requireAcknowledged(UpdateResult result, BsonDocument filter, BsonDocument change, String description) {
+		if (!result.wasAcknowledged()) {
+			LOGGER.error("MongoDB write was not acknowledged");
+			LOGGER.trace("Details of MongoDB write not acknowledged:\n\tFilter: {}\n\t{}: {}\n\tResult: {}", filter, description, change, result);
+			throw new IllegalStateException("Mongo write was not acknowledged: " + result);
+		}
 	}
 
 	/**
