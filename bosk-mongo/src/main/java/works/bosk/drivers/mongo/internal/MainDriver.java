@@ -2,6 +2,7 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoException;
+import com.mongodb.MongoOperationTimeoutException;
 import com.mongodb.TransactionOptions;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -991,7 +992,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * disconnects.
 	 */
 	private RuntimeException updateFailure(MongoException e, FormatDriver<R> driverInUse, String description) {
-		if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL) && isWriteConflict(e)) {
+		if (isWriteConflict(e)) {
 			// The transaction kept losing to other writers. That's contention,
 			// not a database-health problem, so leave the Bosk driver connected and
 			// let the caller retry later.
@@ -1007,16 +1008,25 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
+	 * Whether {@code e} is the client library giving up on a transaction because
+	 * it kept losing write conflicts to other writers.
+	 * <p>
 	 * The client library's {@code withTransaction} puts the
 	 * transient-transaction-error label on connectivity failures as well as on
 	 * write conflicts, but a connectivity failure means the change receiver is
 	 * probably broken and must still take the disconnect path. Only a genuine
 	 * write conflict is safe to report as a retryable update.
+	 * <p>
+	 * The library may also wrap the final write conflict in a timeout exception
+	 * when the transaction budget expires, which lacks the label, so accept that
+	 * form as well.
 	 */
-	private static boolean isWriteConflict(Throwable e) {
-		for (Throwable t = e; t != null; t = t.getCause()) {
-			if (t instanceof MongoException m && m.getCode() == WRITE_CONFLICT_CODE) {
-				return true;
+	private static boolean isWriteConflict(MongoException e) {
+		if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL) || e instanceof MongoOperationTimeoutException) {
+			for (Throwable t = e; t != null; t = t.getCause()) {
+				if (t instanceof MongoException m && m.getCode() == WRITE_CONFLICT_CODE) {
+					return true;
+				}
 			}
 		}
 		return false;
