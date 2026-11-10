@@ -223,9 +223,16 @@ issue a mix of updates, replacements, inserts, deletes, and reads. There are two
   It must derive its decisions from database contents on each attempt, because the client library may replay it
   after a transient transaction error.
 
+The design goal is: **atomic iff the operation performs exactly one document write, and every precondition can
+be expressed in that write's filter.** The update result (`matchedCount`) then tells us whether the write
+applied. If the result has to drive further writes or a rollback decision, the operation is transactional.
+
 The format driver chooses the kind because only it knows how many documents the update touches and whether
-its preconditions span documents. Sequoia uses atomic operations. Pando currently uses transactional
-operations for every update.
+its preconditions span documents. Pando currently uses atomic operations for field and root replacements that
+do not scatter, field deletions, and conditional operations whose precondition is in the same document as the
+write. Whole graft-point-entry operations, replacements that scatter into sub-documents, and cross-document
+preconditions remain transactional. A graft-point container's stub set remains the authoritative membership
+and ordering; operations that may add or remove a stub stay transactional.
 
 `UpdateDriver` opens the session, runs the atomic attempt, runs an optional fallback transaction, applies
 transaction outcomes, and translates failures. Operations must not create, commit, or abort sessions or

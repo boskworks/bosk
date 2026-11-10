@@ -169,6 +169,48 @@ public class NoOpWriteTest {
 		}
 	}
 
+	@Nested
+	@ReplayLogsOnFailure
+	@InjectFields
+	class ConditionalNoOps extends Base {
+		@InjectorMethod
+		static Stream<ParameterSet> parameterSets() {
+			return Stream.of(new ParameterSet(
+				"NoOpWriteTestConditional",
+				MongoDriverSettings.builder()
+					.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
+					.timescaleMS(LONG_TIMESCALE)
+					.database("NoOpWriteTestConditional")));
+		}
+
+		@Test
+		void conditionalOperationsThatDoNotApply_doNotModifyState() throws InvalidTypeException, IOException, InterruptedException {
+			Bosk<TestEntity> bosk = new Bosk<>(
+				boskName(),
+				TestEntity.class,
+				AbstractMongoDriverTest::initialStateWithValues,
+				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+			bosk.driver().flush();
+
+			Refs refs = bosk.buildReferences(Refs.class);
+			Reference<Identifier> rootIDRef = bosk.rootReference().then(Identifier.class, TestEntity.Fields.id);
+			Identifier wrongID = Identifier.from("wrong");
+			BsonInt64 revisionBefore = rootDocumentRevision();
+
+			// The field already exists.
+			bosk.driver().submitConditionalCreation(refs.valuesString(), "newValue");
+
+			// The precondition fails.
+			bosk.driver().submitConditionalReplacement(refs.valuesString(), "newValue", rootIDRef, wrongID);
+			bosk.driver().submitConditionalDeletion(refs.valuesString(), rootIDRef, wrongID);
+
+			bosk.driver().flush();
+
+			assertEquals(revisionBefore, rootDocumentRevision(),
+				"Conditional operations that do not apply must not modify the state");
+		}
+	}
+
 	abstract static class Base extends AbstractMongoDriverTest {
 		protected TestEntity singleEntryInitialState(Bosk<TestEntity> bosk) throws InvalidTypeException {
 			Refs refs = bosk.buildReferences(Refs.class);

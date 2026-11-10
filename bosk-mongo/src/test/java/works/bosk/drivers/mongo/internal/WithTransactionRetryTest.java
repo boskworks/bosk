@@ -18,7 +18,6 @@ import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
-import works.bosk.testing.drivers.state.TestValues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -45,7 +44,7 @@ class WithTransactionRetryTest extends AbstractMongoDriverTest {
 		return Stream.of(new ParameterSet(
 			"WithTransactionRetryTest",
 			MongoDriverSettings.builder()
-				.preferredDatabaseFormat(PandoFormat.oneBigDocument())
+				.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
 				.timescaleMS(SHORT_TIMESCALE)
 				.database("WithTransactionRetryTest")));
 	}
@@ -67,20 +66,23 @@ class WithTransactionRetryTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),
 			TestEntity.class,
-			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
+			AbstractMongoDriverTest::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
-		Reference<TestValues> values = bosk.buildReferences(Refs.class).values();
+		Refs refs = bosk.buildReferences(Refs.class);
+		Reference<TestEntity> entry = refs.catalog().then(entity123);
+		TestEntity firstValue = TestEntity.empty(entity123, refs.childCatalog(entity123)).withString("first");
 
 		failWrites.set(true);
 		RetryableUpdateException e = assertThrows(RetryableUpdateException.class,
-			() -> bosk.driver().submitReplacement(values, TestValues.blank().withString("first")));
+			() -> bosk.driver().submitReplacement(entry, firstValue));
 		assertEquals(Duration.ofMillis(SHORT_TIMESCALE), e.retryAfter());
 
 		// The driver must still be usable: the next update succeeds
 		// now that the injected conflict is gone.
 		failWrites.set(false);
-		bosk.driver().submitReplacement(values, TestValues.blank().withString("second"));
+		bosk.driver().submitReplacement(entry,
+			TestEntity.empty(entity123, refs.childCatalog(entity123)).withString("second"));
 		bosk.driver().flush();
 	}
 
@@ -96,20 +98,27 @@ class WithTransactionRetryTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> bosk = new Bosk<>(
 			boskName(),
 			TestEntity.class,
-			AbstractMongoDriverTest::initialStateWithEmptyCatalog,
+			AbstractMongoDriverTest::initialState,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 
-		Reference<TestValues> values = bosk.buildReferences(Refs.class).values();
+		Refs refs = bosk.buildReferences(Refs.class);
+		Reference<TestEntity> entry = refs.catalog().then(entity123);
+		TestEntity newValue = TestEntity.empty(entity123, refs.childCatalog(entity123)).withString("retried");
 
 		failNextWrite.set(true);
-		bosk.driver().submitReplacement(values, TestValues.blank().withString("retried"));
+		bosk.driver().submitReplacement(entry, newValue);
 		bosk.driver().flush();
 
 		try (var _ = bosk.readSession()) {
-			assertEquals("retried", bosk.rootReference().value().values().orElseThrow().string());
+			assertEquals("retried", entry.value().string());
 		}
 	}
 
+	/**
+	 * Whole graft-point-entry replacement stays transactional, so these tests
+	 * keep exercising the client library's transaction retry machinery rather
+	 * than the single-document fast path.
+	 */
 	private static MongoException transientTransactionError() {
 		MongoException e = new MongoException(112, "Simulated WriteConflict");
 		e.addLabel(MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL);
