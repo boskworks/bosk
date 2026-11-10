@@ -674,7 +674,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		//     -> DisconnectedException
 		//     -> prePublicationWaitAction
 		//          countDown(flushAboutToWait)
-		//          await(formatDriverChanged)
+		//          await(driversChanged)
 		//   countDown(proceedWithReconnect)
 		//                                 onConnectionSucceeded
 		//                                   loadAllState (seeds the flush lock)

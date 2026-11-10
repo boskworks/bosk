@@ -7,7 +7,6 @@ import works.bosk.BoskDriver;
 import works.bosk.BoskInfo;
 import works.bosk.DriverFactory;
 import works.bosk.StateTreeNode;
-import works.bosk.drivers.mongo.internal.FormatDriver;
 import works.bosk.drivers.mongo.internal.MainDriver;
 import works.bosk.drivers.mongo.status.MongoStatus;
 
@@ -24,7 +23,7 @@ import works.bosk.drivers.mongo.status.MongoStatus;
  */
 public sealed interface MongoDriver
 	extends BoskDriver
-	permits MainDriver, FormatDriver {
+	permits MainDriver {
 
 	/**
 	 * Deserializes and re-serializes the entire bosk contents,

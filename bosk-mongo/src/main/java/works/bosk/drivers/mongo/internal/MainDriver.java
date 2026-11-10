@@ -55,7 +55,6 @@ import works.bosk.exceptions.RetryableUpdateException;
 import works.bosk.logging.MappedDiagnosticContext.MDCScope;
 import works.bosk.util.TunneledCheckedException;
 
-import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static com.mongodb.client.model.Sorts.ascending;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -70,8 +69,8 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
  * It's mostly exception handling code and diagnostics.
  * The actual database interactions used to implement the {@link BoskDriver} methods,
  * as well as most interactions with the downstream driver,
- * are delegated to a {@link FormatDriver} object that can be swapped out dynamically
- * as the database format evolves.
+ * are delegated to a {@link FormatDriver} object and its {@link UpdateDriver},
+ * both of which can be swapped out dynamically as the database format evolves.
  */
 public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BoskInfo<R> boskInfo;
@@ -80,7 +79,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BsonSerializer bsonSerializer;
 	private final BoskDriver downstream;
 	private final Deque<Closeable> closeables = new ArrayDeque<>();
-	private final TransactionalCollection queryCollection;
+	private final SessionCollection queryCollection;
 	private final MongoClient queryClient;
 	private final Listener listener;
 	private final AtomicBoolean loggedConnectionDiagnostics = new AtomicBoolean(false);
@@ -99,17 +98,17 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
 	/**
-	 * Hold this while waiting on {@link #formatDriverChanged}
+	 * Hold this while waiting on {@link #driversChanged}
 	 */
-	private final ReentrantLock formatDriverLock = new ReentrantLock();
+	private final ReentrantLock driversLock = new ReentrantLock();
 
 	/**
-	 * Wait on this in cases where the {@link #formatDriver} isn't working
+	 * Wait on this in cases where the current {@link #drivers} isn't working
 	 * and might be asynchronously repaired.
 	 */
-	private final Condition formatDriverChanged = formatDriverLock.newCondition();
+	private final Condition driversChanged = driversLock.newCondition();
 
-	private volatile FormatDriver<R> formatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
+	private volatile Drivers<R> drivers;
 
 	/**
 	 * Allows tests to install test probes controlling the driver's internals.
@@ -151,6 +150,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	) {
 		static final MongoClientFactory ALWAYS_CREATE = new MongoClientFactory(MongoClients::create, true);
 	}
+
+	private record Drivers<R extends StateTreeNode>(
+		FormatDriver<R> formatDriver,
+		UpdateDriver updateDriver
+	) {}
 
 	/**
 	 * Records the value of {@link #TEST_PROBES} as it was
@@ -216,9 +220,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				closeables.addFirst(this.queryClient);
 			}
 
-			this.queryCollection = TransactionalCollection.of(queryClient
+			this.queryCollection = SessionCollection.of(queryClient
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection(), BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor(), testProbes.sessionInterceptor());
+			FormatDriver<R> initialFormatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
+			this.drivers = new Drivers<>(initialFormatDriver, newUpdateDriver(initialFormatDriver));
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), driverSettings.collection());
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -312,7 +318,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// calls to driver update methods to wait until we're finished here. (There shouldn't
 		// be any such calls while initialState is still running, but this ensures that if any
 		// do happen, they won't corrupt our internal state in confusing ways.)
-		setDisconnectedDriver(FAILURE_TO_COMPUTE_INITIAL_STATE, formatDriver);
+		setDisconnectedDriver(FAILURE_TO_COMPUTE_INITIAL_STATE, currentFormatDriver());
 
 		// In effect, at this point, the entire driver is now single-threaded for the remainder
 		// of this method. Our only concurrency concerns now involve database operations performed
@@ -358,7 +364,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				publishFormatDriver(preferredDriver);
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
-				setDisconnectedDriver(e2, formatDriver);
+				setDisconnectedDriver(e2, currentFormatDriver());
 				fallbackReason = e2;
 			}
 		} catch (UnrecognizedFormatException | InvalidCollectionContentsException | IOException | FailedMongoClientSessionException e) {
@@ -397,7 +403,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						// with respect to event processing, because both of them have side effects
 						// that affect event processing (field tracking and flush locks, respectively).
 						synchronized (receiver) {
-							StateAndMetadata<R> allState = formatDriver.loadAllState();
+							StateAndMetadata<R> allState = currentFormatDriver().loadAllState();
 							FormatDriver<R> newFormatDriver = newPreferredFormatDriver();
 
 							// The manifest is replaced by writeManifest anyway,
@@ -439,48 +445,67 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
 		doRetryableUpdateOperation(()->{
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitReplacement(target, newValue);
+			UpdateDriver driver = currentUpdateDriver();
+			// Polyfills are schema-evolution defaults, not part of the main update's atomic unit.
+			// Materialize each one as a separate top-level update before the main update.
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitReplacement(target, newValue);
 		}, "submitReplacement({})", target);
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		doRetryableUpdateOperation(()->{
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
+			UpdateDriver driver = currentUpdateDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		}, "submitConditionalReplacement({}, {}={})", target, precondition, requiredValue);
 	}
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 		doRetryableUpdateOperation(()->{
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitConditionalCreation(target, newValue);
+			UpdateDriver driver = currentUpdateDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitConditionalCreation(target, newValue);
 		}, "submitConditionalCreation({})", target);
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
 		doRetryableUpdateOperation(()->{
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitDeletion(target);
+			UpdateDriver driver = currentUpdateDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitDeletion(target);
 		}, "submitDeletion({})", target);
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		doRetryableUpdateOperation(() -> {
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitConditionalDeletion(target, precondition, requiredValue);
+			UpdateDriver driver = currentUpdateDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitConditionalDeletion(target, precondition, requiredValue);
 		}, "submitConditionalDeletion({}, {}={})", target, precondition, requiredValue);
+	}
+
+	private Drivers<R> currentDrivers() {
+		return drivers;
+	}
+
+	private FormatDriver<R> currentFormatDriver() {
+		return currentDrivers().formatDriver();
+	}
+
+	private UpdateDriver currentUpdateDriver() {
+		return currentDrivers().updateDriver();
 	}
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
 		try {
 			this.<InterruptedException, IOException>doRetryableDriverOperation(() -> {
-				formatDriver.flush();
+				currentFormatDriver().flush();
 			}, "flush");
 		} catch (IOException e) {
 			throw classifyFlushFailure(e, reinitializationTimeout);
@@ -550,7 +575,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		// MongoClients is what aborts any transaction the session's own close missed.
 		var suppressedExceptions = new ArrayList<Exception>();
 		closeQuietly(receiver::close, suppressedExceptions);
-		closeQuietly(formatDriver::close, suppressedExceptions);
+		closeQuietly(currentFormatDriver()::close, suppressedExceptions);
 		if (!isClosed.getAndSet(true)) {
 			// It's important we don't call these twice, or else they will throw
 			closeables.forEach(closeable -> closeQuietly(closeable::close, suppressedExceptions));
@@ -664,7 +689,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
 			LOGGER.debug("onEvent({}:{})", event.getOperationType().getValue(), getDocumentKeyValue(event));
 			LOGGER.trace("Event details: {}", event);
-			formatDriver.onEvent(event);
+			currentFormatDriver().onEvent(event);
 		}
 
 		private Object getDocumentKeyValue(ChangeStreamDocument<BsonDocument> event) {
@@ -712,7 +737,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					break;
 				case DISCONNECT:
 					LOGGER.info("Unable to load initial state from database; will proceed with downstream.initialState", cause);
-					setDisconnectedDriver(cause, formatDriver);
+					setDisconnectedDriver(cause, currentFormatDriver());
 					try {
 						initialStateTask.complete(new InitialStateResult<>(callDownstreamInitialState(), null));
 					} catch (DownstreamInitialStateException e) {
@@ -731,8 +756,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		@Override
 		public void onDisconnect(Throwable e) {
 			LOGGER.debug("onDisconnect({})", e.toString());
-			formatDriver.close();
-			setDisconnectedDriver(e, formatDriver);
+			FormatDriver<R> driverInUse = currentFormatDriver();
+			driverInUse.close();
+			setDisconnectedDriver(e, driverInUse);
 		}
 	}
 
@@ -805,6 +831,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		LOGGER.debug("| Manifest result: {}", result);
 	}
 
+	private UpdateDriver newUpdateDriver(FormatDriver<R> driver) {
+		return new UpdateDriver(driver, queryCollection, timescaleMS, reason -> setDisconnectedDriver(reason, driver));
+	}
+
 	private FormatDriver<R> newFormatDriver(DatabaseFormat format) {
 		return switch (format) {
 			case SequoiaFormat _ -> new SequoiaFormatDriver<>(
@@ -855,13 +885,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * which doesn't declare checked exceptions.
 	 */
 	private void doRetryableUpdateOperation(Runnable operation, String description, Object... args) {
-		doRetryableDriverOperation(driverInUse -> () -> {
-			if (formatDriver.updatesAreTransactional()) {
-				runUpdateInClientLibraryTransaction(operation, driverInUse, description);
-			} else {
-				runWithSession(operation, driverInUse);
-			}
-		}, description, args);
+		doRetryableDriverOperation(ignored -> () -> operation.run(), description, args);
 	}
 
 	private <X extends Exception, Y extends Exception> void doRetryableDriverOperation(RetryableOperation<X,Y> operation, String description, Object... args) throws X,Y {
@@ -879,7 +903,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 */
 	private <X extends Exception, Y extends Exception> void doRetryableDriverOperation(Function<FormatDriver<R>, RetryableOperation<X,Y>> operationFactory, String description, Object... args) throws X,Y {
 		try (var _ = beginDriverOperation(description, args)) {
-			FormatDriver<R> driverInUse = formatDriver;
+			FormatDriver<R> driverInUse = currentDrivers().formatDriver();
 			RetryableOperation<X,Y> operation = operationFactory.apply(driverInUse);
 			try {
 				operation.run();
@@ -910,48 +934,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Runs an update in a session without starting a transaction. Sequoia's
-	 * single-document writes are retried by the client library's retryable
-	 * writes mechanism, and the outer wrapper handles disconnects.
-	 */
-	private void runWithSession(Runnable operation, FormatDriver<R> driverInUse) {
-		try (var session = queryCollection.newSession()) {
-			operation.run();
-		} catch (FailedMongoClientSessionException e) {
-			setDisconnectedDriver(e, driverInUse);
-			throw new DisconnectedException(e);
-		}
-	}
-
-	/**
-	 * Runs an update inside a transaction owned by MongoDB's client library
-	 * via {@link com.mongodb.client.ClientSession#withTransaction}.
-	 * <p>
-	 * The client library starts the transaction, retries the whole body when it
-	 * sees a transient transaction error, retries commits whose result is
-	 * unknown, and gives up when the transaction options' {@code timeoutMS}
-	 * budget is exhausted. If the budget was exhausted by write conflicts, we
-	 * raise {@link RetryableUpdateException} without disconnecting. Other
-	 * failures, including connectivity outages, take the usual disconnect path.
-	 */
-	private void runUpdateInClientLibraryTransaction(Runnable operation, FormatDriver<R> driverInUse, String description) {
-		runInClientLibraryTransaction(
-			// withTransaction needs its body to return a value, so we use
-			// Void/null to say that there's no result.
-			() -> {
-				operation.run();
-				return null;
-			},
-			// The client library's withTransaction treats timeoutMS as the total
-			// budget for all attempts, which matches the intent of timescaleMS.
-			TransactionOptions.builder()
-				.timeout(timescaleMS, MILLISECONDS)
-				.build(),
-			driverInUse,
-			e -> updateFailure(e, driverInUse, description));
-	}
-
-	/**
 	 * Runs {@code body} in a transaction owned by MongoDB's client library.
 	 * Session-creation failures disconnect the driver; a transaction failure is
 	 * translated by {@code failure}.
@@ -974,56 +956,18 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		return new DisconnectedException(e);
 	}
 
-	/**
-	 * Chooses the exception that the update path should throw for a failed
-	 * transaction. Write-conflict exhaustion is retryable and leaves the Bosk
-	 * driver connected; everything else is a database-health failure that
-	 * disconnects.
-	 */
-	private RuntimeException updateFailure(MongoException e, FormatDriver<R> driverInUse, String description) {
-		if (e.hasErrorLabel(TRANSIENT_TRANSACTION_ERROR_LABEL) && isWriteConflict(e)) {
-			// The transaction kept losing to other writers. That's contention,
-			// not a database-health problem, so leave the Bosk driver connected and
-			// let the caller retry later.
-			LOGGER.warn("Exhausted transaction conflict retries for {} after {} ms", description, timescaleMS, e);
-			return new RetryableUpdateException(
-				"Unable to complete update after transaction conflict retries",
-				e, Duration.ofMillis(timescaleMS));
-		}
-		LOGGER.debug("MongoException is not recoverable; disconnecting", e);
-		logTimeoutDiagnostics(description, e);
-		setDisconnectedDriver(e, driverInUse);
-		return new DisconnectedException(e);
-	}
-
-	/**
-	 * The client library's {@code withTransaction} puts the
-	 * transient-transaction-error label on connectivity failures as well as on
-	 * write conflicts, but a connectivity failure means the change receiver is
-	 * probably broken and must still take the disconnect path. Only a genuine
-	 * write conflict is safe to report as a retryable update.
-	 */
-	private static boolean isWriteConflict(Throwable e) {
-		for (Throwable t = e; t != null; t = t.getCause()) {
-			if (t instanceof MongoException m && m.getCode() == WRITE_CONFLICT_CODE) {
-				return true;
-			}
-		}
-		return false;
-	}
-
 	private <X extends Exception, Y extends Exception> void waitAndRetry(RetryableOperation<X, Y> operation, String description, Object... args) throws X, Y {
 		testProbes.prePublicationWaitAction().run();
-		formatDriverLock.lock();
+		driversLock.lock();
 		try {
 			// The driver may have recovered before we acquired the lock; the loop's
 			// first predicate check handles that without waiting.
 			long remainingNanos = reinitializationTimeout.toNanos();
-			while (formatDriver instanceof DisconnectedDriver<R> && remainingNanos > 0) {
+			while (drivers.formatDriver() instanceof DisconnectedDriver<R> && remainingNanos > 0) {
 				LOGGER.debug("Waiting for MongoDB to reconnect for {} ms", MILLISECONDS.convert(remainingNanos, NANOSECONDS));
-				remainingNanos = formatDriverChanged.awaitNanos(remainingNanos);
+				remainingNanos = driversChanged.awaitNanos(remainingNanos);
 			}
-			if (formatDriver instanceof DisconnectedDriver<R>) {
+			if (drivers.formatDriver() instanceof DisconnectedDriver<R>) {
 				LOGGER.warn("Timed out waiting for MongoDB to reconnect; will retry anyway, but the operation may fail");
 				logTimeoutDiagnostics(description, null);
 			}
@@ -1045,9 +989,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// to a user of a library that contains automatic retry logic.
 			LOGGER.debug("Interrupted while waiting to retry; proceeding");
 		} finally {
-			formatDriverLock.unlock();
+			driversLock.unlock();
 		}
-		LOGGER.debug("Retrying " + description + " w/" + this.formatDriver.getClass().getSimpleName(), args);
+		LOGGER.debug("Retrying " + description + " w/" + drivers.formatDriver().getClass().getSimpleName(), args);
 		operation.run();
 	}
 
@@ -1117,11 +1061,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	/**
 	 * Disconnects the current {@link FormatDriver} from the {@link MainDriver}: the
-	 * FormatDriver is closed and discarded, {@link #formatDriver} becomes a
+	 * FormatDriver is closed and discarded, {@link #drivers} becomes a
 	 * {@link DisconnectedDriver} that refuses updates, and the {@link ChangeReceiver} is
 	 * poked to reconnect.
 	 * <p>
-	 * Does not signal threads waiting on {@link #formatDriverChanged}: there's no point
+	 * Does not signal threads waiting on {@link #driversChanged}: there's no point
 	 * waking them to retry with {@link DisconnectedDriver} (which is bound to fail); they
 	 * might as well keep waiting and hope for another better driver to arrive instead.
 	 * <p>
@@ -1130,20 +1074,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * only job is to keep the driver from submitting updates while its understanding of the
 	 * database is suspect.
 	 * <p>
-	 * If {@link #formatDriver} is no longer the {@code currentDriver} the caller expected,
+	 * If {@link #drivers} no longer contains the {@code currentDriver} the caller expected,
 	 * nothing happens: the current FormatDriver has already been disconnected, or the
 	 * driver has recovered and published a new one. Either way, the failure in question is
 	 * being dealt with by the caller, so there's nothing more for this method to do.
 	 *
 	 * @param currentDriver the driver the caller believes to be the current
-	 * {@link #formatDriver}; if it is not, this method does nothing
+	 * {@link #drivers}; if it is not, this method does nothing
 	 */
 	void setDisconnectedDriver(Throwable reason, FormatDriver<R> currentDriver) {
-		LOGGER.debug("setDisconnectedDriver({}) (previously {})", reason.getClass().getSimpleName(), formatDriver.getClass().getSimpleName());
+		LOGGER.debug("setDisconnectedDriver({}) (previously {})", reason.getClass().getSimpleName(), currentFormatDriver().getClass().getSimpleName());
 		FormatDriver<R> oldDriver;
 		try {
-			formatDriverLock.lock();
-			oldDriver = formatDriver;
+			driversLock.lock();
+			Drivers<R> oldDrivers = drivers;
+			oldDriver = oldDrivers.formatDriver();
 			if (oldDriver != currentDriver) {
 				// The current FormatDriver has already been disconnected from us (or the driver
 				// has recovered and published a new one). Either way, the caller handles its own
@@ -1152,9 +1097,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				return;
 			}
 			oldDriver.close();
-			formatDriver = new DisconnectedDriver<>(reason);
+			FormatDriver<R> disconnectedDriver = new DisconnectedDriver<>(reason);
+			drivers = new Drivers<>(disconnectedDriver, newUpdateDriver(disconnectedDriver));
 		} finally {
-			formatDriverLock.unlock();
+			driversLock.unlock();
 		}
 
 		if (!(oldDriver instanceof DisconnectedDriver<?>)) {
@@ -1165,19 +1111,19 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Sets {@link #formatDriver} and also signals any threads waiting on {@link #formatDriverChanged}
+	 * Sets {@link #drivers} and also signals any threads waiting on {@link #driversChanged}
 	 * to retry their operation.
 	 */
 	void publishFormatDriver(FormatDriver<R> newFormatDriver) {
-		LOGGER.debug("publishFormatDriver({}) (was {})", newFormatDriver.getClass().getSimpleName(), formatDriver.getClass().getSimpleName());
+		LOGGER.debug("publishFormatDriver({}) (was {})", newFormatDriver.getClass().getSimpleName(), currentFormatDriver().getClass().getSimpleName());
 		try {
-			formatDriverLock.lock();
-			formatDriver.close();
-			formatDriver = newFormatDriver;
+			driversLock.lock();
+			currentFormatDriver().close();
+			drivers = new Drivers<>(newFormatDriver, newUpdateDriver(newFormatDriver));
 			LOGGER.debug("Signaling");
-			formatDriverChanged.signalAll();
+			driversChanged.signalAll();
 		} finally {
-			formatDriverLock.unlock();
+			driversLock.unlock();
 		}
 	}
 
@@ -1186,14 +1132,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	public static final BsonString MANIFEST_ID = new BsonString("!Manifest");
-	/**
-	 * The server's {@code WriteConflict} error code, from
-	 * <a href="https://www.mongodb.com/docs/manual/reference/error-codes/">MongoDB's error codes table</a>.
-	 * The client library has no constant for it. We need the code as well as the
-	 * transient-transaction-error label because the library attaches that label
-	 * to connectivity failures too.
-	 */
-	private static final int WRITE_CONFLICT_CODE = 112;
 	private static final Exception FAILURE_TO_COMPUTE_INITIAL_STATE = new IllegalStateException("Failure to compute initial state");
 	private static final Logger LOGGER = LoggerFactory.getLogger(MainDriver.class);
 	private static final Logger UNINITIALIZED_COLLECTION_LOGGER = LoggerFactory.getLogger(UNINITIALIZED_COLLECTION_LOGGER_NAME);

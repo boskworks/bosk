@@ -48,6 +48,7 @@ import works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
+import works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
@@ -67,6 +68,8 @@ import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
+import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
+import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.COMMIT;
 import static works.bosk.util.Classes.enumerableByIdentifier;
 
 /**
@@ -85,7 +88,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	PandoFormatDriver(
 		BoskInfo<R> boskInfo,
-		TransactionalCollection collection,
+		SessionCollection collection,
 		MongoDriverSettings driverSettings,
 		PandoFormat format,
 		BsonSerializer bsonSerializer,
@@ -119,75 +122,72 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	public boolean updatesAreTransactional() {
-		return true;
+	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
+		return transactional(_ -> doReplacement(target, newValue));
 	}
 
 	@Override
-	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		doReplacement(target, newValue);
-	}
-
-	@Override
-	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		if (target.isRoot()) {
-			// Root node always already exists
-			return;
-		}
-		collection.ensureTransactionStarted();
-		Reference<?> targetDocRef = targetDocumentRef(target);
-		if (target.equals(targetDocRef)) {
-			// The target is itself a graft-point entry. Its own document may be
-			// an orphan left behind by a HASTY deletion, so membership comes
-			// from the container's stub, and the whole ancestor chain must
-			// exist before we can create it.
-			Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
-			if (!containerExists(containerRef)) {
-				LOGGER.debug("Parent does not exist: {}", target);
-				collection.abortTransaction();
-				return;
+	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
+		return transactional(_ -> {
+			if (target.isRoot()) {
+				// Root node always already exists
+				return ABORT;
 			}
-			if (hasStub(target, containerRef)) {
-				LOGGER.debug("Already exists: {}", target);
-				collection.abortTransaction();
-				return;
+			Reference<?> targetDocRef = targetDocumentRef(target);
+			if (target.equals(targetDocRef)) {
+				// The target is itself a graft-point entry. Its own document may be
+				// an orphan left behind by a HASTY deletion, so membership comes
+				// from the container's stub, and the whole ancestor chain must
+				// exist before we can create it.
+				Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
+				if (!containerExists(containerRef)) {
+					LOGGER.debug("Parent does not exist: {}", target);
+					return ABORT;
+				}
+				if (hasStub(target, containerRef)) {
+					LOGGER.debug("Already exists: {}", target);
+					return ABORT;
+				}
+				return doReplacement(target, newValue);
+			} else {
+				BsonDocument filter = documentFilter(targetDocRef)
+					.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
+				if (documentExists(filter)) {
+					LOGGER.debug("Already exists: {}", filter);
+					return ABORT;
+				}
+				return doReplacement(target, newValue);
 			}
-			doReplacement(target, newValue);
-		} else {
-			BsonDocument filter = documentFilter(targetDocRef)
-				.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
-			if (documentExists(filter)) {
-				LOGGER.debug("Already exists: {}", filter);
-				collection.abortTransaction();
-				return;
+		});
+	}
+
+	@Override
+	public <T> UpdateOperation submitDeletion(Reference<T> target) {
+		return transactional(_ -> doDelete(target));
+	}
+
+	@Override
+	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+		return transactional(_ -> {
+			if (preconditionFailed(precondition, requiredValue)) {
+				return ABORT;
 			}
-			doReplacement(target, newValue);
-		}
+			return doReplacement(target, newValue);
+		});
 	}
 
 	@Override
-	public <T> void submitDeletion(Reference<T> target) {
-		doDelete(target);
+	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		return transactional(_ -> {
+			if (preconditionFailed(precondition, requiredValue)) {
+				return ABORT;
+			}
+			return doDelete(target);
+		});
 	}
 
-	@Override
-	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		collection.ensureTransactionStarted();
-		if (preconditionFailed(precondition, requiredValue)) {
-			collection.abortTransaction();
-			return;
-		}
-		doReplacement(target, newValue);
-	}
-
-	@Override
-	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		collection.ensureTransactionStarted();
-		if (preconditionFailed(precondition, requiredValue)) {
-			collection.abortTransaction();
-			return;
-		}
-		doDelete(target);
+	private static TransactionalUpdateOperation transactional(TransactionalUpdateOperation operation) {
+		return operation;
 	}
 
 	@Override
@@ -633,8 +633,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 *  accepted filter arguments (which Pando simply wouldn't use).
 	 *  It's complicated by the fact that the zero-match case in Sequoia is highly ambiguous.
 	 */
-	private <T> void doReplacement(Reference<T> target, T newValue) {
-		collection.ensureTransactionStarted();
+	private <T> Outcome doReplacement(Reference<T> target, T newValue) {
 		LOGGER.debug("doReplacement({})", target);
 		Reference<?> targetDocRef = targetDocumentRef(target);
 		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
@@ -654,13 +653,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				LOGGER.debug("| Skipping root pre-delete for {}: no sub-parts", target);
 			}
 			LOGGER.debug("| Update root document");
-			boolean applied = doUpdate(replacementDoc(target, value, rootRef), standardRootPreconditions(target));
-			if (!applied) {
+			boolean applied = doUpdate(replacementDoc(target, value, rootRef), standardPreconditions(target, rootRef, documentFilter(rootRef)));
+			if (applied) {
+				return COMMIT;
+			} else {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
-				collection.abortTransaction();
+				return ABORT;
 			}
 		} else if (target.equals(targetDocRef)) {
-			replaceGraftPointEntry(target, value, hasSubParts);
+			return replaceGraftPointEntry(target, value, hasSubParts);
 		} else {
 			// Update part of the topmost document (which must already exist)
 			BsonDocument filter = documentFilter(targetDocRef);
@@ -673,9 +674,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			// diagnostics. No other document is written.
 			boolean applied = doUpdate(replacementDoc(target, value, targetDocRef), standardPreconditions(target, targetDocRef, filter));
 
-			if (!applied) {
+			if (applied) {
+				return COMMIT;
+			} else {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
-				collection.abortTransaction();
+				return ABORT;
 			}
 		}
 	}
@@ -698,17 +701,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * an orphan, so the presence of the document alone does not mean the entry
 	 * exists.
 	 */
-	private <T> void replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+	private <T> Outcome replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
 		Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
 		if (!containerExists(containerRef)) {
 			LOGGER.debug("Parent does not exist; ignoring replacement of {}", target);
-			collection.abortTransaction();
-			return;
+			return ABORT;
 		}
 		if (hasStub(target, containerRef)) {
-			updateGraftPointEntry(target, value, hasSubParts);
+			return updateGraftPointEntry(target, value, hasSubParts);
 		} else {
-			createGraftPointEntryAndStub(target, containerRef, value);
+			return createGraftPointEntryAndStub(target, containerRef, value);
 		}
 	}
 
@@ -744,7 +746,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return documentExists(stubFilter);
 	}
 
-	private <T> void updateGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+	private <T> Outcome updateGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
 		LOGGER.debug("| Replacing existing document {}", target);
 		if (hasSubParts) {
 			preDeleteField(target, target, documentFilter(target));
@@ -752,13 +754,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		BsonDocument update = replacementDoc(target, value, target);
 		// The container has a stub for this entry, so its document exists:
 		// creation and deletion write the two atomically.
-		if (!doUpdate(update, documentFilter(target))) {
+		if (doUpdate(update, documentFilter(target))) {
+			return COMMIT;
+		} else {
 			LOGGER.debug("| Replacement had no effect; aborting transaction");
-			collection.abortTransaction();
+			return ABORT;
 		}
 	}
 
-	private <T> void createGraftPointEntryAndStub(Reference<T> target, Reference<?> containerRef, BsonValue value) {
+	private <T> Outcome createGraftPointEntryAndStub(Reference<T> target, Reference<?> containerRef, BsonValue value) {
 		LOGGER.debug("| Creating document {}", target);
 		BsonDocument document = documentFilter(target).clone()
 			.append(DocumentFields.state.name(), value)
@@ -768,14 +772,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 		// The container's stub is the transaction's topmost write.
 		BsonDocument containerUpdate = replacementDoc(target, TRUE, containerRef);
-		if (!doUpdate(containerUpdate, standardPreconditions(target, containerRef, documentFilter(containerRef)))) {
+		if (doUpdate(containerUpdate, standardPreconditions(target, containerRef, documentFilter(containerRef)))) {
+			return COMMIT;
+		} else {
 			LOGGER.debug("| Container write had no effect; aborting transaction");
-			collection.abortTransaction();
+			return ABORT;
 		}
 	}
 
-	private <T> void doDelete(Reference<T> target) {
-		collection.ensureTransactionStarted();
+	private <T> Outcome doDelete(Reference<T> target) {
 		deletePartsUnder(target);
 		Reference<?> targetDocRef = targetDocumentRef(target);
 		Reference<?> topmostRef = targetDocRef;
@@ -795,9 +800,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 		// The deletion is the topmost write: it unsets the field and bumps the
 		// topmost document's revision. No other document is written.
-		if (!doUpdate(deletionDoc(target, topmostRef), standardPreconditions(target, topmostRef, documentFilter(topmostRef)))) {
+		if (doUpdate(deletionDoc(target, topmostRef), standardPreconditions(target, topmostRef, documentFilter(topmostRef)))) {
+			return COMMIT;
+		} else {
 			LOGGER.debug("| Deletion had no effect; aborting transaction");
-			collection.abortTransaction();
+			return ABORT;
 		}
 	}
 
@@ -898,12 +905,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
-	private BsonDocument documentFilter(Reference<?> docRef) {
+	@Override
+	protected BsonDocument documentFilter(Reference<?> docRef) {
 		return new BsonDocument("_id", new BsonString(docBsonPath(docRef, rootRef)));
-	}
-
-	private <T> BsonDocument standardRootPreconditions(Reference<T> target) {
-		return standardPreconditions(target, rootRef, documentFilter(rootRef));
 	}
 
 	private <T> void preDeleteField(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
@@ -917,20 +921,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		doUpdate(update, standardPreconditions(target, startingRef, filter));
 	}
 
-	private <T> BsonDocument standardPreconditions(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
-		if (!target.path().equals(startingRef.path())) {
-			String enclosingObjectKey = dottedFieldNameOf(target.enclosingReference(Object.class), startingRef);
-			BsonDocument condition = new BsonDocument("$type", new BsonString("object"));
-			filter.put(enclosingObjectKey, condition);
-			LOGGER.debug("| Precondition: {} {}", enclosingObjectKey, condition);
-		}
-		return filter;
-	}
-
 	/**
 	 * @return true if something changed
 	 */
-	private boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
+	@Override
+	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
@@ -959,14 +954,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		UpdateResult result = collection.replaceOne(filter, replacement, new ReplaceOptions().upsert(true));
 		LOGGER.debug("| Replace result: {}", result);
 		requireAcknowledged(result, filter, replacement, "Replacement");
-	}
-
-	private static void requireAcknowledged(UpdateResult result, BsonDocument filter, BsonDocument change, String description) {
-		if (!result.wasAcknowledged()) {
-			LOGGER.error("MongoDB write was not acknowledged");
-			LOGGER.trace("Details of MongoDB write not acknowledged:\n\tFilter: {}\n\t{}: {}\n\tResult: {}", filter, description, change, result);
-			throw new IllegalStateException("Mongo write was not acknowledged: " + result);
-		}
 	}
 
 	/**

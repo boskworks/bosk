@@ -20,7 +20,7 @@ import org.bson.BsonString;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import works.bosk.drivers.mongo.internal.TransactionalCollection.Session;
+import works.bosk.drivers.mongo.internal.SessionCollection.Session;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -31,13 +31,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class TransactionalCollectionTest {
+class SessionCollectionTest {
 	private static MongoService mongoService;
-	private static final String DB_NAME = "TransactionalCollectionTest";
+	private static final String DB_NAME = "SessionCollectionTest";
 	private static final String COLLECTION_NAME = "testCollection";
 	private MongoClient client;
 	private MongoCollection<BsonDocument> raw;
-	private TransactionalCollection collection;
+	private SessionCollection collection;
 
 	@BeforeAll
 	static void setupMongo() {
@@ -51,7 +51,7 @@ class TransactionalCollectionTest {
 			.getDatabase(DB_NAME)
 			.getCollection(COLLECTION_NAME, BsonDocument.class);
 		raw.drop();
-		collection = TransactionalCollection.of(raw, client);
+		collection = SessionCollection.of(raw, client);
 	}
 
 	@Test
@@ -153,7 +153,7 @@ class TransactionalCollectionTest {
 
 	@Test
 	void close_whenAbortFails_stillClosesClientSession() throws FailedMongoClientSessionException {
-		collection = TransactionalCollection.of(raw, client,
+		collection = SessionCollection.of(raw, client,
 			FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(),
 			() -> { throw new MongoException("simulated abort failure"); });
 
@@ -173,7 +173,7 @@ class TransactionalCollectionTest {
 	@Test
 	void close_clearsInterruptWhileAborting_andRestoresIt() throws FailedMongoClientSessionException {
 		AtomicBoolean interruptedDuringAbort = new AtomicBoolean();
-		collection = TransactionalCollection.of(raw, client,
+		collection = SessionCollection.of(raw, client,
 			FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(),
 			() -> interruptedDuringAbort.set(Thread.currentThread().isInterrupted()));
 
@@ -402,7 +402,7 @@ class TransactionalCollectionTest {
 	@Test
 	void commitTransactionIfAny_retriesCommit_whenCommitResultUnknown() throws FailedMongoClientSessionException {
 		AtomicInteger commitAttempts = new AtomicInteger();
-		TransactionalCollection coll = withCommitInterceptor(() -> {
+		SessionCollection coll = withCommitInterceptor(() -> {
 			if (commitAttempts.getAndIncrement() == 0) {
 				throw unknownCommitResult();
 			}
@@ -417,7 +417,7 @@ class TransactionalCollectionTest {
 	@Test
 	void commitTransactionIfAny_rethrows_whenCommitRetriesExhausted() throws FailedMongoClientSessionException {
 		AtomicInteger commitAttempts = new AtomicInteger();
-		TransactionalCollection coll = withCommitInterceptor(() -> {
+		SessionCollection coll = withCommitInterceptor(() -> {
 			commitAttempts.getAndIncrement();
 			throw unknownCommitResult();
 		});
@@ -558,7 +558,7 @@ class TransactionalCollectionTest {
 		MongoCollection<BsonDocument> raw = client
 			.getDatabase(DB_NAME)
 			.getCollection(COLLECTION_NAME, BsonDocument.class);
-		TransactionalCollection collection2 = TransactionalCollection.of(raw, client);
+		SessionCollection collection2 = SessionCollection.of(raw, client);
 
 		try (Session _ = collection.newSession();
 			Session _ = collection2.newSession()
@@ -603,7 +603,7 @@ class TransactionalCollectionTest {
 		}
 	}
 
-	private static void insertFresh(TransactionalCollection coll, BsonDocument doc) throws FailedMongoClientSessionException {
+	private static void insertFresh(SessionCollection coll, BsonDocument doc) throws FailedMongoClientSessionException {
 		try (Session _ = coll.newSession()) {
 			coll.ensureTransactionStarted();
 			coll.insertOne(doc);
@@ -616,15 +616,15 @@ class TransactionalCollectionTest {
 	}
 
 	/**
-	 * A {@link TransactionalCollection} whose session commits consult the given
+	 * A {@link SessionCollection} whose session commits consult the given
 	 * {@link CommitInterceptor}, which can throw to simulate a commit failure.
 	 */
-	private TransactionalCollection withCommitInterceptor(CommitInterceptor interceptor) {
+	private SessionCollection withCommitInterceptor(CommitInterceptor interceptor) {
 		MongoClient client = mongoService.client();
 		MongoCollection<BsonDocument> raw = client
 			.getDatabase(DB_NAME)
 			.getCollection(COLLECTION_NAME, BsonDocument.class);
-		return TransactionalCollection.of(raw, client, FindInterceptor.identity(), WriteInterceptor.identity(), interceptor, SessionInterceptor.identity());
+		return SessionCollection.of(raw, client, FindInterceptor.identity(), WriteInterceptor.identity(), interceptor, SessionInterceptor.identity());
 	}
 
 	private static MongoException unknownCommitResult() {

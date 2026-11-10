@@ -36,9 +36,7 @@ import works.bosk.exceptions.InvalidTypeException;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
 import static java.util.Objects.requireNonNull;
-import static org.bson.BsonBoolean.FALSE;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
-import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.referenceTo;
 
 /**
@@ -51,7 +49,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	SequoiaFormatDriver(
 		BoskInfo<R> boskInfo,
-		TransactionalCollection collection,
+		SessionCollection collection,
 		MongoDriverSettings driverSettings,
 		BsonSerializer bsonSerializer,
 		Duration flushTimeout,
@@ -69,44 +67,57 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		doUpdate(replacementDoc(target, newValue), standardPreconditions(target));
+	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
+		return atomic(_ -> {
+			replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, null, null);
+			return Optional.empty();
+		});
 	}
 
 	@Override
-	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		BsonDocument filter = standardPreconditions(target);
-		filter.put(dottedFieldNameOf(target, rootRef), new BsonDocument("$exists", FALSE));
-		if (doUpdate(replacementDoc(target, newValue), filter)) {
-			LOGGER.debug("| Object initialized");
-		} else {
-			LOGGER.debug("| No update");
-		}
+	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
+		return atomic(_ -> {
+			if (createInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef)) {
+				LOGGER.debug("| Object initialized");
+			} else {
+				LOGGER.debug("| No update");
+			}
+			return Optional.empty();
+		});
 	}
 
 	@Override
-	public <T> void submitDeletion(Reference<T> target) {
-		doUpdate(deletionDoc(target, rootRef), standardPreconditions(target));
+	public <T> UpdateOperation submitDeletion(Reference<T> target) {
+		return atomic(_ -> {
+			deleteInDocument(target, rootRef, null, null);
+			return Optional.empty();
+		});
 	}
 
 	@Override
-	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		doUpdate(
-			replacementDoc(target, newValue),
-			explicitPreconditions(target, precondition, requiredValue));
+	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+		return atomic(_ -> {
+			replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, precondition, requiredValue);
+			return Optional.empty();
+		});
 	}
 
 	@Override
-	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		doUpdate(
-			deletionDoc(target, rootRef),
-			explicitPreconditions(target, precondition, requiredValue));
+	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		return atomic(_ -> {
+			deleteInDocument(target, rootRef, precondition, requiredValue);
+			return Optional.empty();
+		});
+	}
+
+	private static AtomicUpdateOperation atomic(AtomicUpdateOperation operation) {
+		return operation;
 	}
 
 	@Override
 	BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException {
 		try (DocCursor cursor = collection
-			.find(documentFilter())
+			.find(documentFilter(rootRef))
 			.limit(1)
 			.cursor()
 		) {
@@ -139,7 +150,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes this state document write and the manifest write atomic.
 		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, DOCUMENT_ID));
-		BsonDocument filter = documentFilter();
+		BsonDocument filter = documentFilter(rootRef);
 		UpdateOptions options = new UpdateOptions().upsert(true);
 		LOGGER.debug("** Initial upsert for {}", DOCUMENT_ID);
 		LOGGER.trace("| Filter: {}", filter);
@@ -259,7 +270,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	// MongoDB helpers
 	//
 
-	private BsonDocument documentFilter() {
+	@Override
+	protected BsonDocument documentFilter(Reference<?> documentRef) {
 		return new BsonDocument("_id", DOCUMENT_ID);
 	}
 
@@ -272,7 +284,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	protected FlushRevisions readRevisionsToFlush() throws FlushFailureException, InterruptedException {
 		LOGGER.debug("readRevisionsToFlush");
 		try (DocCursor cursor = collection
-			.findLatest(documentFilter())
+			.findLatest(documentFilter(rootRef))
 			.limit(1)
 			.projection(fields(include(
 				"_id",
@@ -299,62 +311,36 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		}
 	}
 
-	private <T> BsonDocument standardPreconditions(Reference<T> target) {
-		BsonDocument filter = documentFilter();
-		if (!target.path().isEmpty()) {
-			String enclosingObjectKey = dottedFieldNameOf(target.enclosingReference(Object.class), rootRef);
-			BsonDocument condition = new BsonDocument("$type", new BsonString("object"));
-			filter.put(enclosingObjectKey, condition);
-			LOGGER.debug("| Precondition: {} {}", enclosingObjectKey, condition);
-		}
-		return filter;
-	}
-
-	private <T> BsonDocument explicitPreconditions(Reference<T> target, Reference<Identifier> preconditionRef, Identifier requiredValue) {
-		BsonDocument filter = standardPreconditions(target);
-		BsonDocument precondition = new BsonDocument("$eq", new BsonString(requiredValue.toString()));
-		filter.put(dottedFieldNameOf(preconditionRef, rootRef), precondition);
-		return filter;
-	}
-
-	private <T> BsonDocument replacementDoc(Reference<T> target, T newValue) {
-		return super.replacementDoc(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef);
-	}
-
 	/**
 	 * @return true if something changed
 	 */
-	private boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
+	@Override
+	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
-		if (result.wasAcknowledged()) {
-			// NOTE: This case can occur in a few situations:
-			// 1. A conditional update whose precondition failed
-			// 2. An update inside a nonexistent node
-			// 3. The bosk document has disappeared
-			//
-			// Differentiating these cases without transactions is complex,
-			// and the only benefit of the Sequoia format is its simplicity,
-			// so for now, we're opting not to handle this case.
-			//
-			// This means valid updates can be silently ignored during the window
-			// between when a refurbish operation deletes the bosk document and
-			// when the corresponding change event arrives. We are going to accept
-			// and document this risk for the time being, unless we can determine
-			// a sufficiently straightforward way to detect this situation.
-			//
-			// Therefore, when refurbishing from Sequoia to another format,
-			// the system should be quiescent or else updates may be lost.
+		// NOTE: This case can occur in a few situations:
+		// 1. A conditional update whose precondition failed
+		// 2. An update inside a nonexistent node
+		// 3. The bosk document has disappeared
+		//
+		// Differentiating these cases without transactions is complex,
+		// and the only benefit of the Sequoia format is its simplicity,
+		// so for now, we're opting not to handle this case.
+		//
+		// This means valid updates can be silently ignored during the window
+		// between when a refurbish operation deletes the bosk document and
+		// when the corresponding change event arrives. We are going to accept
+		// and document this risk for the time being, unless we can determine
+		// a sufficiently straightforward way to detect this situation.
+		//
+		// Therefore, when refurbishing from Sequoia to another format,
+		// the system should be quiescent or else updates may be lost.
 
-			assert result.getMatchedCount() <= 1;
-			return result.getMatchedCount() >= 1;
-		} else {
-			LOGGER.error("MongoDB write was not acknowledged");
-			LOGGER.trace("Details of MongoDB write not acknowledged:\n\tFilter: {}\n\tUpdate: {}\n\tResult: {}", filter, updateDoc, result);
-			throw new IllegalStateException("Mongo write was not acknowledged: " + result);
-		}
+		requireAcknowledged(result, filter, updateDoc, "Update");
+		assert result.getMatchedCount() <= 1;
+		return result.getMatchedCount() >= 1;
 	}
 
 	/**

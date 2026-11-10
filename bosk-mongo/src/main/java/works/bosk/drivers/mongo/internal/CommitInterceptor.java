@@ -4,7 +4,7 @@ import com.mongodb.MongoException;
 
 /**
  * Lets tests interpose on transaction commits. Each commit attempt in
- * {@link TransactionalCollection.Session#commitTransactionIfAny()} runs the actual commit
+ * {@link SessionCollection.Session#commitTransactionIfAny()} runs the actual commit
  * and then invokes this interceptor, which may throw to simulate a failed commit.
  * Throwing a {@link MongoException} with the
  * {@link MongoException#UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL} error label causes the

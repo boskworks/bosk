@@ -1,9 +1,9 @@
 package works.bosk.drivers.mongo.internal;
 
 /**
- * Lets tests interpose on the closing of a {@link TransactionalCollection.Session}.
+ * Lets tests interpose on the closing of a {@link SessionCollection.Session}.
  * <p>
- * {@link TransactionalCollection.Session#close()} aborts an active transaction
+ * {@link SessionCollection.Session#close()} aborts an active transaction
  * before closing the client session, but the MongoDB driver's own
  * {@code ClientSession.close()} also aborts an active transaction. The client
  * session must therefore be closed even if the explicit abort fails (for example,

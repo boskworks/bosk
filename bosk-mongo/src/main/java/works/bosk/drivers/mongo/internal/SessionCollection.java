@@ -32,12 +32,13 @@ import static com.mongodb.ReadConcern.LOCAL;
 
 /**
  * A wrapper for {@link MongoCollection} that manages a thread-local
- * {@link ClientSession} so that operations can implicitly participate
- * in transactions without needing to do so explicitly.
+ * {@link ClientSession} so that operations are bound to the current session
+ * without needing to pass it explicitly. It also runs a body in a transaction
+ * managed by the client library when the caller asks for one.
  */
 @SuppressWarnings("NullableProblems")
 @RequiredArgsConstructor(staticName = "of")
-class TransactionalCollection {
+class SessionCollection {
 	private final MongoCollection<BsonDocument> downstream;
 	private final MongoClient mongoClient;
 	private final FindInterceptor findInterceptor;
@@ -47,9 +48,9 @@ class TransactionalCollection {
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
 
 	/**
-	 * A {@code TransactionalCollection} with no read, write, or commit interposition.
+	 * A {@code SessionCollection} with no read, write, or commit interposition.
 	 */
-	static TransactionalCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient) {
+	static SessionCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient) {
 		return of(downstream, mongoClient, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), SessionInterceptor.identity());
 	}
 
@@ -434,5 +435,5 @@ class TransactionalCollection {
 		}
 	}
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(TransactionalCollection.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(SessionCollection.class);
 }

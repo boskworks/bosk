@@ -18,27 +18,27 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<R> {
 	private final Throwable reason;
 	@Override
-	public <T> void submitReplacement(Reference<T> target, T newValue) {
+	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
 		throw disconnected();
 	}
 
 	@Override
-	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		throw disconnected();
 	}
 
 	@Override
-	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
+	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
 		throw disconnected();
 	}
 
 	@Override
-	public <T> void submitDeletion(Reference<T> target) {
+	public <T> UpdateOperation submitDeletion(Reference<T> target) {
 		throw disconnected();
 	}
 
 	@Override
-	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		throw disconnected();
 	}
 
