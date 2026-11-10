@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -57,6 +58,13 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * (the default) replaces one field of an existing entry, and {@code replace}
  * replaces a whole entry.
  * <p>
+ * {@code EXPERIMENT_DRIVER} selects {@code pando-grafted} (the default),
+ * {@code pando-onebig}, or {@code sequoia}. {@code EXPERIMENT_CATALOG_SIZE}
+ * sets the number of entries in the initial catalog (default: the thread
+ * count). {@code EXPERIMENT_PICK=random} makes field-mode workers choose a
+ * random entity instead of their own disjoint one, which exercises contention
+ * on a small hot set.
+ * <p>
  * This is deliberately a timing-based experiment rather than a correctness
  * test. It exists to compare driver designs, not to catch regressions.
  */
@@ -65,10 +73,16 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
+		String driver = System.getenv().getOrDefault("EXPERIMENT_DRIVER", "pando-grafted");
+		var format = switch (driver) {
+			case "sequoia" -> MongoDriverSettings.DatabaseFormat.SEQUOIA;
+			case "pando-onebig" -> PandoFormat.oneBigDocument();
+			default -> PandoFormat.withGraftPoints("/catalog");
+		};
 		return Stream.of(new ParameterSet(
 			"ParallelUpdateExperiment",
 			MongoDriverSettings.builder()
-				.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
+				.preferredDatabaseFormat(format)
 				.timescaleMS(LONG_TIMESCALE)
 				.database("ParallelUpdateExperiment")));
 	}
@@ -77,7 +91,12 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 	@EnabledIfEnvironmentVariable(named = "EXPERIMENT_THREADS", matches = ".+")
 	void experiment() throws Exception {
 		experimentThreads = Integer.parseInt(System.getenv("EXPERIMENT_THREADS"));
+		catalogSize = Integer.parseInt(System.getenv().getOrDefault("EXPERIMENT_CATALOG_SIZE", Integer.toString(experimentThreads)));
 		String mode = System.getenv().getOrDefault("EXPERIMENT_MODE", "field");
+		boolean randomPicks = "random".equals(System.getenv().getOrDefault("EXPERIMENT_PICK", "disjoint"));
+		if (randomPicks && !mode.equals("field")) {
+			throw new IllegalArgumentException("EXPERIMENT_PICK=random is only supported for field mode");
+		}
 		warmupMs = Integer.parseInt(System.getenv().getOrDefault("EXPERIMENT_WARMUP_MS", "30000"));
 		measureMs = Integer.parseInt(System.getenv().getOrDefault("EXPERIMENT_MEASURE_MS", "2000"));
 		reps = Integer.parseInt(System.getenv().getOrDefault("EXPERIMENT_REPS", "5"));
@@ -98,6 +117,10 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 				this::manyEntryInitialState,
 				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
 			Refs refs = bosk.buildReferences(Refs.class);
+			List<Reference<String>> allFields = new ArrayList<>(catalogSize);
+			for (int i = 0; i < catalogSize; i++) {
+				allFields.add(refs.catalog().then(Identifier.from("e" + i)).then(String.class, "string"));
+			}
 			bosk.driver().flush();
 
 			// Warm up the change stream.
@@ -125,6 +148,9 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 							String value = "value-" + threadIndex + "-" + i;
 							if (mode.equals("replace")) {
 								bosk.driver().submitReplacement(entry, baseValue.withString(value));
+							} else if (randomPicks) {
+								Reference<String> randomField = allFields.get(ThreadLocalRandom.current().nextInt(catalogSize));
+								bosk.driver().submitReplacement(randomField, value);
 							} else {
 								bosk.driver().submitReplacement(field, value);
 							}
@@ -176,9 +202,12 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 					bestRep = rep;
 				}
 			}
-			System.out.printf("EXPERIMENT mode=%s threads=%d medianUpdatesPerSec=%.1f medianWritesPerUpdate=%.3f fastestUpdatesPerSec=%.1f fastestWritesPerUpdate=%.3f rates=[%s] writeRatios=[%s] distinctDocs=%d warmupMs=%d measureMs=%d%n",
+			System.out.printf("EXPERIMENT driver=%s mode=%s pick=%s threads=%d catalog=%d medianUpdatesPerSec=%.1f medianWritesPerUpdate=%.3f fastestUpdatesPerSec=%.1f fastestWritesPerUpdate=%.3f rates=[%s] writeRatios=[%s] distinctDocs=%d warmupMs=%d measureMs=%d%n",
+				System.getenv().getOrDefault("EXPERIMENT_DRIVER", "pando-grafted"),
 				mode,
+				System.getenv().getOrDefault("EXPERIMENT_PICK", "disjoint"),
 				experimentThreads,
+				catalogSize,
 				median(ratesPerRep), median(writeRatiosPerRep),
 				ratesPerRep[bestRep], writeRatiosPerRep[bestRep],
 				format(ratesPerRep), format(writeRatiosPerRep),
@@ -211,7 +240,7 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 	private TestEntity manyEntryInitialState(Bosk<TestEntity> bosk) throws works.bosk.exceptions.InvalidTypeException {
 		Refs refs = bosk.buildReferences(Refs.class);
 		Catalog<TestEntity> catalog = Catalog.empty();
-		for (int i = 0; i < experimentThreads; i++) {
+		for (int i = 0; i < catalogSize; i++) {
 			Identifier id = Identifier.from("e" + i);
 			catalog = catalog.with(TestEntity.empty(id, refs.childCatalog(id)));
 		}
@@ -219,6 +248,7 @@ public class ParallelUpdateExperiment extends AbstractMongoDriverTest {
 	}
 
 	private int experimentThreads;
+	private int catalogSize;
 	private int warmupMs;
 	private int measureMs;
 	private int reps;

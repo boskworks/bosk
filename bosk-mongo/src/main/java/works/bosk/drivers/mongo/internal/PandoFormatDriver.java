@@ -44,7 +44,6 @@ import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
-import works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
@@ -66,6 +65,7 @@ import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
+import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
@@ -123,22 +123,28 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
-		return transactional(_ -> doReplacement(target, newValue));
+		PreparedReplacement prepared = prepareReplacement(target, newValue);
+		if (prepared.isSingleDocument()) {
+			return atomic(() -> doAtomicReplacement(prepared, null, null));
+		} else {
+			return transactional(_ -> doReplacement(prepared));
+		}
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
-		return transactional(_ -> {
-			if (target.isRoot()) {
-				// Root node always already exists
-				return ABORT;
-			}
-			Reference<?> targetDocRef = targetDocumentRef(target);
-			if (target.equals(targetDocRef)) {
-				// The target is itself a graft-point entry. Its own document may be
-				// an orphan left behind by a HASTY deletion, so membership comes
-				// from the container's stub, and the whole ancestor chain must
-				// exist before we can create it.
+		if (target.isRoot()) {
+			// Root node always already exists
+			return noOp();
+		}
+		PreparedReplacement prepared = prepareReplacement(target, newValue);
+		if (prepared.isGraftPointEntry()) {
+			// The target is itself a graft-point entry. Its own document may be
+			// an orphan left behind by a HASTY deletion, so membership comes
+			// from the container's stub, and the whole ancestor chain must
+			// exist before we can create it. Creation also writes the stub, so
+			// it needs a transaction.
+			return transactional(_ -> {
 				Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
 				if (!containerExists(containerRef)) {
 					LOGGER.debug("Parent does not exist: {}", target);
@@ -148,46 +154,177 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					LOGGER.debug("Already exists: {}", target);
 					return ABORT;
 				}
-				return doReplacement(target, newValue);
-			} else {
-				BsonDocument filter = documentFilter(targetDocRef)
-					.append(dottedFieldNameOf(target, targetDocRef), new BsonDocument("$exists", TRUE));
+				return doReplacement(prepared);
+			});
+		} else if (prepared.hasSubParts()) {
+			// Creating a field that scatters into sub-documents: check existence
+			// before writing anything, so a failed conditional creation leaves
+			// no orphaned sub-parts behind.
+			return transactional(_ -> {
+				BsonDocument filter = documentFilter(prepared.targetDocRef())
+					.append(dottedFieldNameOf(target, prepared.targetDocRef()), new BsonDocument("$exists", TRUE));
 				if (documentExists(filter)) {
 					LOGGER.debug("Already exists: {}", filter);
 					return ABORT;
 				}
-				return doReplacement(target, newValue);
-			}
-		});
+				return doReplacement(prepared);
+			});
+		} else {
+			// Field inside an existing document: a single conditional write.
+			return atomic(() -> doAtomicConditionalCreation(prepared));
+		}
 	}
 
 	@Override
 	public <T> UpdateOperation submitDeletion(Reference<T> target) {
-		return transactional(_ -> doDelete(target));
+		if (deletionWritesOneDocument()) {
+			return atomic(() -> doAtomicDeletion(target, null, null));
+		} else {
+			return transactional(_ -> doDelete(target));
+		}
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		return transactional(_ -> {
-			if (preconditionFailed(precondition, requiredValue)) {
-				return ABORT;
-			}
-			return doReplacement(target, newValue);
-		});
+		PreparedReplacement prepared = prepareReplacement(target, newValue);
+		if (prepared.isSingleDocument()
+			&& targetDocumentRef(precondition).equals(prepared.targetDocRef())) {
+			return atomic(() -> doAtomicReplacement(prepared, precondition, requiredValue));
+		} else {
+			return transactional(_ -> {
+				if (preconditionFailed(precondition, requiredValue)) {
+					return ABORT;
+				} else {
+					return doReplacement(prepared);
+				}
+			});
+		}
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		return transactional(_ -> {
-			if (preconditionFailed(precondition, requiredValue)) {
-				return ABORT;
-			}
-			return doDelete(target);
-		});
+		if (deletionWritesOneDocument()
+			&& targetDocumentRef(precondition).equals(deletionDocumentRef(target))) {
+			return atomic(() -> doAtomicDeletion(target, precondition, requiredValue));
+		} else {
+			return transactional(_ -> {
+				if (preconditionFailed(precondition, requiredValue)) {
+					return ABORT;
+				} else {
+					return doDelete(target);
+				}
+			});
+		}
+	}
+
+	/**
+	 * Whether deleting a target writes exactly one document.
+	 * <p>
+	 * In HASTY mode a document's sub-documents are left behind as orphans, so a
+	 * deletion writes only the target's field, or the container's stub when the
+	 * target is a whole document. In EARNEST mode the sub-documents are deleted
+	 * as well, which takes more than one write, though a leaf could still be
+	 * deleted atomically. EARNEST mode is not implemented yet.
+	 */
+	private boolean deletionWritesOneDocument() {
+		return settings.experimental().orphanDocumentMode() == HASTY;
+	}
+
+	private <T> PreparedReplacement prepareReplacement(Reference<T> target, T newValue) {
+		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
+		List<BsonDocument> subParts = List.of();
+		if (value instanceof BsonDocument b) {
+			List<BsonDocument> allParts = scatter(target, b);
+			subParts = List.copyOf(allParts.subList(0, allParts.size() - 1));
+			// `value` has now been stubbed-out to match the sub-parts
+		}
+		return new PreparedReplacement(target, targetDocumentRef(target), value, subParts);
+	}
+
+	private record PreparedReplacement(
+		Reference<?> target,
+		Reference<?> targetDocRef,
+		BsonValue value,
+		List<BsonDocument> subParts
+	) {
+		boolean hasSubParts() {
+			return !subParts.isEmpty();
+		}
+
+		/**
+		 * Whether the target is a whole graft-point entry, rather than a field
+		 * within a document. Replacing or deleting one may also write the
+		 * container's stub, so it spans documents. The root document is not a
+		 * graft-point entry.
+		 */
+		boolean isGraftPointEntry() {
+			return target.equals(targetDocRef) && !targetDocRef.isRoot();
+		}
+
+		/**
+		 * Whether this replacement can be performed as a single-document
+		 * retryable write.
+		 * <p>
+		 * A replacement that scatters into sub-documents writes those separately,
+		 * and a whole graft-point entry replacement may create the entry, which
+		 * also writes the parent stub. The root is not special: a root replacement
+		 * with no sub-parts is one write, and one that scatters is not.
+		 * <p>
+		 * In these conditions one database write updates the target document's
+		 * state, revision, and diagnostics together.
+		 */
+		boolean isSingleDocument() {
+			return !hasSubParts() && !isGraftPointEntry();
+		}
+	}
+
+	private void doAtomicReplacement(PreparedReplacement prepared, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
+		if (replaceInDocument(prepared.target(), prepared.value(), prepared.targetDocRef(), precondition, requiredValue)) {
+			LOGGER.debug("| Replacement applied");
+		} else {
+			LOGGER.debug("| Replacement had no effect");
+		}
+	}
+
+	private void doAtomicConditionalCreation(PreparedReplacement prepared) {
+		if (createInDocument(prepared.target(), prepared.value(), prepared.targetDocRef())) {
+			LOGGER.debug("| Object initialized");
+		} else {
+			LOGGER.debug("| No update");
+		}
+	}
+
+	private void doAtomicDeletion(Reference<?> target, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
+		if (deleteInDocument(target, deletionDocumentRef(target), precondition, requiredValue)) {
+			LOGGER.debug("| Deletion applied");
+		} else {
+			LOGGER.debug("| Deletion had no effect");
+		}
+	}
+
+	private Reference<?> deletionDocumentRef(Reference<?> target) {
+		Reference<?> targetDocRef = targetDocumentRef(target);
+		if (targetDocRef.equals(target)) {
+			assert !targetDocRef.path().isEmpty(): "Can't delete the root reference";
+			return targetDocumentRef(targetDocRef.enclosingReference(Object.class));
+		} else {
+			return targetDocRef;
+		}
 	}
 
 	private static TransactionalUpdateOperation transactional(TransactionalUpdateOperation operation) {
 		return operation;
+	}
+
+	private static AtomicUpdateOperation atomic(Runnable operation) {
+		return _ -> {
+			operation.run();
+			return Optional.empty();
+		};
+	}
+
+	private static AtomicUpdateOperation noOp() {
+		return _ -> Optional.empty();
 	}
 
 	@Override
@@ -286,8 +423,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		// The diagnostic attributes come from the current thread.
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes these state document writes and the manifest write atomic.
-		if (initialState instanceof BsonDocument) {
-			upsertAndRemoveSubParts(rootRef, initialState.asDocument(), writtenRevisions); // Mutates initialState!
+		if (initialState instanceof BsonDocument initialStateDocument) {
+			List<BsonDocument> allParts = scatter(rootRef, initialStateDocument);
+			writeSubParts(allParts.subList(0, allParts.size() - 1), writtenRevisions);
+			// initialState has now been stubbed-out where the sub-parts were written
 		}
 		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, ROOT_DOCUMENT_ID));
 		BsonDocument filter = rootDocumentsFilter();
@@ -633,17 +772,17 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 *  accepted filter arguments (which Pando simply wouldn't use).
 	 *  It's complicated by the fact that the zero-match case in Sequoia is highly ambiguous.
 	 */
-	private <T> Outcome doReplacement(Reference<T> target, T newValue) {
+	private Outcome doReplacement(PreparedReplacement prepared) {
+		Reference<?> target = prepared.target();
+		Reference<?> targetDocRef = prepared.targetDocRef();
+		BsonValue value = prepared.value();
+		boolean hasSubParts = prepared.hasSubParts();
 		LOGGER.debug("doReplacement({})", target);
-		Reference<?> targetDocRef = targetDocumentRef(target);
-		BsonValue value = formatter.object2bsonValue(newValue, target.targetType());
-		boolean hasSubParts;
-		if (value instanceof BsonDocument b) {
+		if (value instanceof BsonDocument) {
 			deletePartsUnder(target);
-			hasSubParts = upsertAndRemoveSubParts(target, b, null);
-			// Note that value will now have the sub-parts removed
-		} else {
-			hasSubParts = false;
+		}
+		if (hasSubParts) {
+			writeSubParts(prepared.subParts(), null);
 		}
 		if (rootRef.equals(targetDocRef)) {
 			LOGGER.debug("| Root ref is topmost");
@@ -786,8 +925,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		Reference<?> topmostRef = targetDocRef;
 		if (targetDocRef.equals(target)) {
 			// Delete the whole document
-			if (settings.experimental().orphanDocumentMode() == OrphanDocumentMode.HASTY) {
-				LOGGER.debug("Skipping deleting document({}) in {} mode", target, OrphanDocumentMode.HASTY);
+			if (settings.experimental().orphanDocumentMode() == HASTY) {
+				LOGGER.debug("Skipping deleting document({}) in {} mode", target, HASTY);
 			} else {
 				throw new NotYetImplementedException("Earnest mode not yet implemented");
 			}
@@ -1041,8 +1180,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		// This whole method is pretty "best-effort" right now. More work to do if we really want to be EARNEST
 		Reference<?> targetDocRef = targetDocumentRef(target);
 		if (targetDocRef.equals(target)) {
-			if (settings.experimental().orphanDocumentMode() == OrphanDocumentMode.HASTY) {
-				LOGGER.debug("Skipping deletePartsUnder({}) in {} mode", target, OrphanDocumentMode.HASTY);
+			if (settings.experimental().orphanDocumentMode() == HASTY) {
+				LOGGER.debug("Skipping deletePartsUnder({}) in {} mode", target, HASTY);
 			} else {
 				String prefix;
 				if (targetDocRef.path().isEmpty()) {
@@ -1059,27 +1198,22 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 		} else {
 			// TODO!
-			assert settings.experimental().orphanDocumentMode() == OrphanDocumentMode.HASTY;
+			assert settings.experimental().orphanDocumentMode() == HASTY;
 			LOGGER.debug("Skipping deletePartsUnder({}) because target document is different: {}", target, targetDocRef);
 		}
 	}
 
 
 	/**
-	 * @param value is mutated to stub-out the parts written to the database
+	 * Writes the sub-part documents produced by {@link #scatter}.
+	 *
 	 * @param writtenRevisions if non-null, receives the revision assigned to each
 	 * sub-part written
 	 */
-	private <T> boolean upsertAndRemoveSubParts(
-		Reference<T> target,
-		BsonDocument value,
+	private void writeSubParts(
+		List<BsonDocument> subParts,
 		@Nullable Map<BsonString, RevisionTuple> writtenRevisions
 	) {
-		List<BsonDocument> allParts = scatter(target, value);
-		// NOTE: `value` has now been mutated so the parts have been stubbed out
-
-		List<BsonDocument> subParts = allParts.subList(0, allParts.size() - 1);
-
 		LOGGER.debug("Document has {} sub-parts", subParts.size());
 		for (BsonDocument part: subParts) {
 			// scatter() already prepended idPrefix to the _id; don't prepend it again
@@ -1099,8 +1233,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				writtenRevisions.put(id, newRevision);
 			}
 		}
-
-		return !subParts.isEmpty();
 	}
 
 	@Override
