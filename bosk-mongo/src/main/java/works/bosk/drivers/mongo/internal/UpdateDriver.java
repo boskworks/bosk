@@ -4,27 +4,37 @@ import com.mongodb.MongoException;
 import com.mongodb.MongoOperationTimeoutException;
 import com.mongodb.TransactionOptions;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.BoskDriver;
+import works.bosk.Identifier;
+import works.bosk.Reference;
+import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
+import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.RetryableUpdateException;
 
 import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
 
 /**
- * Executes an update operation in the kind of session the format driver requires.
+ * Executes {@link UpdateOperation} objects produced by a {@link FormatDriver}.
  * <p>
- * This is an internal helper that owns the session and transaction lifecycle and
- * translates database failures into the driver's exception types. It does not
- * own reconnection, retries, polyfill initialization, or state loading; those
- * remain {@link MainDriver}'s job.
+ * This is an internal driver that only handles updates. It owns the session and
+ * transaction lifecycle, runs an atomic operation as a retryable write with at
+ * most one transactional fallback, and translates database failures into the
+ * driver's exception types. It does not own reconnection, retries, polyfill
+ * initialization, or state loading; those remain {@link MainDriver}'s job.
  * <p>
  * Each instance is bound to a single {@link FormatDriver}. When
- * {@link MainDriver} replaces its format driver, it replaces this executor too.
+ * {@link MainDriver} replaces its format driver, it replaces this driver too,
+ * so a retry always plans against the current format driver rather than
+ * replaying an operation captured from a replaced one.
  */
-final class UpdateDriver {
+final class UpdateDriver implements BoskDriver {
 	private final FormatDriver<?> formatDriver;
 	private final SessionCollection collection;
 	private final TransactionOptions transactionOptions;
@@ -50,39 +60,83 @@ final class UpdateDriver {
 		this.conflictRetryAfter = Duration.ofMillis(timescaleMS);
 	}
 
-	/**
-	 * Runs {@code operation}, using a retryable-write session or a
-	 * client-library transaction according to the format driver.
-	 */
-	void execute(Runnable operation) {
-		if (formatDriver.updatesAreTransactional()) {
-			runInClientLibraryTransaction(operation);
-		} else {
-			runWithSession(operation);
+	@Override
+	public <T> void submitReplacement(Reference<T> target, T newValue) {
+		execute(formatDriver.submitReplacement(target, newValue));
+	}
+
+	@Override
+	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+		execute(formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue));
+	}
+
+	@Override
+	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
+		execute(formatDriver.submitConditionalCreation(target, newValue));
+	}
+
+	@Override
+	public <T> void submitDeletion(Reference<T> target) {
+		execute(formatDriver.submitDeletion(target));
+	}
+
+	@Override
+	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		execute(formatDriver.submitConditionalDeletion(target, precondition, requiredValue));
+	}
+
+	void execute(UpdateOperation operation) {
+		switch (operation) {
+			case AtomicUpdateOperation atomic -> runAtomic(atomic);
+			case TransactionalUpdateOperation transactional -> runTransactional(transactional);
 		}
 	}
 
-	private void runWithSession(Runnable operation) {
+	/**
+	 * Runs a single-document retryable write, escalating to a transaction if the
+	 * operation says it could not complete atomically.
+	 */
+	private void runAtomic(AtomicUpdateOperation operation) {
 		try (var _ = collection.newSession()) {
-			operation.run();
+			Optional<TransactionalUpdateOperation> fallback;
+			try {
+				fallback = operation.execute(collection);
+			} catch (MongoException e) {
+				throw disconnect(e);
+			}
+			// An atomic attempt has no transaction to commit or abort, so a
+			// transaction here means the format driver broke the contract and its
+			// writes would be silently rolled back when the session closes.
+			collection.requireNoTransaction();
+			if (fallback.isPresent()) {
+				runTransactionalInCurrentSession(fallback.get());
+			}
 		} catch (FailedMongoClientSessionException e) {
 			throw disconnect(e);
 		}
 	}
 
 	/**
-	 * Runs {@code operation} in a transaction owned by MongoDB's client library,
-	 * which starts the transaction, retries the body on transient errors, and
-	 * commits it.
+	 * Runs a multi-document update in a transaction owned by MongoDB's client
+	 * library, which starts the transaction, retries the body on transient
+	 * errors, and commits it.
 	 */
-	private void runInClientLibraryTransaction(Runnable operation) {
+	private void runTransactional(TransactionalUpdateOperation operation) {
 		try (var _ = collection.newSession()) {
+			runTransactionalInCurrentSession(operation);
+		} catch (FailedMongoClientSessionException e) {
+			throw disconnect(e);
+		}
+	}
+
+	private void runTransactionalInCurrentSession(TransactionalUpdateOperation operation) {
+		try {
 			collection.withTransaction(transactionOptions, () -> {
-				operation.run();
+				if (operation.execute(collection) == ABORT) {
+					collection.abortTransaction();
+				}
 				return null;
 			});
-		} catch (FailedMongoClientSessionException e) {
-			throw disconnect(e);
 		} catch (MongoException e) {
 			throw transactionFailure(e);
 		}
@@ -136,6 +190,16 @@ final class UpdateDriver {
 	private DisconnectedException disconnect(Throwable reason) {
 		onFailure.accept(reason);
 		return new DisconnectedException(reason);
+	}
+
+	@Override
+	public <RR extends StateTreeNode> RR initialState() throws InvalidTypeException {
+		throw new UnsupportedOperationException("UpdateDriver only handles updates");
+	}
+
+	@Override
+	public void flush() {
+		throw new UnsupportedOperationException("UpdateDriver only handles updates");
 	}
 
 	/**

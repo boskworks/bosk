@@ -24,7 +24,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import org.bson.BsonDocument;
@@ -445,8 +444,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		doRetryableUpdateOperation(current -> {
-			FormatDriver<R> driver = current.formatDriver();
+		doRetryableUpdateOperation(()->{
+			UpdateDriver driver = currentUpdateDriver();
+			// Polyfills are schema-evolution defaults, not part of the main update's atomic unit.
+			// Materialize each one as a separate top-level update before the main update.
 			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
 			driver.submitReplacement(target, newValue);
 		}, "submitReplacement({})", target);
@@ -454,8 +455,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		doRetryableUpdateOperation(current -> {
-			FormatDriver<R> driver = current.formatDriver();
+		doRetryableUpdateOperation(()->{
+			UpdateDriver driver = currentUpdateDriver();
 			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
 			driver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		}, "submitConditionalReplacement({}, {}={})", target, precondition, requiredValue);
@@ -463,8 +464,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		doRetryableUpdateOperation(current -> {
-			FormatDriver<R> driver = current.formatDriver();
+		doRetryableUpdateOperation(()->{
+			UpdateDriver driver = currentUpdateDriver();
 			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
 			driver.submitConditionalCreation(target, newValue);
 		}, "submitConditionalCreation({})", target);
@@ -472,8 +473,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		doRetryableUpdateOperation(current -> {
-			FormatDriver<R> driver = current.formatDriver();
+		doRetryableUpdateOperation(()->{
+			UpdateDriver driver = currentUpdateDriver();
 			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
 			driver.submitDeletion(target);
 		}, "submitDeletion({})", target);
@@ -481,8 +482,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		doRetryableUpdateOperation(current -> {
-			FormatDriver<R> driver = current.formatDriver();
+		doRetryableUpdateOperation(() -> {
+			UpdateDriver driver = currentUpdateDriver();
 			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
 			driver.submitConditionalDeletion(target, precondition, requiredValue);
 		}, "submitConditionalDeletion({}, {}={})", target, precondition, requiredValue);
@@ -883,11 +884,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * Runs an update operation, conventionally a {@link BoskDriver} submit method,
 	 * which doesn't declare checked exceptions.
 	 */
-	private void doRetryableUpdateOperation(Consumer<Drivers<R>> operation, String description, Object... args) {
-		doRetryableDriverOperation(ignored -> () -> {
-			Drivers<R> current = currentDrivers();
-			current.updateDriver().execute(() -> operation.accept(current));
-		}, description, args);
+	private void doRetryableUpdateOperation(Runnable operation, String description, Object... args) {
+		doRetryableDriverOperation(ignored -> () -> operation.run(), description, args);
 	}
 
 	private <X extends Exception, Y extends Exception> void doRetryableDriverOperation(RetryableOperation<X,Y> operation, String description, Object... args) throws X,Y {

@@ -67,32 +67,51 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, null, null);
+	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
+		return atomic(_ -> {
+			replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, null, null);
+			return Optional.empty();
+		});
 	}
 
 	@Override
-	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
-		if (createInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef)) {
-			LOGGER.debug("| Object initialized");
-		} else {
-			LOGGER.debug("| No update");
-		}
+	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
+		return atomic(_ -> {
+			if (createInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef)) {
+				LOGGER.debug("| Object initialized");
+			} else {
+				LOGGER.debug("| No update");
+			}
+			return Optional.empty();
+		});
 	}
 
 	@Override
-	public <T> void submitDeletion(Reference<T> target) {
-		deleteInDocument(target, rootRef, null, null);
+	public <T> UpdateOperation submitDeletion(Reference<T> target) {
+		return atomic(_ -> {
+			deleteInDocument(target, rootRef, null, null);
+			return Optional.empty();
+		});
 	}
 
 	@Override
-	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, precondition, requiredValue);
+	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+		return atomic(_ -> {
+			replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, precondition, requiredValue);
+			return Optional.empty();
+		});
 	}
 
 	@Override
-	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		deleteInDocument(target, rootRef, precondition, requiredValue);
+	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		return atomic(_ -> {
+			deleteInDocument(target, rootRef, precondition, requiredValue);
+			return Optional.empty();
+		});
+	}
+
+	private static AtomicUpdateOperation atomic(AtomicUpdateOperation operation) {
+		return operation;
 	}
 
 	@Override

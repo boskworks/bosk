@@ -6,17 +6,22 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.IOException;
 import org.bson.BsonDocument;
 import works.bosk.BoskContext;
+import works.bosk.Identifier;
+import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriver;
+import works.bosk.drivers.mongo.status.MongoStatus;
 
 /**
- * Additional {@link MongoDriver} functionality that the format-specific drivers must implement.
+ * The format-specific part of a {@link MongoDriver}.
  * <p>
  * Implementations of this are responsible for the following:
  * <ol><li>
  *     Serializing and deserializing the database contents
  * </li><li>
  *     Processing change stream events via {@link #onEvent}
+ * </li><li>
+ *     Describing updates as {@link UpdateOperation} objects
  * </li><li>
  *     Implementing {@link #flush()} (consider using {@link FlushLock})
  * </li><li>
@@ -29,22 +34,46 @@ import works.bosk.drivers.mongo.MongoDriver;
  * </li><li>
  *     Determining the database format
  * </li><li>
- *     Implementing {@link #initialState} or {@link #refurbish()}
+ *     Creating or committing sessions or transactions; that is
+ *     {@link UpdateDriver}'s job
+ * </li><li>
+ *     Implementing {@link MongoDriver#initialState} or {@link MongoDriver#refurbish()}
  * </li></ol>
  */
 sealed public interface FormatDriver<R extends StateTreeNode>
-	extends MongoDriver
 	permits AbstractFormatDriver, DisconnectedDriver {
 	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException;
 
 	/**
-	 * @return true if update operations must run inside a multi-document
-	 * transaction, which lets the transaction be owned and retried by the
-	 * MongoDB client library's {@code withTransaction} machinery
+	 * Describes how to replace the object referenced by {@code target}.
+	 * <p>
+	 * The returned operation decides whether the update needs a transaction;
+	 * see {@link UpdateOperation}.
 	 */
-	default boolean updatesAreTransactional() {
-		return false;
-	}
+	<T> UpdateOperation submitReplacement(Reference<T> target, T newValue);
+
+	/**
+	 * Describes how to replace {@code target} if {@code precondition} has the
+	 * given value. See {@link #submitReplacement}.
+	 */
+	<T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue);
+
+	/**
+	 * Describes how to create {@code target} if it does not already exist.
+	 * See {@link #submitReplacement}.
+	 */
+	<T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue);
+
+	/**
+	 * Describes how to delete {@code target}. See {@link #submitReplacement}.
+	 */
+	<T> UpdateOperation submitDeletion(Reference<T> target);
+
+	/**
+	 * Describes how to delete {@code target} if {@code precondition} has the
+	 * given value. See {@link #submitReplacement}.
+	 */
+	<T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue);
 
 	/**
 	 * Reads all state documents in the entire collection and, as a side effect,
@@ -87,7 +116,7 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * @param priorContents the desired state, with metadata representing a (possibly hypothetical)
 	 * "prior" state of the database; in particular, the epoch should be preserved if it exists,
 	 * and the revision numbers should be advanced so that a {@link #flush} after
-	 * a {@link #refurbish} succeeds in waiting for the new state.
+	 * a {@link MongoDriver#refurbish} succeeds in waiting for the new state.
 	 */
 	void writeAllState(StateAndMetadata<R> priorContents);
 
@@ -103,15 +132,19 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 */
 	void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata);
 
-	@Override
-	default <RR extends StateTreeNode> RR initialState() {
-		throw new UnsupportedOperationException(
-			"FormatDriver doesn't need to implement initialState: MainDriver derives it from loadAllState");
-	}
+	/**
+	 * Waits until all prior updates have been applied to the downstream driver.
+	 * See {@link works.bosk.BoskDriver#flush()}.
+	 */
+	void flush() throws IOException, InterruptedException;
 
-	@Override
-	default void refurbish() {
-		throw new UnsupportedOperationException(
-			"FormatDriver doesn't need to implement refurbish: MainDriver derives it from loadAllState and writeAllState");
-	}
+	/**
+	 * @see MongoDriver#readStatus()
+	 */
+	MongoStatus readStatus() throws Exception;
+
+	/**
+	 * Frees up resources used by this format driver.
+	 */
+	void close();
 }

@@ -106,10 +106,17 @@ The top-level coordination is implemented by `MainDriver`, which serves as a kin
 The actual core implementation of driver semantics is mostly contained in `FormatDriver` implementations,
 which handle the translation from bosk updates to MongoDB updates
 and from MongoDB changes back to bosk updates passed to the downstream driver.
+A `FormatDriver` describes each update as an `UpdateOperation`; it does not execute the operation itself.
 `MainDriver` manages the lifecycle of its `FormatDriver` object,
 and has exactly one at any given moment.
 Whenever an unexpected condition is encountered, `MainDriver` can respond by discarding the `FormatDriver`
 and creating a new one.
+
+Update execution is handled by `UpdateDriver`, which `MainDriver` creates and replaces together with the
+`FormatDriver`. `UpdateDriver` asks its `FormatDriver` for an `UpdateOperation`, runs it in the right kind of
+session, and translates database failures into the driver's exception types. The split lets the format driver
+decide whether an operation touches one document or several, while one place owns the session and transaction
+lifecycle. Neither `MainDriver` nor `FormatDriver` needs to know how to commit a transaction for an update.
 
 The management of the change stream, by which `MongoDriver` learns of changes to the database,
 is governed by `ChangeReceiver`, which houses the background thread responsible for
@@ -155,9 +162,11 @@ In some cases, `close` can initiate an asynchronous shutdown that may not comple
 
 ### The `FormatDriver` interface
 
-The `FormatDriver` interface is a further extension of the `MongoDriver` interface
-that describes the objects that do all _format-specific_ logic.
+The `FormatDriver` interface describes the objects that do all _format-specific_ logic.
 By "format" here, we mean the exact way in which the bosk state is mapped to and from database contents.
+It does not implement `BoskDriver`: the update methods instead return an `UpdateOperation`, which
+`UpdateDriver` executes. That keeps the format-specific decision about which documents an update touches
+separate from the session and transaction lifecycle.
 
 The `MainDriver` creates the appropriate `FormatDriver` subclass
 based on the database contents, as described in its manifest document.
@@ -170,7 +179,7 @@ This approach simplifies the implementations of the `FormatDriver` (which are al
 by freeing them from the need to handle myriad unexpected or rare situations;
 instead, the `FormatDriver` can simply crash and be replaced.
 
-There are two ways in which a `FormatDriver` builds on the functionality of other `MongoDriver` classes, described below.
+There are three ways in which a `FormatDriver` builds on the functionality of other `MongoDriver` classes, described below.
 
 #### `loadAllState` and `writeAllState`
 
@@ -201,9 +210,30 @@ collection half-initialized (state documents with no manifest, or vice versa).
 In this way, two complex bosk operations filled with error handling and inter-thread coordination
 are reduced to simpler database operations easily implemented by the `FormatDriver`.
 
+#### `submit*` and `UpdateOperation`
+
+The `FormatDriver` update methods do not write to the database. They return an `UpdateOperation` describing
+the database work for one Bosk update. This is not necessarily one MongoDB update command: executing it may
+issue a mix of updates, replacements, inserts, deletes, and reads. There are two kinds:
+
+- `AtomicUpdateOperation` attempts one logical document write in a retryable-write session. If the attempt
+  completes, it returns `Optional.empty()`. If it applies no write and cannot complete without a transaction,
+  it returns one `TransactionalUpdateOperation`, which the driver runs once in a transaction on the same session.
+- `TransactionalUpdateOperation` runs inside a multi-document transaction and returns `COMMIT` or `ABORT`.
+  It must derive its decisions from database contents on each attempt, because the client library may replay it
+  after a transient transaction error.
+
+The format driver chooses the kind because only it knows how many documents the update touches and whether
+its preconditions span documents. Sequoia uses atomic operations. Pando currently uses transactional
+operations for every update.
+
+`UpdateDriver` opens the session, runs the atomic attempt, runs an optional fallback transaction, applies
+transaction outcomes, and translates failures. Operations must not create, commit, or abort sessions or
+transactions themselves; they receive the live `SessionCollection`, which is bound to the current session.
+
 #### `onEvent` and revision tracking
 
-The second feature that distinguishes a `FormatDriver` from a `MongoDriver`
+The third feature that distinguishes a `FormatDriver` from a `MongoDriver`
 is that `FormatDriver` is expected to respond to change stream events.
 
 The `onEvent` method is called by the `ChangeReceiver` (described below)
@@ -230,22 +260,29 @@ reads from the database to appear in the lock.
 
 #### Division of responsibilities
 
-Here is a summary of the responsibilities of `MainDriver` and `FormatDriver`.
+Here is a summary of the responsibilities of `MainDriver`, `UpdateDriver`, and `FormatDriver`.
 
 `MainDriver`:
 - Determines when the database collection should be initialized
-- Detects the format, instantiates the `FormatDriver`, and connects it to the `ChangeReceiver`
+- Detects the format, instantiates the `FormatDriver` and its `UpdateDriver`, and connects the format driver to the `ChangeReceiver`
 - Ignores events on unrelated MongoDB databases and collections
 - Implements `initialRoot` in terms of `loadAllState`
 - Implements `refurbish` in terms of `loadAllState` and `writeAllState`
 - Writes the manifest document when initializing the collection
-- Handles `MongoException`
+- Runs polyfill initialization before submitting an update
 - Orchestrates disconnect/reconnect and retries
 - Debounces reinitialization requests
 
+`UpdateDriver`:
+- Executes the `UpdateOperation` produced by the current `FormatDriver`
+- Owns update sessions and transactions: retryable writes for atomic operations, `withTransaction` for transactional ones and for an atomic operation's optional fallback
+- Applies `COMMIT`/`ABORT` outcomes
+- Translates database failures into `DisconnectedException` or `RetryableUpdateException`
+- Does not handle reconnection, retries, polyfills, or state loading
+
 `FormatDriver`:
 - Implements `writeAllState` and `loadAllState`
-- Performs database reads and writes, aside from the manifest
+- Describes updates as `AtomicUpdateOperation` or `TransactionalUpdateOperation`
 - Interacts with the downstream driver, aside from `initialRoot`
 - Implements `flush`
 - Implements revisions, and ignores revisions older than the current one
