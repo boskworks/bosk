@@ -4,7 +4,7 @@ import org.bson.conversions.Bson;
 
 /**
  * Lets tests interpose on the driver's database writes. Each write goes through
- * {@link TransactionalCollection}, which passes the write's {@code filter} to the
+ * {@link SessionCollection}, which passes the write's {@code filter} to the
  * interceptor before executing it. Throwing from {@link #beforeWrite} prevents the
  * write, so tests can simulate a failure partway through a multi-document operation;
  * the interceptor can also pause or observe writes.

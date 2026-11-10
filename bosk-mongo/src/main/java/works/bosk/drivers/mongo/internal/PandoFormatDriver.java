@@ -85,7 +85,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	PandoFormatDriver(
 		BoskInfo<R> boskInfo,
-		TransactionalCollection collection,
+		SessionCollection collection,
 		MongoDriverSettings driverSettings,
 		PandoFormat format,
 		BsonSerializer bsonSerializer,

@@ -42,7 +42,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	final RootReference<R> rootRef;
 	final BoskContext context;
 	final Formatter formatter;
-	final TransactionalCollection collection;
+	final SessionCollection collection;
 	final BoskDriver downstream;
 	final Duration flushTimeout;
 
@@ -54,7 +54,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		RootReference<R> rootRef,
 		BoskContext context,
 		Formatter formatter,
-		TransactionalCollection collection,
+		SessionCollection collection,
 		BoskDriver downstream,
 		Duration flushTimeout
 	) {

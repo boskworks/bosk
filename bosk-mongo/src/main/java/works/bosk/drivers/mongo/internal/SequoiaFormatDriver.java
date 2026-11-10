@@ -51,7 +51,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	SequoiaFormatDriver(
 		BoskInfo<R> boskInfo,
-		TransactionalCollection collection,
+		SessionCollection collection,
 		MongoDriverSettings driverSettings,
 		BsonSerializer bsonSerializer,
 		Duration flushTimeout,

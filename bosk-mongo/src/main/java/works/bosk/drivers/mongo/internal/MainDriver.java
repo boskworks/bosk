@@ -81,7 +81,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private final BsonSerializer bsonSerializer;
 	private final BoskDriver downstream;
 	private final Deque<Closeable> closeables = new ArrayDeque<>();
-	private final TransactionalCollection queryCollection;
+	private final SessionCollection queryCollection;
 	private final MongoClient queryClient;
 	private final Listener listener;
 	private final AtomicBoolean loggedConnectionDiagnostics = new AtomicBoolean(false);
@@ -217,7 +217,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				closeables.addFirst(this.queryClient);
 			}
 
-			this.queryCollection = TransactionalCollection.of(queryClient
+			this.queryCollection = SessionCollection.of(queryClient
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection(), BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor(), testProbes.sessionInterceptor());
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), driverSettings.collection());
