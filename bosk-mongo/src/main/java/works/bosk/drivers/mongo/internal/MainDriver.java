@@ -439,41 +439,50 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
 		doRetryableUpdateOperation(()->{
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitReplacement(target, newValue);
+			FormatDriver<R> driver = currentFormatDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitReplacement(target, newValue);
 		}, "submitReplacement({})", target);
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		doRetryableUpdateOperation(()->{
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
+			FormatDriver<R> driver = currentFormatDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 		}, "submitConditionalReplacement({}, {}={})", target, precondition, requiredValue);
 	}
 
 	@Override
 	public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 		doRetryableUpdateOperation(()->{
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitConditionalCreation(target, newValue);
+			FormatDriver<R> driver = currentFormatDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitConditionalCreation(target, newValue);
 		}, "submitConditionalCreation({})", target);
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
 		doRetryableUpdateOperation(()->{
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitDeletion(target);
+			FormatDriver<R> driver = currentFormatDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitDeletion(target);
 		}, "submitDeletion({})", target);
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		doRetryableUpdateOperation(() -> {
-			bsonSerializer.initializeAllEnclosingPolyfills(target, formatDriver);
-			formatDriver.submitConditionalDeletion(target, precondition, requiredValue);
+			FormatDriver<R> driver = currentFormatDriver();
+			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
+			driver.submitConditionalDeletion(target, precondition, requiredValue);
 		}, "submitConditionalDeletion({}, {}={})", target, precondition, requiredValue);
+	}
+
+	private FormatDriver<R> currentFormatDriver() {
+		return formatDriver;
 	}
 
 	@Override
@@ -731,8 +740,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		@Override
 		public void onDisconnect(Throwable e) {
 			LOGGER.debug("onDisconnect({})", e.toString());
-			formatDriver.close();
-			setDisconnectedDriver(e, formatDriver);
+			FormatDriver<R> driver = currentFormatDriver();
+			driver.close();
+			setDisconnectedDriver(e, driver);
 		}
 	}
 
@@ -856,7 +866,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 */
 	private void doRetryableUpdateOperation(Runnable operation, String description, Object... args) {
 		doRetryableDriverOperation(driverInUse -> () -> {
-			if (formatDriver.updatesAreTransactional()) {
+			if (driverInUse.updatesAreTransactional()) {
 				runUpdateInClientLibraryTransaction(operation, driverInUse, description);
 			} else {
 				runWithSession(operation, driverInUse);
