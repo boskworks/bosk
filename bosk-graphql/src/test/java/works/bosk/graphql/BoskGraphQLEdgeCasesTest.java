@@ -75,6 +75,15 @@ class BoskGraphQLEdgeCasesTest {
 	}
 
 	@Test
+	void sdlFor_returnsSchemaSDL() {
+		var bosk = createBosk(ScalarExtras.class, new ScalarExtras(
+			42L, 3.14f, new BigDecimal("123.45"), new BigInteger("999")));
+		String sdl = BoskGraphQL.sdlFor(bosk);
+		assertTrue(sdl.contains("type Query"));
+		assertTrue(sdl.contains("scalar Long"));
+	}
+
+	@Test
 	void selfReferencingCatalog() {
 		var bosk = createBosk(
 			Category.class,

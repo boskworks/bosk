@@ -23,6 +23,7 @@ import graphql.schema.GraphQLOutputType;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.PropertyDataFetcher;
+import graphql.schema.idl.SchemaPrinter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -86,9 +87,16 @@ import static works.bosk.ReferenceUtils.rawClass;
  * supporting recursive and mutually-referencing types.
  * <p>
  * Type names are derived from the Java class {@link Class#getSimpleName() simple name}.
- * Names starting with {@code _} or containing {@code $} throw {@link UnsupportedNameException};
+ * Names starting with {@code _}, containing {@code $}, or containing characters outside
+ * the GraphQL name grammar throw {@link UnsupportedNameException};
  * names containing internal {@code _} characters are automatically mangled to avoid
  * ambiguity with the generated wrapper type names (e.g. {@code _CatalogEntry_Foo}).
+ * <p>
+ * {@code Phantom} fields are omitted from the schema, since they are always empty.
+ * <p>
+ * The generated schema does not open a {@link Bosk.ReadSession}; execute queries inside
+ * one. The library also imposes no query depth or complexity limits, so production
+ * endpoints should configure suitable GraphQL instrumentation.
  * <p>
  * See the {@code example-hello} project for a working Spring Boot endpoint.
  *
@@ -97,6 +105,13 @@ import static works.bosk.ReferenceUtils.rawClass;
 public class BoskGraphQL {
 	public static GraphQLSchema schemaFor(Bosk<?> bosk) {
 		return new Generator(bosk.rootReference()).generate();
+	}
+
+	/**
+	 * Returns the schema as SDL, which is useful for client code generation.
+	 */
+	public static String sdlFor(Bosk<?> bosk) {
+		return new SchemaPrinter().print(schemaFor(bosk));
 	}
 
 	/**
