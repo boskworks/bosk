@@ -833,12 +833,12 @@ public class BoskGraphQL {
 
 	static final GraphQLScalarType GRAPHQL_LONG = GraphQLScalarType.newScalar()
 		.name("Long")
-		.description("A 64-bit signed integer")
-		.coercing(new Coercing<Long, Long>() {
+		.description("A 64-bit signed integer, serialized as a string to preserve precision")
+		.coercing(new Coercing<Long, String>() {
 			@Override
-			public Long serialize(Object dataFetcherResult, GraphQLContext context, Locale locale) {
+			public String serialize(Object dataFetcherResult, GraphQLContext context, Locale locale) {
 				if (dataFetcherResult instanceof Number n) {
-					return n.longValue();
+					return n.toString();
 				} else {
 					throw new CoercingSerializeException("Expected a numeric type");
 				}
@@ -857,20 +857,35 @@ public class BoskGraphQL {
 							throw new CoercingParseValueException("Long value out of range: " + bi);
 						}
 					}
+					case String s -> {
+						try {
+							yield Long.parseLong(s);
+						} catch (NumberFormatException e) {
+							throw new CoercingParseValueException("Invalid Long: " + s, e);
+						}
+					}
 					case null, default -> throw new CoercingParseValueException("Expected an integer value");
 				};
 			}
 			@Override
 			public Long parseLiteral(Value<?> input, CoercedVariables variables, GraphQLContext context, Locale locale) {
-				if (input instanceof IntValue iv) {
-					try {
-						return iv.getValue().longValueExact();
-					} catch (ArithmeticException e) {
-						throw new CoercingParseLiteralException("Long value out of range: " + iv.getValue());
+				return switch (input) {
+					case IntValue iv -> {
+						try {
+							yield iv.getValue().longValueExact();
+						} catch (ArithmeticException e) {
+							throw new CoercingParseLiteralException("Long value out of range: " + iv.getValue());
+						}
 					}
-				} else {
-					throw new CoercingParseLiteralException("Expected an integer value");
-				}
+					case StringValue sv when sv.getValue() != null -> {
+						try {
+							yield Long.parseLong(sv.getValue());
+						} catch (NumberFormatException e) {
+							throw new CoercingParseLiteralException("Invalid Long: " + sv.getValue(), e);
+						}
+					}
+					case null, default -> throw new CoercingParseLiteralException("Expected an integer value");
+				};
 			}
 		})
 		.build();

@@ -358,7 +358,7 @@ class BoskGraphQLEdgeCasesTest {
 		try (var _ = bosk.readSession()) {
 			assertQueryReturns(
 				Map.of(
-					"longField", 42L,
+					"longField", "42",
 					"floatField", 3.14,
 					"decimalField", "123.45",
 					"integerField", "999"
@@ -367,6 +367,15 @@ class BoskGraphQLEdgeCasesTest {
 				graphQL,
 				bosk.rootReference().valueIfExists());
 		}
+	}
+
+	@Test
+	void longScalar_parsesStringValues() {
+		var ctx = GraphQLContext.getDefault();
+		var locale = Locale.getDefault();
+		assertEquals(42L, GRAPHQL_LONG.getCoercing().parseValue("42", ctx, locale));
+		assertEquals(42L, GRAPHQL_LONG.getCoercing().parseLiteral(
+			new StringValue("42"), CoercedVariables.emptyVariables(), ctx, locale));
 	}
 
 	@Test
