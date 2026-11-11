@@ -291,6 +291,33 @@ class BoskGraphQLEdgeCasesTest {
 		}
 	}
 
+	public interface TagComponentVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Class<? extends TagComponentVariant>> CASE_MAP = MapValue.copyOf(Map.of(
+			"withTag", WithTagComponent.class
+		));
+	}
+
+	public record WithTagComponent(String tag, String payload) implements TagComponentVariant {
+		@Override public String tag() { return "withTag"; }
+	}
+
+	public record TagComponentRoot(TaggedUnion<TagComponentVariant> variant) implements StateTreeNode {}
+
+	@Test
+	void taggedUnionCaseWithTagComponent_usesTagMethod() {
+		var bosk = createBosk(TagComponentRoot.class, new TagComponentRoot(
+			TaggedUnion.of(new WithTagComponent("componentValue", "payload"))));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("variant", Map.of("tag", "withTag", "payload", "payload")),
+				"{ variant { tag ... on WithTagComponent { tag payload } } }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
 	@Test
 	void enumField() {
 		var bosk = createBosk(ItemWithEnum.class, new ItemWithEnum(
