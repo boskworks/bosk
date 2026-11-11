@@ -23,6 +23,7 @@ import graphql.schema.GraphQLOutputType;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.PropertyDataFetcher;
+import graphql.schema.idl.SchemaPrinter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -37,6 +38,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import works.bosk.Bosk;
 import works.bosk.Catalog;
@@ -46,6 +48,7 @@ import works.bosk.ListValue;
 import works.bosk.Listing;
 import works.bosk.MapValue;
 import works.bosk.Path;
+import works.bosk.Phantom;
 import works.bosk.Reference;
 import works.bosk.ReferenceUtils;
 import works.bosk.RootReference;
@@ -84,9 +87,16 @@ import static works.bosk.ReferenceUtils.rawClass;
  * supporting recursive and mutually-referencing types.
  * <p>
  * Type names are derived from the Java class {@link Class#getSimpleName() simple name}.
- * Names starting with {@code _} or containing {@code $} throw {@link UnsupportedNameException};
+ * Names starting with {@code _}, containing {@code $}, or containing characters outside
+ * the GraphQL name grammar throw {@link UnsupportedNameException};
  * names containing internal {@code _} characters are automatically mangled to avoid
  * ambiguity with the generated wrapper type names (e.g. {@code _CatalogEntry_Foo}).
+ * <p>
+ * {@code Phantom} fields are omitted from the schema, since they are always empty.
+ * <p>
+ * The generated schema does not open a {@link Bosk.ReadSession}; execute queries inside
+ * one. The library also imposes no query depth or complexity limits, so production
+ * endpoints should configure suitable GraphQL instrumentation.
  * <p>
  * See the {@code example-hello} project for a working Spring Boot endpoint.
  *
@@ -95,6 +105,13 @@ import static works.bosk.ReferenceUtils.rawClass;
 public class BoskGraphQL {
 	public static GraphQLSchema schemaFor(Bosk<?> bosk) {
 		return new Generator(bosk.rootReference()).generate();
+	}
+
+	/**
+	 * Returns the schema as SDL, which is useful for client code generation.
+	 */
+	public static String sdlFor(Bosk<?> bosk) {
+		return new SchemaPrinter().print(schemaFor(bosk));
 	}
 
 	/**
@@ -139,8 +156,13 @@ public class BoskGraphQL {
 			}
 
 			var queryBuilder = GraphQLObjectType.newObject().name("Query");
+			boolean anyFields = false;
 			for (var c : rawClass(rootType).getRecordComponents()) {
-				addRecordComponent(queryBuilder, c, rootType, "Query", reg);
+				anyFields |= addRecordComponent(queryBuilder, c, rootType, "Query", reg);
+			}
+			if (!anyFields) {
+				throw new UnsupportedTypeException("Root type " + rootType.getTypeName()
+					+ " has no GraphQL-visible fields");
 			}
 			var queryType = queryBuilder.build();
 
@@ -154,13 +176,18 @@ public class BoskGraphQL {
 		private void processRecord(Type recordType, GraphQLCodeRegistry.Builder reg) {
 			String name = typeName(recordType);
 			var builder = GraphQLObjectType.newObject().name(name);
+			boolean anyFields = false;
 			for (var c : rawClass(recordType).getRecordComponents()) {
-				addRecordComponent(builder, c, recordType, name, reg);
+				anyFields |= addRecordComponent(builder, c, recordType, name, reg);
+			}
+			if (!anyFields) {
+				throw new UnsupportedTypeException("Record type " + recordType.getTypeName()
+					+ " has no GraphQL-visible fields");
 			}
 			builtTypesByName.put(name, builder.build());
 		}
 
-		private void addRecordComponent(
+		private boolean addRecordComponent(
 			GraphQLObjectType.Builder parentBuilder,
 			RecordComponent component,
 			Type containingType,
@@ -168,14 +195,20 @@ public class BoskGraphQL {
 			GraphQLCodeRegistry.Builder reg
 		) {
 			String fieldName = component.getName();
-			validateFieldName(fieldName, parentTypeName);
 			Type genericType = ReferenceUtils.resolveTypeVariables(component.getGenericType(), containingType);
+			if (isPhantom(genericType)) {
+				return false;
+			}
+			validateFieldName(fieldName, parentTypeName);
 
 			if (genericType instanceof ParameterizedType pt) {
 				var rawType = (Class<?>) pt.getRawType();
 				var typeArgs = pt.getActualTypeArguments();
 
 				if (Optional.class.isAssignableFrom(rawType)) {
+					if (isPhantom(typeArgs[0])) {
+						return false;
+					}
 					addOptionalField(parentBuilder, fieldName, typeArgs[0], parentTypeName, reg);
 				} else if (Catalog.class.isAssignableFrom(rawType)) {
 					addContainerField(parentBuilder, fieldName, parentTypeName, reg, catalogField(typeArgs[0]));
@@ -212,7 +245,7 @@ public class BoskGraphQL {
 					fieldType = nonNull(typeRef(typeName(clazz)));
 				} else if (ListValue.class.isAssignableFrom(clazz)) {
 					addListValueField(parentBuilder, fieldName, parameterType(clazz, ListValue.class, 0));
-					return;
+					return true;
 				} else {
 					fieldType = nonNull(resolveType(clazz));
 				}
@@ -224,6 +257,17 @@ public class BoskGraphQL {
 			} else {
 				throw new UnsupportedTypeException("Unsupported generic type " + genericType.getTypeName()
 					+ " for field " + fieldName + " on " + parentTypeName);
+			}
+			return true;
+		}
+
+		private static boolean isPhantom(Type type) {
+			if (type instanceof Class<?> clazz) {
+				return Phantom.class.isAssignableFrom(clazz);
+			} else if (type instanceof ParameterizedType pt) {
+				return Phantom.class.isAssignableFrom((Class<?>) pt.getRawType());
+			} else {
+				return false;
 			}
 		}
 
@@ -615,9 +659,15 @@ public class BoskGraphQL {
 			if (!registerTypeName(name, enumClass)) {
 				return (GraphQLEnumType) builtTypesByName.get(name);
 			}
+			var constants = enumClass.getEnumConstants();
+			if (constants.length == 0) {
+				throw new UnsupportedTypeException("Enum type " + enumClass.getName()
+					+ " has no values; a GraphQL enum must define at least one value");
+			}
 			var builder = GraphQLEnumType.newEnum().name(name);
-			for (var constant : enumClass.getEnumConstants()) {
+			for (var constant : constants) {
 				var e = (Enum<?>) constant;
+				validateGraphQLName(e.name(), "GraphQL enum value", "in " + enumClass.getName());
 				builder.value(e.name());
 			}
 			var type = builder.build();
@@ -626,14 +676,7 @@ public class BoskGraphQL {
 		}
 
 		private void validateFieldName(String fieldName, String parentTypeName) {
-			if (fieldName.indexOf('$') >= 0) {
-				throw new UnsupportedNameException("GraphQL field name cannot contain '$': " + fieldName
-					+ " (on type " + parentTypeName + ")");
-			}
-			if (fieldName.startsWith("__")) {
-				throw new UnsupportedNameException("GraphQL field name cannot start with '__': " + fieldName
-					+ " (on type " + parentTypeName + "; double-underscore prefix is reserved for introspection)");
-			}
+			validateGraphQLName(fieldName, "GraphQL field", "on type " + parentTypeName);
 		}
 
 		private boolean registerTypeName(String name, Type type) {
@@ -693,6 +736,19 @@ public class BoskGraphQL {
 		};
 	}
 
+	private static final Pattern GRAPHQL_NAME = Pattern.compile("[_A-Za-z][_0-9A-Za-z]*");
+
+	private static void validateGraphQLName(String name, String kind, String context) {
+		if (!GRAPHQL_NAME.matcher(name).matches()) {
+			throw new UnsupportedNameException(kind + " name is not a valid GraphQL name: \"" + name + "\""
+				+ " (" + context + ")");
+		}
+		if (name.startsWith("__")) {
+			throw new UnsupportedNameException(kind + " name cannot start with '__': " + name
+				+ " (" + context + "; double-underscore prefix is reserved for introspection)");
+		}
+	}
+
 	/**
 	 * The type names we use have the property that they can be concatenated
 	 * into larger strings separated by underscores unambiguously.
@@ -724,6 +780,7 @@ public class BoskGraphQL {
 		if (simpleName.startsWith("_")) {
 			throw new UnsupportedNameException("GraphQL type name cannot start with '_': " + simpleName);
 		}
+		validateGraphQLName(simpleName, "GraphQL type", "from " + clazz.getName());
 		int underscores = numOccurrences("_", simpleName);
 		if (underscores == 0 && !simpleName.startsWith("u")) {
 			return simpleName;
@@ -791,12 +848,12 @@ public class BoskGraphQL {
 
 	static final GraphQLScalarType GRAPHQL_LONG = GraphQLScalarType.newScalar()
 		.name("Long")
-		.description("A 64-bit signed integer")
-		.coercing(new Coercing<Long, Long>() {
+		.description("A 64-bit signed integer, serialized as a string to preserve precision")
+		.coercing(new Coercing<Long, String>() {
 			@Override
-			public Long serialize(Object dataFetcherResult, GraphQLContext context, Locale locale) {
+			public String serialize(Object dataFetcherResult, GraphQLContext context, Locale locale) {
 				if (dataFetcherResult instanceof Number n) {
-					return n.longValue();
+					return n.toString();
 				} else {
 					throw new CoercingSerializeException("Expected a numeric type");
 				}
@@ -815,20 +872,35 @@ public class BoskGraphQL {
 							throw new CoercingParseValueException("Long value out of range: " + bi);
 						}
 					}
+					case String s -> {
+						try {
+							yield Long.parseLong(s);
+						} catch (NumberFormatException e) {
+							throw new CoercingParseValueException("Invalid Long: " + s, e);
+						}
+					}
 					case null, default -> throw new CoercingParseValueException("Expected an integer value");
 				};
 			}
 			@Override
 			public Long parseLiteral(Value<?> input, CoercedVariables variables, GraphQLContext context, Locale locale) {
-				if (input instanceof IntValue iv) {
-					try {
-						return iv.getValue().longValueExact();
-					} catch (ArithmeticException e) {
-						throw new CoercingParseLiteralException("Long value out of range: " + iv.getValue());
+				return switch (input) {
+					case IntValue iv -> {
+						try {
+							yield iv.getValue().longValueExact();
+						} catch (ArithmeticException e) {
+							throw new CoercingParseLiteralException("Long value out of range: " + iv.getValue());
+						}
 					}
-				} else {
-					throw new CoercingParseLiteralException("Expected an integer value");
-				}
+					case StringValue sv when sv.getValue() != null -> {
+						try {
+							yield Long.parseLong(sv.getValue());
+						} catch (NumberFormatException e) {
+							throw new CoercingParseLiteralException("Invalid Long: " + sv.getValue(), e);
+						}
+					}
+					case null, default -> throw new CoercingParseLiteralException("Expected an integer value");
+				};
 			}
 		})
 		.build();

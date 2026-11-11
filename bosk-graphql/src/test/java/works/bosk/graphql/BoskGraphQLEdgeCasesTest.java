@@ -28,6 +28,7 @@ import works.bosk.Identifier;
 import works.bosk.ListValue;
 import works.bosk.Listing;
 import works.bosk.MapValue;
+import works.bosk.Phantom;
 import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
@@ -38,12 +39,14 @@ import works.bosk.annotations.Self;
 import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.graphql.exceptions.UnsupportedNameException;
+import works.bosk.graphql.exceptions.UnsupportedTypeException;
 import works.bosk.util.Types;
 
 import static java.util.stream.Collectors.toMap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.graphql.BoskGraphQL.GRAPHQL_BIG_DECIMAL;
 import static works.bosk.graphql.BoskGraphQL.GRAPHQL_BIG_INTEGER;
 import static works.bosk.graphql.BoskGraphQL.GRAPHQL_IDENTIFIER;
@@ -69,6 +72,15 @@ class BoskGraphQLEdgeCasesTest {
 				graphQL,
 				bosk.rootReference().valueIfExists());
 		}
+	}
+
+	@Test
+	void sdlFor_returnsSchemaSDL() {
+		var bosk = createBosk(ScalarExtras.class, new ScalarExtras(
+			42L, 3.14f, new BigDecimal("123.45"), new BigInteger("999")));
+		String sdl = BoskGraphQL.sdlFor(bosk);
+		assertTrue(sdl.contains("type Query"));
+		assertTrue(sdl.contains("scalar Long"));
 	}
 
 	@Test
@@ -288,6 +300,33 @@ class BoskGraphQLEdgeCasesTest {
 		}
 	}
 
+	public interface TagComponentVariant extends TaggedUnionCase {
+		@TaggedUnionCaseMap
+		MapValue<Class<? extends TagComponentVariant>> CASE_MAP = MapValue.copyOf(Map.of(
+			"withTag", WithTagComponent.class
+		));
+	}
+
+	public record WithTagComponent(String tag, String payload) implements TagComponentVariant {
+		@Override public String tag() { return "withTag"; }
+	}
+
+	public record TagComponentRoot(TaggedUnion<TagComponentVariant> variant) implements StateTreeNode {}
+
+	@Test
+	void taggedUnionCaseWithTagComponent_usesTagMethod() {
+		var bosk = createBosk(TagComponentRoot.class, new TagComponentRoot(
+			TaggedUnion.of(new WithTagComponent("componentValue", "payload"))));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("variant", Map.of("tag", "withTag", "payload", "payload")),
+				"{ variant { tag ... on WithTagComponent { tag payload } } }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
 	@Test
 	void enumField() {
 		var bosk = createBosk(ItemWithEnum.class, new ItemWithEnum(
@@ -328,7 +367,7 @@ class BoskGraphQLEdgeCasesTest {
 		try (var _ = bosk.readSession()) {
 			assertQueryReturns(
 				Map.of(
-					"longField", 42L,
+					"longField", "42",
 					"floatField", 3.14,
 					"decimalField", "123.45",
 					"integerField", "999"
@@ -337,6 +376,15 @@ class BoskGraphQLEdgeCasesTest {
 				graphQL,
 				bosk.rootReference().valueIfExists());
 		}
+	}
+
+	@Test
+	void longScalar_parsesStringValues() {
+		var ctx = GraphQLContext.getDefault();
+		var locale = Locale.getDefault();
+		assertEquals(42L, GRAPHQL_LONG.getCoercing().parseValue("42", ctx, locale));
+		assertEquals(42L, GRAPHQL_LONG.getCoercing().parseLiteral(
+			new StringValue("42"), CoercedVariables.emptyVariables(), ctx, locale));
 	}
 
 	@Test
@@ -1293,6 +1341,77 @@ class BoskGraphQLEdgeCasesTest {
 				graphQL,
 				bosk.rootReference().valueIfExists());
 		}
+	}
+
+	// GraphQL name validation
+
+	public enum DollarEnum { $BAD }
+	public record DollarEnumRoot(DollarEnum value) implements StateTreeNode {}
+
+	@Test
+	void enumValueWithDollar_isRejected() {
+		var bosk = createBosk(DollarEnumRoot.class, new DollarEnumRoot(DollarEnum.$BAD));
+		assertThrows(UnsupportedNameException.class, () -> buildGraphQL(bosk));
+	}
+
+	public enum ReservedEnum { __BAD }
+	public record ReservedEnumRoot(ReservedEnum value) implements StateTreeNode {}
+
+	@Test
+	void enumValueWithReservedPrefix_isRejected() {
+		var bosk = createBosk(ReservedEnumRoot.class, new ReservedEnumRoot(ReservedEnum.__BAD));
+		assertThrows(UnsupportedNameException.class, () -> buildGraphQL(bosk));
+	}
+
+	public record Café(String value) implements StateTreeNode {}
+	public record UnicodeTypeRoot(Café nested) implements StateTreeNode {}
+
+	@Test
+	void unicodeTypeName_isRejected() {
+		var bosk = createBosk(UnicodeTypeRoot.class, new UnicodeTypeRoot(new Café("value")));
+		assertThrows(UnsupportedNameException.class, () -> buildGraphQL(bosk));
+	}
+
+	// Phantom fields
+
+	public record PhantomRoot(String value, Phantom<Catalog<SimplePart>> phantom) implements StateTreeNode {}
+
+	@Test
+	void phantomField_isOmitted() {
+		var bosk = createBosk(PhantomRoot.class, new PhantomRoot("hello", Phantom.empty()));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("value", "hello"),
+				"{ value }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
+	public record PhantomOnlyRoot(Phantom<String> phantom) implements StateTreeNode {}
+
+	@Test
+	void recordWithOnlyPhantomFields_isRejected() {
+		var bosk = createBosk(PhantomOnlyRoot.class, new PhantomOnlyRoot(Phantom.empty()));
+		assertThrows(UnsupportedTypeException.class, () -> buildGraphQL(bosk));
+	}
+
+	public record EmptyRecord() implements StateTreeNode {}
+
+	@Test
+	void emptyRootRecord_isRejected() {
+		var bosk = createBosk(EmptyRecord.class, new EmptyRecord());
+		assertThrows(UnsupportedTypeException.class, () -> buildGraphQL(bosk));
+	}
+
+	public enum EmptyEnum {}
+	public record EmptyEnumRoot(Optional<EmptyEnum> value) implements StateTreeNode {}
+
+	@Test
+	void emptyEnum_isRejected() {
+		var bosk = createBosk(EmptyEnumRoot.class, new EmptyEnumRoot(Optional.empty()));
+		assertThrows(UnsupportedTypeException.class, () -> buildGraphQL(bosk));
 	}
 
 	<Root extends StateTreeNode> Bosk<Root> createBosk(Class<Root> rootClass, Root initialState) {
