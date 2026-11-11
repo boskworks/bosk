@@ -28,6 +28,7 @@ import works.bosk.Identifier;
 import works.bosk.ListValue;
 import works.bosk.Listing;
 import works.bosk.MapValue;
+import works.bosk.Phantom;
 import works.bosk.Reference;
 import works.bosk.SideTable;
 import works.bosk.StateTreeNode;
@@ -38,12 +39,14 @@ import works.bosk.annotations.Self;
 import works.bosk.annotations.TaggedUnionCaseMap;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.graphql.exceptions.UnsupportedNameException;
+import works.bosk.graphql.exceptions.UnsupportedTypeException;
 import works.bosk.util.Types;
 
 import static java.util.stream.Collectors.toMap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.graphql.BoskGraphQL.GRAPHQL_BIG_DECIMAL;
 import static works.bosk.graphql.BoskGraphQL.GRAPHQL_BIG_INTEGER;
 import static works.bosk.graphql.BoskGraphQL.GRAPHQL_IDENTIFIER;
@@ -1293,6 +1296,77 @@ class BoskGraphQLEdgeCasesTest {
 				graphQL,
 				bosk.rootReference().valueIfExists());
 		}
+	}
+
+	// GraphQL name validation
+
+	public enum DollarEnum { $BAD }
+	public record DollarEnumRoot(DollarEnum value) implements StateTreeNode {}
+
+	@Test
+	void enumValueWithDollar_isRejected() {
+		var bosk = createBosk(DollarEnumRoot.class, new DollarEnumRoot(DollarEnum.$BAD));
+		assertThrows(UnsupportedNameException.class, () -> buildGraphQL(bosk));
+	}
+
+	public enum ReservedEnum { __BAD }
+	public record ReservedEnumRoot(ReservedEnum value) implements StateTreeNode {}
+
+	@Test
+	void enumValueWithReservedPrefix_isRejected() {
+		var bosk = createBosk(ReservedEnumRoot.class, new ReservedEnumRoot(ReservedEnum.__BAD));
+		assertThrows(UnsupportedNameException.class, () -> buildGraphQL(bosk));
+	}
+
+	public record Café(String value) implements StateTreeNode {}
+	public record UnicodeTypeRoot(Café nested) implements StateTreeNode {}
+
+	@Test
+	void unicodeTypeName_isRejected() {
+		var bosk = createBosk(UnicodeTypeRoot.class, new UnicodeTypeRoot(new Café("value")));
+		assertThrows(UnsupportedNameException.class, () -> buildGraphQL(bosk));
+	}
+
+	// Phantom fields
+
+	public record PhantomRoot(String value, Phantom<Catalog<SimplePart>> phantom) implements StateTreeNode {}
+
+	@Test
+	void phantomField_isOmitted() {
+		var bosk = createBosk(PhantomRoot.class, new PhantomRoot("hello", Phantom.empty()));
+		var graphQL = buildGraphQL(bosk);
+		try (var _ = bosk.readSession()) {
+			assertQueryReturns(
+				Map.of("value", "hello"),
+				"{ value }",
+				graphQL,
+				bosk.rootReference().valueIfExists());
+		}
+	}
+
+	public record PhantomOnlyRoot(Phantom<String> phantom) implements StateTreeNode {}
+
+	@Test
+	void recordWithOnlyPhantomFields_isRejected() {
+		var bosk = createBosk(PhantomOnlyRoot.class, new PhantomOnlyRoot(Phantom.empty()));
+		assertThrows(UnsupportedTypeException.class, () -> buildGraphQL(bosk));
+	}
+
+	public record EmptyRecord() implements StateTreeNode {}
+
+	@Test
+	void emptyRootRecord_isRejected() {
+		var bosk = createBosk(EmptyRecord.class, new EmptyRecord());
+		assertThrows(UnsupportedTypeException.class, () -> buildGraphQL(bosk));
+	}
+
+	public enum EmptyEnum {}
+	public record EmptyEnumRoot(Optional<EmptyEnum> value) implements StateTreeNode {}
+
+	@Test
+	void emptyEnum_isRejected() {
+		var bosk = createBosk(EmptyEnumRoot.class, new EmptyEnumRoot(Optional.empty()));
+		assertThrows(UnsupportedTypeException.class, () -> buildGraphQL(bosk));
 	}
 
 	<Root extends StateTreeNode> Bosk<Root> createBosk(Class<Root> rootClass, Root initialState) {
