@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,10 +32,11 @@ import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NonexistentReferenceException;
 import works.bosk.jackson.JacksonSerializer;
 
-import static org.springframework.http.HttpHeaders.ETAG;
+import static org.springframework.http.HttpHeaders.IF_NONE_MATCH;
 import static org.springframework.http.HttpStatus.ACCEPTED;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.NOT_MODIFIED;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 import static works.bosk.spring.boot.WebProperties.DEFAULT_MAINTENANCE_PATH;
 
@@ -51,6 +53,12 @@ import static works.bosk.spring.boot.WebProperties.DEFAULT_MAINTENANCE_PATH;
  * {@link Identifier} includes a strong {@code ETag} derived from that revision. The value is
  * quoted and percent-encoded using the same scheme as path segments, so any revision string
  * can be used.
+ * A {@code GET} whose {@code If-None-Match} header matches that {@code ETag} returns
+ * {@code 304 Not Modified} with no body. The header may list several tags, or use the weak form
+ * of a tag, and {@code *} may be read as a list of every possible tag: it matches exactly when
+ * the node has a {@code revision} field. A node without one never has an {@code ETag}, so no
+ * {@code If-None-Match} value can match it and its {@code GET} always returns {@code 200}.
+ * {@code If-Match} is not evaluated on {@code GET} or {@code HEAD}.
  * {@code PUT} and {@code DELETE} accept the same value in an {@code If-Match} header.
  * Precondition mismatches are asynchronous no-ops: the endpoint still returns
  * {@code 202 Accepted}, and a client that needs to know whether the write applied must
@@ -93,17 +101,26 @@ public class MaintenanceEndpoints {
 	}
 
 	@GetMapping(produces = APPLICATION_JSON_VALUE, path = {"", "{*path}"})
-	Object getAny(
+	ResponseEntity<Object> getAny(
 		@PathVariable(value="path", required = false) String path,
-		HttpServletRequest req,
-		HttpServletResponse rsp
+		HttpServletRequest req
 	) {
 		LOGGER.debug("{} {}", req.getMethod(), req.getRequestURI());
 		Reference<?> ref = referenceForPath(path);
 		try {
-			optionalRevisionRef(ref).ifPresent(revision ->
-				rsp.setHeader(ETAG, Etag.headerValue(revision.value())));
-			return ref.value();
+			Object value = ref.value();
+			Optional<Identifier> revision = optionalRevisionRef(ref).map(Reference::value);
+			if (revision.isPresent() && isWildcard(req.getHeader(IF_NONE_MATCH))) {
+				// "*" lists every possible ETag, so it matches whenever the node has one.
+				return ResponseEntity.status(NOT_MODIFIED)
+					.eTag(Etag.headerValue(revision.get()))
+					.build();
+			}
+			// Spring MVC evaluates the remaining If-None-Match forms (tags, lists, weak tags)
+			// against this ETag and suppresses the body with a 304 when one matches.
+			ResponseEntity.BodyBuilder response = ResponseEntity.ok();
+			revision.ifPresent(r -> response.eTag(Etag.headerValue(r)));
+			return response.body(value);
 		} catch (NonexistentReferenceException e) {
 			throw new ResponseStatusException(NOT_FOUND, "Object does not exist: " + ref, e);
 		}
@@ -197,6 +214,10 @@ public class MaintenanceEndpoints {
 		} catch (InvalidTypeException e) {
 			throw new ResponseStatusException(NOT_FOUND, "Invalid path: " + path, e);
 		}
+	}
+
+	private static boolean isWildcard(String ifNoneMatch) {
+		return ifNoneMatch != null && "*".equals(ifNoneMatch.trim());
 	}
 
 	private Reference<Identifier> revisionRef(Reference<?> ref) {

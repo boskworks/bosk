@@ -116,6 +116,11 @@ A `GET` of a node with a field named `revision` of type `Identifier` includes an
 Send that value back verbatim in `If-Match` to apply a `PUT` or `DELETE` only if the node still has
 that revision. `If-None-Match: *` applies the write only if the node does not already exist.
 
+For reads, send the same value in `If-None-Match` to get a `304 Not Modified` with no body while the
+node's revision is unchanged. Lists and weak tags are accepted, and `*` matches any node with a
+`revision` field; a node without one has no ETag, so `If-None-Match` never matches there. `If-Match`
+has no effect on `GET` or `HEAD`.
+
 A precondition mismatch is a `202` no-op, not `412 Precondition Failed`, because the precondition
 check and the write submission are not atomic. A syntactically invalid `If-Match` value, or
 `If-Match` on a node without a suitable `revision` field, is a `400`.

@@ -110,6 +110,22 @@ a guarantee the endpoint cannot make. A mismatch remains a `202` no-op.
 `Reference.then` throws when the field is absent, and that absence is normal for many node types,
 so the endpoint asks once per type with `Reference.thenIfValid` and reuses the answer.
 
+#### Conditional GET
+
+`getAny` returns a `ResponseEntity` with the revision-derived ETag, which lets Spring MVC's
+`HttpEntityMethodProcessor` evaluate `If-None-Match` and suppress the body with a `304` when a tag
+matches. It handles lists, weak tags, and the quoting rules; we do not parse tags ourselves.
+
+Spring deliberately treats `*` as a match only for unsafe methods, because it reads it as the
+"create only if absent" idiom. For a `GET` it falls through to tag comparison and returns `200`.
+So `getAny` special-cases a header that trims to `*` and returns `304` itself when the node has an
+ETag. The condition is "does this response have a validator", not "is the candidate set empty":
+a node without a `revision` field never emits an ETag, so `*` cannot match it.
+
+`If-Match` is ignored on `GET`, as Spring does for safe methods. That is a deliberate departure from
+RFC 9110's precondition ordering: there is no write for it to guard, and `If-None-Match` already
+covers the useful read-side case.
+
 ### Flush failures and fresh reads
 
 `ReadSessionFilter` calls `BoskDriver.flush()` for requests with `Cache-Control: no-cache`.

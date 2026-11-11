@@ -271,6 +271,99 @@ class MaintenanceEndpointsTest {
 	}
 
 	@Test
+	void getWithMatchingEtag_returns304() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/v1")
+				.header(IF_NONE_MATCH, "\"rev1\"")
+				.with(user("tester")))
+			.andExpect(status().isNotModified())
+			.andExpect(header().string(ETAG, "\"rev1\""))
+			.andExpect(content().string(""));
+	}
+
+	@Test
+	void getWithWeakMatchingEtag_returns304() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/v1")
+				.header(IF_NONE_MATCH, "W/\"rev1\"")
+				.with(user("tester")))
+			.andExpect(status().isNotModified());
+	}
+
+	@Test
+	void getWithEtagListContainingMatch_returns304() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/v1")
+				.header(IF_NONE_MATCH, "\"stale\", \"rev1\"")
+				.with(user("tester")))
+			.andExpect(status().isNotModified());
+	}
+
+	@Test
+	void getWithStaleEtag_returnsBody() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/v1")
+				.header(IF_NONE_MATCH, "\"stale\"")
+				.with(user("tester")))
+			.andExpect(status().isOk())
+			.andExpect(header().string(ETAG, "\"rev1\""))
+			.andExpect(content().json(mapper.writeValueAsString(VERSIONED_1)));
+	}
+
+	@Test
+	void getWithMalformedEtag_returnsBody() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/v1")
+				.header(IF_NONE_MATCH, "not-an-etag")
+				.with(user("tester")))
+			.andExpect(status().isOk())
+			.andExpect(content().json(mapper.writeValueAsString(VERSIONED_1)));
+	}
+
+	@Test
+	void getWithWildcardEtag_returns304() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/v1")
+				.header(IF_NONE_MATCH, "*")
+				.with(user("tester")))
+			.andExpect(status().isNotModified())
+			.andExpect(header().string(ETAG, "\"rev1\""))
+			.andExpect(content().string(""));
+	}
+
+	@Test
+	void getWithoutRevision_withWildcardEtag_returnsBody() throws Exception {
+		mockMvc.perform(get("/bosk/targets/plain")
+				.header(IF_NONE_MATCH, "*")
+				.with(user("tester")))
+			.andExpect(status().isOk())
+			.andExpect(header().doesNotExist(ETAG))
+			.andExpect(content().json("{\"id\":\"plain\",\"name\":\"plain\"}"));
+	}
+
+	@Test
+	void getMissingEntity_withWildcardEtag_isNotFound() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/missing")
+				.header(IF_NONE_MATCH, "*")
+				.with(user("tester")))
+			.andExpect(status().isNotFound())
+			.andExpect(header().doesNotExist(ETAG));
+	}
+
+	@Test
+	void getWithIfMatch_isIgnored() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/v1")
+				.header(IF_MATCH, "\"stale\"")
+				.with(user("tester")))
+			.andExpect(status().isOk())
+			.andExpect(content().json(mapper.writeValueAsString(VERSIONED_1)));
+	}
+
+	@Test
+	void getWithNoCacheAndMatchingEtag_returns304() throws Exception {
+		mockMvc.perform(get("/bosk/versioned/v1")
+				.header(CACHE_CONTROL, "no-cache")
+				.header(IF_NONE_MATCH, "\"rev1\"")
+				.with(user("tester")))
+			.andExpect(status().isNotModified())
+			.andExpect(header().string(ETAG, "\"rev1\""));
+	}
+
+	@Test
 	void putWithMatchingEtag_appliesWrite() throws Exception {
 		Versioned updated = new Versioned(Identifier.from("v1"), Identifier.from("rev2"), "updated");
 		mockMvc.perform(put("/bosk/versioned/v1")
