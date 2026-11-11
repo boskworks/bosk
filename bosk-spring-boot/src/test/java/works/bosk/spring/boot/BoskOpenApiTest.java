@@ -359,12 +359,16 @@ class BoskOpenApiTest {
 		Map<String, Object> targetGet = operation(paths, "/bosk/state/targets/{targetId}", "get");
 		Map<String, Object> targetResponse = map(map(targetGet.get("responses")).get("200"));
 		assertTrue(map(targetResponse.get("headers")).containsKey("ETag"));
+		assertTrue(hasParameter(targetGet, "If-None-Match"));
+		assertTrue(map(targetGet.get("responses")).containsKey("304"));
 		assertTrue(hasParameter(operation(paths, "/bosk/state/targets/{targetId}", "put"), "If-Match"));
 		assertTrue(hasParameter(operation(paths, "/bosk/state/targets/{targetId}", "delete"), "If-Match"));
 
 		Map<String, Object> genericGet = operation(paths, "/bosk/state/generic", "get");
 		Map<String, Object> genericResponse = map(map(genericGet.get("responses")).get("200"));
 		assertFalse(genericResponse.containsKey("headers"));
+		assertFalse(hasParameter(genericGet, "If-None-Match"));
+		assertFalse(map(genericGet.get("responses")).containsKey("304"));
 		assertFalse(hasParameter(operation(paths, "/bosk/state/generic", "put"), "If-Match"));
 	}
 

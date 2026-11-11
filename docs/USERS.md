@@ -1076,6 +1076,12 @@ because writes are asynchronous; this is how a client avoids the
 syntactically valid `If-Match` value that does not encode a revision is a `400`, as is using
 `If-Match` on a node without a `revision` field.
 
+A `GET` may also carry `If-None-Match`. If the value matches the node's current ETag — as a single
+tag, as a weak tag, or as a member of a comma-separated list — the response is `304 Not Modified`
+with no body. `If-None-Match: *` lists every possible ETag, so it matches exactly when the node has
+a `revision` field. A node without one never has an ETag, so no `If-None-Match` value can match and
+its `GET` always returns `200`. `If-Match` has no effect on `GET`; it conditions writes only.
+
 A `GET` of `openapi.json` beneath the maintenance path returns an OpenAPI 3.1 document describing
 the endpoints and the JSON representation of the state tree. It is available whenever the
 maintenance endpoints are, and the application's authentication rule for the maintenance path

@@ -328,10 +328,11 @@ final class BoskOpenApi {
 						"404", map("description", "A Phantom is always empty")));
 			}
 
+			boolean hasRevision = hasRevision(reference);
 			ObjectNode success = map(
 				"description", "The node's current JSON value",
 				"content", map(APPLICATION_JSON_VALUE, map("schema", schemaFor(type))));
-			if (hasRevision(reference)) {
+			if (hasRevision) {
 				success.set("headers", map("ETag", etagHeader()));
 			}
 			String description = "Returns the JSON representation of the node at this path."
@@ -342,16 +343,26 @@ final class BoskOpenApi {
 			if (readOnly) {
 				description += " This path is read-only because it passes through a tagged-union case.";
 			}
-			return map(
+			ObjectNode responses = map(
+				"200", success,
+				"404", map("description", "The path is invalid, or no such node exists"));
+			ObjectNode operation = map(
 				"operationId", operationId("get", openapiPath),
 				"tags", list("bosk-maintenance"),
 				"summary", kind == NodeKind.IMPLICIT_REFERENCE
 					? "Read implicit reference"
 					: "Read " + nodeDescription(type),
 				"description", description,
-				"responses", map(
-					"200", success,
-					"404", map("description", "The path is invalid, or no such node exists")));
+				"responses", responses);
+			if (hasRevision) {
+				ArrayNode parameters = JsonNodeFactory.instance.arrayNode();
+				parameters.add(ifNoneMatchGetParameter());
+				operation.set("parameters", parameters);
+				responses.set("304", map(
+					"description", "The node's revision still matches the If-None-Match tag, so the body is omitted",
+					"headers", map("ETag", etagHeader())));
+			}
+			return operation;
 		}
 
 		private ObjectNode putOperation(
@@ -791,10 +802,22 @@ final class BoskOpenApi {
 				"schema", map("type", "string", "enum", list("*")));
 		}
 
+		private static ObjectNode ifNoneMatchGetParameter() {
+			return map(
+				"name", "If-None-Match",
+				"in", "header",
+				"required", false,
+				"description", "The ETag from a previous GET of this node, sent verbatim, or `*`."
+					+ " If it matches the node's current revision, the response is `304` with no body."
+					+ " `*` lists every possible ETag, so it matches any node with a `revision` field.",
+				"schema", map("type", "string"));
+		}
+
 		private static ObjectNode etagHeader() {
 			return map(
 				"description", "A strong ETag derived from the node's revision field."
-					+ " Send it back verbatim in an If-Match header.",
+					+ " Send it back verbatim in an If-Match header to condition a write,"
+					+ " or in an If-None-Match header to get a bodyless 304 while the revision is unchanged.",
 				"schema", map("type", "string"));
 		}
 

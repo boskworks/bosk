@@ -1,3 +1,4 @@
+import works.bosk.spring.boot.MaintenanceEndpoints;
 import works.bosk.spring.boot.ReadSessionFilter;
 
 /**
@@ -57,6 +58,9 @@ import works.bosk.spring.boot.ReadSessionFilter;
  *     segments, so any revision string is supported and the result is always a valid
  *     strong ETag. Nodes without such a field, {@code 404} responses, and {@code 202}
  *     write responses have no ETag.
+ *     <p>
+ *     A {@code GET} whose {@code If-None-Match} header matches that ETag returns
+ *     {@code 304 Not Modified} with no body. See {@link MaintenanceEndpoints} for details.
  *     <p>
  *     {@code PUT} and {@code DELETE} accept these ETags in the {@code If-Match} and
  *     {@code If-None-Match} headers, exposing a limited ability to do conditional updates.
