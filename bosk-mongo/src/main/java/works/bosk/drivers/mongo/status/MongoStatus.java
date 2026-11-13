@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.status;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import works.bosk.Identifier;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.internal.Manifest;
@@ -20,11 +21,17 @@ public record MongoStatus(
 		return new MongoStatus(
 			this.error,
 			new ManifestStatus(
-				Manifest.forFormat(preferredFormat),
+				// The format id is not part of the desired state, so the preferred
+				// manifest borrows the actual one, keeping the id out of the comparison.
+				Manifest.forFormat(preferredFormat, formatIdOf(actualManifest)),
 				actualManifest
 			),
 			this.state
 		);
+	}
+
+	private static Identifier formatIdOf(StateTreeNode actualManifest) {
+		return ((Manifest) actualManifest).formatId();
 	}
 
 	public boolean isAllClear() {

@@ -10,6 +10,7 @@ import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriver;
+import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.status.MongoStatus;
 
 /**
@@ -125,6 +126,18 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * Returns a single document.
 	 */
 	BsonDocument rootDocumentsFilter();
+
+	/**
+	 * @return the format this driver implements, as recorded in the manifest
+	 */
+	DatabaseFormat format();
+
+	/**
+	 * @return the id of the format this driver was built for, as recorded in the
+	 * manifest and on every state document; a refurbish that changes the format
+	 * gives the replacement driver a different value
+	 */
+	Identifier formatId();
 
 	/**
 	 * Indicates that the given state has been {@link #flush() flushed} to the downstream driver already,

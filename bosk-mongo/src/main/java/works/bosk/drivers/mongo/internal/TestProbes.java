@@ -57,6 +57,7 @@ record TestProbes(
 	UnaryOperator<ChangeListener> listenerFactory,
 	Runnable prePublicationWaitAction,
 	Runnable beforeRefurbishDelete,
+	Runnable beforeRefurbishLoad,
 	Runnable beforeInitialStateApplied,
 	FindInterceptor findInterceptor,
 	WriteInterceptor writeInterceptor,
@@ -65,7 +66,7 @@ record TestProbes(
 	Consumer<Throwable> onDisruption
 ) {
 	static TestProbes noop() {
-		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), SessionInterceptor.identity(), NOOP_DISRUPTION);
+		return new TestProbes(MongoClientFactory.ALWAYS_CREATE, null, NOOP, NOOP, NOOP, NOOP, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), SessionInterceptor.identity(), NOOP_DISRUPTION);
 	}
 
 	/**

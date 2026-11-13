@@ -29,6 +29,7 @@ import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
@@ -54,7 +55,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		MongoDriverSettings driverSettings,
 		BsonSerializer bsonSerializer,
 		Duration flushTimeout,
-		BoskDriver downstream
+		BoskDriver downstream,
+		Identifier formatId
 	) {
 		super(
 			boskInfo.rootReference(),
@@ -62,9 +64,15 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			new Formatter(boskInfo, bsonSerializer),
 			collection,
 			downstream,
-			flushTimeout
+			flushTimeout,
+			formatId
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
+	}
+
+	@Override
+	public DatabaseFormat format() {
+		return SEQUOIA;
 	}
 
 	@Override
@@ -113,6 +121,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			.cursor()
 		) {
 			BsonDocument document = cursor.next();
+			validateFormatId(document);
 			BsonString id = document.getString("_id");
 			RevisionTuple revision = RevisionTuple.from(document);
 			return new BsonStateAndMetadata(
@@ -168,13 +177,14 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			 * but outside that, we want to be as strict as we can
 			 * so incompatible database changes don't go unnoticed.
 			 */
-			validateManifestEvent(event, Manifest.forSequoia());
+			validateManifestEvent(event, Manifest.forSequoia(formatId));
 			return;
 		}
 		if (!DOCUMENT_FILTER.equals(event.getDocumentKey())) {
 			LOGGER.debug("Ignoring event for unrecognized document key: {}", event.getDocumentKey());
 			return;
 		}
+		validateEventFormatId(event);
 		switch (event.getOperationType()) {
 			case INSERT: case REPLACE: {
 				// Note: an INSERT could be coming from this very bosk initializing the collection,
@@ -306,7 +316,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	 * @return true if something changed
 	 */
 	@Override
-	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
+	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument rawFilter) {
+		BsonDocument filter = withFormatId(rawFilter);
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);

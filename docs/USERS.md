@@ -942,17 +942,30 @@ You can include these in your encoder pattern as well, for example `%X{bosk.Mong
 - The _Sequoia_ format (the default) stores the entire bosk state in a single document in a single collection.
 - The _Pando_ format divides up the bosk state into multiple documents, to overcome the MongoDB limit of 16MB for a single document.
 
-The format of the database is described by a manifest document whose ID is `!Manifest`.
+The _format_ is the contract that determines how the collection's contents are to be interpreted:
+which format family is in use, and for Pando which graft points divide the state into documents.
+A manifest document whose ID is `!Manifest` is the system of record for the format.
+The _layout_ is where the state documents sit; a format change usually moves them.
+
+Each state document records a `formatId` that matches the manifest's.
+A refurbish that changes the format mints a new id, and one that leaves the format alone keeps the existing one.
+The id lets an update that was planned against the old format recognise that the documents it meant to change
+have been replaced, rather than applying to whatever documents are there now.
 
 For Sequoia, the bosk state is stored in a single document within a single collection.
 The collection is named `boskCollection` by default, and can be renamed with `MongoDriverSettings.collection()`.
 The document has these fields:
 
-- `_id`: this is always `boskDocument`
-- `state`: contains the entire bosk state tree
+- `_id`: always `boskDocument`
+- `state`: the entire bosk state tree
+- `formatId`: copied from the manifest when the document is written; a refurbish that changes the format rewrites it
 - `epoch`: a UUID identifying this initialization of the collection
-- `incarnation`, `revision`: the document's revision number and incarnation
+- `incarnation`: a UUID that changes when the document is re-created (see [Version fields](#version-fields))
+- `revision`: incremented by every update that writes the document (see [Version fields](#version-fields))
 - `diagnostics`: diagnostic attributes from the most recent update
+
+Sequoia's `_id` is deliberately different from Pando's document IDs,
+so a write planned against one format cannot match a document belonging to the other.
 
 The format of the `state` field is determined by `BsonSerializer` and `Formatter`.
 The code will have the details, but some high-level points about the BSON format:
@@ -963,9 +976,7 @@ The code will have the details, but some high-level points about the BSON format
 For Pando, the situation is similar, except that instead of having a single document with an `_id` of `boskDocument`,
 there are multiple documents with `_id` values that start with `|` (vertical bar)
 and that describe where the document fits within the overall BSON structure.
-Every one of those documents carries its own `incarnation` and `revision`.
-The `incarnation` is a UUID identifying one lifetime of the document;
-re-creating a document gives it a fresh incarnation and resets its `revision` to 1.
+Every one of those documents carries the collection's `formatId` and its own `incarnation` and `revision`.
 Only the topmost document changed by an update has its `revision` incremented:
 that is, the shallowest document whose `state` changes.
 Updates to different parts of the tree therefore write different documents and do not conflict
@@ -976,6 +987,49 @@ If something has gone wrong and you need to do an emergency repair,
 `MongoDriver` will try to accommodate your changes, especially if you increment the `revision`
 number of the topmost document you changed.
 See `MongoDriverRecoveryTest` for some of the scenarios we've envisaged and tested.
+It cannot, though, accommodate invalid collection contents.
+For example, a state document whose `formatId` disagrees with the manifest's makes the collection invalid,
+because its contents no longer match the format the manifest declares.
+`MongoDriver` reports the problem rather than loading the collection.
+
+##### Version fields
+
+State documents carry four values that are easy to confuse.
+Two belong to the whole collection:
+the `epoch` is set when the collection is initialized,
+and the `formatId` is set when a refurbish changes the format.
+Two belong to a single document:
+the `incarnation` is set when the document is created,
+and the `revision` is incremented every time the document changes.
+
+Three of them are for flushes, which wait for a change to reach the in-memory state:
+`epoch` tells the flush which initialization of the collection it is waiting in,
+`incarnation` which lifetime of the document, and `revision` which change to it.
+
+- `epoch`: used for flushes.
+  Detects when the collection has been re-created, which makes the revision counters unreliable.
+  If a flush detects that the epoch has changed,
+  that triggers a disconnect and reconnect, so the driver reloads from the new collection.
+- `incarnation`: used for flushes, alongside the revision.
+  Detects when a document has been deleted and re-created,
+  which gives it a new incarnation and resets its revision to 1,
+  making the old revision numbers incomparable with the new ones.
+  A flush treats a different incarnation as already satisfied,
+  because the target belongs to a superseded lifetime,
+  and otherwise waits for the revision to catch up within the same lifetime.
+- `revision`: used for flushes, and to recognise change events the driver has already applied.
+  Each update increments the revision of the topmost document it writes,
+  so a document's revision counts the updates that wrote it.
+  A flush waits for each document's revision to reach the value it read,
+  ancestors before descendants,
+  so updates to unrelated graft points do not hold each other up.
+
+The fourth is for updates, which need to know whether the format they were planned against is still current.
+
+- `formatId`: used by updates.
+  Detects when the collection has been refurbished to a different format.
+  If an update didn't match any documents and the manifest's id has changed,
+  the driver disconnects and retries the update against the new format.
 
 ##### Format evolution
 

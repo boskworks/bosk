@@ -45,6 +45,7 @@ import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
@@ -95,7 +96,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		PandoFormat format,
 		BsonSerializer bsonSerializer,
 		Duration flushTimeout,
-		BoskDriver downstream
+		BoskDriver downstream,
+		Identifier formatId
 	) {
 		super(
 			boskInfo.rootReference(),
@@ -103,7 +105,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			new Formatter(boskInfo, bsonSerializer),
 			collection,
 			downstream,
-			flushTimeout
+			flushTimeout,
+			formatId
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
@@ -121,6 +124,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		} catch (InvalidTypeException e) {
 			throw new FormatMisconfigurationException("Path does not point to a Catalog or SideTable: " + pathString, e);
 		}
+	}
+
+	@Override
+	public DatabaseFormat format() {
+		return format;
 	}
 
 	@Override
@@ -344,6 +352,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		) {
 			while (cursor.hasNext()) {
 				BsonDocument lastPart = cursor.next();
+				validateFormatId(lastPart);
 				BsonString id = lastPart.getString("_id");
 				RevisionTuple revision = revisionOf(lastPart);
 				revisions.put(id, revision);
@@ -460,13 +469,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			 * but outside that, we want to be as strict as we can
 			 * so incompatible database changes don't go unnoticed.
 			 */
-			validateManifestEvent(event, Manifest.forPando(format));
+			validateManifestEvent(event, Manifest.forPando(format, formatId));
 			return;
 		}
 		if (!(bsonDocumentID instanceof BsonString s) || !(s.getValue().contains("|"))) {
 			LOGGER.debug("Ignoring event for unrecognized document key: {} type {}", event.getDocumentKey(), bsonDocumentID.getClass());
 			return;
 		}
+		validateEventFormatId(event);
 
 		// This is an event we care about
 		routeEvent(event);
@@ -909,9 +919,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private <T> Outcome createGraftPointEntryAndStub(Reference<T> target, Reference<?> containerRef, BsonValue value) {
 		LOGGER.debug("| Creating document {}", target);
 		BsonDocument document = documentFilter(target).clone()
-			.append(DocumentFields.state.name(), value)
+			.append(DocumentFields.formatId.name(), new BsonString(formatId.toString()))
 			.append(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 		RevisionTuple.newLifetime().putInto(document);
+		// The state goes last because it's the big field, and its size can change.
+		document.append(DocumentFields.state.name(), value);
 		doReplace(documentFilter(target), document);
 
 		// The container's stub is the transaction's topmost write.
@@ -1069,7 +1081,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * @return true if something changed
 	 */
 	@Override
-	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
+	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument rawFilter) {
+		BsonDocument filter = withFormatId(rawFilter);
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
@@ -1093,7 +1106,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * Unlike {@link #doUpdate}, which does nothing unless the document already
 	 * exists, this creates the document when it is absent.
 	 */
-	private void doReplace(BsonDocument filter, BsonDocument replacement) {
+	private void doReplace(BsonDocument rawFilter, BsonDocument replacement) {
+		BsonDocument filter = withFormatId(rawFilter);
 		LOGGER.debug("| Replace: filter={} replacement={}", filter, replacement);
 		UpdateResult result = collection.replaceOne(filter, replacement, new ReplaceOptions().upsert(true));
 		LOGGER.debug("| Replace result: {}", result);
@@ -1226,6 +1240,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			BsonDocument filter = new BsonDocument("_id", id);
 			RevisionTuple newRevision = RevisionTuple.newLifetime();
 			newRevision.putInto(part);
+			part.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
 			// We _must_ get the precise full document for sub-parts in the event
 			// stream, or we can't form the whole. Both an INSERT (when the part is
 			// absent) and a REPLACE (when it already exists) carry it, so one

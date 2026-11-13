@@ -102,11 +102,10 @@ public class SchemaEvolutionTest {
 
 		try (var _ = fromBosk.readSession()) {
 			ManifestInfo expected = fromConfig.expectedManifestInfo();
-			LOGGER.debug("Confirm starting manifest is {}", expected);
-			assertEquals(
-				expected,
-				fromBosk.getDriver(MainDriver.class).loadManifestInfo()
-			);
+			ManifestInfo actual = fromBosk.getDriver(MainDriver.class).loadManifestInfo();
+			LOGGER.debug("Confirm starting manifest is {}", actual);
+			assertEquals(expected.manifestId(), actual.manifestId());
+			assertEquals(expected.manifest().format(), actual.manifest().format());
 		}
 
 		LOGGER.debug("Confirm starting manifest ID");
@@ -132,11 +131,10 @@ public class SchemaEvolutionTest {
 
 		try (var _ = toBosk.readSession()) {
 			ManifestInfo expected = toConfig.expectedManifestInfo();
-			LOGGER.debug("Confirm ending manifest is {}", expected);
-			assertEquals(
-				expected,
-				toBosk.getDriver(MainDriver.class).loadManifestInfo()
-			);
+			ManifestInfo actual = toBosk.getDriver(MainDriver.class).loadManifestInfo();
+			LOGGER.debug("Confirm ending manifest is {}", actual);
+			assertEquals(expected.manifestId(), actual.manifestId());
+			assertEquals(expected.manifest().format(), actual.manifest().format());
 		}
 
 		LOGGER.debug("Perform fromBosk read");
@@ -172,8 +170,8 @@ public class SchemaEvolutionTest {
 		try (var _ = toBosk.readSession()) {
 			var status = driver.readStatus();
 			assertEquals(
-				Manifest.forFormat(toConfig.preferredFormat),
-				status.manifest().actual()
+				toConfig.preferredFormat,
+				((Manifest) status.manifest().actual()).format()
 			);
 		}
 
@@ -314,7 +312,7 @@ public class SchemaEvolutionTest {
 	record Configuration(DatabaseFormat preferredFormat) {
 		public ManifestInfo expectedManifestInfo() {
 			return new ManifestInfo(
-				Manifest.forFormat(preferredFormat),
+				Manifest.forFormat(preferredFormat, Manifest.newFormatId()),
 				MANIFEST_ID
 			);
 		}

@@ -6,6 +6,7 @@ import org.bson.BsonDocument;
 import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
+import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.drivers.mongo.status.MongoStatus;
 
@@ -17,6 +18,16 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 @RequiredArgsConstructor
 final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<R> {
 	private final Throwable reason;
+	@Override
+	public DatabaseFormat format() {
+		throw disconnected();
+	}
+
+	@Override
+	public Identifier formatId() {
+		throw disconnected();
+	}
+
 	@Override
 	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
 		throw disconnected();
