@@ -326,19 +326,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 		R entireState;
 		Throwable fallbackReason = null;
-		try (var _ = queryCollection.newReadOnlySession()){
-			// The load must read a consistent snapshot, so run it inside a
-			// read-only transaction. (Refurbish runs its load inside its own
-			// transaction, so the load is always transactional.)
-			queryCollection.ensureTransactionStarted();
-			FormatDriver<R> detectedDriver = detectFormat();
-			StateAndMetadata<R> loadedState = detectedDriver.loadAllState();
-			entireState = loadedState.state();
+		try {
+			LoadResult<R> loaded = loadState();
+			entireState = loaded.state().state();
 
 			// Hasn't technically been applied, but we're still initializing the Bosk, and its constructor won't return until the state has been applied
-			detectedDriver.onHasBeenApplied(loadedState);
+			loaded.driver().onHasBeenApplied(loaded.state());
 
-			publishFormatDriver(detectedDriver);
+			publishFormatDriver(loaded.driver());
 		} catch (UninitializedCollectionException e) {
 			// We log this at warn because, in production, this is a big deal.
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
@@ -371,6 +366,33 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			throw new DatabaseLoadException("Unable to load initial state from MongoDB", e);
 		}
 		return new InitialStateResult<>(entireState, fallbackReason);
+	}
+
+	/**
+	 * The result of {@link #loadState()}: the driver for the format the state
+	 * was stored in, and the state itself.
+	 */
+	private record LoadResult<S extends StateTreeNode>(FormatDriver<S> driver, StateAndMetadata<S> state) {}
+
+	/**
+	 * Loads the database state in a consistent snapshot.
+	 *
+	 * @throws UninitializedCollectionException if the collection has not been initialized
+	 * @throws UnrecognizedFormatException if the collection does not contain a format we recognize
+	 * @throws InvalidCollectionContentsException if the collection contents are invalid
+	 * @throws IOException if the state documents could not be read
+	 * @throws FailedMongoClientSessionException if a session could not be started
+	 */
+	private LoadResult<R> loadState() throws UninitializedCollectionException, UnrecognizedFormatException, InvalidCollectionContentsException, IOException, FailedMongoClientSessionException {
+		try (var _ = queryCollection.newReadOnlySession()) {
+			// The load must read a consistent snapshot, so run it inside a
+			// read-only transaction. (Refurbish runs its load inside its own
+			// transaction, so the load is always transactional.)
+			queryCollection.ensureTransactionStarted();
+			FormatDriver<R> driver = detectFormat();
+			StateAndMetadata<R> state = driver.loadAllState();
+			return new LoadResult<>(driver, state);
+		}
 	}
 
 	/**
@@ -624,17 +646,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			LOGGER.debug("onConnectionSucceeded");
 			logConnectionDiagnostics();
 			if (initialStateTask.isDone()) {
-				FormatDriver<R> newDriver;
-				StateAndMetadata<R> allState;
-				try (var _ = queryCollection.newReadOnlySession()) {
+				LoadResult<R> loaded;
+				try {
 					LOGGER.debug("Loading database state to submit to downstream driver");
-					// The load must read a consistent snapshot, so run it inside a
-					// read-only transaction. (Refurbish runs its load inside its own
-					// transaction, so the load is always transactional.)
-					queryCollection.ensureTransactionStarted();
-					newDriver = detectFormat();
-					allState = newDriver.loadAllState();
-					LOGGER.trace("Loaded state: {}", allState);
+					loaded = loadState();
+					LOGGER.trace("Loaded state: {}", loaded.state());
 				} catch (UninitializedCollectionException e) {
 					// We don't auto-initialize after the initialStateTask is done
 					throw new DatabaseLoadException("Cannot reload state from database", e);
@@ -650,13 +666,13 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// before ours (below) because this code runs on the ChangeReceiver thread, which is
 				// the only thread that submits updates downstream.
 
-				publishFormatDriver(newDriver);
+				publishFormatDriver(loaded.driver());
 
-				downstream.submitReplacement(boskInfo.rootReference(), allState.state());
+				downstream.submitReplacement(boskInfo.rootReference(), loaded.state().state());
 				LOGGER.debug("Done submitting downstream");
 
 				downstream.flush();
-				newDriver.onHasBeenApplied(allState);
+				loaded.driver().onHasBeenApplied(loaded.state());
 			} else {
 				LOGGER.debug("Running initialStateTask");
 				try {
