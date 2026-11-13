@@ -280,7 +280,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	private void doAtomicReplacement(PreparedReplacement prepared, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
 		if (replaceInDocument(prepared.target(), prepared.value(), prepared.targetDocRef(), precondition, requiredValue)) {
-			LOGGER.debug("| Replacement applied");
+			LOGGER.debug("| Replacement changed the document");
 		} else {
 			LOGGER.debug("| Replacement had no effect");
 		}
@@ -296,7 +296,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	private void doAtomicDeletion(Reference<?> target, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
 		if (deleteInDocument(target, deletionDocumentRef(target), precondition, requiredValue)) {
-			LOGGER.debug("| Deletion applied");
+			LOGGER.debug("| Deletion changed the document");
 		} else {
 			LOGGER.debug("| Deletion had no effect");
 		}
@@ -792,8 +792,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				LOGGER.debug("| Skipping root pre-delete for {}: no sub-parts", target);
 			}
 			LOGGER.debug("| Update root document");
-			boolean applied = doUpdate(replacementDoc(target, value, rootRef), standardPreconditions(target, rootRef, documentFilter(rootRef)));
-			if (applied) {
+			boolean changed = doUpdate(replacementDoc(target, value, rootRef), standardPreconditions(target, rootRef, documentFilter(rootRef)));
+			if (changed) {
 				return COMMIT;
 			} else {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
@@ -811,9 +811,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 			// This is the topmost write, so it carries the revision bump and the
 			// diagnostics. No other document is written.
-			boolean applied = doUpdate(replacementDoc(target, value, targetDocRef), standardPreconditions(target, targetDocRef, filter));
+			boolean changed = doUpdate(replacementDoc(target, value, targetDocRef), standardPreconditions(target, targetDocRef, filter));
 
-			if (applied) {
+			if (changed) {
 				return COMMIT;
 			} else {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");

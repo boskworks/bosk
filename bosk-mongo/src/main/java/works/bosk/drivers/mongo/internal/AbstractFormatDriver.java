@@ -230,9 +230,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	/**
 	 * Replaces {@code target} in one conditional update against {@code documentRef}.
 	 * All preconditions are expressed in the filter, so the update result tells
-	 * us whether the write applied without a separate read.
+	 * us whether the write matched without a separate read.
 	 *
-	 * @return true if the update applied
+	 * @return true if the write matched
 	 */
 	protected <T> boolean replaceInDocument(
 		Reference<T> target,
@@ -249,7 +249,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * Creates {@code target} in one conditional update against {@code documentRef},
 	 * provided the target field does not already exist.
 	 *
-	 * @return true if the update applied
+	 * @return true if the write matched
 	 */
 	protected <T> boolean createInDocument(Reference<T> target, BsonValue value, Reference<?> documentRef) {
 		BsonDocument filter = documentFilter(documentRef)
@@ -261,7 +261,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	/**
 	 * Deletes {@code target} in one conditional update against {@code documentRef}.
 	 *
-	 * @return true if the update applied
+	 * @return true if the write matched
 	 */
 	protected <T> boolean deleteInDocument(
 		Reference<T> target,
