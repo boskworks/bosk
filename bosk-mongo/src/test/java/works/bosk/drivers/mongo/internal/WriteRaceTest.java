@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
 import works.bosk.Catalog;
+import works.bosk.Reference;
 import works.bosk.drivers.mongo.MongoDriver;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.PandoFormat;
@@ -38,7 +39,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * Exhibits races between a concurrent write and Pando's load or refurbish
- * operations, both of which read the state outside a transaction.
+ * operations.
  */
 @ReplayLogsOnFailure
 @InjectFields
@@ -302,6 +303,135 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 		@Override
 		public void onDisconnect(Throwable e) {
 			downstream.onDisconnect(e);
+		}
+	}
+
+	/**
+	 * The change stream is opened before the state is loaded, so a write that
+	 * commits in between is both included in the load and replayed afterwards.
+	 * A replayed event from an incarnation the load has already replaced must
+	 * not be applied to the new incarnation: it would record a revision the new
+	 * incarnation hasn't reached, so later genuine updates would look like they
+	 * had already been applied, and would be ignored.
+	 */
+	@Test
+	void loadAfterCursorOpens_ignoresEventsTheLoadAlreadyIncludes() throws Exception {
+		BlockingGate connectionGate = new BlockingGate("the change receiver's connection setup");
+
+		// The writer bosk initializes the database and performs the writes that
+		// land between the test bosk's cursor opening and its state load.
+		Bosk<TestEntity> writerBosk = new Bosk<>(
+			boskName("loadWindowWriter"),
+			TestEntity.class,
+			this::singleEntryInitialState,
+			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+		writerBosk.driver().flush();
+		Refs writerRefs = writerBosk.buildReferences(Refs.class);
+		Reference<String> writerString = writerRefs.catalog().then(entity123).then(String.class, "string");
+
+		// Construct the test bosk on a background thread, holding it once the
+		// cursor is open but before the state is loaded.
+		AtomicReference<Bosk<TestEntity>> testBoskRef = new AtomicReference<>();
+		AtomicReference<Throwable> constructionError = new AtomicReference<>();
+		Thread loadThread = new Thread(() -> {
+			MainDriver.setProbes(TestProbes.noop()
+				.withListenerFactory(downstream -> new GatingConnectionListener(downstream, connectionGate)));
+			try {
+				testBoskRef.set(new Bosk<>(
+					boskName("loadWindowTest"),
+					TestEntity.class,
+					this::singleEntryInitialState,
+					BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build()));
+			} catch (Throwable e) {
+				constructionError.set(e);
+			} finally {
+				MainDriver.resetProbes();
+			}
+		});
+		loadThread.start();
+
+		try {
+			connectionGate.awaitSignal(Duration.ofSeconds(30));
+
+			// Leave the old incarnation with a higher revision than the new one
+			// will reach in this test, then delete the entry and re-create it.
+			for (int i = 0; i < 3; i++) {
+				writerBosk.driver().submitReplacement(writerString, "old" + i);
+			}
+			writerBosk.driver().submitDeletion(writerRefs.catalog().then(entity123));
+			writerBosk.driver().submitReplacement(writerRefs.catalog().then(entity123),
+				TestEntity.empty(entity123, writerRefs.childCatalog(entity123)).withString("new"));
+			writerBosk.driver().flush();
+
+			connectionGate.release();
+			loadThread.join(60_000);
+			assertFalse(loadThread.isAlive(), "Test bosk construction should finish");
+		} finally {
+			connectionGate.release();
+			if (loadThread.isAlive()) {
+				loadThread.interrupt();
+				loadThread.join();
+			}
+			MainDriver.resetProbes();
+		}
+
+		assertNull(constructionError.get(), "Test bosk construction should not throw");
+
+		Bosk<TestEntity> testBosk = testBoskRef.get();
+		Refs testRefs = testBosk.buildReferences(Refs.class);
+
+		// Wait until the receiver has processed every event the load replayed, by
+		// writing somewhere unrelated and waiting for that change to be applied.
+		// Change events are ordered, so everything committed before the marker
+		// has been processed by the time the marker's flush returns.
+		writerBosk.driver().submitReplacement(
+			writerBosk.rootReference().then(String.class, "string"), "marker");
+		writerBosk.driver().flush();
+		testBosk.driver().flush();
+		try (var _ = testBosk.readSession()) {
+			assertEquals("new", testRefs.catalog().then(entity123).then(String.class, "string").value(),
+				"The loaded state must include the writes that committed before its snapshot");
+		}
+
+		// The re-created document's next revision is lower than the old
+		// incarnation's, so a replayed event from the old incarnation would make
+		// this update look like one the driver had already applied.
+		writerBosk.driver().submitReplacement(writerString, "newer");
+		writerBosk.driver().flush();
+		testBosk.driver().flush();
+		try (var _ = testBosk.readSession()) {
+			assertEquals("newer", testRefs.catalog().then(entity123).then(String.class, "string").value(),
+				"An update after the load's snapshot must not be ignored as already applied");
+		}
+	}
+
+	/**
+	 * A {@link ChangeListener} that blocks in
+	 * {@link ChangeListener#onConnectionSucceeded()} until the test releases
+	 * {@code connectionGate}, so the test can commit writes after the change
+	 * stream cursor is open but before the state is loaded.
+	 */
+	private static final class GatingConnectionListener extends ForwardingChangeListener {
+		private final BlockingGate connectionGate;
+
+		GatingConnectionListener(ChangeListener downstream, BlockingGate connectionGate) {
+			super(downstream);
+			this.connectionGate = connectionGate;
+		}
+
+		@Override
+		public void onConnectionSucceeded() throws
+			UnrecognizedFormatException,
+			InterruptedException,
+			IOException,
+			InitialStateException,
+			TimeoutException,
+			FailedMongoClientSessionException,
+			InvalidCollectionContentsException
+		{
+			connectionGate.signal();
+			connectionGate.awaitRelease(Duration.ofSeconds(60));
+			super.onConnectionSucceeded();
 		}
 	}
 

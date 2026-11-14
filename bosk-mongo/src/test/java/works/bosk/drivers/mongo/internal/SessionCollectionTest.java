@@ -17,10 +17,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonString;
+import org.bson.BsonTimestamp;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.drivers.mongo.internal.SessionCollection.Session;
+import works.bosk.drivers.mongo.internal.SessionCollection.SessionType;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -81,7 +83,7 @@ class SessionCollectionTest {
 	void newSession_createsSession() throws FailedMongoClientSessionException {
 		try (Session session = collection.newSession()) {
 			assertNotNull(session.clientSession);
-			assertFalse(session.isReadOnly);
+			assertEquals(SessionType.WRITEABLE, session.type);
 		}
 	}
 
@@ -89,8 +91,70 @@ class SessionCollectionTest {
 	void newReadOnlySession_createsSession() throws FailedMongoClientSessionException {
 		try (Session session = collection.newReadOnlySession()) {
 			assertNotNull(session.clientSession);
-			assertTrue(session.isReadOnly);
+			assertEquals(SessionType.READ_ONLY, session.type);
 		}
+	}
+
+	@Test
+	void readOnlySession_rejectsTransactions() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newReadOnlySession()) {
+			assertThrows(IllegalStateException.class, collection::ensureTransactionStarted);
+		}
+	}
+
+	/**
+	 * When the state is loaded, the collection may not exist yet: that's how a
+	 * brand new database looks. A snapshot read of a nonexistent collection
+	 * establishes no snapshot and reports no time, which is why
+	 * {@link SessionCollection#establishSnapshot()} doesn't read the collection.
+	 */
+	@Test
+	void establishSnapshot_worksWhenCollectionDoesNotExist() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newReadOnlySession()) {
+			assertNotNull(collection.establishSnapshot(),
+				"A snapshot read must report its snapshot time even when the collection does not exist");
+		}
+	}
+
+	@Test
+	void establishSnapshot_doesNotChangeWithinSession() throws FailedMongoClientSessionException {
+		makeData("doc1");
+		try (Session _ = collection.newReadOnlySession()) {
+			BsonTimestamp first = collection.establishSnapshot();
+			BsonTimestamp second = collection.establishSnapshot();
+			assertNotNull(first, "A snapshot read must report its snapshot time");
+			assertEquals(first, second, "The snapshot time must not change within a session");
+		}
+	}
+
+	@Test
+	void readOnlySession_seesOnlyWritesBeforeItsSnapshot() throws FailedMongoClientSessionException {
+		makeData("before");
+		MongoCollection<BsonDocument> raw2 = client
+			.getDatabase(DB_NAME)
+			.getCollection(COLLECTION_NAME, BsonDocument.class);
+		SessionCollection otherCollection = SessionCollection.of(raw2, client);
+
+		try (Session _ = collection.newReadOnlySession()) {
+			collection.establishSnapshot();
+			insertFresh(otherCollection, new BsonDocument("_id", new BsonString("after")));
+			try (DocCursor cursor = collection.find(new BsonDocument()).cursor()) {
+				long count = 0;
+				while (cursor.hasNext()) {
+					cursor.next();
+					count++;
+				}
+				assertEquals(1, count, "Reads must see the snapshot taken before the later write");
+			}
+		}
+	}
+
+	@Test
+	void establishSnapshot_withoutReadOnlySession_throws() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newSession()) {
+			assertThrows(IllegalStateException.class, collection::establishSnapshot);
+		}
+		assertThrows(IllegalStateException.class, collection::establishSnapshot);
 	}
 
 	@Test
@@ -453,13 +517,6 @@ class SessionCollectionTest {
 			.findLatest(new BsonDocument("_id", new BsonString("abortDoc"))).cursor()
 		) {
 			assertFalse(cursor.hasNext(), "Aborted data must not be visible");
-		}
-	}
-
-	@Test
-	void readOnlySession_canStartTransaction() throws FailedMongoClientSessionException {
-		try (Session _ = collection.newReadOnlySession()) {
-			assertDoesNotThrow(() -> collection.ensureTransactionStarted());
 		}
 	}
 
