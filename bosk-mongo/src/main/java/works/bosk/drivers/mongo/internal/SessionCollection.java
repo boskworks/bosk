@@ -54,12 +54,32 @@ class SessionCollection {
 		return of(downstream, mongoClient, FindInterceptor.identity(), WriteInterceptor.identity(), CommitInterceptor.identity(), SessionInterceptor.identity());
 	}
 
+	/**
+	 * The kind of session to open, which determines the options it's opened
+	 * with and the operations it permits.
+	 */
+	enum SessionType {
+		/**
+		 * Writes and transactions are allowed.
+		 */
+		WRITEABLE,
+		/**
+		 * Writes are rejected, but transactions are allowed, giving their reads
+		 * a consistent snapshot.
+		 */
+		READ_ONLY;
+
+		boolean isReadOnly() {
+			return this != WRITEABLE;
+		}
+	}
+
 	public Session newSession() throws FailedMongoClientSessionException {
-		return new Session(false);
+		return new Session(SessionType.WRITEABLE);
 	}
 
 	public Session newReadOnlySession() throws FailedMongoClientSessionException {
-		return new Session(true);
+		return new Session(SessionType.READ_ONLY);
 	}
 
 	/**
@@ -80,7 +100,7 @@ class SessionCollection {
 		Session session = currentSession.get();
 		if (session == null) {
 			throw new IllegalStateException("No active session");
-		} else if (session.isReadOnly) {
+		} else if (session.type.isReadOnly()) {
 			throw new IllegalStateException("Cannot write in a read-only session");
 		}
 		return session.clientSession.withTransaction(body, options);
@@ -94,14 +114,14 @@ class SessionCollection {
 	 */
 	public class Session implements AutoCloseable {
 		final ClientSession clientSession;
-		final boolean isReadOnly;
+		final SessionType type;
 		final String name;
 		final String oldMDC;
 		static final AtomicLong identityCounter = new AtomicLong(1);
 
-		public Session(boolean isReadOnly) throws FailedMongoClientSessionException {
-			this.isReadOnly = isReadOnly;
-			name = (isReadOnly? "r":"s") + identityCounter.getAndIncrement();
+		public Session(SessionType type) throws FailedMongoClientSessionException {
+			this.type = type;
+			name = (type.isReadOnly()? "r":"s") + identityCounter.getAndIncrement();
 			oldMDC = MDC.get(MdcKeys.TRANSACTION);
 			if (currentSession.get() != null) {
 				// Note: we don't throw FailedMongoClientSessionException because this
@@ -126,7 +146,7 @@ class SessionCollection {
 			}
 			currentSession.set(this);
 			MDC.put(MdcKeys.TRANSACTION, name);
-			LOGGER.debug("Begin session {} lsid={}", name, lsid());
+			LOGGER.debug("Begin session {} lsid={} type={}", name, lsid(), type);
 		}
 
 		/**
@@ -366,7 +386,7 @@ class SessionCollection {
 		Session session = currentSession.get();
 		if (session == null) {
 			throw new IllegalStateException("No active session");
-		} else if (session.isReadOnly) {
+		} else if (session.type.isReadOnly()) {
 			throw new IllegalStateException("Cannot write in a read-only session");
 		}
 	}

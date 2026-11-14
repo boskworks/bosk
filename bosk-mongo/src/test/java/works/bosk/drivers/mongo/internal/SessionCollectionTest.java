@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.drivers.mongo.internal.SessionCollection.Session;
+import works.bosk.drivers.mongo.internal.SessionCollection.SessionType;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -81,7 +82,7 @@ class SessionCollectionTest {
 	void newSession_createsSession() throws FailedMongoClientSessionException {
 		try (Session session = collection.newSession()) {
 			assertNotNull(session.clientSession);
-			assertFalse(session.isReadOnly);
+			assertEquals(SessionType.WRITEABLE, session.type);
 		}
 	}
 
@@ -89,7 +90,7 @@ class SessionCollectionTest {
 	void newReadOnlySession_createsSession() throws FailedMongoClientSessionException {
 		try (Session session = collection.newReadOnlySession()) {
 			assertNotNull(session.clientSession);
-			assertTrue(session.isReadOnly);
+			assertEquals(SessionType.READ_ONLY, session.type);
 		}
 	}
 
