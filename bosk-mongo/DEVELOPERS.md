@@ -326,6 +326,19 @@ other events are handled by `MainDriver` itself:
 - `onConnectionFailed` ensures the `MainDriver`'s internal state is consistent when the database is unreachable; and
 - `onDisconnect` shuts down the `FormatDriver` when the database connection is lost.
 
+The cursor is open before the state is loaded, so the events it delivers include some
+that the load already reflects. Each load records the time of the snapshot it read from,
+and `onEvent` ignores events at or before that time. Replaying them would be at best
+wasted work, and at worst harmful: an event's revision belongs to the incarnation of the
+document it changed, and a pre-load event can describe an incarnation the load has
+already replaced. Applying it would record a revision that the new incarnation hasn't
+reached, so subsequent genuine updates would look already applied, and would be ignored.
+
+This is why the load is a snapshot read rather than a transaction. A transaction is
+consistent too, but its operation time advances past the snapshot boundary, so it gives
+nothing to compare events against. A snapshot read reports the time of the snapshot
+itself, and that time is what `onEvent` filters on.
+
 In summary, these are the division of responsibilities among the components:
 1. All format-specific logic is in `FormatDriver`
 2. For format-independent logic:
@@ -401,7 +414,7 @@ and uses the `with` methods to set the ones it needs. The probes are:
   contents. It lets a test induce a race between a refurbish and a concurrent write.
 - `findInterceptor` sees every database read (the `filter`, the `ReadOptions`, and the
   `DocCursor`) and may return a wrapped cursor. This is how a test pauses a read
-  mid-stream: `MongoDriverLoadRaceTest`, for example, wraps the load's cursor in a
+  mid-stream: `WriteRaceTest`, for example, wraps the load's cursor in a
   `PausingCursor` that signals a `BlockingGate` after the first document and blocks until
   the test lets it proceed.
 - `commitInterceptor` runs after each transaction commit attempt and may throw to simulate

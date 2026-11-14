@@ -2,6 +2,7 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.ClientSessionOptions;
 import com.mongodb.MongoException;
+import com.mongodb.MongoNamespace;
 import com.mongodb.ReadConcern;
 import com.mongodb.ReadPreference;
 import com.mongodb.TransactionOptions;
@@ -18,9 +19,14 @@ import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
+import org.bson.BsonArray;
 import org.bson.BsonDocument;
+import org.bson.BsonInt32;
+import org.bson.BsonTimestamp;
+import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,10 +73,19 @@ class SessionCollection {
 		 * Writes are rejected, but transactions are allowed, giving their reads
 		 * a consistent snapshot.
 		 */
-		READ_ONLY;
+		READ_ONLY,
+		/**
+		 * All reads see the same snapshot of the database. Writes and
+		 * transactions are rejected.
+		 */
+		SNAPSHOT;
 
 		boolean isReadOnly() {
 			return this != WRITEABLE;
+		}
+
+		boolean isSnapshot() {
+			return this == SNAPSHOT;
 		}
 	}
 
@@ -80,6 +95,20 @@ class SessionCollection {
 
 	public Session newReadOnlySession() throws FailedMongoClientSessionException {
 		return new Session(SessionType.READ_ONLY);
+	}
+
+	/**
+	 * Creates a read-only session whose reads all see the same snapshot of the
+	 * database.
+	 * <p>
+	 * The session takes its snapshot on its first read, and every subsequent
+	 * read uses that same snapshot. {@link #establishSnapshot()} establishes the
+	 * snapshot deliberately, and reports the time it corresponds to.
+	 * <p>
+	 * A snapshot session can't contain a transaction or perform a write.
+	 */
+	public Session newSnapshotSession() throws FailedMongoClientSessionException {
+		return new Session(SessionType.SNAPSHOT);
 	}
 
 	/**
@@ -131,16 +160,20 @@ class SessionCollection {
 				// as a bosk bug!
 				throw new IllegalStateException("Cannot start nested session");
 			}
-			ClientSessionOptions sessionOptions = ClientSessionOptions.builder()
-				.causallyConsistent(true)
+			ClientSessionOptions.Builder sessionOptions = ClientSessionOptions.builder()
 				.defaultTransactionOptions(TransactionOptions.builder()
 					.writeConcern(WriteConcern.MAJORITY)
 					.readConcern(ReadConcern.MAJORITY)
 					.readPreference(ReadPreference.primary())
-					.build())
-				.build();
+					.build());
+			if (type.isSnapshot()) {
+				// Snapshot reads and causal consistency are mutually exclusive.
+				sessionOptions.snapshot(true);
+			} else {
+				sessionOptions.causallyConsistent(true);
+			}
 			try {
-				this.clientSession = mongoClient.startSession(sessionOptions);
+				this.clientSession = mongoClient.startSession(sessionOptions.build());
 			} catch (RuntimeException | Error e) {
 				throw new FailedMongoClientSessionException(e);
 			}
@@ -259,15 +292,62 @@ class SessionCollection {
 	 * same transaction.
 	 * <p>
 	 * In a read-only session this starts a read-only transaction, which gives
-	 * the reads a consistent snapshot (used to load the state).
+	 * the reads a consistent snapshot.
 	 */
 	public void ensureTransactionStarted() {
 		Session session = currentSession.get();
 		if (session == null) {
 			throw new IllegalStateException("No active session");
+		} else if (session.type.isSnapshot()) {
+			throw new IllegalStateException("Cannot start a transaction in a snapshot session");
 		} else if (!session.clientSession.hasActiveTransaction()) {
 			session.clientSession.startTransaction();
 			LOGGER.debug("Start transaction {} lsid={} txnNumber={}", session.name, session.lsid(), session.txnNumber());
+		}
+	}
+
+	/**
+	 * Establishes the current session's snapshot, and returns the time it
+	 * corresponds to.
+	 * <p>
+	 * The first read in a snapshot session establishes the snapshot, so this
+	 * read exists only to learn when that happened. The database reports the
+	 * time as {@code atClusterTime} in the response; the client library reads
+	 * the same field but doesn't expose it publicly.
+	 * <p>
+	 * The read is an empty aggregation, so it touches no collection. A read of
+	 * a collection that doesn't exist yet reports no time, and during
+	 * initialization the collection may not exist.
+	 */
+	public BsonTimestamp establishSnapshot() {
+		Session session = requireSnapshotSession();
+		MongoNamespace namespace = downstream.getNamespace();
+		BsonDocument aggregate = new BsonDocument()
+			.append("aggregate", new BsonInt32(1))
+			.append("pipeline", new BsonArray(List.of(
+				new BsonDocument("$documents", new BsonArray()))))
+			.append("cursor", new BsonDocument());
+		LOGGER.debug("Establishing snapshot with {}", aggregate);
+		Document response = mongoClient
+			.getDatabase(namespace.getDatabaseName())
+			.runCommand(session.clientSession, aggregate);
+		Document cursor = response.get("cursor", Document.class);
+		BsonTimestamp snapshotTime = cursor == null ? null : cursor.get("atClusterTime", BsonTimestamp.class);
+		if (snapshotTime == null) {
+			throw new IllegalStateException("Snapshot read did not report a snapshot time: " + response);
+		}
+		LOGGER.debug("Snapshot established at {}", snapshotTime);
+		return snapshotTime;
+	}
+
+	private Session requireSnapshotSession() {
+		Session session = currentSession.get();
+		if (session == null) {
+			throw new IllegalStateException("No active session");
+		} else if (!session.type.isSnapshot()) {
+			throw new IllegalStateException("Operation requires a snapshot session");
+		} else {
+			return session;
 		}
 	}
 

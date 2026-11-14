@@ -28,6 +28,7 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
+import org.bson.BsonTimestamp;
 import org.bson.BsonValue;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -151,9 +152,18 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		static final MongoClientFactory ALWAYS_CREATE = new MongoClientFactory(MongoClients::create, true);
 	}
 
+	/**
+	 * The driver stack currently in use, and the time of the snapshot that the
+	 * in-memory state was loaded from.
+	 *
+	 * @param loadTime the time of the snapshot the state was loaded from, or
+	 * empty if no load has succeeded and there is no state to compare change
+	 * events against
+	 */
 	private record Drivers<R extends StateTreeNode>(
 		FormatDriver<R> formatDriver,
-		UpdateDriver updateDriver
+		UpdateDriver updateDriver,
+		Optional<BsonTimestamp> loadTime
 	) {}
 
 	/**
@@ -224,7 +234,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection(), BsonDocument.class), queryClient, testProbes.findInterceptor(), testProbes.writeInterceptor(), testProbes.commitInterceptor(), testProbes.sessionInterceptor());
 			FormatDriver<R> initialFormatDriver = new DisconnectedDriver<>(new Exception("Driver not yet initialized"));
-			this.drivers = new Drivers<>(initialFormatDriver, newUpdateDriver(initialFormatDriver));
+			this.drivers = new Drivers<>(initialFormatDriver, newUpdateDriver(initialFormatDriver), Optional.empty());
 			LOGGER.debug("Using database \"{}\" collection \"{}\"", driverSettings.database(), driverSettings.collection());
 
 			this.formatter = new Formatter(boskInfo, bsonSerializer);
@@ -333,7 +343,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// Hasn't technically been applied, but we're still initializing the Bosk, and its constructor won't return until the state has been applied
 			loaded.driver().onHasBeenApplied(loaded.state());
 
-			publishFormatDriver(loaded.driver());
+			publishFormatDriver(loaded.driver(), Optional.of(loaded.snapshotTime()));
 		} catch (UninitializedCollectionException e) {
 			// We log this at warn because, in production, this is a big deal.
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
@@ -356,7 +366,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
 				session.commitTransactionIfAny();
 				// We can now publish the driver knowing that the transaction has committed
-				publishFormatDriver(preferredDriver);
+				publishFormatDriver(preferredDriver, Optional.empty());
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2, currentFormatDriver());
@@ -370,12 +380,17 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	/**
 	 * The result of {@link #loadState()}: the driver for the format the state
-	 * was stored in, and the state itself.
+	 * was stored in, the state itself, and the time of the snapshot it was read
+	 * from.
 	 */
-	private record LoadResult<S extends StateTreeNode>(FormatDriver<S> driver, StateAndMetadata<S> state) {}
+	private record LoadResult<S extends StateTreeNode>(FormatDriver<S> driver, StateAndMetadata<S> state, BsonTimestamp snapshotTime) {}
 
 	/**
 	 * Loads the database state in a consistent snapshot.
+	 * <p>
+	 * The returned snapshot time identifies the state the database had when the
+	 * load began: change events at or before it are already reflected in the
+	 * returned state.
 	 *
 	 * @throws UninitializedCollectionException if the collection has not been initialized
 	 * @throws UnrecognizedFormatException if the collection does not contain a format we recognize
@@ -384,14 +399,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * @throws FailedMongoClientSessionException if a session could not be started
 	 */
 	private LoadResult<R> loadState() throws UninitializedCollectionException, UnrecognizedFormatException, InvalidCollectionContentsException, IOException, FailedMongoClientSessionException {
-		try (var _ = queryCollection.newReadOnlySession()) {
-			// The load must read a consistent snapshot, so run it inside a
-			// read-only transaction. (Refurbish runs its load inside its own
-			// transaction, so the load is always transactional.)
-			queryCollection.ensureTransactionStarted();
+		try (var _ = queryCollection.newSnapshotSession()) {
+			// All the load's reads come from one snapshot, whose time tells the
+			// listener which change events the loaded state already includes. A
+			// transaction is consistent too, but its operation time moves past
+			// the snapshot boundary, leaving nothing to compare against.
+			BsonTimestamp snapshotTime = queryCollection.establishSnapshot();
 			FormatDriver<R> driver = detectFormat();
 			StateAndMetadata<R> state = driver.loadAllState();
-			return new LoadResult<>(driver, state);
+			return new LoadResult<>(driver, state, snapshotTime);
 		}
 	}
 
@@ -572,11 +588,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// committed, so we publish the new driver only after the database
 			// changes are durable.
 			FormatDriver<R> newFormatDriver = refurbishTransaction(driverInUse, "refurbish");
-			publishFormatDriver(newFormatDriver);
+			// Refurbish doesn't change what state has been applied, so the old
+			// load time still describes the in-memory state.
+			publishFormatDriver(newFormatDriver, currentDrivers().loadTime());
 
-			// Refurbish doesn't actually change what state has been applied to
-			// the bosk, so there's no downstream submit/flush and no call to
-			// onHasBeenApplied.
+			// Because the state is unchanged, there's no downstream submit or
+			// flush, and no call to onHasBeenApplied.
 		}, "refurbish");
 	}
 
@@ -666,7 +683,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// before ours (below) because this code runs on the ChangeReceiver thread, which is
 				// the only thread that submits updates downstream.
 
-				publishFormatDriver(loaded.driver());
+				publishFormatDriver(loaded.driver(), Optional.of(loaded.snapshotTime()));
 
 				downstream.submitReplacement(boskInfo.rootReference(), loaded.state().state());
 				LOGGER.debug("Done submitting downstream");
@@ -705,6 +722,17 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
 			LOGGER.debug("onEvent({}:{})", event.getOperationType().getValue(), getDocumentKeyValue(event));
 			LOGGER.trace("Event details: {}", event);
+			BsonTimestamp eventTime = event.getClusterTime();
+			if (eventTime == null) {
+				throw new UnprocessableEventException("Change event has no cluster time", event.getOperationType());
+			}
+			Optional<BsonTimestamp> loadTime = currentDrivers().loadTime();
+			// Events at or before the load time are already in the loaded state.
+			if (loadTime.isPresent() && eventTime.compareTo(loadTime.get()) <= 0) {
+				LOGGER.debug("Ignoring {} event at {}, at or before the load's snapshot at {}",
+					event.getOperationType(), eventTime, loadTime.get());
+				return;
+			}
 			currentFormatDriver().onEvent(event);
 		}
 
@@ -1114,7 +1142,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			}
 			oldDriver.close();
 			FormatDriver<R> disconnectedDriver = new DisconnectedDriver<>(reason);
-			drivers = new Drivers<>(disconnectedDriver, newUpdateDriver(disconnectedDriver));
+			drivers = new Drivers<>(disconnectedDriver, newUpdateDriver(disconnectedDriver), Optional.empty());
 		} finally {
 			driversLock.unlock();
 		}
@@ -1129,13 +1157,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	/**
 	 * Sets {@link #drivers} and also signals any threads waiting on {@link #driversChanged}
 	 * to retry their operation.
+	 *
+	 * @param loadTime the time of the snapshot the new driver's state was loaded
+	 * from, or empty if it loaded no state
 	 */
-	void publishFormatDriver(FormatDriver<R> newFormatDriver) {
+	void publishFormatDriver(FormatDriver<R> newFormatDriver, Optional<BsonTimestamp> loadTime) {
 		LOGGER.debug("publishFormatDriver({}) (was {})", newFormatDriver.getClass().getSimpleName(), currentFormatDriver().getClass().getSimpleName());
 		try {
 			driversLock.lock();
 			currentFormatDriver().close();
-			drivers = new Drivers<>(newFormatDriver, newUpdateDriver(newFormatDriver));
+			drivers = new Drivers<>(newFormatDriver, newUpdateDriver(newFormatDriver), loadTime);
 			LOGGER.debug("Signaling");
 			driversChanged.signalAll();
 		} finally {

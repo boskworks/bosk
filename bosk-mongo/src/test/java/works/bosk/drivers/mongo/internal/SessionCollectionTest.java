@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonString;
+import org.bson.BsonTimestamp;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -92,6 +93,87 @@ class SessionCollectionTest {
 			assertNotNull(session.clientSession);
 			assertEquals(SessionType.READ_ONLY, session.type);
 		}
+	}
+
+	@Test
+	void newSnapshotSession_createsReadOnlySnapshotSession() throws FailedMongoClientSessionException {
+		try (Session session = collection.newSnapshotSession()) {
+			assertNotNull(session.clientSession);
+			assertEquals(SessionType.SNAPSHOT, session.type);
+		}
+	}
+
+	@Test
+	void snapshotSession_rejectsTransactions() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newSnapshotSession()) {
+			assertThrows(IllegalStateException.class, collection::ensureTransactionStarted);
+		}
+	}
+
+	@Test
+	void snapshotSession_rejectsWrites() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newSnapshotSession()) {
+			BsonDocument filter = new BsonDocument("_id", new BsonString("doc1"));
+			BsonDocument update = new BsonDocument("$set", new BsonDocument("x", new BsonInt32(1)));
+			assertThrows(IllegalStateException.class,
+				() -> collection.insertOne(new BsonDocument("_id", new BsonString("new"))));
+			assertThrows(IllegalStateException.class, () -> collection.updateOne(filter, update));
+		}
+	}
+
+	/**
+	 * When the state is loaded, the collection may not exist yet: that's how a
+	 * brand new database looks. A snapshot read of a nonexistent collection
+	 * establishes no snapshot and reports no time, which is why
+	 * {@link SessionCollection#establishSnapshot()} doesn't read the collection.
+	 */
+	@Test
+	void establishSnapshot_worksWhenCollectionDoesNotExist() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newSnapshotSession()) {
+			assertNotNull(collection.establishSnapshot(),
+				"A snapshot read must report its snapshot time even when the collection does not exist");
+		}
+	}
+
+	@Test
+	void establishSnapshot_doesNotChangeWithinSession() throws FailedMongoClientSessionException {
+		makeData("doc1");
+		try (Session _ = collection.newSnapshotSession()) {
+			BsonTimestamp first = collection.establishSnapshot();
+			BsonTimestamp second = collection.establishSnapshot();
+			assertNotNull(first, "A snapshot read must report its snapshot time");
+			assertEquals(first, second, "The snapshot time must not change within a session");
+		}
+	}
+
+	@Test
+	void snapshotSession_seesOnlyWritesBeforeTheSnapshot() throws FailedMongoClientSessionException {
+		makeData("before");
+		MongoCollection<BsonDocument> raw2 = client
+			.getDatabase(DB_NAME)
+			.getCollection(COLLECTION_NAME, BsonDocument.class);
+		SessionCollection otherCollection = SessionCollection.of(raw2, client);
+
+		try (Session _ = collection.newSnapshotSession()) {
+			collection.establishSnapshot();
+			insertFresh(otherCollection, new BsonDocument("_id", new BsonString("after")));
+			try (DocCursor cursor = collection.find(new BsonDocument()).cursor()) {
+				long count = 0;
+				while (cursor.hasNext()) {
+					cursor.next();
+					count++;
+				}
+				assertEquals(1, count, "Reads must see the snapshot taken before the later write");
+			}
+		}
+	}
+
+	@Test
+	void establishSnapshot_withoutSnapshotSession_throws() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newSession()) {
+			assertThrows(IllegalStateException.class, collection::establishSnapshot);
+		}
+		assertThrows(IllegalStateException.class, collection::establishSnapshot);
 	}
 
 	@Test
