@@ -60,7 +60,6 @@ import static com.mongodb.client.model.Sorts.ascending;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static works.bosk.ReferenceUtils.rawClass;
-import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.DISCONNECT;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
@@ -352,7 +351,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			try (
 				var session = queryCollection.newSession()
 			) {
-				FormatDriver<R> preferredDriver = newPreferredFormatDriver();
+				Identifier formatId = Manifest.newFormatId();
+				FormatDriver<R> preferredDriver = newPreferredFormatDriver(formatId);
 				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), Map.of());
 
 				// The state document(s) and the manifest must be written atomically,
@@ -363,7 +363,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				try (var _ = boskInfo.context().withOnly(diagnosticAttributes)) {
 					preferredDriver.writeAllState(priorContents);
 				}
-				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
+				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat(), formatId));
 				session.commitTransactionIfAny();
 				// We can now publish the driver knowing that the transaction has committed
 				publishFormatDriver(preferredDriver, Optional.empty());
@@ -436,13 +436,21 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			return runInClientLibraryTransaction(
 				() -> {
 					LOGGER.debug("Refurbishing to {}", driverSettings.preferredDatabaseFormat());
+					testProbes.beforeRefurbishLoad().run();
 					try {
 						// The calls to loadAllState and writeAllState must occur atomically
 						// with respect to event processing, because both of them have side effects
 						// that affect event processing (field tracking and flush locks, respectively).
 						synchronized (receiver) {
-							StateAndMetadata<R> allState = currentFormatDriver().loadAllState();
-							FormatDriver<R> newFormatDriver = newPreferredFormatDriver();
+							// Use the driver that does the load throughout: a retry can run after
+							// another replica refurbished the collection, so the driver this
+							// operation started with may no longer describe what was loaded.
+							FormatDriver<R> loadingDriver = currentFormatDriver();
+							StateAndMetadata<R> allState = loadingDriver.loadAllState();
+							DatabaseFormat preferredFormat = driverSettings.preferredDatabaseFormat();
+							boolean formatChanged = !preferredFormat.equals(loadingDriver.format());
+							Identifier formatId = formatChanged ? Manifest.newFormatId() : loadingDriver.formatId();
+							FormatDriver<R> newFormatDriver = newPreferredFormatDriver(formatId);
 
 							// The manifest is replaced by writeManifest anyway,
 							// so deleting it has no value; and if we do delete it, then every
@@ -455,7 +463,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 							queryCollection.deleteMany(deletionFilter);
 
 							newFormatDriver.writeAllState(allState);
-							writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat()));
+							if (formatChanged) {
+								writeManifest(Manifest.forFormat(preferredFormat, formatId));
+							}
 							return newFormatDriver;
 						}
 					} catch (InvalidCollectionContentsException e) {
@@ -806,8 +816,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 	}
 
-	private FormatDriver<R> newPreferredFormatDriver() {
-		return newFormatDriver(driverSettings.preferredDatabaseFormat());
+	private FormatDriver<R> newPreferredFormatDriver(Identifier formatId) {
+		return newFormatDriver(driverSettings.preferredDatabaseFormat(), formatId);
 	}
 
 	private FormatDriver<R> detectFormat() throws UninitializedCollectionException, UnrecognizedFormatException {
@@ -816,8 +826,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	private FormatDriver<R> detectFormat(Manifest manifest) {
 		LOGGER.debug("Detecting format");
-		DatabaseFormat format = manifest.pando().isPresent()? manifest.pando().get() : SEQUOIA;
-		return newFormatDriver(format);
+		return newFormatDriver(manifest.format(), manifest.formatId());
 	}
 
 	record ManifestInfo(Manifest manifest, @Nullable BsonString manifestId) {}
@@ -882,7 +891,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		return new UpdateDriver(driver, queryCollection, timescaleMS, reason -> setDisconnectedDriver(reason, driver));
 	}
 
-	private FormatDriver<R> newFormatDriver(DatabaseFormat format) {
+	private FormatDriver<R> newFormatDriver(DatabaseFormat format, Identifier formatId) {
 		return switch (format) {
 			case SequoiaFormat _ -> new SequoiaFormatDriver<>(
 				boskInfo,
@@ -890,7 +899,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				driverSettings,
 				bsonSerializer,
 				flushTimeout,
-				downstream
+				downstream,
+				formatId
 			);
 			case PandoFormat pandoFormat -> new PandoFormatDriver<>(
 				boskInfo,
@@ -899,7 +909,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				pandoFormat,
 				bsonSerializer,
 				flushTimeout,
-				downstream);
+				downstream,
+				formatId);
 		};
 	}
 
@@ -1108,9 +1119,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	/**
 	 * Disconnects the current {@link FormatDriver} from the {@link MainDriver}: the
-	 * FormatDriver is closed and discarded, {@link #drivers} becomes a
-	 * {@link DisconnectedDriver} that refuses updates, and the {@link ChangeReceiver} is
-	 * poked to reconnect.
+	 * FormatDriver is closed and discarded, and {@link #drivers} becomes a
+	 * {@link DisconnectedDriver} that refuses updates.
 	 * <p>
 	 * Does not signal threads waiting on {@link #driversChanged}: there's no point
 	 * waking them to retry with {@link DisconnectedDriver} (which is bound to fail); they
@@ -1120,6 +1130,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * and will be retried, or a change-stream problem the receiver is recovering from. Its
 	 * only job is to keep the driver from submitting updates while its understanding of the
 	 * database is suspect.
+	 * <p>
+	 * The {@link ChangeReceiver} is poked to reconnect unless it has already been
+	 * disconnected by someone else, or it will hear about the failure from the change
+	 * stream. A refurbish is the latter: it is itself a database change, so the receiver
+	 * sees it and reconnects when it processes that event, and an interrupt would only
+	 * risk aborting that reconnect.
 	 * <p>
 	 * If {@link #drivers} no longer contains the {@code currentDriver} the caller expected,
 	 * nothing happens: the current FormatDriver has already been disconnected, or the
@@ -1151,9 +1167,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 
 		if (!(oldDriver instanceof DisconnectedDriver<?>)) {
-			// The receiver is what reconnects us. Poke it to make sure it knows things
-			// have gone south, and we need to try to reconnect.
-			receiver.interrupt();
+			if (reason instanceof FormatChangedDuringUpdateException) {
+				// The change stream is already delivering the refurbish, so interrupting
+				// the receiver here could abort the reconnect that event is prompting.
+				LOGGER.debug("Not interrupting receiver: the change stream is already delivering the refurbish");
+			} else {
+				// The receiver is what reconnects us. Poke it to make sure it knows things
+				// have gone south, and we need to try to reconnect.
+				receiver.interrupt();
+			}
 		}
 	}
 

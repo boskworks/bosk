@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -44,6 +45,7 @@ import works.bosk.RootReference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
@@ -66,6 +68,8 @@ import static java.util.stream.Collectors.toList;
 import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NOTHING_CHANGED;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
@@ -93,7 +97,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		PandoFormat format,
 		BsonSerializer bsonSerializer,
 		Duration flushTimeout,
-		BoskDriver downstream
+		BoskDriver downstream,
+		Identifier formatId
 	) {
 		super(
 			boskInfo.rootReference(),
@@ -101,7 +106,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			new Formatter(boskInfo, bsonSerializer),
 			collection,
 			downstream,
-			flushTimeout
+			flushTimeout,
+			formatId
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
@@ -119,6 +125,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		} catch (InvalidTypeException e) {
 			throw new FormatMisconfigurationException("Path does not point to a Catalog or SideTable: " + pathString, e);
 		}
+	}
+
+	@Override
+	public DatabaseFormat format() {
+		return format;
 	}
 
 	@Override
@@ -278,27 +289,33 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
-	private void doAtomicReplacement(PreparedReplacement prepared, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
+	private AtomicUpdateOperation.Outcome doAtomicReplacement(PreparedReplacement prepared, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
 		if (replaceInDocument(prepared.target(), prepared.value(), prepared.targetDocRef(), precondition, requiredValue)) {
-			LOGGER.debug("| Replacement applied");
+			LOGGER.debug("| Replacement changed the document");
+			return DONE;
 		} else {
 			LOGGER.debug("| Replacement had no effect");
+			return NOTHING_CHANGED;
 		}
 	}
 
-	private void doAtomicConditionalCreation(PreparedReplacement prepared) {
+	private AtomicUpdateOperation.Outcome doAtomicConditionalCreation(PreparedReplacement prepared) {
 		if (createInDocument(prepared.target(), prepared.value(), prepared.targetDocRef())) {
 			LOGGER.debug("| Object initialized");
+			return DONE;
 		} else {
 			LOGGER.debug("| No update");
+			return NOTHING_CHANGED;
 		}
 	}
 
-	private void doAtomicDeletion(Reference<?> target, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
+	private AtomicUpdateOperation.Outcome doAtomicDeletion(Reference<?> target, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
 		if (deleteInDocument(target, deletionDocumentRef(target), precondition, requiredValue)) {
-			LOGGER.debug("| Deletion applied");
+			LOGGER.debug("| Deletion changed the document");
+			return DONE;
 		} else {
 			LOGGER.debug("| Deletion had no effect");
+			return NOTHING_CHANGED;
 		}
 	}
 
@@ -316,15 +333,17 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return operation;
 	}
 
-	private static AtomicUpdateOperation atomic(Runnable operation) {
-		return _ -> {
-			operation.run();
-			return Optional.empty();
-		};
+	private static AtomicUpdateOperation atomic(Supplier<AtomicUpdateOperation.Outcome> operation) {
+		return _ -> operation.get();
 	}
 
+	/**
+	 * An update that deliberately does nothing.
+	 */
 	private static AtomicUpdateOperation noOp() {
-		return _ -> Optional.empty();
+		// Return DONE rather than NOTHING_CHANGED: the decision to do nothing is
+		// already made, so there is no need to check whether the format changed.
+		return _ -> DONE;
 	}
 
 	@Override
@@ -339,6 +358,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		) {
 			while (cursor.hasNext()) {
 				BsonDocument lastPart = cursor.next();
+				validateFormatId(lastPart);
 				BsonString id = lastPart.getString("_id");
 				RevisionTuple revision = revisionOf(lastPart);
 				revisions.put(id, revision);
@@ -455,13 +475,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			 * but outside that, we want to be as strict as we can
 			 * so incompatible database changes don't go unnoticed.
 			 */
-			validateManifestEvent(event, Manifest.forPando(format));
+			validateManifestEvent(event, Manifest.forPando(format, formatId));
 			return;
 		}
 		if (!(bsonDocumentID instanceof BsonString s) || !(s.getValue().contains("|"))) {
 			LOGGER.debug("Ignoring event for unrecognized document key: {} type {}", event.getDocumentKey(), bsonDocumentID.getClass());
 			return;
 		}
+		validateEventFormatId(event);
 
 		// This is an event we care about
 		routeEvent(event);
@@ -770,7 +791,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * <p>
 	 * TODO: We could organize the Sequoia code in a similar manner if doReplacement and doDelete
 	 *  accepted filter arguments (which Pando simply wouldn't use).
-	 *  It's complicated by the fact that the zero-match case in Sequoia is highly ambiguous.
+	 *  Sequoia can't tell the zero-match cases apart from the write result alone,
+	 *  but {@link UpdateDriver} resolves them by checking the format whenever an
+	 *  update matches nothing.
 	 */
 	private Outcome doReplacement(PreparedReplacement prepared) {
 		Reference<?> target = prepared.target();
@@ -792,8 +815,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				LOGGER.debug("| Skipping root pre-delete for {}: no sub-parts", target);
 			}
 			LOGGER.debug("| Update root document");
-			boolean applied = doUpdate(replacementDoc(target, value, rootRef), standardPreconditions(target, rootRef, documentFilter(rootRef)));
-			if (applied) {
+			boolean changed = doUpdate(replacementDoc(target, value, rootRef), standardPreconditions(target, rootRef, documentFilter(rootRef)));
+			if (changed) {
 				return COMMIT;
 			} else {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
@@ -811,9 +834,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 			// This is the topmost write, so it carries the revision bump and the
 			// diagnostics. No other document is written.
-			boolean applied = doUpdate(replacementDoc(target, value, targetDocRef), standardPreconditions(target, targetDocRef, filter));
+			boolean changed = doUpdate(replacementDoc(target, value, targetDocRef), standardPreconditions(target, targetDocRef, filter));
 
-			if (applied) {
+			if (changed) {
 				return COMMIT;
 			} else {
 				LOGGER.debug("| Replacement had no effect; aborting transaction");
@@ -904,9 +927,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private <T> Outcome createGraftPointEntryAndStub(Reference<T> target, Reference<?> containerRef, BsonValue value) {
 		LOGGER.debug("| Creating document {}", target);
 		BsonDocument document = documentFilter(target).clone()
-			.append(DocumentFields.state.name(), value)
+			.append(DocumentFields.formatId.name(), new BsonString(formatId.toString()))
 			.append(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 		RevisionTuple.newLifetime().putInto(document);
+		// The state goes last because it's the big field, and its size can change.
+		document.append(DocumentFields.state.name(), value);
 		doReplace(documentFilter(target), document);
 
 		// The container's stub is the transaction's topmost write.
@@ -1064,22 +1089,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * @return true if something changed
 	 */
 	@Override
-	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
+	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument rawFilter) {
+		BsonDocument filter = withFormatId(rawFilter);
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
 		requireAcknowledged(result, filter, updateDoc, "Update");
-		long matchedCount = result.getMatchedCount();
-		if (matchedCount == 0) {
-			LOGGER.debug("| -> No documents were updated; double-checking that the root document still exists");
-			try (var cursor = collection.find(documentFilter(rootRef)).limit(1).cursor()) {
-				if (!cursor.hasNext()) {
-					throw new IllegalStateException("Root document disappeared");
-				}
-			}
-		}
-		return matchedCount >= 1;
+		return result.getMatchedCount() >= 1;
 	}
 
 	/**
@@ -1088,7 +1105,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * Unlike {@link #doUpdate}, which does nothing unless the document already
 	 * exists, this creates the document when it is absent.
 	 */
-	private void doReplace(BsonDocument filter, BsonDocument replacement) {
+	private void doReplace(BsonDocument rawFilter, BsonDocument replacement) {
+		BsonDocument filter = withFormatId(rawFilter);
 		LOGGER.debug("| Replace: filter={} replacement={}", filter, replacement);
 		UpdateResult result = collection.replaceOne(filter, replacement, new ReplaceOptions().upsert(true));
 		LOGGER.debug("| Replace result: {}", result);
@@ -1221,6 +1239,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			BsonDocument filter = new BsonDocument("_id", id);
 			RevisionTuple newRevision = RevisionTuple.newLifetime();
 			newRevision.putInto(part);
+			part.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
 			// We _must_ get the precise full document for sub-parts in the event
 			// stream, or we can't form the whole. Both an INSERT (when the part is
 			// absent) and a REPLACE (when it already exists) carry it, so one

@@ -10,6 +10,7 @@ import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.MongoDriver;
+import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.status.MongoStatus;
 
 /**
@@ -76,6 +77,21 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	<T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue);
 
 	/**
+	 * Verifies that the database still has this driver's format.
+	 * <p>
+	 * {@link UpdateDriver} calls this whenever an update changes nothing.
+	 * A write that matched a document proves the format was right, because every
+	 * document carries the format id the write required in its filter. A write
+	 * that matched nothing proves nothing: it may have had nothing to do, or it
+	 * may have missed because the collection was refurbished to another format.
+	 * Only this driver can tell those apart, because only it knows the format id
+	 * it was using.
+	 *
+	 * @throws FormatChangedDuringUpdateException if the format has changed
+	 */
+	void requireFormatUnchanged() throws FormatChangedDuringUpdateException;
+
+	/**
 	 * Reads all state documents in the entire collection and, as a side effect,
 	 * updates the driver's internal state in the expectation that the loaded state
 	 * is to be considered the "current" state with respect to subsequent change stream events.
@@ -125,6 +141,18 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * Returns a single document.
 	 */
 	BsonDocument rootDocumentsFilter();
+
+	/**
+	 * @return the format this driver implements, as recorded in the manifest
+	 */
+	DatabaseFormat format();
+
+	/**
+	 * @return the id of the format this driver was built for, as recorded in the
+	 * manifest and on every state document; a refurbish that changes the format
+	 * gives the replacement driver a different value
+	 */
+	Identifier formatId();
 
 	/**
 	 * Indicates that the given state has been {@link #flush() flushed} to the downstream driver already,

@@ -312,6 +312,18 @@ public class BsonFormatter {
 		state,
 
 		/**
+		 * The format id from the manifest at the time this document was created.
+		 * <p>
+		 * Every write includes it in its filter, so a write planned against a
+		 * format that has since been refurbished away matches nothing. A refurbish
+		 * that changes the format rewrites this field on every state document; one
+		 * that leaves the format alone keeps it.
+		 * <p>
+		 * This field is required on every state document.
+		 */
+		formatId,
+
+		/**
 		 * A {@link java.util.UUID} identifying this collection's current initialization.
 		 * It is generated when the collection is first initialized, and preserved
 		 * when the collection is reinitialized with the same state (eg. by a refurbish).
@@ -347,8 +359,7 @@ public class BsonFormatter {
 		/**
 		 * A 64-bit long that is incremented every time this document is the
 		 * <em>topmost</em> document changed by an update: that is, the shallowest
-		 * document whose {@code state} changes. Other documents written by the
-		 * same update keep their revisions.
+		 * document whose {@code state} changes.
 		 *
 		 * <p>
 		 * A newly created document starts at 1. This field is required on every

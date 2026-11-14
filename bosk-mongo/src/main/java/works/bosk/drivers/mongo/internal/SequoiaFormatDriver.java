@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
@@ -29,6 +30,7 @@ import works.bosk.Reference;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
@@ -37,6 +39,8 @@ import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NOTHING_CHANGED;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.referenceTo;
 
 /**
@@ -53,7 +57,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		MongoDriverSettings driverSettings,
 		BsonSerializer bsonSerializer,
 		Duration flushTimeout,
-		BoskDriver downstream
+		BoskDriver downstream,
+		Identifier formatId
 	) {
 		super(
 			boskInfo.rootReference(),
@@ -61,57 +66,52 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			new Formatter(boskInfo, bsonSerializer),
 			collection,
 			downstream,
-			flushTimeout
+			flushTimeout,
+			formatId
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 	}
 
 	@Override
+	public DatabaseFormat format() {
+		return SEQUOIA;
+	}
+
+	@Override
 	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
-		return atomic(_ -> {
-			replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, null, null);
-			return Optional.empty();
-		});
+		return atomic(() -> replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, null, null));
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
-		return atomic(_ -> {
-			if (createInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef)) {
+		return atomic(() -> {
+			boolean changed = createInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef);
+			if (changed) {
 				LOGGER.debug("| Object initialized");
 			} else {
 				LOGGER.debug("| No update");
 			}
-			return Optional.empty();
+			return changed;
 		});
 	}
 
 	@Override
 	public <T> UpdateOperation submitDeletion(Reference<T> target) {
-		return atomic(_ -> {
-			deleteInDocument(target, rootRef, null, null);
-			return Optional.empty();
-		});
+		return atomic(() -> deleteInDocument(target, rootRef, null, null));
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		return atomic(_ -> {
-			replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, precondition, requiredValue);
-			return Optional.empty();
-		});
+		return atomic(() -> replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, precondition, requiredValue));
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		return atomic(_ -> {
-			deleteInDocument(target, rootRef, precondition, requiredValue);
-			return Optional.empty();
-		});
+		return atomic(() -> deleteInDocument(target, rootRef, precondition, requiredValue));
 	}
 
-	private static AtomicUpdateOperation atomic(AtomicUpdateOperation operation) {
-		return operation;
+	private static AtomicUpdateOperation atomic(BooleanSupplier operation) {
+		return _ -> operation.getAsBoolean()? DONE: NOTHING_CHANGED;
 	}
 
 	@Override
@@ -122,6 +122,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			.cursor()
 		) {
 			BsonDocument document = cursor.next();
+			validateFormatId(document);
 			BsonString id = document.getString("_id");
 			RevisionTuple revision = RevisionTuple.from(document);
 			return new BsonStateAndMetadata(
@@ -177,13 +178,14 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			 * but outside that, we want to be as strict as we can
 			 * so incompatible database changes don't go unnoticed.
 			 */
-			validateManifestEvent(event, Manifest.forSequoia());
+			validateManifestEvent(event, Manifest.forSequoia(formatId));
 			return;
 		}
 		if (!DOCUMENT_FILTER.equals(event.getDocumentKey())) {
 			LOGGER.debug("Ignoring event for unrecognized document key: {}", event.getDocumentKey());
 			return;
 		}
+		validateEventFormatId(event);
 		switch (event.getOperationType()) {
 			case INSERT: case REPLACE: {
 				// Note: an INSERT could be coming from this very bosk initializing the collection,
@@ -315,28 +317,24 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	 * @return true if something changed
 	 */
 	@Override
-	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument filter) {
+	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument rawFilter) {
+		BsonDocument filter = withFormatId(rawFilter);
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
-		// NOTE: This case can occur in a few situations:
-		// 1. A conditional update whose precondition failed
-		// 2. An update inside a nonexistent node
-		// 3. The bosk document has disappeared
+		// NOTE: A no-match is normal here: a conditional update whose precondition
+		// failed, or an update inside a node that doesn't exist, is a no-op.
 		//
-		// Differentiating these cases without transactions is complex,
-		// and the only benefit of the Sequoia format is its simplicity,
-		// so for now, we're opting not to handle this case.
+		// It can also mean the bosk document has disappeared. If it was replaced
+		// by a refurbish to another format, the update is not a no-op at all: it
+		// was planned against the old format and would be lost unless it is
+		// retried against the new one.
 		//
-		// This means valid updates can be silently ignored during the window
-		// between when a refurbish operation deletes the bosk document and
-		// when the corresponding change event arrives. We are going to accept
-		// and document this risk for the time being, unless we can determine
-		// a sufficiently straightforward way to detect this situation.
-		//
-		// Therefore, when refurbishing from Sequoia to another format,
-		// the system should be quiescent or else updates may be lost.
+		// Sequoia can't tell these apart from the update result, so UpdateDriver
+		// asks the format driver to check the manifest whenever an update matches
+		// nothing; that check turns the refurbish case into a retry against the
+		// new format instead of a lost update.
 
 		requireAcknowledged(result, filter, updateDoc, "Update");
 		assert result.getMatchedCount() <= 1;

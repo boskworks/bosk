@@ -66,7 +66,8 @@ class PandoUpdateClassificationTest {
 			format,
 			new BsonSerializer(),
 			Duration.ofSeconds(1),
-			bosk.driver());
+			bosk.driver(),
+			Manifest.newFormatId());
 	}
 
 	@Test
