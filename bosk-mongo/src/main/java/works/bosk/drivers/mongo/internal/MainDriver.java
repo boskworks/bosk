@@ -602,8 +602,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		try (
 			var _ = queryCollection.newReadOnlySession()
 		) {
-			MongoStatus partialResult = detectFormat().readStatus();
-			Manifest manifest = loadManifest().manifest(); // TODO: Avoid loading the manifest again
+			Manifest manifest = loadManifest().manifest();
+			MongoStatus partialResult = detectFormat(manifest).readStatus();
 			return partialResult.with(driverSettings.preferredDatabaseFormat(), manifest);
 		}
 	}
@@ -811,8 +811,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	private FormatDriver<R> detectFormat() throws UninitializedCollectionException, UnrecognizedFormatException {
+		return detectFormat(loadManifest().manifest());
+	}
+
+	private FormatDriver<R> detectFormat(Manifest manifest) {
 		LOGGER.debug("Detecting format");
-		Manifest manifest = loadManifest().manifest();
 		DatabaseFormat format = manifest.pando().isPresent()? manifest.pando().get() : SEQUOIA;
 		return newFormatDriver(format);
 	}
