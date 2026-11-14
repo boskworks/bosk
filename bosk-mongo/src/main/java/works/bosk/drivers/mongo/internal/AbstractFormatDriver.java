@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import com.mongodb.client.model.changestream.UpdateDescription;
 import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.time.Duration;
@@ -33,6 +34,8 @@ import works.bosk.drivers.mongo.status.StateStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
+import static com.mongodb.client.model.Projections.fields;
+import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.newSetFromMap;
@@ -49,6 +52,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	final SessionCollection collection;
 	final BoskDriver downstream;
 	final Duration flushTimeout;
+	final Identifier formatId;
 
 	final AtomicReference<FlushLock> flushLock = new AtomicReference<>(null);
 
@@ -60,7 +64,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		Formatter formatter,
 		SessionCollection collection,
 		BoskDriver downstream,
-		Duration flushTimeout
+		Duration flushTimeout,
+		Identifier formatId
 	) {
 		this.rootRef = rootRef;
 		this.context = context;
@@ -68,6 +73,12 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		this.collection = collection;
 		this.downstream = downstream;
 		this.flushTimeout = flushTimeout;
+		this.formatId = formatId;
+	}
+
+	@Override
+	public Identifier formatId() {
+		return formatId;
 	}
 
 	@Override
@@ -213,6 +224,96 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		}
 	}
 
+	/**
+	 * Adds this driver's format id to the given filter, so a write planned
+	 * against a format that has since been refurbished away matches nothing
+	 * rather than landing in a document from another format.
+	 */
+	protected BsonDocument withFormatId(BsonDocument filter) {
+		BsonDocument result = filter.clone();
+		result.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
+		return result;
+	}
+
+	/**
+	 * Verifies that a loaded state document carries the format id the manifest
+	 * declares.
+	 *
+	 * @throws InvalidCollectionContentsException if it doesn't
+	 */
+	protected void validateFormatId(BsonDocument document) throws InvalidCollectionContentsException {
+		BsonString expected = new BsonString(formatId.toString());
+		BsonValue found = document.get(DocumentFields.formatId.name());
+		if (!expected.equals(found)) {
+			throw new InvalidCollectionContentsException(format(), "Format id mismatch on state document "
+				+ document.getString("_id").getValue() + ": expected " + expected.getValue()
+				+ " from the manifest, found " + (found == null? "nothing": found.asString().getValue()));
+		}
+	}
+
+	/**
+	 * Verifies that a change event carries this driver's format id. A document
+	 * with a different one means the database has been refurbished, so the driver
+	 * must reload it.
+	 *
+	 * @throws FormatChangedException if the event's document has a different format id
+	 * @throws UnprocessableEventException if the event modifies the format id, which no valid update does
+	 */
+	protected void validateEventFormatId(ChangeStreamDocument<BsonDocument> event) throws FormatChangedException, UnprocessableEventException {
+		BsonDocument fullDocument = event.getFullDocument();
+		if (fullDocument != null) {
+			BsonString expected = new BsonString(formatId.toString());
+			BsonValue found = fullDocument.get(DocumentFields.formatId.name());
+			if (!expected.equals(found)) {
+				throw new FormatChangedException("State document " + documentIdOf(event).getValue()
+					+ " has format id " + found + ", but this driver is using " + expected.getValue(),
+					event.getOperationType());
+			}
+		}
+		UpdateDescription updateDescription = event.getUpdateDescription();
+		if (updateDescription != null && modifiesFormatId(updateDescription)) {
+			throw new UnprocessableEventException("Update modifies the format id of " + documentIdOf(event).getValue(),
+				event.getOperationType());
+		}
+	}
+
+	private static boolean modifiesFormatId(UpdateDescription updateDescription) {
+		String field = DocumentFields.formatId.name();
+		List<String> removedFields = updateDescription.getRemovedFields();
+		return updateDescription.getUpdatedFields().containsKey(field)
+			|| (removedFields != null && removedFields.contains(field));
+	}
+
+	/**
+	 * Checks that the format id has not changed since this driver was initialized.
+	 * <p>
+	 * {@link UpdateDriver} calls this when an update changes nothing, because a
+	 * write that matched nothing may have missed because the collection was
+	 * refurbished to another format rather than because the update had nothing to do.
+	 *
+	 * @throws FormatChangedDuringUpdateException if the format has changed
+	 */
+	@Override
+	public void requireFormatUnchanged() throws FormatChangedDuringUpdateException {
+		try (var cursor = collection
+			.find(new BsonDocument("_id", MANIFEST_ID))
+			.projection(fields(include(DocumentFields.formatId.name())))
+			.limit(1)
+			.cursor()
+		) {
+			if (!cursor.hasNext()) {
+				throw new FormatChangedDuringUpdateException("Missing manifest document");
+			}
+			BsonValue value = cursor.next().get(DocumentFields.formatId.name());
+			if (!(value instanceof BsonString manifestFormatId)) {
+				throw new FormatChangedDuringUpdateException("Missing format ID in the manifest");
+			}
+			if (!manifestFormatId.getValue().equals(formatId.toString())) {
+				throw new FormatChangedDuringUpdateException("The database format ID changed from " + formatId + " to " + manifestFormatId.getValue() + " while an update was in progress");
+			}
+		}
+	}
+
 	protected <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Set field {}: {}", key, value);
@@ -230,9 +331,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	/**
 	 * Replaces {@code target} in one conditional update against {@code documentRef}.
 	 * All preconditions are expressed in the filter, so the update result tells
-	 * us whether the write applied without a separate read.
+	 * us whether the write matched without a separate read.
 	 *
-	 * @return true if the update applied
+	 * @return true if the write matched
 	 */
 	protected <T> boolean replaceInDocument(
 		Reference<T> target,
@@ -249,7 +350,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * Creates {@code target} in one conditional update against {@code documentRef},
 	 * provided the target field does not already exist.
 	 *
-	 * @return true if the update applied
+	 * @return true if the write matched
 	 */
 	protected <T> boolean createInDocument(Reference<T> target, BsonValue value, Reference<?> documentRef) {
 		BsonDocument filter = documentFilter(documentRef)
@@ -261,7 +362,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	/**
 	 * Deletes {@code target} in one conditional update against {@code documentRef}.
 	 *
-	 * @return true if the update applied
+	 * @return true if the write matched
 	 */
 	protected <T> boolean deleteInDocument(
 		Reference<T> target,
@@ -423,10 +524,12 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected BsonDocument initialDocument(BsonValue initialState, BsonString epoch, RevisionTuple revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
-		fieldValues.put(DocumentFields.state.name(), initialState);
+		fieldValues.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
 		fieldValues.put(DocumentFields.epoch.name(), epoch);
 		revision.putInto(fieldValues);
 		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
+		// The state goes last because it's the big field, and its size can change.
+		fieldValues.put(DocumentFields.state.name(), initialState);
 
 		return fieldValues;
 	}

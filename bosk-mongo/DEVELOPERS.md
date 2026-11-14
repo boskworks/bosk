@@ -216,16 +216,20 @@ The `FormatDriver` update methods do not write to the database. They return an `
 the database work for one Bosk update. This is not necessarily one MongoDB update command: executing it may
 issue a mix of updates, replacements, inserts, deletes, and reads. There are two kinds:
 
-- `AtomicUpdateOperation` attempts one logical document write in a retryable-write session. If the attempt
-  completes, it returns `Optional.empty()`. If it applies no write and cannot complete without a transaction,
-  it returns one `TransactionalUpdateOperation`, which the driver runs once in a transaction on the same session.
+- `AtomicUpdateOperation` attempts one logical document write in a retryable-write session. It reports what
+  happened as an `AtomicUpdateOperation.Outcome`: `Done` if the attempt matched a document, `NothingChanged` if
+  it matched nothing, or `NeedsTransaction` carrying one `TransactionalUpdateOperation`, which the driver runs
+  once in a transaction on the same session. `UpdateDriver` checks the format whenever an update is
+  `NothingChanged`, because a write that matched nothing may have missed because the collection was refurbished
+  to another format.
 - `TransactionalUpdateOperation` runs inside a multi-document transaction and returns `COMMIT` or `ABORT`.
   It must derive its decisions from database contents on each attempt, because the client library may replay it
   after a transient transaction error.
 
 The design goal is: **atomic iff the operation performs exactly one document write, and every precondition can
 be expressed in that write's filter.** The update result (`matchedCount`) then tells us whether the write
-applied. If the result has to drive further writes or a rollback decision, the operation is transactional.
+matched a document. If the result has to drive further writes or a rollback decision, the operation is
+transactional.
 
 The format driver chooses the kind because only it knows how many documents the update touches and whether
 its preconditions span documents. Pando currently uses atomic operations for field and root replacements that

@@ -144,6 +144,11 @@ Never mix two possibilities, as in "user name not specified or invalid":
 work out which one actually happened and say so,
 so the reader can tell what went wrong and what to look for.
 
+An empty code block should contain a debug log rather than a comment explaining why it is empty,
+or nothing at all.
+The log records that the branch was taken, and its message can explain why,
+so the reader learns both from the same place.
+
 ### Comments
 
 A comment should describe the code it is attached to.

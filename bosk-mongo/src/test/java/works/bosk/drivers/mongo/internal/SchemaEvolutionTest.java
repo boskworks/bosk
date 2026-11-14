@@ -2,7 +2,6 @@ package works.bosk.drivers.mongo.internal;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
-import java.io.IOException;
 import java.lang.reflect.AnnotatedElement;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -102,11 +101,10 @@ public class SchemaEvolutionTest {
 
 		try (var _ = fromBosk.readSession()) {
 			ManifestInfo expected = fromConfig.expectedManifestInfo();
-			LOGGER.debug("Confirm starting manifest is {}", expected);
-			assertEquals(
-				expected,
-				fromBosk.getDriver(MainDriver.class).loadManifestInfo()
-			);
+			ManifestInfo actual = fromBosk.getDriver(MainDriver.class).loadManifestInfo();
+			LOGGER.debug("Confirm starting manifest is {}", actual);
+			assertEquals(expected.manifestId(), actual.manifestId());
+			assertEquals(expected.manifest().format(), actual.manifest().format());
 		}
 
 		LOGGER.debug("Confirm starting manifest ID");
@@ -132,11 +130,10 @@ public class SchemaEvolutionTest {
 
 		try (var _ = toBosk.readSession()) {
 			ManifestInfo expected = toConfig.expectedManifestInfo();
-			LOGGER.debug("Confirm ending manifest is {}", expected);
-			assertEquals(
-				expected,
-				toBosk.getDriver(MainDriver.class).loadManifestInfo()
-			);
+			ManifestInfo actual = toBosk.getDriver(MainDriver.class).loadManifestInfo();
+			LOGGER.debug("Confirm ending manifest is {}", actual);
+			assertEquals(expected.manifestId(), actual.manifestId());
+			assertEquals(expected.manifest().format(), actual.manifest().format());
 		}
 
 		LOGGER.debug("Perform fromBosk read");
@@ -166,14 +163,12 @@ public class SchemaEvolutionTest {
 		MongoDriver driver = toBosk.getDriver(MongoDriver.class);
 		driver.refurbish();
 
-		flushIfLiveRefurbishIsNotSupported(fromBosk, fromHelper, toHelper);
-
 		LOGGER.debug("Verify that the manifest prescribes the preferred format");
 		try (var _ = toBosk.readSession()) {
 			var status = driver.readStatus();
 			assertEquals(
-				Manifest.forFormat(toConfig.preferredFormat),
-				status.manifest().actual()
+				toConfig.preferredFormat,
+				((Manifest) status.manifest().actual()).format()
 			);
 		}
 
@@ -202,8 +197,6 @@ public class SchemaEvolutionTest {
 	void refurbishToDifferentFormat_observerReloadsQuietly() throws Exception {
 		assumeFalse(fromConfig.preferredFormat().equals(toConfig.preferredFormat()),
 			"This test concerns a change to a different format");
-		assumeFalse(SEQUOIA == fromConfig.preferredFormat(),
-			"Sequoia cannot reliably handle writes during a format change");
 
 		// Signal when the observer's receiver processes the new manifest.
 		CountDownLatch observerDisconnected = new CountDownLatch(1);
@@ -266,40 +259,6 @@ public class SchemaEvolutionTest {
 		}
 	}
 
-	/**
-	 * @param boskForUpdate      {@link Bosk} that is about to submit an update
-	 * @param helperForUpdate    {@link Helper} for the bosk that is about to submit an update
-	 * @param helperForRefurbish {@link Helper} for the bosk that performed the {@link MongoDriver#flush()} operation
-	 */
-	private static void flushIfLiveRefurbishIsNotSupported(
-		Bosk<TestEntity> boskForUpdate,
-		Helper helperForUpdate,
-		Helper helperForRefurbish
-	) throws IOException, InterruptedException {
-		if (SEQUOIA == helperForUpdate.driverSettings.preferredDatabaseFormat()
-			&& SEQUOIA != helperForRefurbish.driverSettings.preferredDatabaseFormat()) {
-			// When switching format classes, the old format's state documents
-			// disappear.
-			//
-			// Sequoia, being a fundamentally single-document format that does not
-			// use transactions, is not able to handle the time window between
-			// when that document disappears and when the corresponding change
-			// event arrives. We could add complexity to Sequoia to cope with
-			// this situation, but the point of Sequoia is its simplicity.
-			//
-			// Instead, we have a documented limitation that refurbishing from
-			// Sequoia to another format has a risk that updates occurring during
-			// a certain window could be ignored, and recommend that refurbish
-			// operation occur during a period of quiescence.
-			//
-			// Performing a flush causes Sequoia to "notice" its document is gone
-			// and correctly reinitialize itself.
-
-			LOGGER.debug("Flush so boskForUpdate notices the refurbish ({})", boskForUpdate.name());
-			boskForUpdate.driver().flush();
-		}
-	}
-
 	private static Bosk<TestEntity> newBosk(Helper helper) {
 		return new Bosk<>(
 			boskName(helper.toString()),
@@ -314,7 +273,7 @@ public class SchemaEvolutionTest {
 	record Configuration(DatabaseFormat preferredFormat) {
 		public ManifestInfo expectedManifestInfo() {
 			return new ManifestInfo(
-				Manifest.forFormat(preferredFormat),
+				Manifest.forFormat(preferredFormat, Manifest.newFormatId()),
 				MANIFEST_ID
 			);
 		}

@@ -24,7 +24,6 @@ import works.bosk.StateTreeSerializer;
 import works.bosk.drivers.mongo.BsonSerializer;
 
 import static java.util.Arrays.asList;
-import static java.util.Collections.singletonList;
 import static works.bosk.ReferenceUtils.rawClass;
 
 /**
@@ -73,7 +72,7 @@ final class Formatter extends BsonFormatter {
 			if (detectedFormat == null) {
 				throw new UnrecognizedFormatException("Found none of the supported formats: " + supportedFormats);
 			}
-			HashSet<String> requiredKeys = new HashSet<>(singletonList("version"));
+			HashSet<String> requiredKeys = new HashSet<>(asList("version", "formatId"));
 			if (!keys.equals(requiredKeys)) {
 				keys.removeAll(requiredKeys);
 				if (keys.isEmpty()) {

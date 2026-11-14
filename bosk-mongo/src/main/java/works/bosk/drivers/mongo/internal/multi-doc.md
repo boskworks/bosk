@@ -61,6 +61,7 @@ The collection is named `boskCollection` by default, and can be renamed with `Mo
 Fields:
 - `version`: a "major version" integer that is incremented whenever there are breaking changes to
 the conventions for the manifest document itself
+- `formatId`: identifies this instance of the format; every state document carries the same value
 - Variants: only one of the following fields is permitted:
 - `sequoia`: an empty document signifying that the database contents are stored in accordance with the Sequoia format
 - `pando`: a document containing a `graftPoints` field which describes how the state tree is to be carved up into documents
@@ -73,6 +74,7 @@ Fields:
 
 - `_id`: always `|`
 - `state`: the bosk state
+- `formatId`: matches the manifest's
 - Any graft points (Catalogs or SideTables) map IDs to the value `true` (rather than containing the actual tree node)
 - `epoch`: identifies the collection initialization; used to detect a collection that has been deleted and re-created
 - `incarnation`, `revision`: the root document's revision number and incarnation (see below)
@@ -82,6 +84,7 @@ Fields:
 
 - `_id`: a pipe-delimited BSON path to the location of this document's state within the overall BSON structure
 - `state`: the state of the particular node represented by this document
+- `formatId`: matches the manifest's
 - `incarnation`, `revision`: the document's revision number and incarnation
 
 Often, the BSON path for a particular state tree node looks like its bosk path with slashes replaced by pipe characters.
@@ -99,7 +102,6 @@ the full document.
 Every state document carries `incarnation` and `revision` fields.
 Only the **topmost** document changed by an update has its `revision` incremented:
 that is, the shallowest document whose `state` field changes.
-Sub-parts written by the same update keep their revisions.
 This means unrelated updates to different graft documents do not conflict on a shared document.
 
 A document created for the first time has a fresh incarnation (a UUID) and revision 1.

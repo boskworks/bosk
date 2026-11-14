@@ -4,7 +4,6 @@ import com.mongodb.MongoException;
 import com.mongodb.MongoOperationTimeoutException;
 import com.mongodb.TransactionOptions;
 import java.time.Duration;
-import java.util.Optional;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +17,10 @@ import works.bosk.exceptions.RetryableUpdateException;
 
 import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.Done;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NeedsTransaction;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NothingChanged;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
 
 /**
@@ -33,6 +36,22 @@ import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Out
  * {@link MainDriver} replaces its format driver, it replaces this driver too,
  * so a retry always plans against the current format driver rather than
  * replaying an operation captured from a replaced one.
+ * <p>
+ * Three rules make this work, and they are why the format check never runs on
+ * the success path:
+ * <ol><li>
+ *     A write changes nothing if the format has changed, because every write
+ *     filter requires the format id.
+ * </li><li>
+ *     An update that changes nothing says so: an atomic operation reports
+ *     {@link AtomicUpdateOperation.Outcome.NothingChanged}, and a transactional
+ *     operation returns {@link TransactionalUpdateOperation.Outcome#ABORT}
+ *     rather than committing.
+ * </li><li>
+ *     An update that changes nothing gets a format check, and one that changes
+ *     something does not, because the write that matched proves the format was
+ *     right.
+ * </li></ol>
  */
 final class UpdateDriver implements BoskDriver {
 	private final FormatDriver<?> formatDriver;
@@ -98,9 +117,9 @@ final class UpdateDriver implements BoskDriver {
 	 */
 	private void runAtomic(AtomicUpdateOperation operation) {
 		try (var _ = collection.newSession()) {
-			Optional<TransactionalUpdateOperation> fallback;
+			Outcome outcome;
 			try {
-				fallback = operation.execute(collection);
+				outcome = operation.execute(collection);
 			} catch (MongoException e) {
 				throw disconnect(e);
 			}
@@ -108,8 +127,11 @@ final class UpdateDriver implements BoskDriver {
 			// transaction here means the format driver broke the contract and its
 			// writes would be silently rolled back when the session closes.
 			collection.requireNoTransaction();
-			if (fallback.isPresent()) {
-				runTransactionalInCurrentSession(fallback.get());
+			switch (outcome) {
+				case Done _ ->
+					LOGGER.debug("Update matched a document; no need for a format check");
+				case NothingChanged _ -> requireFormatUnchanged();
+				case NeedsTransaction n -> runTransactionalInCurrentSession(n.operation());
 			}
 		} catch (FailedMongoClientSessionException e) {
 			throw disconnect(e);
@@ -133,6 +155,10 @@ final class UpdateDriver implements BoskDriver {
 		try {
 			collection.withTransaction(transactionOptions, () -> {
 				if (operation.execute(collection) == ABORT) {
+					// The operation changed nothing: either it had nothing to do,
+					// or it missed because the format changed. Only the format
+					// driver can tell those apart.
+					requireFormatUnchanged();
 					collection.abortTransaction();
 				}
 				return null;
@@ -185,6 +211,19 @@ final class UpdateDriver implements BoskDriver {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Asks the format driver whether the update missed because the format
+	 * changed, turning a positive answer into the disconnect that makes the
+	 * caller retry against the new format.
+	 */
+	private void requireFormatUnchanged() {
+		try {
+			formatDriver.requireFormatUnchanged();
+		} catch (FormatChangedDuringUpdateException e) {
+			throw disconnect(e);
+		}
 	}
 
 	private DisconnectedException disconnect(Throwable reason) {
