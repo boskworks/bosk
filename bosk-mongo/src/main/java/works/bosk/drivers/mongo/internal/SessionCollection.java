@@ -70,31 +70,18 @@ class SessionCollection {
 		 */
 		WRITEABLE,
 		/**
-		 * Writes are rejected, but transactions are allowed, giving their reads
-		 * a consistent snapshot.
-		 */
-		READ_ONLY,
-		/**
 		 * All reads see the same snapshot of the database. Writes and
 		 * transactions are rejected.
 		 */
-		SNAPSHOT;
+		READ_ONLY;
 
 		boolean isReadOnly() {
 			return this != WRITEABLE;
-		}
-
-		boolean isSnapshot() {
-			return this == SNAPSHOT;
 		}
 	}
 
 	public Session newSession() throws FailedMongoClientSessionException {
 		return new Session(SessionType.WRITEABLE);
-	}
-
-	public Session newReadOnlySession() throws FailedMongoClientSessionException {
-		return new Session(SessionType.READ_ONLY);
 	}
 
 	/**
@@ -105,10 +92,10 @@ class SessionCollection {
 	 * read uses that same snapshot. {@link #establishSnapshot()} establishes the
 	 * snapshot deliberately, and reports the time it corresponds to.
 	 * <p>
-	 * A snapshot session can't contain a transaction or perform a write.
+	 * A read-only session can't contain a transaction or perform a write.
 	 */
-	public Session newSnapshotSession() throws FailedMongoClientSessionException {
-		return new Session(SessionType.SNAPSHOT);
+	public Session newReadOnlySession() throws FailedMongoClientSessionException {
+		return new Session(SessionType.READ_ONLY);
 	}
 
 	/**
@@ -166,7 +153,7 @@ class SessionCollection {
 					.readConcern(ReadConcern.MAJORITY)
 					.readPreference(ReadPreference.primary())
 					.build());
-			if (type.isSnapshot()) {
+			if (type.isReadOnly()) {
 				// Snapshot reads and causal consistency are mutually exclusive.
 				sessionOptions.snapshot(true);
 			} else {
@@ -290,16 +277,13 @@ class SessionCollection {
 	 * insisting on a particular transaction boundary location. If method A
 	 * calls method B, and both call this method, then both will occur in the
 	 * same transaction.
-	 * <p>
-	 * In a read-only session this starts a read-only transaction, which gives
-	 * the reads a consistent snapshot.
 	 */
 	public void ensureTransactionStarted() {
 		Session session = currentSession.get();
 		if (session == null) {
 			throw new IllegalStateException("No active session");
-		} else if (session.type.isSnapshot()) {
-			throw new IllegalStateException("Cannot start a transaction in a snapshot session");
+		} else if (session.type.isReadOnly()) {
+			throw new IllegalStateException("Cannot start a transaction in a read-only session");
 		} else if (!session.clientSession.hasActiveTransaction()) {
 			session.clientSession.startTransaction();
 			LOGGER.debug("Start transaction {} lsid={} txnNumber={}", session.name, session.lsid(), session.txnNumber());
@@ -310,7 +294,7 @@ class SessionCollection {
 	 * Establishes the current session's snapshot, and returns the time it
 	 * corresponds to.
 	 * <p>
-	 * The first read in a snapshot session establishes the snapshot, so this
+	 * The first read in a read-only session establishes the snapshot, so this
 	 * read exists only to learn when that happened. The database reports the
 	 * time as {@code atClusterTime} in the response; the client library reads
 	 * the same field but doesn't expose it publicly.
@@ -320,7 +304,7 @@ class SessionCollection {
 	 * initialization the collection may not exist.
 	 */
 	public BsonTimestamp establishSnapshot() {
-		Session session = requireSnapshotSession();
+		Session session = requireReadOnlySession();
 		MongoNamespace namespace = downstream.getNamespace();
 		BsonDocument aggregate = new BsonDocument()
 			.append("aggregate", new BsonInt32(1))
@@ -340,12 +324,12 @@ class SessionCollection {
 		return snapshotTime;
 	}
 
-	private Session requireSnapshotSession() {
+	private Session requireReadOnlySession() {
 		Session session = currentSession.get();
 		if (session == null) {
 			throw new IllegalStateException("No active session");
-		} else if (!session.type.isSnapshot()) {
-			throw new IllegalStateException("Operation requires a snapshot session");
+		} else if (!session.type.isReadOnly()) {
+			throw new IllegalStateException("Operation requires a read-only session");
 		} else {
 			return session;
 		}

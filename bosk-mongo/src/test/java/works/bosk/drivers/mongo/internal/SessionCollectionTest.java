@@ -96,28 +96,9 @@ class SessionCollectionTest {
 	}
 
 	@Test
-	void newSnapshotSession_createsReadOnlySnapshotSession() throws FailedMongoClientSessionException {
-		try (Session session = collection.newSnapshotSession()) {
-			assertNotNull(session.clientSession);
-			assertEquals(SessionType.SNAPSHOT, session.type);
-		}
-	}
-
-	@Test
-	void snapshotSession_rejectsTransactions() throws FailedMongoClientSessionException {
-		try (Session _ = collection.newSnapshotSession()) {
+	void readOnlySession_rejectsTransactions() throws FailedMongoClientSessionException {
+		try (Session _ = collection.newReadOnlySession()) {
 			assertThrows(IllegalStateException.class, collection::ensureTransactionStarted);
-		}
-	}
-
-	@Test
-	void snapshotSession_rejectsWrites() throws FailedMongoClientSessionException {
-		try (Session _ = collection.newSnapshotSession()) {
-			BsonDocument filter = new BsonDocument("_id", new BsonString("doc1"));
-			BsonDocument update = new BsonDocument("$set", new BsonDocument("x", new BsonInt32(1)));
-			assertThrows(IllegalStateException.class,
-				() -> collection.insertOne(new BsonDocument("_id", new BsonString("new"))));
-			assertThrows(IllegalStateException.class, () -> collection.updateOne(filter, update));
 		}
 	}
 
@@ -129,7 +110,7 @@ class SessionCollectionTest {
 	 */
 	@Test
 	void establishSnapshot_worksWhenCollectionDoesNotExist() throws FailedMongoClientSessionException {
-		try (Session _ = collection.newSnapshotSession()) {
+		try (Session _ = collection.newReadOnlySession()) {
 			assertNotNull(collection.establishSnapshot(),
 				"A snapshot read must report its snapshot time even when the collection does not exist");
 		}
@@ -138,7 +119,7 @@ class SessionCollectionTest {
 	@Test
 	void establishSnapshot_doesNotChangeWithinSession() throws FailedMongoClientSessionException {
 		makeData("doc1");
-		try (Session _ = collection.newSnapshotSession()) {
+		try (Session _ = collection.newReadOnlySession()) {
 			BsonTimestamp first = collection.establishSnapshot();
 			BsonTimestamp second = collection.establishSnapshot();
 			assertNotNull(first, "A snapshot read must report its snapshot time");
@@ -147,14 +128,14 @@ class SessionCollectionTest {
 	}
 
 	@Test
-	void snapshotSession_seesOnlyWritesBeforeTheSnapshot() throws FailedMongoClientSessionException {
+	void readOnlySession_seesOnlyWritesBeforeItsSnapshot() throws FailedMongoClientSessionException {
 		makeData("before");
 		MongoCollection<BsonDocument> raw2 = client
 			.getDatabase(DB_NAME)
 			.getCollection(COLLECTION_NAME, BsonDocument.class);
 		SessionCollection otherCollection = SessionCollection.of(raw2, client);
 
-		try (Session _ = collection.newSnapshotSession()) {
+		try (Session _ = collection.newReadOnlySession()) {
 			collection.establishSnapshot();
 			insertFresh(otherCollection, new BsonDocument("_id", new BsonString("after")));
 			try (DocCursor cursor = collection.find(new BsonDocument()).cursor()) {
@@ -169,7 +150,7 @@ class SessionCollectionTest {
 	}
 
 	@Test
-	void establishSnapshot_withoutSnapshotSession_throws() throws FailedMongoClientSessionException {
+	void establishSnapshot_withoutReadOnlySession_throws() throws FailedMongoClientSessionException {
 		try (Session _ = collection.newSession()) {
 			assertThrows(IllegalStateException.class, collection::establishSnapshot);
 		}
@@ -536,13 +517,6 @@ class SessionCollectionTest {
 			.findLatest(new BsonDocument("_id", new BsonString("abortDoc"))).cursor()
 		) {
 			assertFalse(cursor.hasNext(), "Aborted data must not be visible");
-		}
-	}
-
-	@Test
-	void readOnlySession_canStartTransaction() throws FailedMongoClientSessionException {
-		try (Session _ = collection.newReadOnlySession()) {
-			assertDoesNotThrow(() -> collection.ensureTransactionStarted());
 		}
 	}
 

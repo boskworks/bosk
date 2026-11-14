@@ -399,7 +399,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * @throws FailedMongoClientSessionException if a session could not be started
 	 */
 	private LoadResult<R> loadState() throws UninitializedCollectionException, UnrecognizedFormatException, InvalidCollectionContentsException, IOException, FailedMongoClientSessionException {
-		try (var _ = queryCollection.newSnapshotSession()) {
+		try (var _ = queryCollection.newReadOnlySession()) {
 			// All the load's reads come from one snapshot, whose time tells the
 			// listener which change events the loaded state already includes. A
 			// transaction is consistent too, but its operation time moves past
