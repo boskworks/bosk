@@ -4,7 +4,6 @@ import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
-import java.util.Optional;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
 import org.junit.jupiter.api.AfterAll;
@@ -18,6 +17,8 @@ import works.bosk.testing.drivers.state.TestEntity;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.needsTransaction;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.COMMIT;
 
@@ -71,14 +72,14 @@ class UpdateDriverTest {
 	void atomicOperation_completesWithoutTransaction() {
 		driver.execute((AtomicUpdateOperation) collection -> {
 			collection.insertOne(new BsonDocument("_id", new BsonString("atomic")));
-			return Optional.empty();
+			return DONE;
 		});
 		assertTrue(documentExists("atomic"));
 	}
 
 	@Test
 	void fallbackOperation_runsInTransaction() {
-		driver.execute((AtomicUpdateOperation) collection -> Optional.of((TransactionalUpdateOperation) sessionCollection -> {
+		driver.execute((AtomicUpdateOperation) collection -> needsTransaction(sessionCollection -> {
 			sessionCollection.insertOne(new BsonDocument("_id", new BsonString("fallback")));
 			return COMMIT;
 		}));
@@ -87,7 +88,7 @@ class UpdateDriverTest {
 
 	@Test
 	void fallbackOperation_abortRollsBack() {
-		driver.execute((AtomicUpdateOperation) collection -> Optional.of((TransactionalUpdateOperation) sessionCollection -> {
+		driver.execute((AtomicUpdateOperation) collection -> needsTransaction(sessionCollection -> {
 			sessionCollection.insertOne(new BsonDocument("_id", new BsonString("aborted")));
 			return ABORT;
 		}));
@@ -99,7 +100,7 @@ class UpdateDriverTest {
 		assertThrows(IllegalStateException.class,
 			() -> driver.execute((AtomicUpdateOperation) collection -> {
 				collection.ensureTransactionStarted();
-				return Optional.empty();
+				return DONE;
 			}));
 	}
 

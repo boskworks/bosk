@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
@@ -66,6 +67,7 @@ import static java.util.stream.Collectors.toList;
 import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
@@ -278,28 +280,31 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
-	private void doAtomicReplacement(PreparedReplacement prepared, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
+	private AtomicUpdateOperation.Outcome doAtomicReplacement(PreparedReplacement prepared, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
 		if (replaceInDocument(prepared.target(), prepared.value(), prepared.targetDocRef(), precondition, requiredValue)) {
 			LOGGER.debug("| Replacement changed the document");
 		} else {
 			LOGGER.debug("| Replacement had no effect");
 		}
+		return DONE;
 	}
 
-	private void doAtomicConditionalCreation(PreparedReplacement prepared) {
+	private AtomicUpdateOperation.Outcome doAtomicConditionalCreation(PreparedReplacement prepared) {
 		if (createInDocument(prepared.target(), prepared.value(), prepared.targetDocRef())) {
 			LOGGER.debug("| Object initialized");
 		} else {
 			LOGGER.debug("| No update");
 		}
+		return DONE;
 	}
 
-	private void doAtomicDeletion(Reference<?> target, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
+	private AtomicUpdateOperation.Outcome doAtomicDeletion(Reference<?> target, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
 		if (deleteInDocument(target, deletionDocumentRef(target), precondition, requiredValue)) {
 			LOGGER.debug("| Deletion changed the document");
 		} else {
 			LOGGER.debug("| Deletion had no effect");
 		}
+		return DONE;
 	}
 
 	private Reference<?> deletionDocumentRef(Reference<?> target) {
@@ -316,15 +321,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return operation;
 	}
 
-	private static AtomicUpdateOperation atomic(Runnable operation) {
-		return _ -> {
-			operation.run();
-			return Optional.empty();
-		};
+	private static AtomicUpdateOperation atomic(Supplier<AtomicUpdateOperation.Outcome> operation) {
+		return _ -> operation.get();
 	}
 
+	/**
+	 * An update that deliberately does nothing.
+	 */
 	private static AtomicUpdateOperation noOp() {
-		return _ -> Optional.empty();
+		return _ -> DONE;
 	}
 
 	@Override

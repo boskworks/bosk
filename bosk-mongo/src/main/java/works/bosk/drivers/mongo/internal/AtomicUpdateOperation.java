@@ -1,19 +1,19 @@
 package works.bosk.drivers.mongo.internal;
 
-import java.util.Optional;
-
 /**
  * An update that first attempts a single logical document write in a
  * retryable-write session.
  * <p>
- * If the attempt completes, the operation returns {@link Optional#empty()}.
- * If the attempt applies no write and cannot complete without a transaction,
- * it returns a {@link TransactionalUpdateOperation} that the driver runs
- * once, in a transaction, on the same session.
+ * The attempt reports its outcome in an {@link Outcome}: either the update is
+ * complete, or it needs a transaction to finish.
  * <p>
- * The operation must return a fallback only if the attempt applied no write.
- * The fallback must re-check its conditions inside the transaction, because
- * another writer may change the database between the attempt and the fallback.
+ * If the attempt cannot complete without a transaction, it returns an
+ * {@link Outcome.NeedsTransaction} that the driver runs once, in a transaction,
+ * on the same session.
+ * <p>
+ * The operation must report {@link Outcome.NeedsTransaction} only if the attempt
+ * changed nothing. The transaction must re-check its conditions, because another
+ * writer may change the database between the attempt and the transaction.
  * <p>
  * The operation must be safe for the client library to retry as a retryable
  * write. In practice this means the attempt must consist of a single database
@@ -22,5 +22,26 @@ import java.util.Optional;
  */
 @FunctionalInterface
 non-sealed interface AtomicUpdateOperation extends UpdateOperation {
-	Optional<TransactionalUpdateOperation> execute(SessionCollection collection);
+	Outcome execute(SessionCollection collection);
+
+	/**
+	 * What should happen next after an atomic attempt.
+	 */
+	sealed interface Outcome {
+		/**
+		 * The attempt is complete, so the update needs no further work.
+		 */
+		Outcome DONE = new Done();
+
+		/**
+		 * The attempt needs the given transaction to finish the update.
+		 */
+		static Outcome needsTransaction(TransactionalUpdateOperation operation) {
+			return new NeedsTransaction(operation);
+		}
+
+		record Done() implements Outcome { }
+
+		record NeedsTransaction(TransactionalUpdateOperation operation) implements Outcome { }
+	}
 }

@@ -4,7 +4,6 @@ import com.mongodb.MongoException;
 import com.mongodb.MongoOperationTimeoutException;
 import com.mongodb.TransactionOptions;
 import java.time.Duration;
-import java.util.Optional;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +17,9 @@ import works.bosk.exceptions.RetryableUpdateException;
 
 import static com.mongodb.MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.Done;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NeedsTransaction;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
 
 /**
@@ -98,9 +100,9 @@ final class UpdateDriver implements BoskDriver {
 	 */
 	private void runAtomic(AtomicUpdateOperation operation) {
 		try (var _ = collection.newSession()) {
-			Optional<TransactionalUpdateOperation> fallback;
+			Outcome outcome;
 			try {
-				fallback = operation.execute(collection);
+				outcome = operation.execute(collection);
 			} catch (MongoException e) {
 				throw disconnect(e);
 			}
@@ -108,8 +110,11 @@ final class UpdateDriver implements BoskDriver {
 			// transaction here means the format driver broke the contract and its
 			// writes would be silently rolled back when the session closes.
 			collection.requireNoTransaction();
-			if (fallback.isPresent()) {
-				runTransactionalInCurrentSession(fallback.get());
+			switch (outcome) {
+				case Done _ ->
+					LOGGER.debug("The atomic attempt completed the update");
+				case NeedsTransaction n ->
+					runTransactionalInCurrentSession(n.operation());
 			}
 		} catch (FailedMongoClientSessionException e) {
 			throw disconnect(e);
