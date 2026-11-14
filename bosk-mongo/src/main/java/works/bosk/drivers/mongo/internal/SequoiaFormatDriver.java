@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
@@ -39,6 +40,7 @@ import static com.mongodb.client.model.Projections.include;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NOTHING_CHANGED;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.referenceTo;
 
 /**
@@ -83,11 +85,13 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
 		return atomic(() -> {
-			if (createInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef)) {
+			boolean changed = createInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef);
+			if (changed) {
 				LOGGER.debug("| Object initialized");
 			} else {
 				LOGGER.debug("| No update");
 			}
+			return changed;
 		});
 	}
 
@@ -106,11 +110,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		return atomic(() -> deleteInDocument(target, rootRef, precondition, requiredValue));
 	}
 
-	private static AtomicUpdateOperation atomic(Runnable operation) {
-		return _ -> {
-			operation.run();
-			return DONE;
-		};
+	private static AtomicUpdateOperation atomic(BooleanSupplier operation) {
+		return _ -> operation.getAsBoolean()? DONE: NOTHING_CHANGED;
 	}
 
 	@Override
@@ -322,23 +323,18 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
-		// NOTE: This case can occur in a few situations:
-		// 1. A conditional update whose precondition failed
-		// 2. An update inside a nonexistent node
-		// 3. The bosk document has disappeared
+		// NOTE: A no-match is normal here: a conditional update whose precondition
+		// failed, or an update inside a node that doesn't exist, is a no-op.
 		//
-		// Differentiating these cases without transactions is complex,
-		// and the only benefit of the Sequoia format is its simplicity,
-		// so for now, we're opting not to handle this case.
+		// It can also mean the bosk document has disappeared. If it was replaced
+		// by a refurbish to another format, the update is not a no-op at all: it
+		// was planned against the old format and would be lost unless it is
+		// retried against the new one.
 		//
-		// This means valid updates can be silently ignored during the window
-		// between when a refurbish operation deletes the bosk document and
-		// when the corresponding change event arrives. We are going to accept
-		// and document this risk for the time being, unless we can determine
-		// a sufficiently straightforward way to detect this situation.
-		//
-		// Therefore, when refurbishing from Sequoia to another format,
-		// the system should be quiescent or else updates may be lost.
+		// Sequoia can't tell these apart from the update result, so UpdateDriver
+		// asks the format driver to check the manifest whenever an update matches
+		// nothing; that check turns the refurbish case into a retry against the
+		// new format instead of a lost update.
 
 		requireAcknowledged(result, filter, updateDoc, "Update");
 		assert result.getMatchedCount() <= 1;

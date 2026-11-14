@@ -69,6 +69,7 @@ import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
 import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NOTHING_CHANGED;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
@@ -291,28 +292,31 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private AtomicUpdateOperation.Outcome doAtomicReplacement(PreparedReplacement prepared, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
 		if (replaceInDocument(prepared.target(), prepared.value(), prepared.targetDocRef(), precondition, requiredValue)) {
 			LOGGER.debug("| Replacement changed the document");
+			return DONE;
 		} else {
 			LOGGER.debug("| Replacement had no effect");
+			return NOTHING_CHANGED;
 		}
-		return DONE;
 	}
 
 	private AtomicUpdateOperation.Outcome doAtomicConditionalCreation(PreparedReplacement prepared) {
 		if (createInDocument(prepared.target(), prepared.value(), prepared.targetDocRef())) {
 			LOGGER.debug("| Object initialized");
+			return DONE;
 		} else {
 			LOGGER.debug("| No update");
+			return NOTHING_CHANGED;
 		}
-		return DONE;
 	}
 
 	private AtomicUpdateOperation.Outcome doAtomicDeletion(Reference<?> target, @Nullable Reference<Identifier> precondition, @Nullable Identifier requiredValue) {
 		if (deleteInDocument(target, deletionDocumentRef(target), precondition, requiredValue)) {
 			LOGGER.debug("| Deletion changed the document");
+			return DONE;
 		} else {
 			LOGGER.debug("| Deletion had no effect");
+			return NOTHING_CHANGED;
 		}
-		return DONE;
 	}
 
 	private Reference<?> deletionDocumentRef(Reference<?> target) {
@@ -337,6 +341,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * An update that deliberately does nothing.
 	 */
 	private static AtomicUpdateOperation noOp() {
+		// Return DONE rather than NOTHING_CHANGED: the decision to do nothing is
+		// already made, so there is no need to check whether the format changed.
 		return _ -> DONE;
 	}
 
@@ -785,7 +791,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * <p>
 	 * TODO: We could organize the Sequoia code in a similar manner if doReplacement and doDelete
 	 *  accepted filter arguments (which Pando simply wouldn't use).
-	 *  It's complicated by the fact that the zero-match case in Sequoia is highly ambiguous.
+	 *  Sequoia can't tell the zero-match cases apart from the write result alone,
+	 *  but {@link UpdateDriver} resolves them by checking the format whenever an
+	 *  update matches nothing.
 	 */
 	private Outcome doReplacement(PreparedReplacement prepared) {
 		Reference<?> target = prepared.target();
@@ -1088,16 +1096,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
 		requireAcknowledged(result, filter, updateDoc, "Update");
-		long matchedCount = result.getMatchedCount();
-		if (matchedCount == 0) {
-			LOGGER.debug("| -> No documents were updated; double-checking that the root document still exists");
-			try (var cursor = collection.find(documentFilter(rootRef)).limit(1).cursor()) {
-				if (!cursor.hasNext()) {
-					throw new IllegalStateException("Root document disappeared");
-				}
-			}
-		}
-		return matchedCount >= 1;
+		return result.getMatchedCount() >= 1;
 	}
 
 	/**

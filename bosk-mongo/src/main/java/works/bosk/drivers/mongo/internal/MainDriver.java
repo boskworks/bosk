@@ -1119,9 +1119,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	/**
 	 * Disconnects the current {@link FormatDriver} from the {@link MainDriver}: the
-	 * FormatDriver is closed and discarded, {@link #drivers} becomes a
-	 * {@link DisconnectedDriver} that refuses updates, and the {@link ChangeReceiver} is
-	 * poked to reconnect.
+	 * FormatDriver is closed and discarded, and {@link #drivers} becomes a
+	 * {@link DisconnectedDriver} that refuses updates.
 	 * <p>
 	 * Does not signal threads waiting on {@link #driversChanged}: there's no point
 	 * waking them to retry with {@link DisconnectedDriver} (which is bound to fail); they
@@ -1131,6 +1130,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * and will be retried, or a change-stream problem the receiver is recovering from. Its
 	 * only job is to keep the driver from submitting updates while its understanding of the
 	 * database is suspect.
+	 * <p>
+	 * The {@link ChangeReceiver} is poked to reconnect unless it has already been
+	 * disconnected by someone else, or it will hear about the failure from the change
+	 * stream. A refurbish is the latter: it is itself a database change, so the receiver
+	 * sees it and reconnects when it processes that event, and an interrupt would only
+	 * risk aborting that reconnect.
 	 * <p>
 	 * If {@link #drivers} no longer contains the {@code currentDriver} the caller expected,
 	 * nothing happens: the current FormatDriver has already been disconnected, or the
@@ -1162,9 +1167,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 
 		if (!(oldDriver instanceof DisconnectedDriver<?>)) {
-			// The receiver is what reconnects us. Poke it to make sure it knows things
-			// have gone south, and we need to try to reconnect.
-			receiver.interrupt();
+			if (reason instanceof FormatChangedDuringUpdateException) {
+				// The change stream is already delivering the refurbish, so interrupting
+				// the receiver here could abort the reconnect that event is prompting.
+				LOGGER.debug("Not interrupting receiver: the change stream is already delivering the refurbish");
+			} else {
+				// The receiver is what reconnects us. Poke it to make sure it knows things
+				// have gone south, and we need to try to reconnect.
+				receiver.interrupt();
+			}
 		}
 	}
 

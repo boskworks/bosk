@@ -34,6 +34,8 @@ import works.bosk.drivers.mongo.status.StateStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
+import static com.mongodb.client.model.Projections.fields;
+import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.newSetFromMap;
@@ -280,6 +282,36 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		List<String> removedFields = updateDescription.getRemovedFields();
 		return updateDescription.getUpdatedFields().containsKey(field)
 			|| (removedFields != null && removedFields.contains(field));
+	}
+
+	/**
+	 * Checks that the format id has not changed since this driver was initialized.
+	 * <p>
+	 * {@link UpdateDriver} calls this when an update changes nothing, because a
+	 * write that matched nothing may have missed because the collection was
+	 * refurbished to another format rather than because the update had nothing to do.
+	 *
+	 * @throws FormatChangedDuringUpdateException if the format has changed
+	 */
+	@Override
+	public void requireFormatUnchanged() throws FormatChangedDuringUpdateException {
+		try (var cursor = collection
+			.find(new BsonDocument("_id", MANIFEST_ID))
+			.projection(fields(include(DocumentFields.formatId.name())))
+			.limit(1)
+			.cursor()
+		) {
+			if (!cursor.hasNext()) {
+				throw new FormatChangedDuringUpdateException("Missing manifest document");
+			}
+			BsonValue value = cursor.next().get(DocumentFields.formatId.name());
+			if (!(value instanceof BsonString manifestFormatId)) {
+				throw new FormatChangedDuringUpdateException("Missing format ID in the manifest");
+			}
+			if (!manifestFormatId.getValue().equals(formatId.toString())) {
+				throw new FormatChangedDuringUpdateException("The database format ID changed from " + formatId + " to " + manifestFormatId.getValue() + " while an update was in progress");
+			}
+		}
 	}
 
 	protected <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {

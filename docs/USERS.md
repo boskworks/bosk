@@ -1075,11 +1075,10 @@ Note that `@Polyfill` is not meant as a general way to supply default values for
 but rather to allow rollout of new required fields with no downtime.
 For optional fields, just use `Optional`.
 
-[^refurbish]: Note that if your database is using the Sequoia format, and you refurbish it to the Pando format,
-there is a brief window (before the change events arrive) when writes to the old Sequoia driver will
-be silently ignored. While refurbishing from Sequoia to a different format,
-ensure the bosk is quiescent (not performing any updates), or is performing a `flush()` before each update.
-This is a consequence of Sequoia's design simplicity; specifically, its avoidance of multi-document transactions.
+[^refurbish]: Refurbishing does not require the bosk to be quiescent. An update that was planned
+against the old format is refused rather than silently applied or forgotten; the driver reconnects,
+and the update is retried against the format that replaced it. This includes conditional updates
+that would ordinarily apply nothing, which are otherwise indistinguishable from a failed precondition.
 
 ### Spring Boot integration
 

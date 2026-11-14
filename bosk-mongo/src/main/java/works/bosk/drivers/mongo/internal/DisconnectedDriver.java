@@ -54,6 +54,11 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 	}
 
 	@Override
+	public void requireFormatUnchanged() {
+		throw disconnected();
+	}
+
+	@Override
 	public void flush() {
 		throw disconnected();
 	}
@@ -97,10 +102,30 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 		throw disconnected();
 	}
 
+	/**
+	 * Chooses how the receiver should react to this disconnection.
+	 * <p>
+	 * A stale view of a healthy database is worth reconnecting to immediately:
+	 * <ul>
+	 * <li>{@link RevisionDisruptedException} can be a symptom of a
+	 * {@link MainDriver#refurbish() refurbish} to another format, leaving the
+	 * driver looking at documents that no longer exist.</li>
+	 * <li>{@link FormatChangedDuringUpdateException} means an update lost a race
+	 * with exactly that refurbish.</li>
+	 * </ul>
+	 * Neither can be triggered by the reconnect itself: it reloads the database
+	 * and builds a driver for whatever format it finds, so it never performs the
+	 * updates that raise these exceptions.
+	 * <p>
+	 * Every other reason might be a database-health problem, so the receiver waits
+	 * for its next poll before reconnecting.
+	 */
 	private DisconnectedException disconnected() {
-		return (reason instanceof RevisionDisruptedException e)
-			? new ImmediateReconnectException(e)
-			: new DisconnectedException(reason);
+		return switch (reason) {
+			case RevisionDisruptedException e -> new ImmediateReconnectException(e);
+			case FormatChangedDuringUpdateException e -> new ImmediateReconnectException(e);
+			default -> new DisconnectedException(reason);
+		};
 	}
 
 }

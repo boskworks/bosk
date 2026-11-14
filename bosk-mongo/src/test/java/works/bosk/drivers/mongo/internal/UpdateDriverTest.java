@@ -12,20 +12,29 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
+import works.bosk.drivers.mongo.exceptions.DisconnectedException;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NOTHING_CHANGED;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.needsTransaction;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.COMMIT;
 
 /**
- * Checks the execution half of {@link UpdateOperation}: an atomic operation may
- * complete on its own or return one transactional fallback, which runs in a
- * transaction on the same session.
+ * Checks the execution half of {@link UpdateOperation}: an atomic operation
+ * reports whether it matched a document and may return one transactional
+ * fallback, which runs in a transaction on the same session. An update that
+ * matches nothing makes the driver ask the format driver whether the format
+ * changed.
+ * <p>
+ * The format driver here is a {@link DisconnectedDriver}, which throws whenever
+ * it is asked anything. That makes it a convenient tripwire: a test that
+ * expects no exception also demonstrates that the driver did not consult the
+ * format driver.
  */
 class UpdateDriverTest {
 	private static MongoService mongoService;
@@ -78,6 +87,12 @@ class UpdateDriverTest {
 	}
 
 	@Test
+	void atomicOperationChangingNothing_checksFormat() {
+		assertThrows(DisconnectedException.class,
+			() -> driver.execute((AtomicUpdateOperation) collection -> NOTHING_CHANGED));
+	}
+
+	@Test
 	void fallbackOperation_runsInTransaction() {
 		driver.execute((AtomicUpdateOperation) collection -> needsTransaction(sessionCollection -> {
 			sessionCollection.insertOne(new BsonDocument("_id", new BsonString("fallback")));
@@ -88,10 +103,11 @@ class UpdateDriverTest {
 
 	@Test
 	void fallbackOperation_abortRollsBack() {
-		driver.execute((AtomicUpdateOperation) collection -> needsTransaction(sessionCollection -> {
-			sessionCollection.insertOne(new BsonDocument("_id", new BsonString("aborted")));
-			return ABORT;
-		}));
+		assertThrows(DisconnectedException.class,
+			() -> driver.execute((AtomicUpdateOperation) collection -> needsTransaction(sessionCollection -> {
+				sessionCollection.insertOne(new BsonDocument("_id", new BsonString("aborted")));
+				return ABORT;
+			})));
 		assertFalse(documentExists("aborted"));
 	}
 
