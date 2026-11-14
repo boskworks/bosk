@@ -99,7 +99,6 @@ the full document.
 Every state document carries `incarnation` and `revision` fields.
 Only the **topmost** document changed by an update has its `revision` incremented:
 that is, the shallowest document whose `state` field changes.
-Sub-parts written by the same update keep their revisions.
 This means unrelated updates to different graft documents do not conflict on a shared document.
 
 A document created for the first time has a fresh incarnation (a UUID) and revision 1.

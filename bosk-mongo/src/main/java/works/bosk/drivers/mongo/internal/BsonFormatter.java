@@ -347,8 +347,7 @@ public class BsonFormatter {
 		/**
 		 * A 64-bit long that is incremented every time this document is the
 		 * <em>topmost</em> document changed by an update: that is, the shallowest
-		 * document whose {@code state} changes. Other documents written by the
-		 * same update keep their revisions.
+		 * document whose {@code state} changes.
 		 *
 		 * <p>
 		 * A newly created document starts at 1. This field is required on every
