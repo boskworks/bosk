@@ -99,10 +99,6 @@ final class BoskOpenApi {
 			return this == ROOT || this == RECORD_FIELD || this == OPTIONAL_FIELD
 				|| this == CONTAINER_ENTRY || this == CASE;
 		}
-
-		boolean deletable() {
-			return this == OPTIONAL_FIELD || this == CONTAINER_ENTRY || this == PHANTOM;
-		}
 	}
 
 	private static final class Generator {
@@ -292,7 +288,7 @@ final class BoskOpenApi {
 			if (kind.puttable()) {
 				pathItem.set("put", putOperation(openapiPath, reference, type, kind));
 			}
-			if (kind.deletable()) {
+			if (reference.isDeletable()) {
 				pathItem.set("delete", deleteOperation(openapiPath, reference, kind));
 			}
 			JsonNode previous = paths.putIfAbsent(openapiPath, pathItem);
