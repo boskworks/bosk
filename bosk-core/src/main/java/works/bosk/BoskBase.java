@@ -130,6 +130,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		public <T> void submitReplacement(Reference<T> target, T newValue) {
 			try (var _ = setupMDC(name, instanceID)) {
 				assertCorrectBosk(target);
+				checkReplacementValue(target, newValue);
 				downstream.submitReplacement(target, newValue);
 			}
 		}
@@ -139,6 +140,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 			try (var _ = setupMDC(name, instanceID)) {
 				assertCorrectBosk(target);
 				assertCorrectBosk(precondition);
+				checkReplacementValue(target, newValue);
 				downstream.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 			}
 		}
@@ -147,7 +149,28 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		public <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 			try (var _ = setupMDC(name, instanceID)) {
 				assertCorrectBosk(target);
+				checkReplacementValue(target, newValue);
 				downstream.submitConditionalCreation(target, newValue);
+			}
+		}
+
+		/**
+		 * Rejects a value that cannot inhabit the target node before any driver sees it.
+		 * <p>
+		 * The declared type of a {@link Reference} may be a supertype of the node it
+		 * points to, so this check is what stops a value of some sibling subtype from
+		 * reaching a driver, which might otherwise write it to its backing store or fail
+		 * with a confusing error from generated code.
+		 *
+		 * @throws NullPointerException if {@code newValue} is null
+		 * @throws IllegalArgumentException if {@code newValue} is not an instance of the target's class
+		 */
+		private <T> void checkReplacementValue(Reference<T> target, T newValue) {
+			if (newValue == null) {
+				throw new NullPointerException("Cannot replace " + target + " with null");
+			} else if (!target.targetClass().isInstance(newValue)) {
+				throw new IllegalArgumentException("Cannot replace " + target + " with " + newValue.getClass().getSimpleName()
+					+ ": the node's type is " + target.targetClass().getSimpleName());
 			}
 		}
 

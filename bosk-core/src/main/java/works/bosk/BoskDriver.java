@@ -50,6 +50,15 @@ public interface BoskDriver {
 	 * Changes will not be visible in the {@link ReadSession} in which this method
 	 * was called. If <code>target</code> is inside an enclosing object that does not exist at the
 	 * time the update is applied, it is silently ignored.
+	 *
+	 * <p>
+	 * A {@link Reference} may be declared with a supertype of the type of the object
+	 * it points to, so <code>newValue</code> must be checked against the node's actual
+	 * type at submission time. The value must be non-null and an instance of
+	 * <code>target.{@link Reference#targetClass() targetClass()}</code>.
+	 *
+	 * @throws NullPointerException if <code>newValue</code> is null
+	 * @throws IllegalArgumentException if <code>newValue</code> is not an instance of the target's class
 	 */
 	<T> void submitReplacement(Reference<T> target, T newValue);
 
