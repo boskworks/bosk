@@ -326,6 +326,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	protected <T> BsonDocument deletionDoc(Reference<T> target, Reference<?> startingRef) {
+		assert target.isDeletable(): "Cannot delete a non-deletable reference: " + target;
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Unset field {}", key);
 		return revisionBump().append("$unset", new BsonDocument(key, BsonNull.VALUE));
@@ -574,6 +575,18 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * @param targets the documents to wait for, in top-down order
 	 */
 	record FlushRevisions(Optional<BsonString> epoch, List<FlushLock.Target> targets) {}
+
+	/**
+	 * Fails unless {@code target} is a reference that the {@link BoskDriver}
+	 * contract permits deleting. Callers at the update boundary use this before
+	 * planning a database operation, so a format-specific driver never sees an
+	 * invalid deletion target.
+	 */
+	static void requireDeletable(Reference<?> target) {
+		if (!target.isDeletable()) {
+			throw new IllegalArgumentException("Object is not deletable: " + target);
+		}
+	}
 
 	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
 	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractFormatDriver.class);

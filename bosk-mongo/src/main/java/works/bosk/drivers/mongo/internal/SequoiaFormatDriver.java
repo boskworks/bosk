@@ -107,6 +107,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public <T> UpdateOperation submitDeletion(Reference<T> target) {
 		requireNotTaggedUnionCase(target);
+		requireDeletable(target);
 		return atomic(() -> deleteInDocument(target, rootRef, null, null));
 	}
 
@@ -119,6 +120,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		requireNotTaggedUnionCase(target);
+		requireDeletable(target);
 		return atomic(() -> deleteInDocument(target, rootRef, precondition, requiredValue));
 	}
 
