@@ -215,11 +215,12 @@ class BoskOpenApiTest {
 
 		assertTrue(hasOperation(paths, "/bosk/state/shape", "put"));
 		assertTrue(hasOperation(paths, "/bosk/state/shape/circle", "get"));
-		assertFalse(hasOperation(paths, "/bosk/state/shape/circle", "put"));
+		assertTrue(hasOperation(paths, "/bosk/state/shape/circle", "put"));
 		assertFalse(hasOperation(paths, "/bosk/state/shape/circle", "delete"));
 		assertTrue(hasOperation(paths, "/bosk/state/shape/circle/radius", "get"));
-		assertFalse(hasOperation(paths, "/bosk/state/shape/circle/radius", "put"));
+		assertTrue(hasOperation(paths, "/bosk/state/shape/circle/radius", "put"));
 		assertFalse(hasOperation(paths, "/bosk/state/shape/circle/radius", "delete"));
+		assertTrue(hasOperation(paths, "/bosk/state/shape/square/side", "put"));
 
 		assertTrue(hasOperation(paths, "/bosk/state/selfRef/self", "get"));
 		assertFalse(hasOperation(paths, "/bosk/state/selfRef/self", "put"));

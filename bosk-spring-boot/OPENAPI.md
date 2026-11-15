@@ -54,7 +54,7 @@ The document describes the operations that the endpoint actually supports for ea
 | `Catalog`, `SideTable`, or `Listing` field | yes | yes | no |
 | Container entry | yes | yes | yes |
 | Tagged-union value | yes | yes | no |
-| Tagged-union case and everything below it | yes | no | no |
+| Tagged-union case | yes | yes | no |
 
 `PUT` and `DELETE` return `202 Accepted` because the write is submitted through `bosk.driver()`.
 The response means the write was submitted, not that it has been applied. Writes fire hooks and any
@@ -87,9 +87,14 @@ Each case is also its own path, with the tag as a literal segment:
 ```
 
 A case path returns the case value without the wrapper. If the union currently holds a different
-case, the path is a `404`. Case paths and everything below them are read-only because Bosk does not
-permit replacing or deleting a value inside a `TaggedUnion`; to change the case, `PUT` the union
-itself.
+case, the path is a `404`, and a write there is silently ignored like any other write to a
+nonexistent path, provided the value could inhabit the path. A `null`, a value of the wrong type,
+or a case carrying a different tag is rejected regardless.
+
+The contents of a case follow the rules for their own node kinds: fields and entries can be
+replaced or deleted normally. A `PUT` to the case path itself must supply a case with the same tag.
+The case can't be deleted, because a tagged union always has exactly one case. To change which case
+is active, `PUT` the union itself.
 
 ## JSON representation
 
