@@ -364,6 +364,9 @@ public final class PathCompiler {
 				pushSegmentStack(codeBuilder);
 				d.generate_without(codeBuilder);
 				generateVineFoldingSequence(codeBuilder);
+			} else if (lastStep() instanceof TaggedUnionCaseStep) {
+				pushReference(codeBuilder);
+				invoke(codeBuilder, THROW_CANNOT_DELETE_TAGGED_UNION_CASE);
 			} else {
 				pushSourceObject(codeBuilder, rawClass(sourceType));
 				pushReference(codeBuilder);
@@ -722,6 +725,13 @@ public final class PathCompiler {
 			}
 		}
 
+		/**
+		 * A path segment naming a case of a {@link TaggedUnion}.
+		 * <p>
+		 * Not a {@link DeletableStep}: a union must always have exactly one case, so
+		 * deleting the case itself is rejected. Its contents are ordinary nodes, and
+		 * the steps beyond this one handle them normally.
+		 */
 		@Value
 		class TaggedUnionCaseStep implements Step {
 			String name;
@@ -751,10 +761,11 @@ public final class PathCompiler {
 
 			@Override
 			public void generate_with(CodeBuilder codeBuilder) {
-				pop(codeBuilder);
-				pop(codeBuilder);
+				// Stack: the old TaggedUnion, then the new case value.
+				// The helper verifies the tag and supplies a new TaggedUnion.
+				codeBuilder.loadConstant(name);
 				pushReference(codeBuilder);
-				invoke(codeBuilder, THROW_CANNOT_REPLACE_TAGGED_UNION_CASE);
+				invoke(codeBuilder, TAGGED_UNION_WITH);
 			}
 
 			@Override
@@ -851,8 +862,8 @@ public final class PathCompiler {
 	static final Method LISTING_GET, LISTING_WITH, LISTING_WITHOUT;
 	static final Method SIDE_TABLE_GET, SIDE_TABLE_WITH, SIDE_TABLE_WITHOUT;
 	static final Method OPTIONAL_OF, OPTIONAL_OR_THROW, OPTIONAL_EMPTY;
-	static final Method TAGGED_UNION_VALUE, TAG_CHECK, THROW_CANNOT_REPLACE_TAGGED_UNION_CASE;
-	static final Method THROW_NONEXISTENT_ENTRY, THROW_CANNOT_REPLACE_PHANTOM;
+	static final Method TAGGED_UNION_VALUE, TAGGED_UNION_WITH, TAG_CHECK;
+	static final Method THROW_NONEXISTENT_ENTRY, THROW_CANNOT_REPLACE_PHANTOM, THROW_CANNOT_DELETE_TAGGED_UNION_CASE;
 	static final Method INSTANCEOF_OR_NONEXISTENT, INVALID_WITHOUT;
 
 	static {
@@ -871,10 +882,11 @@ public final class PathCompiler {
 			OPTIONAL_OR_THROW = DereferencerRuntime.class.getDeclaredMethod("optionalOrThrow", Optional.class, Reference.class);
 			OPTIONAL_EMPTY = Optional.class.getDeclaredMethod("empty");
 			TAGGED_UNION_VALUE = TaggedUnion.class.getDeclaredMethod("value");
+			TAGGED_UNION_WITH = DereferencerRuntime.class.getDeclaredMethod("taggedUnionWith", Object.class, TaggedUnionCase.class, String.class, Reference.class);
 			TAG_CHECK = DereferencerRuntime.class.getDeclaredMethod("tagCheck", TaggedUnionCase.class, String.class, Reference.class);
-			THROW_CANNOT_REPLACE_TAGGED_UNION_CASE = DereferencerRuntime.class.getDeclaredMethod("throwCannotReplaceTaggedUnionCase", Reference.class);
 			THROW_NONEXISTENT_ENTRY = DereferencerRuntime.class.getDeclaredMethod("throwNonexistentEntry", Reference.class);
 			THROW_CANNOT_REPLACE_PHANTOM = DereferencerRuntime.class.getDeclaredMethod("throwCannotReplacePhantom", Reference.class);
+			THROW_CANNOT_DELETE_TAGGED_UNION_CASE = DereferencerRuntime.class.getDeclaredMethod("throwCannotDeleteTaggedUnionCase", Reference.class);
 			INVALID_WITHOUT = DereferencerRuntime.class.getDeclaredMethod("invalidWithout", Object.class, Reference.class);
 		} catch (NoSuchMethodException e) {
 			throw new AssertionError(e);

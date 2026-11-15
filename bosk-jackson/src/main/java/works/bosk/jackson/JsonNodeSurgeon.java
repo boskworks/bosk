@@ -12,6 +12,7 @@ import works.bosk.Listing;
 import works.bosk.Path;
 import works.bosk.Reference;
 import works.bosk.SideTable;
+import works.bosk.TaggedUnion;
 import works.bosk.exceptions.NotYetImplementedException;
 import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.ArrayElement;
 import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.NonexistentParent;
@@ -184,6 +185,14 @@ public class JsonNodeSurgeon {
 				} else {
 					return NodeInfo.wrapped(getMapEntryValueLocation(elementNode, entryID), element);
 				}
+			}
+		} else if (TaggedUnion.class.isAssignableFrom(enclosingRef.targetClass())) {
+			// A union's serialized form has exactly one member, whose name is the
+			// active case's tag, so a case that is not active does not exist here.
+			if (parent == null || !parent.has(ref.path().lastSegment())) {
+				return NodeInfo.plain(new NonexistentParent());
+			} else {
+				return NodeInfo.plain(new ObjectMember((ObjectNode) parent, ref.path().lastSegment()));
 			}
 		} else if (SideTable.class.isAssignableFrom(enclosingRef.targetClass())) {
 			if (parent == null) {

@@ -67,6 +67,9 @@ import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.Path.parseParameterized;
+import static works.bosk.ReferenceUtils.isTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireNotTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireTagMatchesIfTaggedUnion;
 import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NOTHING_CHANGED;
@@ -134,6 +137,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
+		requireTagMatchesIfTaggedUnion(target, newValue);
 		PreparedReplacement prepared = prepareReplacement(target, newValue);
 		if (prepared.isSingleDocument()) {
 			return atomic(() -> doAtomicReplacement(prepared, null, null));
@@ -146,6 +150,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
 		if (target.isRoot()) {
 			// Root node always already exists
+			return noOp();
+		}
+		if (isTaggedUnionCase(target)) {
+			// Cases aren't created individually: the union already has a case, so
+			// this path is either the active case (already exists) or inactive (nonexistent).
 			return noOp();
 		}
 		PreparedReplacement prepared = prepareReplacement(target, newValue);
@@ -188,6 +197,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> UpdateOperation submitDeletion(Reference<T> target) {
+		requireNotTaggedUnionCase(target);
 		if (deletionWritesOneDocument()) {
 			return atomic(() -> doAtomicDeletion(target, null, null));
 		} else {
@@ -197,6 +207,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+		requireTagMatchesIfTaggedUnion(target, newValue);
 		PreparedReplacement prepared = prepareReplacement(target, newValue);
 		if (prepared.isSingleDocument()
 			&& targetDocumentRef(precondition).equals(prepared.targetDocRef())) {
@@ -214,6 +225,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		requireNotTaggedUnionCase(target);
 		if (deletionWritesOneDocument()
 			&& targetDocumentRef(precondition).equals(deletionDocumentRef(target))) {
 			return atomic(() -> doAtomicDeletion(target, precondition, requiredValue));
@@ -335,15 +347,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	private static AtomicUpdateOperation atomic(Supplier<AtomicUpdateOperation.Outcome> operation) {
 		return _ -> operation.get();
-	}
-
-	/**
-	 * An update that deliberately does nothing.
-	 */
-	private static AtomicUpdateOperation noOp() {
-		// Return DONE rather than NOTHING_CHANGED: the decision to do nothing is
-		// already made, so there is no need to check whether the format changed.
-		return _ -> DONE;
 	}
 
 	@Override

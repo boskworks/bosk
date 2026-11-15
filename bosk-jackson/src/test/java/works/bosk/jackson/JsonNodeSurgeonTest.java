@@ -250,7 +250,8 @@ public class JsonNodeSurgeonTest {
 			assertEquals(expected, actual);
 		}
 		{
-			NodeInfo expected = NodeInfo.plain(new ObjectMember((ObjectNode) doc.get("variant"), "variant2"));
+			// Only the active case is present, so the other one is nonexistent
+			NodeInfo expected = NodeInfo.plain(new NonexistentParent());
 			NodeInfo actual = surgeon.nodeInfo(doc, refs.variant2());
 			assertEquals(expected, actual);
 		}

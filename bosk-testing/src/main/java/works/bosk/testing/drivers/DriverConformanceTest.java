@@ -9,6 +9,7 @@ import java.lang.reflect.RecordComponent;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
@@ -43,6 +44,7 @@ import works.bosk.testing.drivers.state.Primitives;
 import works.bosk.testing.drivers.state.SelfValue;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestEntity.IdentifierCase;
+import works.bosk.testing.drivers.state.TestEntity.KeyedCase;
 import works.bosk.testing.drivers.state.TestEntity.StringCase;
 import works.bosk.testing.drivers.state.TestEntity.Variant;
 import works.bosk.testing.drivers.state.TestValues;
@@ -53,6 +55,7 @@ import static java.time.temporal.ChronoUnit.MINUTES;
 import static java.util.Arrays.asList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.ListingEntry.LISTING_ENTRY;
@@ -66,7 +69,11 @@ import static works.bosk.util.ReflectionHelpers.boxedClass;
  * of operations and then asserting that the resulting state matches
  * that computed by {@link BoskConfig#simpleDriver} performing the same operations.
  * <p>
- *
+ * The canonical bosk is a mirror in the same replica set, and updates reach it before
+ * the driver under test, so an operation that {@link BoskConfig#simpleDriver} rejects
+ * throws before that driver sees it. Assertions of such rejections therefore check
+ * the contract, not each driver's own guards.
+ * <p>
  * Use this by extending it and supplying a value for
  * the {@link #driverFactory} to test.
  */
@@ -460,21 +467,142 @@ public abstract class DriverConformanceTest extends AbstractDriverTest {
 		Reference<TaggedUnion<Variant>> variantRef = bosk.rootReference().thenTaggedUnion(Variant.class, TestEntity.Fields.variant);
 		driver.submitReplacement(variantRef, TaggedUnion.of(new StringCase("value1")));
 		assertCorrectBoskContents();
-		driver.submitReplacement(variantRef, TaggedUnion.of(new IdentifierCase(Identifier.from("value2"))));
-		assertCorrectBoskContents();
-		assertThrows(IllegalArgumentException.class, () -> driver.submitDeletion(variantRef));
+
+		// A field inside the active case behaves like any other field.
+		Reference<StringCase> stringCaseRef = variantRef.then(StringCase.class, "string");
+		driver.submitReplacement(stringCaseRef.then(String.class, "value"), "value2");
 		assertCorrectBoskContents();
 
-		Reference<StringCase> stringCaseRef = variantRef.then(StringCase.class, "string");
-		assertThrows(IllegalArgumentException.class, () -> driver.submitReplacement(stringCaseRef, new StringCase("value2")));
+		// The active case itself can be replaced by another case with the same tag.
+		driver.submitReplacement(stringCaseRef, new StringCase("value3"));
+		assertCorrectBoskContents();
+
+		// A non-active case is nonexistent, so replacing it is a no-op.
+		Reference<IdentifierCase> idCaseRef = variantRef.then(IdentifierCase.class, "identifier");
+		driver.submitReplacement(idCaseRef, new IdentifierCase(Identifier.from("value4")));
+		assertCorrectBoskContents();
+
+		// Switching cases is still done by replacing the union.
+		driver.submitReplacement(variantRef, TaggedUnion.of(new IdentifierCase(Identifier.from("value5"))));
+		assertCorrectBoskContents();
+
+		// The newly active case behaves the same way.
+		driver.submitReplacement(idCaseRef.then(Identifier.class, "value"), Identifier.from("value6"));
+		assertCorrectBoskContents();
+		driver.submitReplacement(idCaseRef, new IdentifierCase(Identifier.from("value7")));
+		assertCorrectBoskContents();
+
+		// Conditional updates reach a case the same way unconditional ones do.
+		Reference<Identifier> rootIDRef = bosk.rootReference().then(Identifier.class, TestEntity.Fields.id);
+		Identifier rootID;
+		try (var _ = bosk.readSession()) {
+			rootID = rootIDRef.value();
+		}
+		driver.submitConditionalReplacement(idCaseRef, new IdentifierCase(Identifier.from("value8")), rootIDRef, rootID);
+		assertCorrectBoskContents();
+		driver.submitConditionalReplacement(idCaseRef, new IdentifierCase(Identifier.from("value9")), rootIDRef, Identifier.from("not-the-root-id"));
+		assertCorrectBoskContents();
+		driver.submitConditionalReplacement(stringCaseRef, new StringCase("value10"), rootIDRef, rootID);
+		assertCorrectBoskContents();
+
+		// Cases aren't created individually, even when the union doesn't currently have that case.
+		driver.submitConditionalCreation(stringCaseRef, new StringCase("value11"));
+		assertCorrectBoskContents();
+
+		assertThrows(IllegalArgumentException.class, () ->
+			driver.submitConditionalDeletion(idCaseRef, rootIDRef, rootID));
+		assertCorrectBoskContents();
+		// A case is rejected even when the precondition doesn't hold.
+		assertThrows(IllegalArgumentException.class, () ->
+			driver.submitConditionalDeletion(idCaseRef, rootIDRef, Identifier.from("not-the-root-id")));
+		assertCorrectBoskContents();
+
+		// The union field and the case objects themselves are not deletable.
+		assertThrows(IllegalArgumentException.class, () -> driver.submitDeletion(variantRef));
 		assertCorrectBoskContents();
 		assertThrows(IllegalArgumentException.class, () -> driver.submitDeletion(stringCaseRef));
 		assertCorrectBoskContents();
-
-		Reference<IdentifierCase> idCaseRef = variantRef.then(IdentifierCase.class, "identifier");
-		assertThrows(IllegalArgumentException.class, () -> driver.submitReplacement(idCaseRef, new IdentifierCase(Identifier.from("value3"))));
-		assertCorrectBoskContents();
 		assertThrows(IllegalArgumentException.class, () -> driver.submitDeletion(idCaseRef));
+		assertCorrectBoskContents();
+	}
+
+	/**
+	 * Exercises a case whose tag comes from its {@code tag} field rather than from
+	 * its type, so that one class serves more than one tag.
+	 */
+	@Test
+	void variant_tagField() throws InvalidTypeException {
+		initializeBoskWithBlankValues(Path.just(TestEntity.Fields.catalog));
+		assertCorrectBoskContents();
+
+		Reference<TaggedUnion<Variant>> variantRef = bosk.rootReference().thenTaggedUnion(Variant.class, TestEntity.Fields.variant);
+		Reference<KeyedCase> alphaRef = variantRef.then(KeyedCase.class, "alpha");
+		Reference<KeyedCase> betaRef = variantRef.then(KeyedCase.class, "beta");
+		Reference<String> alphaValueRef = alphaRef.then(String.class, "value");
+		Reference<String> alphaNoteRef = alphaRef.then(String.class, "note");
+		Reference<String> betaValueRef = betaRef.then(String.class, "value");
+		Reference<String> betaNoteRef = betaRef.then(String.class, "note");
+
+		driver.submitReplacement(variantRef, TaggedUnion.of(new KeyedCase("alpha", "alpha1", Optional.empty())));
+		assertCorrectBoskContents();
+		try (var _ = bosk.readSession()) {
+			assertEquals(new KeyedCase("alpha", "alpha1", Optional.empty()), alphaRef.value());
+			assertNull(betaRef.valueIfExists());
+		}
+
+		// The contents of the active case behave like any other node.
+		driver.submitReplacement(alphaValueRef, "alpha2");
+		assertCorrectBoskContents();
+		driver.submitReplacement(alphaNoteRef, "alphaNote");
+		assertCorrectBoskContents();
+		driver.submitDeletion(alphaNoteRef);
+		assertCorrectBoskContents();
+
+		// The other tag names the same class but is not the active case, so it does not exist.
+		driver.submitReplacement(betaRef, new KeyedCase("beta", "ignored", Optional.of("ignored")));
+		assertCorrectBoskContents();
+		driver.submitReplacement(betaValueRef, "ignored");
+		assertCorrectBoskContents();
+		driver.submitDeletion(betaNoteRef);
+		assertCorrectBoskContents();
+
+		// The case's tag is part of the union's identity, so replacing the active case
+		// with the same class carrying the other tag is a case switch by another name.
+		assertThrows(IllegalArgumentException.class, () ->
+			driver.submitReplacement(alphaRef, new KeyedCase("beta", "ignored", Optional.empty())));
+		assertCorrectBoskContents();
+
+		// A wrong tag is rejected even on the inactive path, since the value could
+		// never inhabit it.
+		assertThrows(IllegalArgumentException.class, () ->
+			driver.submitReplacement(betaRef, new KeyedCase("alpha", "ignored", Optional.empty())));
+		assertCorrectBoskContents();
+
+		// The tag rule doesn't depend on the precondition or on the target existing.
+		Reference<Identifier> rootIDRef = bosk.rootReference().then(Identifier.class, TestEntity.Fields.id);
+		assertThrows(IllegalArgumentException.class, () ->
+			driver.submitConditionalReplacement(alphaRef, new KeyedCase("beta", "ignored", Optional.empty()),
+				rootIDRef, Identifier.from("not-the-root-id")));
+		assertCorrectBoskContents();
+		assertThrows(IllegalArgumentException.class, () ->
+			driver.submitConditionalCreation(betaRef, new KeyedCase("alpha", "ignored", Optional.empty())));
+		assertCorrectBoskContents();
+
+		driver.submitReplacement(alphaRef, new KeyedCase("alpha", "alpha3", Optional.empty()));
+		assertCorrectBoskContents();
+
+		// Switching cases by replacing the union moves which tag exists.
+		driver.submitReplacement(variantRef, TaggedUnion.of(new KeyedCase("beta", "beta1", Optional.of("betaNote"))));
+		assertCorrectBoskContents();
+		try (var _ = bosk.readSession()) {
+			assertEquals(new KeyedCase("beta", "beta1", Optional.of("betaNote")), betaRef.value());
+			assertNull(alphaRef.valueIfExists());
+		}
+		driver.submitDeletion(betaNoteRef);
+		assertCorrectBoskContents();
+		driver.submitDeletion(alphaNoteRef);
+		assertCorrectBoskContents();
+		driver.submitReplacement(alphaValueRef, "ignored");
 		assertCorrectBoskContents();
 	}
 

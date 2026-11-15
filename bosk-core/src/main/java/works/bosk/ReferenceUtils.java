@@ -251,6 +251,42 @@ C&lt;String> someField;
 	}
 
 	/**
+	 * @return true if {@code ref} refers to a case of a {@link TaggedUnion},
+	 * which exists only when that case is the union's active case
+	 */
+	public static boolean isTaggedUnionCase(Reference<?> ref) {
+		if (ref.isRoot()) {
+			return false;
+		} else {
+			return TaggedUnion.class.isAssignableFrom(rawClass(ref.enclosingReference(Object.class).targetType()));
+		}
+	}
+
+	/**
+	 * @throws IllegalArgumentException if {@code ref} refers to a {@link TaggedUnion}
+	 * case and {@code newValue} is a case with a different tag, because that would
+	 * change which case is active without replacing the union
+	 */
+	public static void requireTagMatchesIfTaggedUnion(Reference<?> ref, Object newValue) {
+		if (newValue instanceof TaggedUnionCase newCase
+			&& isTaggedUnionCase(ref)
+			&& !ref.path().lastSegment().equals(newCase.tag())) {
+			throw new IllegalArgumentException("Cannot replace " + ref + " with a case tagged \"" + newCase.tag()
+				+ "\"; replace the TaggedUnion to change cases");
+		}
+	}
+
+	/**
+	 * @throws IllegalArgumentException if {@code ref} refers to a {@link TaggedUnion}
+	 * case, because a union must always have exactly one case
+	 */
+	public static void requireNotTaggedUnionCase(Reference<?> ref) {
+		if (isTaggedUnionCase(ref)) {
+			throw new IllegalArgumentException("Cannot delete " + ref + ": a TaggedUnion must have exactly one case");
+		}
+	}
+
+	/**
 	 * @return {@code type} and all its supertypes, including {@link Object},
 	 * each appearing exactly once and ordered so that each type comes after
 	 * all the types it extends or implements

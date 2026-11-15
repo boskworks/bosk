@@ -38,6 +38,9 @@ import works.bosk.exceptions.InvalidTypeException;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
 import static java.util.Objects.requireNonNull;
+import static works.bosk.ReferenceUtils.isTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireNotTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireTagMatchesIfTaggedUnion;
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NOTHING_CHANGED;
@@ -79,11 +82,17 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	@Override
 	public <T> UpdateOperation submitReplacement(Reference<T> target, T newValue) {
+		requireTagMatchesIfTaggedUnion(target, newValue);
 		return atomic(() -> replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, null, null));
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalCreation(Reference<T> target, T newValue) {
+		if (isTaggedUnionCase(target)) {
+			// Cases aren't created individually: the union already has a case, so
+			// this path is either the active case (already exists) or inactive (nonexistent).
+			return noOp();
+		}
 		return atomic(() -> {
 			boolean changed = createInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef);
 			if (changed) {
@@ -97,16 +106,19 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	@Override
 	public <T> UpdateOperation submitDeletion(Reference<T> target) {
+		requireNotTaggedUnionCase(target);
 		return atomic(() -> deleteInDocument(target, rootRef, null, null));
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+		requireTagMatchesIfTaggedUnion(target, newValue);
 		return atomic(() -> replaceInDocument(target, formatter.object2bsonValue(newValue, target.targetType()), rootRef, precondition, requiredValue));
 	}
 
 	@Override
 	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		requireNotTaggedUnionCase(target);
 		return atomic(() -> deleteInDocument(target, rootRef, precondition, requiredValue));
 	}
 

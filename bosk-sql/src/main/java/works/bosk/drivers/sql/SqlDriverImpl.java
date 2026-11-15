@@ -50,6 +50,9 @@ import static org.jooq.impl.DSL.max;
 import static org.jooq.impl.DSL.primaryKey;
 import static org.jooq.impl.DSL.select;
 import static org.jooq.impl.DSL.using;
+import static works.bosk.ReferenceUtils.isTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireNotTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireTagMatchesIfTaggedUnion;
 import static works.bosk.logging.MappedDiagnosticContext.MDCScope;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
@@ -349,6 +352,7 @@ class SqlDriverImpl implements SqlDriver {
 		try (
 			var connection = connectionSource.get()
 		) {
+			requireTagMatchesIfTaggedUnion(target, newValue);
 			// TODO optimization: no need to read the current state for root
 			replaceAndCommit(readState(connection), target, newValue, connection);
 		} catch (SQLException e) {
@@ -362,6 +366,7 @@ class SqlDriverImpl implements SqlDriver {
 		try (
 			var connection = connectionSource.get()
 		) {
+			requireTagMatchesIfTaggedUnion(target, newValue);
 			JsonNode state = readState(connection);
 			if (isMatchingTextNode(precondition, requiredValue, state)) {
 				replaceAndCommit(state, target, newValue, connection);
@@ -377,6 +382,10 @@ class SqlDriverImpl implements SqlDriver {
 		try (
 			var connection = connectionSource.get()
 		) {
+			if (isTaggedUnionCase(target)) {
+				// Cases aren't created individually: a union always already has one.
+				return;
+			}
 			JsonNode state = readState(connection);
 			NodeInfo node = surgeon.nodeInfo(state, target);
 			if (surgeon.node(node.valueLocation(), state) == null) {
@@ -390,6 +399,7 @@ class SqlDriverImpl implements SqlDriver {
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
 		LOGGER.debug("submitDeletion({})", target);
+		requireNotTaggedUnionCase(target);
 		try (
 			var connection = connectionSource.get()
 		) {
@@ -402,6 +412,7 @@ class SqlDriverImpl implements SqlDriver {
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		LOGGER.debug("submitConditionalDeletion({}, {}, {})", target, precondition, requiredValue);
+		requireNotTaggedUnionCase(target);
 		try (
 			var connection = connectionSource.get()
 		) {

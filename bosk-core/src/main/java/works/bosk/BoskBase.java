@@ -26,6 +26,8 @@ import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
 import static works.bosk.Path.parameterNameFromSegment;
 import static works.bosk.ReferenceUtils.rawClass;
+import static works.bosk.ReferenceUtils.requireNotTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireTagMatchesIfTaggedUnion;
 import static works.bosk.TypeValidation.validateType;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
@@ -161,9 +163,13 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		 * points to, so this check is what stops a value of some sibling subtype from
 		 * reaching a driver, which might otherwise write it to its backing store or fail
 		 * with a confusing error from generated code.
+		 * <p>
+		 * These checks don't depend on whether the target exists, so they also cover the
+		 * conditional updates whose precondition would have made the write a no-op.
 		 *
 		 * @throws NullPointerException if {@code newValue} is null
-		 * @throws IllegalArgumentException if {@code newValue} is not an instance of the target's class
+		 * @throws IllegalArgumentException if {@code newValue} is not an instance of the target's class,
+		 * or if it would change the tag of a {@link TaggedUnion} case
 		 */
 		private <T> void checkReplacementValue(Reference<T> target, T newValue) {
 			if (newValue == null) {
@@ -172,6 +178,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 				throw new IllegalArgumentException("Cannot replace " + target + " with " + newValue.getClass().getSimpleName()
 					+ ": the node's type is " + target.targetClass().getSimpleName());
 			}
+			requireTagMatchesIfTaggedUnion(target, newValue);
 		}
 
 		@Override
@@ -355,6 +362,8 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 
 		@Override
 		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+			// Like submitDeletion, this is rejected whether or not the precondition holds.
+			requireNotTaggedUnionCase(target);
 			synchronized (this) {
 				boolean preconditionsSatisfied;
 				try (var _ = newSupersedingReadSession()) {
