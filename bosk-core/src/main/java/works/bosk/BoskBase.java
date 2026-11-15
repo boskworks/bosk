@@ -629,6 +629,11 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		}
 
 		@Override
+		public final boolean isDeletable() {
+			return pathCompiler.isDeletable(path);
+		}
+
+		@Override
 		public RootReference<?> root() {
 			return rootRef;
 		}

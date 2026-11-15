@@ -121,6 +121,18 @@ public final class PathCompiler {
 		return builderFor(path).targetType();
 	}
 
+	/**
+	 * @return true if a reference with the given {@code path} is deletable,
+	 * independent of whether the target exists
+	 */
+	public boolean isDeletable(Path path) {
+		try {
+			return builderFor(path).isDeletable();
+		} catch (InvalidTypeException e) {
+			return false;
+		}
+	}
+
 	private DereferencerBuilder builderFor(Path path) throws InvalidTypeException {
 		// We'd like to use computeIfAbsent for this, but we can't,
 		// because in some cases we need to add two entries to the map
@@ -377,6 +389,11 @@ public final class PathCompiler {
 		@Override
 		public Type targetType() {
 			return lastStep().targetType();
+		}
+
+		@Override
+		public boolean isDeletable() {
+			return lastStep() instanceof DeletableStep;
 		}
 
 		//
@@ -846,6 +863,11 @@ public final class PathCompiler {
 		@Override
 		public Path fullyParameterizedPath() {
 			return Path.empty();
+		}
+
+		@Override
+		public boolean isDeletable() {
+			return false;
 		}
 
 		@Override
