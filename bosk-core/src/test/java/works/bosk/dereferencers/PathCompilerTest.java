@@ -262,7 +262,7 @@ public class PathCompilerTest extends AbstractBoskTest {
 			(s, v) -> s
 				.withEntities(s.entities()
 					.with(s.entities().get(parentID)
-						.withVariant(TaggedUnion.of(new TaggedUnionCase1((String) v))))),
+						.withVariant(TaggedUnion.of(new TaggedUnionCase1(v))))),
 			s -> {
 				throw new IllegalArgumentException("Cannot delete a field");
 			}
