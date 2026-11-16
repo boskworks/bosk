@@ -257,7 +257,7 @@ Wrangler interfaces (e.g. `OneMemberWrangler`, `MemberWrangler`, `Gatherer`) mus
 
 - Use gradle's `--fail-fast` option to save time
 - When developing a bug fix, write the test first and verify it fails against the unfixed code. Then apply the fix and confirm the test passes. This ensures the test would actually catch the bug.
-- Use `./gradlew <task> --rerun` (not `--rerun-tasks`) to force Gradle to re-execute a task when cached results exist.
+- Trust Gradle's up-to-date checks. Don't pass `--rerun` or `--rerun-tasks` by default; use `--rerun` only when chasing a failure that might be intermittent.
 - Java assertions (-ea) are enabled for tests
 - Do not dismiss test failures as "pre-existing". We must fix all failures. Pre-existing failures can be deferred until after the main work, but we must ultimately fix them.
 
