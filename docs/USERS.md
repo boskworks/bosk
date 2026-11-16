@@ -199,6 +199,12 @@ Such a reference is treated as nonexistent if the value carries a different tag.
 In this way, a tagged union behaves like a `StateTreeNode` having `Optional` fields,
 one for each case, whose name is the tag and whose type is provided by the `@TaggedUnionCaseMap`.
 
+The active case is an ordinary `StateTreeNode` in every other respect:
+fields and entries inside it can be replaced or deleted using the normal rules.
+The case's tag does not change; to change which case is active, replace the
+whole union. The case itself cannot be deleted, because a tagged union must
+always have exactly one active case.
+
 It is notable that the case map is not entirely determined by annotations,
 but is specified by an object that is constructed at runtime.
 The intent is that tagged unions offer a way to extend the allowed contents of the bosk at initialization time,

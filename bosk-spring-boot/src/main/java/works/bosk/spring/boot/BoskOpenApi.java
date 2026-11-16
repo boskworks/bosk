@@ -53,9 +53,10 @@ import static works.bosk.ReferenceUtils.resolveTypeVariables;
  * so the same data can appear at more than one path; for example, a record field, a container
  * entry, and a tagged-union case also appear within their parent's value.
  * <p>
- * Paths that pass through a tagged-union case are read-only, because Bosk does not permit
- * replacing or deleting a value inside a {@link TaggedUnion}. To change the case, replace the
- * union itself.
+ * Paths that pass through a tagged-union case behave like other paths: the case's
+ * fields and entries can be updated, and the case itself can be replaced with another
+ * case carrying the same tag. To change which case is active, replace the union itself.
+ * The case object itself is not deletable.
  * <p>
  * Implicit {@code @Self} and {@code @Enclosing} references do not appear in a node's JSON, but
  * they remain readable as paths. A {@link Phantom} does not appear in the JSON either, and its
@@ -95,7 +96,8 @@ final class BoskOpenApi {
 		CASE;
 
 		boolean puttable() {
-			return this == ROOT || this == RECORD_FIELD || this == OPTIONAL_FIELD || this == CONTAINER_ENTRY;
+			return this == ROOT || this == RECORD_FIELD || this == OPTIONAL_FIELD
+				|| this == CONTAINER_ENTRY || this == CASE;
 		}
 
 		boolean deletable() {
@@ -128,7 +130,6 @@ final class BoskOpenApi {
 				basePath,
 				List.of(),
 				NodeKind.ROOT,
-				false,
 				new HashSet<>());
 
 			while (!schemaQueue.isEmpty()) {
@@ -160,7 +161,6 @@ final class BoskOpenApi {
 			String openapiPath,
 			List<ObjectNode> pathParameters,
 			NodeKind kind,
-			boolean readOnly,
 			Set<Type> ancestors
 		) {
 			Reference<?> reference;
@@ -173,7 +173,7 @@ final class BoskOpenApi {
 				return;
 			}
 			Type actualType = reference.targetType();
-			addPath(openapiPath, pathParameters, reference, actualType, kind, readOnly);
+			addPath(openapiPath, pathParameters, reference, actualType, kind);
 			if (kind == NodeKind.PHANTOM) {
 				// A Phantom's target type is its contents, but the contents never exist.
 				return;
@@ -182,18 +182,18 @@ final class BoskOpenApi {
 			Class<?> rawType = rawClass(actualType);
 			if (Catalog.class.isAssignableFrom(rawType)) {
 				Type entryType = parameterType(actualType, Catalog.class, 0);
-				walkContainerEntry(boskPath, openapiPath, pathParameters, entryType, readOnly, ancestors);
+				walkContainerEntry(boskPath, openapiPath, pathParameters, entryType, ancestors);
 			} else if (SideTable.class.isAssignableFrom(rawType)) {
 				Type keyType = parameterType(actualType, SideTable.class, 0);
-				walkContainerEntry(boskPath, openapiPath, pathParameters, keyType, readOnly, ancestors);
+				walkContainerEntry(boskPath, openapiPath, pathParameters, keyType, ancestors);
 			} else if (Listing.class.isAssignableFrom(rawType)) {
 				Type entryType = parameterType(actualType, Listing.class, 0);
-				walkContainerEntry(boskPath, openapiPath, pathParameters, entryType, readOnly, ancestors);
+				walkContainerEntry(boskPath, openapiPath, pathParameters, entryType, ancestors);
 			} else if (TaggedUnion.class.isAssignableFrom(rawType)) {
-				walkTaggedUnionCases(boskPath, openapiPath, pathParameters, actualType, readOnly, ancestors);
+				walkTaggedUnionCases(boskPath, openapiPath, pathParameters, actualType, ancestors);
 			} else if (rawType.isRecord()) {
 				if (ancestors.add(actualType)) {
-					walkRecordComponents(boskPath, openapiPath, pathParameters, actualType, rawType, readOnly, ancestors);
+					walkRecordComponents(boskPath, openapiPath, pathParameters, actualType, rawType, ancestors);
 					ancestors.remove(actualType);
 				}
 			}
@@ -205,7 +205,6 @@ final class BoskOpenApi {
 			List<ObjectNode> pathParameters,
 			Type recordType,
 			Class<?> recordClass,
-			boolean readOnly,
 			Set<Type> ancestors
 		) {
 			for (RecordComponent component : recordClass.getRecordComponents()) {
@@ -226,7 +225,6 @@ final class BoskOpenApi {
 					joinPath(openapiPath, component.getName()),
 					pathParameters,
 					childKind,
-					readOnly,
 					ancestors);
 			}
 		}
@@ -236,7 +234,6 @@ final class BoskOpenApi {
 			String openapiPath,
 			List<ObjectNode> pathParameters,
 			Type identifierType,
-			boolean readOnly,
 			Set<Type> ancestors
 		) {
 			String parameterName = parameterName(identifierType, pathParameters);
@@ -253,7 +250,6 @@ final class BoskOpenApi {
 				joinPath(openapiPath, "{" + parameterName + "}"),
 				entryParameters,
 				NodeKind.CONTAINER_ENTRY,
-				readOnly,
 				ancestors);
 		}
 
@@ -262,7 +258,6 @@ final class BoskOpenApi {
 			String openapiPath,
 			List<ObjectNode> pathParameters,
 			Type unionType,
-			boolean readOnly,
 			Set<Type> ancestors
 		) {
 			Type caseSupertype = parameterType(unionType, TaggedUnion.class, 0);
@@ -278,7 +273,6 @@ final class BoskOpenApi {
 					joinPath(openapiPath, tag),
 					pathParameters,
 					NodeKind.CASE,
-					true,
 					ancestors);
 			}
 		}
@@ -288,21 +282,18 @@ final class BoskOpenApi {
 			List<ObjectNode> pathParameters,
 			Reference<?> reference,
 			Type type,
-			NodeKind kind,
-			boolean readOnly
+			NodeKind kind
 		) {
 			ObjectNode pathItem = JsonNodeFactory.instance.objectNode();
 			if (!pathParameters.isEmpty()) {
 				pathItem.set("parameters", list(pathParameters.toArray()));
 			}
-			pathItem.set("get", getOperation(openapiPath, reference, type, kind, readOnly));
-			if (!readOnly) {
-				if (kind.puttable()) {
-					pathItem.set("put", putOperation(openapiPath, reference, type, kind));
-				}
-				if (kind.deletable()) {
-					pathItem.set("delete", deleteOperation(openapiPath, reference, kind));
-				}
+			pathItem.set("get", getOperation(openapiPath, reference, type, kind));
+			if (kind.puttable()) {
+				pathItem.set("put", putOperation(openapiPath, reference, type, kind));
+			}
+			if (kind.deletable()) {
+				pathItem.set("delete", deleteOperation(openapiPath, reference, kind));
 			}
 			JsonNode previous = paths.putIfAbsent(openapiPath, pathItem);
 			if (previous != null) {
@@ -314,8 +305,7 @@ final class BoskOpenApi {
 			String openapiPath,
 			Reference<?> reference,
 			Type type,
-			NodeKind kind,
-			boolean readOnly
+			NodeKind kind
 		) {
 			if (kind == NodeKind.PHANTOM) {
 				return map(
@@ -339,9 +329,6 @@ final class BoskOpenApi {
 				+ " A node's value embeds its children, so the same data is also visible through the parent path.";
 			if (kind == NodeKind.IMPLICIT_REFERENCE) {
 				description += " This is an implicit reference computed by Bosk; it is not part of the stored JSON.";
-			}
-			if (readOnly) {
-				description += " This path is read-only because it passes through a tagged-union case.";
 			}
 			ObjectNode responses = map(
 				"200", success,

@@ -182,9 +182,11 @@ representations that commonly surprise people are:
 
 The path walk uses `PathCompiler` indirectly through `Reference.then`, so every path in the document
 is one Bosk accepts, and the type used to build its schema is the type Bosk reports for that path.
-Tagged-union cases are path segments in Bosk. They are read-only: replacing or deleting a case
-throws, and so does replacing or deleting anything below it because the rewrite has to pass back
-through the case. The walk therefore carries a read-only flag through a case subtree.
+Tagged-union cases are path segments in Bosk. A case's fields and entries are writable,
+and the case itself can be replaced with another case carrying the same tag. Deleting the
+case itself is not allowed because the union must always have exactly one case; to change
+which case is active, replace the union. The walk therefore needs no read-only flag for
+case subtrees.
 
 Two limitations are deliberate:
 

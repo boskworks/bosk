@@ -21,6 +21,10 @@ import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.jackson.JsonNodeSurgeon.NodeInfo;
 import works.bosk.jackson.JsonNodeSurgeon.NodeLocation.Root;
 
+import static works.bosk.ReferenceUtils.isTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireNotTaggedUnionCase;
+import static works.bosk.ReferenceUtils.requireTagMatchesIfTaggedUnion;
+
 /**
  * Maintains an in-memory representation of the bosk state
  * in the form of a tree of {@link JsonNode} objects.
@@ -57,6 +61,7 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitReplacement(Reference<T> target, T newValue) {
 		traceCurrentState("Before submitReplacement");
+		requireTagMatchesIfTaggedUnion(target, newValue);
 		doReplacement(surgeon.nodeInfo(currentRoot(), target), () -> target.path().lastSegment(), newValue);
 		downstream.submitReplacement(target, newValue);
 		traceCurrentState("After submitReplacement");
@@ -65,6 +70,7 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		traceCurrentState("Before submitConditionalReplacement");
+		requireTagMatchesIfTaggedUnion(target, newValue);
 		JsonNode root = currentRoot();
 		if (preconditionMatches(root, precondition, requiredValue)) {
 			doReplacement(surgeon.nodeInfo(root, target), () -> target.path().lastSegment(), newValue);
@@ -76,7 +82,8 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitConditionalCreation(Reference<T> target, T newValue) {
 		traceCurrentState("Before submitConditionalCreation");
-		if (surgeon.valueNode(currentRoot(), target) == null) {
+		if (!isTaggedUnionCase(target) && surgeon.valueNode(currentRoot(), target) == null) {
+			// Cases aren't created individually: a union always already has one.
 			doReplacement(surgeon.nodeInfo(currentRoot(), target), () -> target.path().lastSegment(), newValue);
 		}
 		downstream.submitConditionalCreation(target, newValue);
@@ -86,6 +93,7 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitDeletion(Reference<T> target) {
 		traceCurrentState("Before submitDeletion");
+		requireNotTaggedUnionCase(target);
 		surgeon.deleteNode(surgeon.nodeInfo(currentRoot(), target));
 		downstream.submitDeletion(target);
 		traceCurrentState("After submitDeletion");
@@ -94,6 +102,7 @@ public class JsonNodeDriver implements BoskDriver {
 	@Override
 	public synchronized <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		traceCurrentState("Before submitConditionalDeletion");
+		requireNotTaggedUnionCase(target);
 		JsonNode root = currentRoot();
 		if (preconditionMatches(root, precondition, requiredValue)) {
 			surgeon.deleteNode(surgeon.nodeInfo(root, target));

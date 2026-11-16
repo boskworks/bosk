@@ -240,6 +240,36 @@ public class PathCompilerTest extends AbstractBoskTest {
 		return standardEquivalenceTests(expected, "/entities/parent/optionals/optionalString", "Example string");
 	}
 
+	@TestFactory
+	List<DynamicTest> taggedUnionCase() {
+		Dereferencer expected = dereferencer(
+			s -> (TaggedUnionCase1) s.entities().get(parentID).variant().value(),
+			(s, v) -> s
+				.withEntities(s.entities()
+					.with(s.entities().get(parentID)
+						.withVariant(TaggedUnion.of(v)))),
+			s -> {
+				throw new IllegalArgumentException("Cannot delete a tagged-union case");
+			}
+		);
+		return standardEquivalenceTests(expected, "/entities/parent/variant/variant1", new TaggedUnionCase1("new"));
+	}
+
+	@TestFactory
+	List<DynamicTest> taggedUnionCaseField() {
+		Dereferencer expected = dereferencer(
+			s -> ((TaggedUnionCase1) s.entities().get(parentID).variant().value()).stringField(),
+			(s, v) -> s
+				.withEntities(s.entities()
+					.with(s.entities().get(parentID)
+						.withVariant(TaggedUnion.of(new TaggedUnionCase1((String) v))))),
+			s -> {
+				throw new IllegalArgumentException("Cannot delete a field");
+			}
+		);
+		return standardEquivalenceTests(expected, "/entities/parent/variant/variant1/stringField", "new");
+	}
+
 	@Test
 	void differentClassLoader() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, InvalidTypeException {
 		ClassLoader parent = getClass().getClassLoader();

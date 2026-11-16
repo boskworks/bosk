@@ -31,23 +31,40 @@ public record TestEntity(
 ) implements Entity {
 
 	public interface Variant extends TaggedUnionCase {
+		/**
+		 * The tag for cases whose tag is determined by their type.
+		 * {@link KeyedCase} overrides this with its {@code tag} field.
+		 */
 		@Override
 		default String tag() {
 			if (this instanceof StringCase) {
 				return "string";
-			} else {
+			} else if (this instanceof IdentifierCase) {
 				return "identifier";
+			} else {
+				throw new AssertionError("Unexpected Variant type " + getClass());
 			}
 		}
 
 		@TaggedUnionCaseMap
 		MapValue<Type> VARIANT_CASE_MAP = MapValue.copyOf(Map.of(
 			"string", StringCase.class,
-			"identifier", IdentifierCase.class
+			"identifier", IdentifierCase.class,
+			"alpha", KeyedCase.class,
+			"beta", KeyedCase.class
 		));
 	}
 	public record StringCase(String value) implements Variant {}
 	public record IdentifierCase(Identifier value) implements Variant {}
+
+	/**
+	 * A case whose tag comes from its {@code tag} field rather than from its type,
+	 * so one class serves more than one tag.
+	 * <p>
+	 * The record component generates the {@code tag()} method that
+	 * {@link Variant} would otherwise provide.
+	 */
+	public record KeyedCase(String tag, String value, Optional<String> note) implements Variant {}
 
 	public static TestEntity empty(Identifier id, Reference<Catalog<TestEntity>> catalogRef) {
 		return new TestEntity(id,

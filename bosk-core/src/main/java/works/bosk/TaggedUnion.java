@@ -4,6 +4,10 @@ import java.util.Objects;
 
 /**
  * A {@link StateTreeNode} representing one of several possible {@link TaggedUnionCase}s.
+ * <p>
+ * Exactly one case is active; the others do not exist. The active case's contents
+ * can be updated through a reference that includes the case tag, but its tag cannot
+ * change that way. To change which case is active, replace the union itself.
  */
 public record TaggedUnion<V extends TaggedUnionCase>(V value) {
 	public TaggedUnion {

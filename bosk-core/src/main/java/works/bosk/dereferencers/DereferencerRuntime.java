@@ -7,6 +7,7 @@ import works.bosk.Identifier;
 import works.bosk.Listing;
 import works.bosk.Reference;
 import works.bosk.SideTable;
+import works.bosk.TaggedUnion;
 import works.bosk.TaggedUnionCase;
 
 import static works.bosk.ListingEntry.LISTING_ENTRY;
@@ -32,8 +33,35 @@ public abstract class DereferencerRuntime implements Dereferencer {
 		throw new IllegalArgumentException("Cannot replace phantom " + ref);
 	}
 
-	protected static Object throwCannotReplaceTaggedUnionCase(Reference<?> ref) {
-		throw new IllegalArgumentException("Cannot replace TaggedUnionCase inside TaggedUnion " + ref);
+	/**
+	 * Rebuilds a {@link TaggedUnion} after one of its case's contents has changed.
+	 * The new case's tag must match the tag named by the path: changing cases is
+	 * done by replacing the union itself, not by replacing a case with a
+	 * differently-tagged one. The value is checked before the union, because a case
+	 * carrying the wrong tag can't inhabit the path regardless of what the union
+	 * currently holds.
+	 * <p>
+	 * If the tag is right but the union currently holds a different case, the path
+	 * is nonexistent, so the update is ignored.
+	 *
+	 * @param oldUnion the previous union
+	 * @param newCase the new contents for the case the path names
+	 * @param expectedTag the tag the path refers to
+	 */
+	protected static Object taggedUnionWith(Object oldUnion, TaggedUnionCase newCase, String expectedTag, Reference<?> ref) throws NonexistentEntryException {
+		if (!expectedTag.equals(newCase.tag())) {
+			throw new IllegalArgumentException("Cannot replace " + ref + " with a case tagged \""
+				+ newCase.tag() + "\"; replace the TaggedUnion to change cases");
+		}
+		TaggedUnion<?> union = (TaggedUnion<?>) oldUnion;
+		if (!expectedTag.equals(union.value().tag())) {
+			throw new NonexistentEntryException(ref.path());
+		}
+		return TaggedUnion.of(newCase);
+	}
+
+	protected static Object throwCannotDeleteTaggedUnionCase(Reference<?> ref) {
+		throw new IllegalArgumentException("Cannot delete " + ref + ": a TaggedUnion must have exactly one case");
 	}
 
 	protected static Object optionalOrThrow(Optional<?> optional, Reference<?> ref) throws NonexistentEntryException {

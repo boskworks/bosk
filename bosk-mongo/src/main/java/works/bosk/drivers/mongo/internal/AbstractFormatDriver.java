@@ -41,6 +41,9 @@ import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
 import static org.bson.BsonBoolean.FALSE;
+import static org.bson.BsonBoolean.TRUE;
+import static works.bosk.ReferenceUtils.isTaggedUnionCase;
+import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.dottedFieldNameOf;
 import static works.bosk.drivers.mongo.internal.DocumentFieldTracker.TrackedField.DIAGNOSTICS;
 import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
@@ -388,12 +391,28 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		}
 	}
 
+	/**
+	 * An update that deliberately does nothing.
+	 */
+	protected static AtomicUpdateOperation noOp() {
+		// Return DONE rather than NOTHING_CHANGED: the decision to do nothing is
+		// already made, so there is no need to check whether the format changed.
+		return _ -> DONE;
+	}
+
 	protected <T> BsonDocument standardPreconditions(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
 		if (!target.path().equals(startingRef.path())) {
 			String enclosingObjectKey = dottedFieldNameOf(target.enclosingReference(Object.class), startingRef);
 			BsonDocument condition = new BsonDocument("$type", new BsonString("object"));
 			filter.put(enclosingObjectKey, condition);
 			LOGGER.debug("| Precondition: {} {}", enclosingObjectKey, condition);
+			if (isTaggedUnionCase(target)) {
+				// Only the active case is present, so requiring the case field to exist
+				// makes replacing an inactive case a no-op, like any other nonexistent path.
+				String caseKey = dottedFieldNameOf(target, startingRef);
+				filter.put(caseKey, new BsonDocument("$exists", TRUE));
+				LOGGER.debug("| Precondition: {} exists", caseKey);
+			}
 		}
 		return filter;
 	}

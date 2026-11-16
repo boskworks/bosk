@@ -8,6 +8,8 @@ import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.libtesting.AbstractBoskTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -148,6 +150,34 @@ public class BoskUpdateTest extends AbstractBoskTest {
 		bosk.driver().submitConditionalReplacement(ref, newValue, idRef, Identifier.from("someValue"));
 		assertValueEquals(originalRoot, bosk.rootReference());
 		assertValueEquals(originalParent.string(), ref);
+	}
+
+	@Test
+	void illegalReplacementValues_fail() throws IOException, InterruptedException, InvalidTypeException {
+		Reference<String> stringRef = refs.entityString(originalParent.id());
+		Reference<Identifier> idRef = refs.entityID(originalParent.id());
+		// The node is an Identifier, but the reference is declared with its supertype,
+		// so the call site accepts a String.
+		Reference<Object> widenedIDRef = bosk.rootReference().then(Object.class, "entities", PARENT_ID.toString(), "id");
+
+		NullPointerException nullException = assertThrows(NullPointerException.class, () ->
+			bosk.driver().submitReplacement(stringRef, null));
+		assertTrue(nullException.getMessage().contains("null"), nullException.getMessage());
+
+		IllegalArgumentException typeException = assertThrows(IllegalArgumentException.class, () ->
+			bosk.driver().submitReplacement(widenedIDRef, "not an Identifier"));
+		assertTrue(typeException.getMessage().contains("Identifier"), typeException.getMessage());
+
+		assertThrows(NullPointerException.class, () ->
+			bosk.driver().submitConditionalReplacement(stringRef, null, idRef, PARENT_ID));
+		assertThrows(IllegalArgumentException.class, () ->
+			bosk.driver().submitConditionalReplacement(widenedIDRef, "not an Identifier", idRef, PARENT_ID));
+		assertThrows(NullPointerException.class, () ->
+			bosk.driver().submitConditionalCreation(stringRef, null));
+		assertThrows(IllegalArgumentException.class, () ->
+			bosk.driver().submitConditionalCreation(widenedIDRef, "not an Identifier"));
+
+		assertValueEquals(originalRoot, bosk.rootReference());
 	}
 
 	<T> void assertValueEquals(T expected, Reference<T> ref) throws IOException, InterruptedException {

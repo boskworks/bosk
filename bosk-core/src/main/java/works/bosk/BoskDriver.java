@@ -50,6 +50,20 @@ public interface BoskDriver {
 	 * Changes will not be visible in the {@link ReadSession} in which this method
 	 * was called. If <code>target</code> is inside an enclosing object that does not exist at the
 	 * time the update is applied, it is silently ignored.
+	 *
+	 * <p>
+	 * A {@link Reference} may be declared with a supertype of the type of the object
+	 * it points to, so <code>newValue</code> must be checked against the node's actual
+	 * type at submission time. The value must be non-null and an instance of
+	 * <code>target.{@link Reference#targetClass() targetClass()}</code>.
+	 *
+	 * <p>
+	 * A {@link TaggedUnion} case cannot be replaced by a case carrying a different tag;
+	 * to change which case is active, replace the union itself.
+	 *
+	 * @throws NullPointerException if <code>newValue</code> is null
+	 * @throws IllegalArgumentException if <code>newValue</code> is not an instance of the target's class,
+	 * or if it would change the tag of a {@link TaggedUnion} case
 	 */
 	<T> void submitReplacement(Reference<T> target, T newValue);
 
@@ -74,6 +88,8 @@ public interface BoskDriver {
 	 * The object must be deletable; it must be an entry in a {@link Catalog}, {@link Listing},
 	 * or {@link SideTable}; or else it must be an {@link Optional} in which case
 	 * it will be changed to {@link Optional#empty()}.
+	 * A {@link TaggedUnion} case is not deletable, because a union must always have
+	 * exactly one case; replace the union to change cases.
 	 *
 	 * <p>
 	 * Changes will not be visible in the {@link ReadSession} in which this method
