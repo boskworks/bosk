@@ -1,7 +1,7 @@
 [versions]
 graphql-java = "26.1"
 hamcrest = "3.0"
-jackson = "3.2.4"
+jackson = "3.3.0"
 jetbrains-annotations = "26.1.0"
 jspecify = "1.0.1"
 jmh = "1.37"
@@ -37,7 +37,7 @@ logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "lo
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 mongodb = { module = "org.mongodb:mongodb-driver-sync", version="5.14.0" }
 mysql = { module = "com.mysql:mysql-connector-j", version = "26.10.0" }
-opentelemetry = { module="io.opentelemetry:opentelemetry-sdk", version="1.67.0" }
+opentelemetry = { module="io.opentelemetry:opentelemetry-sdk", version="1.68.0" }
 pcollections = { module = "org.pcollections:pcollections", version.ref="pcollections" }
 postgresql = { module = "org.postgresql:postgresql", version = "42.7.14" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
