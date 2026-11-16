@@ -147,6 +147,21 @@ public sealed interface Reference<T> permits
 	}
 
 	/**
+	 * @return true if this reference may be passed to
+	 * {@link BoskDriver#submitDeletion(Reference) BoskDriver.submitDeletion} or
+	 * {@link BoskDriver#submitConditionalDeletion(Reference, Reference, Identifier) submitConditionalDeletion}
+	 * <p>
+	 * A reference is deletable if its last segment identifies an entry in a
+	 * {@link Catalog}, {@link Listing}, or {@link SideTable}, or an {@link Optional}
+	 * value, or a {@link Phantom}. The root reference and a {@link TaggedUnion} case
+	 * itself are not deletable.
+	 * <p>
+	 * This is a structural property of the reference, independent of whether the
+	 * referenced object currently exists.
+	 */
+	boolean isDeletable();
+
+	/**
 	 * @return The equivalent of {@link Bosk#rootReference()} on the <code>bosk</code> to which this Reference applies,
 	 * but without static type checking; the intent is that you'd call {@link #then} on the resulting reference,
 	 * and that's when type checking occurs.

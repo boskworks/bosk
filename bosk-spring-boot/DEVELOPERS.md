@@ -193,5 +193,6 @@ Two limitations are deliberate:
 - Recursive types are expanded until a record type repeats along the current path. The schema
   `$ref`s show the recursion, but the path list does not grow without bound.
 - A `PUT` to an ordinary record field is supported, but a `DELETE` is not, because only container
-  entries and `Optional` fields are deletable. The document omits the operations Bosk cannot
-  perform rather than documenting a `400`.
+  entries, `Optional` fields, and `Phantom` fields are deletable. The document omits the operations
+  Bosk cannot perform rather than documenting a `400`. The root and the tagged-union case itself
+  are also not deletable; a case's fields and entries follow the normal rule.

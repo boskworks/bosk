@@ -96,11 +96,13 @@ final class UpdateDriver implements BoskDriver {
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
+		AbstractFormatDriver.requireDeletable(target);
 		execute(formatDriver.submitDeletion(target));
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		AbstractFormatDriver.requireDeletable(target);
 		execute(formatDriver.submitConditionalDeletion(target, precondition, requiredValue));
 	}
 

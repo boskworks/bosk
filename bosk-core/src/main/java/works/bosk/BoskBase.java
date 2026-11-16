@@ -184,10 +184,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
 			try (var _ = setupMDC(name, instanceID)) {
-				if (target.isRoot()) {
-					// TODO: Augment dereferencer so it can tell us this for all references, not just the root
-					throw new IllegalArgumentException("Cannot delete root object");
-				}
+				requireDeletable(target);
 				assertCorrectBosk(target);
 				downstream.submitDeletion(target);
 			}
@@ -196,6 +193,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		@Override
 		public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 			try (var _ = setupMDC(name, instanceID)) {
+				requireDeletable(target);
 				assertCorrectBosk(target);
 				assertCorrectBosk(precondition);
 				downstream.submitConditionalDeletion(target, precondition, requiredValue);
@@ -247,6 +245,12 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		// bosk for both reads and writes, and forcing this discipline on users might help them avoid
 		// some pretty confusing mistakes.
 		assert ((BoskBase<?>.RootRef) target.root()).bosk() == this : "Reference supplied to a driver operation or hook registration must refer to the correct bosk";
+	}
+
+	private static void requireDeletable(Reference<?> target) {
+		if (!target.isDeletable()) {
+			throw new IllegalArgumentException("Object is not deletable: " + target);
+		}
 	}
 
 	/**
@@ -327,6 +331,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		@Override
 		public <T> void submitDeletion(Reference<T> target) {
 			synchronized (this) {
+				requireDeletable(target);
 				R priorRoot = currentRoot();
 				if (!tryGraftDeletion(target)) {
 					return;
@@ -365,6 +370,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 			// Like submitDeletion, this is rejected whether or not the precondition holds.
 			requireNotTaggedUnionCase(target);
 			synchronized (this) {
+				requireDeletable(target);
 				boolean preconditionsSatisfied;
 				try (var _ = newSupersedingReadSession()) {
 					preconditionsSatisfied = Objects.equals(precondition.valueIfExists(), requiredValue);
@@ -429,10 +435,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		 */
 		private <T> boolean tryGraftDeletion(Reference<T> target) {
 			assert holdsLock(this);
-			Path targetPath = target.path();
-			if (targetPath.isEmpty()) {
-				throw new IllegalArgumentException("Cannot delete root node");
-			}
+			assert target.isDeletable(): "Cannot delete a non-deletable reference: " + target;
 			Dereferencer dereferencer = dereferencerFor(target);
 			try {
 				LOGGER.debug("Applying deletion at {}", target);
@@ -626,6 +629,11 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 		@Override
 		public final Reference<T> boundBy(BindingEnvironment bindings) {
 			return newReference(path.boundBy(bindings), targetType);
+		}
+
+		@Override
+		public final boolean isDeletable() {
+			return pathCompiler.isDeletable(path);
 		}
 
 		@Override

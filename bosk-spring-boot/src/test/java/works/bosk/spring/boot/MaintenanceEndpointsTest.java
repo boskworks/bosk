@@ -190,6 +190,22 @@ class MaintenanceEndpointsTest {
 	}
 
 	@Test
+	void deleteRoot_isBadRequest() throws Exception {
+		mockMvc.perform(delete("/bosk")
+				.with(user("tester"))
+				.with(csrf()))
+			.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void deleteRecordField_isBadRequest() throws Exception {
+		mockMvc.perform(delete("/bosk/targets/plain/name")
+				.with(user("tester"))
+				.with(csrf()))
+			.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void putWithInvalidPath_isNotFound() throws Exception {
 		mockMvc.perform(put("/bosk/targets/plain/nonexistent")
 				.with(user("tester"))

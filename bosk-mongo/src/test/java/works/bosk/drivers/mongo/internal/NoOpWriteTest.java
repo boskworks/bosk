@@ -202,7 +202,7 @@ public class NoOpWriteTest {
 
 			// The precondition fails.
 			bosk.driver().submitConditionalReplacement(refs.valuesString(), "newValue", rootIDRef, wrongID);
-			bosk.driver().submitConditionalDeletion(refs.valuesString(), rootIDRef, wrongID);
+			bosk.driver().submitConditionalDeletion(refs.values(), rootIDRef, wrongID);
 
 			bosk.driver().flush();
 

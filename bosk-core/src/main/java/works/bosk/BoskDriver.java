@@ -85,11 +85,12 @@ public interface BoskDriver {
 
 	/**
 	 * Requests that the object referenced by <code>target</code> be deleted.
-	 * The object must be deletable; it must be an entry in a {@link Catalog}, {@link Listing},
-	 * or {@link SideTable}; or else it must be an {@link Optional} in which case
-	 * it will be changed to {@link Optional#empty()}.
-	 * A {@link TaggedUnion} case is not deletable, because a union must always have
-	 * exactly one case; replace the union to change cases.
+	 * The object must be {@link Reference#isDeletable() deletable}; it must be an
+	 * entry in a {@link Catalog}, {@link Listing}, or {@link SideTable}; or else it
+	 * must be an {@link Optional} in which case it will be changed to
+	 * {@link Optional#empty()}; or a {@link Phantom}, in which case this is a no-op.
+	 * The root reference and a {@link TaggedUnion} case itself are not deletable,
+	 * because a union must always have exactly one case; replace the union to change cases.
 	 *
 	 * <p>
 	 * Changes will not be visible in the {@link ReadSession} in which this method
@@ -105,6 +106,9 @@ public interface BoskDriver {
 	 * Like {@link #submitDeletion(Reference)} but has no effect unless
 	 * <code>precondition.valueIfExists()</code> is equal to <code>requiredValue</code>
 	 * immediately before the deletion.  <code>requiredValue</code> must not be null.
+	 * <p>
+	 * A non-deletable target is rejected with {@link IllegalArgumentException}
+	 * regardless of the precondition.
 	 *
 	 * @see #submitDeletion(Reference)
 	 */

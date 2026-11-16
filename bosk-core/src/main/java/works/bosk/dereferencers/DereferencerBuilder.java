@@ -19,6 +19,12 @@ interface DereferencerBuilder {
 	Path fullyParameterizedPath();
 
 	/**
+	 * @return true if the path identifies something that can be removed,
+	 * independently of whether the target currently exists
+	 */
+	boolean isDeletable();
+
+	/**
 	 * Compiles and loads a new {@link Dereferencer} subclass.
 	 * @return an instance of the new {@link Dereferencer}
 	 */

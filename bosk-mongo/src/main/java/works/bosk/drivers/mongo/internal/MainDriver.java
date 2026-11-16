@@ -521,6 +521,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
+		AbstractFormatDriver.requireDeletable(target);
 		doRetryableUpdateOperation(()->{
 			UpdateDriver driver = currentUpdateDriver();
 			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
@@ -530,6 +531,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		AbstractFormatDriver.requireDeletable(target);
 		doRetryableUpdateOperation(() -> {
 			UpdateDriver driver = currentUpdateDriver();
 			bsonSerializer.initializeAllEnclosingPolyfills(target, driver);
@@ -970,6 +972,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			} catch (DisconnectedException e) {
 				LOGGER.debug("Driver is disconnected; will wait and retry operation ({})", e.getMessage());
 				waitAndRetry(operation, description, args);
+			} catch (IllegalArgumentException e) {
+				// Invalid update input is a caller error, not a database-health problem,
+				// so don't disconnect a healthy driver.
+				throw e;
 			} catch (Exception e) {
 				if (e instanceof InterruptedException) {
 					// We can't catch InterruptedException in its own clause, because the operation's

@@ -67,12 +67,16 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 
 	/**
 	 * Describes how to delete {@code target}. See {@link #submitReplacement}.
+	 * <p>
+	 * The target is guaranteed to be {@link Reference#isDeletable() deletable}.
 	 */
 	<T> UpdateOperation submitDeletion(Reference<T> target);
 
 	/**
 	 * Describes how to delete {@code target} if {@code precondition} has the
 	 * given value. See {@link #submitReplacement}.
+	 * <p>
+	 * The target is guaranteed to be {@link Reference#isDeletable() deletable}.
 	 */
 	<T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue);
 

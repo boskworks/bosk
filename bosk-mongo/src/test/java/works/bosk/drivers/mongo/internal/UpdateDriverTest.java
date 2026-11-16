@@ -12,7 +12,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
+import works.bosk.Bosk;
+import works.bosk.BoskConfig;
+import works.bosk.Identifier;
+import works.bosk.Reference;
 import works.bosk.drivers.mongo.exceptions.DisconnectedException;
+import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -23,6 +28,7 @@ import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NO
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.needsTransaction;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.ABORT;
 import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome.COMMIT;
+import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * Checks the execution half of {@link UpdateOperation}: an atomic operation
@@ -118,6 +124,36 @@ class UpdateDriverTest {
 				collection.ensureTransactionStarted();
 				return DONE;
 			}));
+	}
+
+	@Test
+	void nonDeletableTarget_isRejectedBeforeTheFormatDriver() throws InvalidTypeException {
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialRoot,
+			BoskConfig.simple());
+		Reference<TestEntity> root = bosk.rootReference();
+		Reference<String> string = root.then(String.class, "string");
+		Reference<Identifier> rootID = root.then(Identifier.class, "id");
+
+		assertThrows(IllegalArgumentException.class, () -> driver.submitDeletion(root));
+		assertThrows(IllegalArgumentException.class, () -> driver.submitDeletion(string));
+		assertThrows(IllegalArgumentException.class,
+			() -> driver.submitConditionalDeletion(string, rootID, Identifier.from("wrong")));
+	}
+
+	@Test
+	void deletableTarget_reachesTheFormatDriver() throws InvalidTypeException {
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialRoot,
+			BoskConfig.simple());
+		Reference<TestEntity> catalogEntry = bosk.rootReference().then(
+			TestEntity.class, "catalog", AbstractMongoDriverTest.entity123.toString());
+
+		assertThrows(DisconnectedException.class, () -> driver.submitDeletion(catalogEntry));
 	}
 
 	private boolean documentExists(String id) {

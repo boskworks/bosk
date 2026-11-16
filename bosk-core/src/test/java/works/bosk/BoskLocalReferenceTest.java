@@ -111,6 +111,26 @@ class BoskLocalReferenceTest {
 	}
 
 	@Test
+	void conditionalDeletionOfNonDeletableReferences_isRejected() throws Exception {
+		Identifier ernieID = Identifier.from("ernie");
+		Reference<TestEntity> ernie = refs.entity(ernieID);
+		Reference<Identifier> precondition = ernie.then(Identifier.class, TestEntity.Fields.id);
+
+		// The root is never deletable, even when the precondition matches.
+		assertThrows(IllegalArgumentException.class,
+			() -> bosk.driver().submitConditionalDeletion(bosk.rootReference(), precondition, ernieID));
+
+		// A non-deletable field is rejected even when the precondition does not match.
+		Reference<Integer> version = ernie.then(Integer.class, TestEntity.Fields.version);
+		assertThrows(IllegalArgumentException.class,
+			() -> bosk.driver().submitConditionalDeletion(version, precondition, Identifier.from("wrong")));
+
+		// A deletable target with a failing precondition is a no-op.
+		Reference<TestEntity> optional = ernie.then(TestEntity.class, TestEntity.Fields.optional);
+		bosk.driver().submitConditionalDeletion(optional, precondition, Identifier.from("wrong"));
+	}
+
+	@Test
 	void testCatalogReference() throws Exception {
 		@SuppressWarnings({ "rawtypes", "unchecked" })
 		Class<Catalog<TestEntity>> catalogClass = (Class<Catalog<TestEntity>>)(Class)Catalog.class;

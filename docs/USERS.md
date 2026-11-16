@@ -454,6 +454,13 @@ Some nodes in the tree can be deleted.
 Examples include:
 - Fields of type `Optional`
 - Entries in a `Catalog`, `Listing` or `SideTable`
+- Fields of type `Phantom` (deleting one is a no-op)
+
+The root object and a tagged-union case itself are not deletable, and neither
+are ordinary record fields; a case's fields and entries follow the normal rule.
+`Reference.isDeletable()` reports this structural property. A conditional
+deletion of a non-deletable target is rejected regardless of whether its
+precondition matches.
 
 To delete such nodes, call `BoskDriver.submitDeletion`.
 When applied, a deletion causes the node (and all its children) to become nonexistent.

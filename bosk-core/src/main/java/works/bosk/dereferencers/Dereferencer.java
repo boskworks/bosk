@@ -54,8 +54,8 @@ public interface Dereferencer {
 	 * @param ref points to the object to remove
 	 * @return a new version of the bosk root object, equivalent to <code>source</code> in every respect
 	 * except that the object at <code>ref</code> is gone.
-	 * @throws IllegalArgumentException if <code>ref</code> points at something that cannot be deleted,
-	 * like a non-{@link java.util.Optional} object field, as opposed to something like a Catalog entry
+	 * @throws IllegalArgumentException if <code>ref</code> is not
+	 * {@link Reference#isDeletable() deletable}
 	 * @throws NonexistentEntryException if any segment of
 	 * <code>ref</code> refers to an object that does not exist
 	 */

@@ -155,7 +155,7 @@ class PandoUpdateClassificationTest {
 		Refs refs = bosk.buildReferences(Refs.class);
 		Reference<Identifier> precondition = bosk.rootReference().then(Identifier.class, "id");
 		assertInstanceOf(AtomicUpdateOperation.class,
-			driver.submitConditionalDeletion(refs.valuesString(), precondition, rootID));
+			driver.submitConditionalDeletion(refs.values(), precondition, rootID));
 	}
 
 	@Test
@@ -163,7 +163,7 @@ class PandoUpdateClassificationTest {
 		Refs refs = bosk.buildReferences(Refs.class);
 		Reference<Identifier> precondition = refs.catalog().then(entity123).then(Identifier.class, "id");
 		assertInstanceOf(TransactionalUpdateOperation.class,
-			driver.submitConditionalDeletion(refs.valuesString(), precondition, entity123));
+			driver.submitConditionalDeletion(refs.values(), precondition, entity123));
 	}
 
 	@Test
@@ -187,7 +187,7 @@ class PandoUpdateClassificationTest {
 	void fieldDeletion_isAtomic() throws InvalidTypeException {
 		Refs refs = bosk.buildReferences(Refs.class);
 		assertInstanceOf(AtomicUpdateOperation.class,
-			driver.submitDeletion(refs.valuesString()));
+			driver.submitDeletion(refs.values()));
 	}
 
 	@Test

@@ -198,6 +198,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	@Override
 	public <T> UpdateOperation submitDeletion(Reference<T> target) {
 		requireNotTaggedUnionCase(target);
+		requireDeletable(target);
 		if (deletionWritesOneDocument()) {
 			return atomic(() -> doAtomicDeletion(target, null, null));
 		} else {
@@ -226,6 +227,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	@Override
 	public <T> UpdateOperation submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		requireNotTaggedUnionCase(target);
+		requireDeletable(target);
 		if (deletionWritesOneDocument()
 			&& targetDocumentRef(precondition).equals(deletionDocumentRef(target))) {
 			return atomic(() -> doAtomicDeletion(target, precondition, requiredValue));
