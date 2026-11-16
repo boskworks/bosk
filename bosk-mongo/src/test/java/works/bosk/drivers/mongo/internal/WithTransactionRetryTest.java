@@ -17,6 +17,7 @@ import works.bosk.exceptions.RetryableUpdateException;
 import works.bosk.junit.InjectFields;
 import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
+import works.bosk.logback.SuppressLogs;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,6 +37,7 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * transaction and the update succeeds.
  */
 @ReplayLogsOnFailure
+@SuppressLogs(UpdateDriver.class)
 @InjectFields
 class WithTransactionRetryTest extends AbstractMongoDriverTest {
 
