@@ -264,7 +264,12 @@ class ChangeReceiver implements Closeable {
 						}
 					} catch (RuntimeException e) {
 						addContextToException(e);
-						LOGGER.warn("Unable to connect to MongoDB database; will wait and retry", e);
+						if (isClosed) {
+							// close() interrupts the connection attempt, so this is shutdown, not a fault.
+							LOGGER.debug("(Driver is already closed) Unable to connect to MongoDB database", e);
+						} else {
+							LOGGER.warn("Unable to connect to MongoDB database; will wait and retry", e);
+						}
 						try {
 							listener.onConnectionFailed(e);
 						} catch (DownstreamInitialStateException e2) {
