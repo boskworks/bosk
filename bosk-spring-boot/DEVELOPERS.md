@@ -95,8 +95,8 @@ The result is always a valid RFC 9110 strong ETag.
 
 `Etag` is a separate package-private class so the encoding and decoding can be tested exhaustively
 without HTTP. It uses `URLEncoder`/`URLDecoder`, with space encoded as `%20` instead of `+`, matching
-`Path`. Clients should send the ETag from a GET back verbatim; a hand-written raw `%` or `+` is
-interpreted under the same rules as a path segment, not as a literal revision character.
+`Path`. Clients should send the ETag from a GET back verbatim. A hand-written raw `%` is decoded the
+way `Path` decodes one; a `+` is a literal plus sign, because an ETag is opaque rather than form data.
 
 A syntactically valid tag that cannot be decoded to a revision (for example, a malformed `%XX`
 sequence, or a value that isn't a valid `Identifier`) is a `400`, because it can never match.
