@@ -77,6 +77,8 @@ For example, the following three `Path` objects are identical:
 - `Path.of("media", "films", "Star Wars")`
 - `Path.of("media", films").then("Star Wars")`
 
+Percent-encoding follows RFC 3986: a space is `%20`, and a `+` in a path segment is a literal plus sign.
+
 Path objects are always _interned_, meaning that two identical paths are always represented by the same `Path` object.
 
 Paths are validated upon creation to make sure they are properly formatted;
