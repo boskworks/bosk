@@ -18,6 +18,7 @@ import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static works.bosk.drivers.mongo.internal.TestParameters.LONG_TIMESCALE;
@@ -25,9 +26,9 @@ import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
- * A Pando collection whose root document is gone is invalid contents, so loading
- * it should say that, and the receiver should report an invalid collection rather
- * than an internal error.
+ * Damaged Pando collections are invalid contents, so loading one should say what
+ * is wrong instead of surfacing an internal error: a missing root document, no
+ * state documents at all, or a sub-part document that is missing.
  */
 @ReplayLogsOnFailure
 @InjectFields
@@ -63,6 +64,23 @@ class PandoCollectionContentsTest extends AbstractMongoDriverTest {
 			InvalidCollectionContentsException e = assertThrows(InvalidCollectionContentsException.class,
 				fixture.driver()::loadAllState);
 			assertTrue(e.getMessage().contains("State document not found"), e.getMessage());
+		}
+	}
+
+	@Test
+	void missingPart_isInvalidContents() throws UnrecognizedFormatException, UninitializedCollectionException, FailedMongoClientSessionException {
+		Fixture fixture = initializedCollection();
+		// Delete one of the state documents, leaving its stub in the parent.
+		BsonDocument part = collection()
+			.find(new BsonDocument("_id", new BsonDocument("$regex", new BsonString("^[|].+"))))
+			.first();
+		assertNotNull(part, "Expected at least one sub-part document");
+		collection().deleteOne(new BsonDocument("_id", part.get("_id")));
+
+		try (var _ = fixture.sessionCollection().newReadOnlySession()) {
+			InvalidCollectionContentsException e = assertThrows(InvalidCollectionContentsException.class,
+				fixture.driver()::loadAllState);
+			assertTrue(e.getMessage().contains("could not be decoded"), e.getMessage());
 		}
 	}
 
