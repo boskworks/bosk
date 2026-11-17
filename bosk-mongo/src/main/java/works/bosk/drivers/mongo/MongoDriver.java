@@ -48,6 +48,17 @@ public sealed interface MongoDriver
 	 * interfere with proper functioning beforehand.
 	 * It can be expected to evolve the database from that of a supported prior format,
 	 * but for unsupported formats or other corruption, YMMV.
+	 *
+	 * <p>
+	 * Like the update methods, this returns once the database has been rewritten.
+	 * The change stream then tells this bosk about the rewritten documents,
+	 * as it does for any other update.
+	 * If the refurbish changes the database format,
+	 * this bosk keeps using the old format until it reconnects and reloads,
+	 * so updates may fail with
+	 * {@link works.bosk.drivers.mongo.exceptions.DisconnectedException} until then.
+	 * {@link BoskDriver#flush()} waits for that reload,
+	 * so an update submitted after it returns uses the new format.
 	 */
 	void refurbish() throws IOException;
 

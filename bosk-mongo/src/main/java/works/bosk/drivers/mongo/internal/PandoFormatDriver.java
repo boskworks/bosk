@@ -434,8 +434,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.debug("** Initial upsert");
 		writeAllState(initialState, epoch, rootRevision, written);
 
-		// When writing the state, whether for initialState() or for refurbish(),
-		// the local state will be up to date with no need to process a change stream event.
+		// The local state will be up to date with no need to process a change stream event.
 		finishedRevisions(written);
 	}
 
