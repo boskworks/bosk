@@ -474,7 +474,7 @@ class SqlDriverImpl implements SqlDriver {
 		switch (node.replacementLocation()) {
 			case Root _ -> {
 				if (newValue == null) {
-					throw new NotYetImplementedException("Cannot delete root");
+					throw new IllegalArgumentException("Cannot delete root object");
 				}
 				String json = mapper.writeValueAsString(newValue);
 				long revision = insertChange(connection, target, json);
@@ -528,7 +528,7 @@ class SqlDriverImpl implements SqlDriver {
 				)
 				.returning(REVISION)
 				.fetchOptional(REVISION)
-				.orElseThrow(()->new NotYetImplementedException("No change inserted"));
+				.orElseThrow(()->new IllegalStateException("No change inserted"));
 		} catch (JacksonException e) {
 			throw new NotYetImplementedException(e);
 		}
@@ -542,7 +542,7 @@ class SqlDriverImpl implements SqlDriver {
 				.from(BOSK)
 				.forUpdate() // Lock the state row until commit so concurrent submissions serialize on it
 				.fetchOptional(STATE)
-				.orElseThrow(() -> new NotYetImplementedException("No state found"));
+				.orElseThrow(() -> new IllegalStateException("No state found"));
 		} catch (RuntimeException e) {
 			throw new IllegalStateException("Unexpected error reading state from database", e);
 		}
