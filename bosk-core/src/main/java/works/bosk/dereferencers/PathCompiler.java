@@ -39,7 +39,6 @@ import works.bosk.bytecode.Codegen;
 import works.bosk.bytecode.GeneratedClass;
 import works.bosk.bytecode.LocalVariable;
 import works.bosk.exceptions.InvalidTypeException;
-import works.bosk.exceptions.NotYetImplementedException;
 
 import static java.lang.classfile.TypeKind.REFERENCE;
 import static java.lang.invoke.MethodHandles.collectArguments;
@@ -317,7 +316,7 @@ public final class PathCompiler {
 					methodHandle_get = MethodHandles.lookup().unreflect(getter);
 					methodHandle_with = methodHandle_with(segment, getters, constructor);
 				} catch (IllegalAccessException e) {
-					throw new NotYetImplementedException(e);
+					throw new IllegalStateException("Unable to access getter for " + segment, e);
 				}
 				return new CustomStep(
 					targetType,

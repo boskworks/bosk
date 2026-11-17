@@ -2,6 +2,7 @@ package works.bosk.bytecode;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.attribute.SourceFileAttribute;
 import java.lang.constant.ClassDesc;
@@ -13,7 +14,6 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import works.bosk.exceptions.NotYetImplementedException;
 
 import static java.lang.classfile.TypeKind.REFERENCE;
 import static java.lang.reflect.AccessFlag.FINAL;
@@ -94,7 +94,9 @@ public final class GeneratedClass {
 			try (FileOutputStream out = new FileOutputStream("out.class")) {
 				out.write(bytes);
 			} catch (IOException e) {
-				throw new NotYetImplementedException(e);
+				// This is a developer debugging aid, not live production code, so it
+				// isn't worth threading a checked exception through the compiler for it.
+				throw new UncheckedIOException(e);
 			}
 		}
 		try {
