@@ -9,6 +9,7 @@ import works.bosk.DriverFactory;
 import works.bosk.StateTreeNode;
 import works.bosk.drivers.mongo.internal.MainDriver;
 import works.bosk.drivers.mongo.status.MongoStatus;
+import works.bosk.exceptions.NoReadSessionException;
 
 /**
  * A {@link BoskDriver} that maintains the bosk state in a MongoDB database.
@@ -64,6 +65,8 @@ public sealed interface MongoDriver
 
 	/**
 	 * Requires a {@link Bosk.ReadSession}.
+	 *
+	 * @throws NoReadSessionException if the calling thread has no {@link Bosk.ReadSession}
 	 */
 	MongoStatus readStatus() throws Exception;
 
