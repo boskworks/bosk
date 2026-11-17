@@ -164,7 +164,7 @@ To run this, you'll need a MongoDB replica set.
 You can run a single-node replica set using the following `Dockerfile`:
 
 ```
-FROM mongo:7.0
+FROM mongo:9.0
 RUN echo "rs.initiate()" > /docker-entrypoint-initdb.d/rs-initiate.js
 CMD [ "mongod", "--replSet", "rsLonesome", "--port", "27017", "--bind_ip_all" ]
 ```

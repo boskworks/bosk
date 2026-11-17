@@ -13,6 +13,7 @@ import org.springframework.security.web.firewall.HttpFirewall;
 import org.springframework.security.web.firewall.StrictHttpFirewall;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import works.bosk.Bosk;
@@ -26,6 +27,8 @@ import works.bosk.annotations.Self;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.jackson.JacksonSerializer;
 
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.http.HttpHeaders.CACHE_CONTROL;
 import static org.springframework.http.HttpHeaders.ETAG;
 import static org.springframework.http.HttpHeaders.IF_MATCH;
@@ -487,6 +490,22 @@ class MaintenanceEndpointsTest {
 				.header(IF_MATCH, "\"rev1\"")
 				.content(mapper.writeValueAsString(target)))
 			.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void putWithMismatchedId_isBadRequest() throws Exception {
+		Target mismatched = new Target(Identifier.from("other"), "mismatched");
+		mockMvc.perform(put("/bosk/targets/plain")
+				.with(user("tester"))
+				.with(csrf())
+				.contentType(APPLICATION_JSON)
+				.content(mapper.writeValueAsString(mismatched)))
+			.andExpect(status().isBadRequest())
+			.andExpect(result -> assertInstanceOf(ResponseStatusException.class,
+				result.getResolvedException()))
+			.andExpect(result -> assertTrue(result.getResolvedException().getMessage().contains(
+					"Target ID \"other\" does not match path ID \"plain\""),
+				"Message should name the entity type: " + result.getResolvedException().getMessage()));
 	}
 
 	private String etagFor(String path) throws Exception {
