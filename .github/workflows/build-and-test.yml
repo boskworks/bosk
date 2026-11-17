@@ -10,11 +10,18 @@ on:
     branches:
       - main
 
+concurrency:
+  # Groups are repository-wide, so the workflow name keeps this one separate.
+  # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build_and_test:
 
     name: Build and test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
 
