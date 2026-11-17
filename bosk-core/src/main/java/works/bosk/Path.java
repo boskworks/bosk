@@ -55,7 +55,8 @@ public abstract class Path implements Iterable<String> {
 
 	/**
 	 * @param urlEncoded A string representation of the path with the segments
-	 * URLEncoded and separated by slashes.
+	 * URLEncoded and separated by slashes. Percent-encoding follows RFC 3986:
+	 * a space is {@code %20}, and a {@code +} is a literal plus sign.
 	 *
 	 * @return A Path with one segment for each string before, between, and
 	 * after the slashes, for a string that begins with a slash.  As a special
