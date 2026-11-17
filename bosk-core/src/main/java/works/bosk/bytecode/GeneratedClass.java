@@ -94,6 +94,8 @@ public final class GeneratedClass {
 			try (FileOutputStream out = new FileOutputStream("out.class")) {
 				out.write(bytes);
 			} catch (IOException e) {
+				// This is a developer debugging aid, not live production code, so it
+				// isn't worth threading a checked exception through the compiler for it.
 				throw new UncheckedIOException(e);
 			}
 		}
