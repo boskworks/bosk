@@ -1,10 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.MongoClientSettings;
 import java.util.stream.Stream;
 import org.bson.BsonDocument;
-import org.bson.BsonValue;
-import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
@@ -18,7 +15,6 @@ import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.slf4j.event.Level.WARN;
-import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -79,11 +75,5 @@ public class InitializationAtomicityTest extends AbstractMongoDriverTest {
 		assertEquals(0, collection.countDocuments(),
 			"Collection must be empty after a failed initialization: "
 				+ "the state document and manifest writes must be atomic");
-	}
-
-	private static boolean isManifestWrite(Bson filter) {
-		BsonDocument asDoc = filter.toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
-		BsonValue idValue = asDoc.get("_id");
-		return MANIFEST_ID.equals(idValue);
 	}
 }

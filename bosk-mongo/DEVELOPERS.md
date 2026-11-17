@@ -330,6 +330,10 @@ other events are handled by `MainDriver` itself:
 - `onConnectionFailed` ensures the `MainDriver`'s internal state is consistent when the database is unreachable; and
 - `onDisconnect` shuts down the `FormatDriver` when the database connection is lost.
 
+If initialization fails, the collection stays empty and the driver keeps the state it
+tried to write, so a later connection can retry the initialization rather than only
+loading a collection that is supposed to exist.
+
 The cursor is open before the state is loaded, so the events it delivers include some
 that the load already reflects. Each load records the time of the snapshot it read from,
 and `onEvent` ignores events at or before that time. Replaying them would be at best

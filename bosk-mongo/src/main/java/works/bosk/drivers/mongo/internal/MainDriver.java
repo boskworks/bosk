@@ -111,6 +111,14 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	private volatile Drivers<R> drivers;
 
 	/**
+	 * The state to write when initialization is retried,
+	 * or null if the collection has been initialized successfully.
+	 * <p>
+	 * Only touched from the {@link ChangeReceiver} thread.
+	 */
+	private @Nullable StateAndMetadata<R> pendingInitialState;
+
+	/**
 	 * Allows tests to install test probes controlling the driver's internals.
 	 * <p>
 	 * This works because {@code MainDriver} is instantiated
@@ -348,23 +356,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
 			UNINITIALIZED_COLLECTION_LOGGER.warn("Database collection is uninitialized; initializing now. ({})", e.getMessage());
 			entireState = callDownstreamInitialState();
-			try (
-				var session = queryCollection.newSession()
-			) {
-				Identifier formatId = Manifest.newFormatId();
-				FormatDriver<R> preferredDriver = newPreferredFormatDriver(formatId);
-				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), Map.of());
-
-				// The state document(s) and the manifest must be written atomically,
-				// so that a failure partway through initialization doesn't leave the
-				// collection half-initialized. This is the one place where MainDriver
-				// starts a transaction itself: refurbish already starts its own.
-				queryCollection.ensureTransactionStarted();
-				try (var _ = boskInfo.context().withOnly(diagnosticAttributes)) {
-					preferredDriver.writeAllState(priorContents);
-				}
-				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat(), formatId));
-				session.commitTransactionIfAny();
+			StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), Map.of());
+			pendingInitialState = priorContents;
+			try {
+				FormatDriver<R> preferredDriver = initializeCollection(priorContents, diagnosticAttributes);
+				pendingInitialState = null;
 				// We can now publish the driver knowing that the transaction has committed
 				publishFormatDriver(preferredDriver, Optional.empty());
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
@@ -376,6 +372,31 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			throw new DatabaseLoadException("Unable to load initial state from MongoDB", e);
 		}
 		return new InitialStateResult<>(entireState, fallbackReason);
+	}
+
+	/**
+	 * Writes the state and the manifest in one transaction, and returns the driver
+	 * for the preferred format.
+	 * <p>
+	 * The state document(s) and the manifest must be written atomically,
+	 * so that a failure partway through initialization doesn't leave the
+	 * collection half-initialized. This is the one place where MainDriver
+	 * starts a transaction itself: refurbish already starts its own.
+	 */
+	private FormatDriver<R> initializeCollection(StateAndMetadata<R> priorContents, MapValue<String> diagnosticAttributes)
+		throws FailedMongoClientSessionException
+	{
+		Identifier formatId = Manifest.newFormatId();
+		FormatDriver<R> preferredDriver = newPreferredFormatDriver(formatId);
+		try (var session = queryCollection.newSession()) {
+			queryCollection.ensureTransactionStarted();
+			try (var _ = boskInfo.context().withOnly(diagnosticAttributes)) {
+				preferredDriver.writeAllState(priorContents);
+			}
+			writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat(), formatId));
+			session.commitTransactionIfAny();
+		}
+		return preferredDriver;
 	}
 
 	/**
@@ -684,9 +705,22 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					LOGGER.debug("Loading database state to submit to downstream driver");
 					loaded = loadState();
 					LOGGER.trace("Loaded state: {}", loaded.state());
+					pendingInitialState = null;
 				} catch (UninitializedCollectionException e) {
-					// We don't auto-initialize after the initialStateTask is done
-					throw new DatabaseLoadException("Cannot reload state from database", e);
+					StateAndMetadata<R> pending = pendingInitialState;
+					if (pending == null) {
+						// We don't auto-initialize a collection that was initialized before
+						throw new DatabaseLoadException("Cannot reload state from database", e);
+					}
+					// The previous attempt to initialize the collection failed, so try again.
+					LOGGER.info("Retrying database initialization");
+					try {
+						publishFormatDriver(initializeCollection(pending, boskInfo.context().getAttributes()), Optional.empty());
+					} catch (FailedMongoClientSessionException | RuntimeException e2) {
+						throw new DatabaseLoadException("Unable to initialize the database", e2);
+					}
+					pendingInitialState = null;
+					return;
 				}
 
 				// Note: can't call downstream methods with a session open,
@@ -717,6 +751,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					}
 				}
 				awaitBoskReady();
+				if (pendingInitialState != null) {
+					// The Bosk started with the downstream state; retry initialization
+					// on the next connection.
+					throw new DatabaseLoadException("Database initialization failed; will retry");
+				}
 			}
 		}
 
@@ -799,7 +838,11 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					LOGGER.info("Unable to load initial state from database; will proceed with downstream.initialState", cause);
 					setDisconnectedDriver(cause, currentFormatDriver());
 					try {
-						initialStateTask.complete(new InitialStateResult<>(callDownstreamInitialState(), null));
+						R downstreamState = callDownstreamInitialState();
+						// The collection may still be uninitialized, so keep this state
+						// for the retry that follows once the database is reachable.
+						pendingInitialState = new StateAndMetadata<>(downstreamState, Optional.empty(), Map.of());
+						initialStateTask.complete(new InitialStateResult<>(downstreamState, null));
 					} catch (DownstreamInitialStateException e) {
 						// The main thread gets an InitialStateFailureException
 						var mainThreadException = new InitialStateFailureException("Unable to obtain initial state from MongoDB or downstream driver", e);

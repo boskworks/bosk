@@ -1,10 +1,13 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoClientSettings;
 import java.util.List;
 import java.util.Optional;
 import org.bson.BsonArray;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
+import org.bson.BsonValue;
+import org.bson.conversions.Bson;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -24,6 +27,8 @@ import works.bosk.annotations.ReferencePath;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.testing.drivers.state.TestEntity;
 import works.bosk.testing.drivers.state.TestValues;
+
+import static works.bosk.drivers.mongo.internal.MainDriver.MANIFEST_ID;
 
 abstract class AbstractMongoDriverTest extends MongoDriverFixture {
 	protected static final Identifier entity123 = Identifier.from("123");
@@ -95,6 +100,15 @@ abstract class AbstractMongoDriverTest extends MongoDriverFixture {
 			Optional.empty(),
 			Optional.empty()
 		);
+	}
+
+	/**
+	 * @return true if {@code filter} selects the manifest document
+	 */
+	protected static boolean isManifestWrite(Bson filter) {
+		BsonDocument asDoc = filter.toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
+		BsonValue idValue = asDoc.get("_id");
+		return MANIFEST_ID.equals(idValue);
 	}
 
 	/**
