@@ -15,9 +15,10 @@ import works.bosk.Identifier;
  * <p>
  * {@link URLEncoder} is form encoding, where a space becomes {@code +}; we replace
  * those with {@code %20}, as {@link works.bosk.Path} does, so a space in a revision
- * is encoded as {@code %20} rather than as a {@code +} that {@link URLDecoder} would
- * turn back into a space. Incoming values must use the ASCII subset of the opaque-tag
- * grammar; any other character must be percent-encoded.
+ * is encoded as {@code %20}. Decoding does not apply form encoding's rule that
+ * {@code +} means a space: an ETag is opaque, so a {@code +} in it is a plus sign.
+ * Incoming values must use the ASCII subset of the opaque-tag grammar; any other
+ * character must be percent-encoded.
  */
 final class Etag {
 	private Etag() {
@@ -68,6 +69,9 @@ final class Etag {
 	}
 
 	private static String decode(String value) {
-		return URLDecoder.decode(value, StandardCharsets.UTF_8);
+		// URLDecoder implements form decoding, where a plus sign stands for a space.
+		// That rule doesn't apply to an ETag, so escape the plus signs before
+		// decoding and leave them as literal plus signs.
+		return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
 	}
 }

@@ -80,7 +80,8 @@ class MaintenanceEndpointsTest {
 			Catalog.of(
 				new Target(Identifier.from("plain"), "plain"),
 				new Target(Identifier.from("a/b"), "slashy"),
-				new Target(Identifier.from("100%"), "percenty")
+				new Target(Identifier.from("100%"), "percenty"),
+				new Target(Identifier.from("a+b"), "plusy")
 			),
 			Catalog.of(
 				VERSIONED_1,
@@ -244,6 +245,15 @@ class MaintenanceEndpointsTest {
 				.with(user("tester")))
 			.andExpect(status().isOk())
 			.andExpect(content().string("{\"id\":\"100%\",\"name\":\"percenty\"}"));
+	}
+
+	@Test
+	void getEntity_identifierContainingPlus() throws Exception {
+		// A "+" in a path segment is a plus sign, not a space.
+		mockMvc.perform(get("/bosk/targets/a+b")
+				.with(user("tester")))
+			.andExpect(status().isOk())
+			.andExpect(content().string("{\"id\":\"a+b\",\"name\":\"plusy\"}"));
 	}
 
 	@Test

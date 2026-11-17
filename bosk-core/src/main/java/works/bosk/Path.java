@@ -55,7 +55,8 @@ public abstract class Path implements Iterable<String> {
 
 	/**
 	 * @param urlEncoded A string representation of the path with the segments
-	 * URLEncoded and separated by slashes.
+	 * URLEncoded and separated by slashes. Percent-encoding follows RFC 3986:
+	 * a space is {@code %20}, and a {@code +} is a literal plus sign.
 	 *
 	 * @return A Path with one segment for each string before, between, and
 	 * after the slashes, for a string that begins with a slash.  As a special
@@ -331,7 +332,10 @@ public abstract class Path implements Iterable<String> {
 	 * Eclipse has an annoying bug: if I put these lambdas right in the declarations of ENCODER and DECODER, Eclipse keeps deleting the semicolons.
 	 */
 	static {
-		DECODER = s -> URLDecoder.decode(s, StandardCharsets.UTF_8);
+		// URLDecoder implements form decoding, where a plus sign stands for a space.
+		// A path segment is not form data: RFC 3986 gives the plus sign no special
+		// meaning there, so escape the plus signs before decoding to keep them literal.
+		DECODER = s -> URLDecoder.decode(s.replace("+", "%2B"), StandardCharsets.UTF_8);
 
 		ENCODER = s->{
 			// Wow, this code sucks.

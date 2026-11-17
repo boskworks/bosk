@@ -71,8 +71,10 @@ class EtagTest {
 	}
 
 	@Test
-	void revisionFrom_plusMeansSpace() {
-		assertEquals(Identifier.from("a b"), Etag.revisionFrom("\"a+b\""));
+	void revisionFrom_plusIsLiteral() {
+		assertEquals(Identifier.from("a+b"), Etag.revisionFrom("\"a+b\""));
+		assertEquals(Identifier.from("a+b"), Etag.revisionFrom("\"a%2Bb\""));
+		assertEquals(Identifier.from("a b"), Etag.revisionFrom("\"a%20b\""));
 	}
 
 	@Test
