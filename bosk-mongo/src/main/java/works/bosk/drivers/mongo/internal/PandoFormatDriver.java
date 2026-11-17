@@ -392,12 +392,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 
 		if (!partsBuffer.isEmpty()) {
-			throw new IllegalStateException("Found parts without a root document: "
-				+ partsBuffer.stream().map(part -> part.get("_id")).toList());
+			throw new InvalidCollectionContentsException(format,
+				"Found parts without a root document: "
+					+ partsBuffer.stream().map(part -> part.get("_id")).toList());
 		}
 
 		if (bsm == null) {
-			throw new NotYetImplementedException("Nothing there!");
+			throw new InvalidCollectionContentsException(format,
+				"State document not found: " + ROOT_DOCUMENT_ID.getValue());
 		}
 		return bsm;
 	}
