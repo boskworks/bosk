@@ -294,7 +294,7 @@ public class MaintenanceEndpoints {
 				Identifier pathID = Identifier.from(ref.path().lastSegment());
 				Identifier entityID = e.id();
 				if (!pathID.equals(entityID)) {
-					throw new ResponseStatusException(BAD_REQUEST, ref.getClass().getSimpleName() + " ID \"" + entityID + "\" does not match path ID \"" + pathID + "\"");
+					throw new ResponseStatusException(BAD_REQUEST, ref.targetClass().getSimpleName() + " ID \"" + entityID + "\" does not match path ID \"" + pathID + "\"");
 				}
 			}
 		}
