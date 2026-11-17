@@ -331,7 +331,10 @@ public abstract class Path implements Iterable<String> {
 	 * Eclipse has an annoying bug: if I put these lambdas right in the declarations of ENCODER and DECODER, Eclipse keeps deleting the semicolons.
 	 */
 	static {
-		DECODER = s -> URLDecoder.decode(s, StandardCharsets.UTF_8);
+		// URLDecoder implements form decoding, where a plus sign stands for a space.
+		// A path segment is not form data: RFC 3986 gives the plus sign no special
+		// meaning there, so escape the plus signs before decoding to keep them literal.
+		DECODER = s -> URLDecoder.decode(s.replace("+", "%2B"), StandardCharsets.UTF_8);
 
 		ENCODER = s->{
 			// Wow, this code sucks.

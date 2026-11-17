@@ -166,6 +166,14 @@ class PathTest {
 		assertEquals(Path.just("a/b"), Path.parse("/a%2Fb"));
 	}
 
+	@Test
+	void parse_plusIsLiteral() {
+		assertEquals(Path.just("a+b"), Path.parse("/a+b"));
+		assertEquals(Path.just("a+b"), Path.parse("/a%2Bb"));
+		assertEquals(Path.just("a+b"), Path.parseParameterized("/a+b"));
+		assertEquals(Path.just("a b"), Path.parse("/a%20b"));
+	}
+
 	@ParameterizedTest
 	@ValueSource(strings = {
 		"", "//", "a//", "/a//", "/a/", "//a",
@@ -212,6 +220,12 @@ class PathTest {
 		// We follow RFC 3986, which is not what Java's URLEncoder implements!
 		assertEquals("/a%20b", Path.just("a b").urlEncoded());
 		assertEquals("/a%20b", Path.just("a b").toString());
+	}
+
+	@Test
+	void segmentWithPlus_urlEncoded() {
+		assertEquals("/a%2Bb", Path.just("a+b").urlEncoded());
+		assertEquals("/a%2Bb", Path.just("a+b").toString());
 	}
 
 	@ParameterizedTest
