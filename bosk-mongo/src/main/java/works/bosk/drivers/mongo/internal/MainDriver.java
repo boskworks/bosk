@@ -424,50 +424,58 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * Runs the refurbish transaction and returns the driver for the new format.
+	 * Rewrites the collection in the preferred format, and returns once the transaction has committed.
+	 * The rewrite is done through a temporary driver that is never published;
+	 * rather, the change stream tells this bosk about the rewritten documents,
+	 * as it would for any other update.
 	 * <p>
 	 * The transaction body can't throw checked exceptions, so it tunnels them
 	 * through {@link TunneledCheckedException}; this method is both the method
 	 * that contains the throws and the method that catches them, which unwraps
 	 * back to the checked {@link IOException} that our callers expect.
 	 */
-	private FormatDriver<R> refurbishTransaction(FormatDriver<R> driverInUse, String description) throws IOException {
+	private void refurbishTransaction(FormatDriver<R> driverInUse, String description) throws IOException {
 		try {
-			return runInClientLibraryTransaction(
+			runInClientLibraryTransaction(
 				() -> {
 					LOGGER.debug("Refurbishing to {}", driverSettings.preferredDatabaseFormat());
 					testProbes.beforeRefurbishLoad().run();
 					try {
-						// The calls to loadAllState and writeAllState must occur atomically
-						// with respect to event processing, because both of them have side effects
-						// that affect event processing (field tracking and flush locks, respectively).
+						DatabaseFormat preferredFormat = driverSettings.preferredDatabaseFormat();
+						Identifier formatId;
+						boolean formatChanged;
+						StateAndMetadata<R> allState;
+						// loadAllState replaces the live driver's FlushLock, which event
+						// processing also updates, so the two must not run concurrently.
 						synchronized (receiver) {
 							// Use the driver that does the load throughout: a retry can run after
 							// another replica refurbished the collection, so the driver this
 							// operation started with may no longer describe what was loaded.
 							FormatDriver<R> loadingDriver = currentFormatDriver();
-							StateAndMetadata<R> allState = loadingDriver.loadAllState();
-							DatabaseFormat preferredFormat = driverSettings.preferredDatabaseFormat();
-							boolean formatChanged = !preferredFormat.equals(loadingDriver.format());
-							Identifier formatId = formatChanged ? Manifest.newFormatId() : loadingDriver.formatId();
-							FormatDriver<R> newFormatDriver = newPreferredFormatDriver(formatId);
-
-							// The manifest is replaced by writeManifest anyway,
-							// so deleting it has no value; and if we do delete it, then every
-							// FormatDriver must cope with deletions of the manifest document
-							// to avoid disconnection during refurbish operations,
-							// which is a burden. Let's just not.
-							BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
-							LOGGER.trace("Deleting state documents: {}", deletionFilter);
-							testProbes.beforeRefurbishDelete().run();
-							queryCollection.deleteMany(deletionFilter);
-
-							newFormatDriver.writeAllState(allState);
-							if (formatChanged) {
-								writeManifest(Manifest.forFormat(preferredFormat, formatId));
-							}
-							return newFormatDriver;
+							allState = loadingDriver.loadAllState();
+							formatChanged = !preferredFormat.equals(loadingDriver.format());
+							formatId = formatChanged ? Manifest.newFormatId() : loadingDriver.formatId();
 						}
+
+						// The write goes through a temporary driver that is never published,
+						// so it has no effect on the live driver or its event processing.
+						FormatDriver<R> newFormatDriver = newPreferredFormatDriver(formatId);
+
+						// The manifest is replaced by writeManifest anyway,
+						// so deleting it has no value; and if we do delete it, then every
+						// FormatDriver must cope with deletions of the manifest document
+						// to avoid disconnection during refurbish operations,
+						// which is a burden. Let's just not.
+						BsonDocument deletionFilter = new BsonDocument("_id", new BsonDocument("$ne", MANIFEST_ID));
+						LOGGER.trace("Deleting state documents: {}", deletionFilter);
+						testProbes.beforeRefurbishDelete().run();
+						queryCollection.deleteMany(deletionFilter);
+
+						newFormatDriver.writeAllState(allState);
+						if (formatChanged) {
+							writeManifest(Manifest.forFormat(preferredFormat, formatId));
+						}
+						return null;
 					} catch (InvalidCollectionContentsException e) {
 						throw new TunneledCheckedException(new IOException("Unable to refurbish database collection with invalid contents", e));
 					} catch (IOException e) {
@@ -592,20 +600,16 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * <em>Design note:</em> This operation shouldn't do any special coordination with
 	 * the receiver/listener system, because other replicas won't.
 	 * That system needs to cope with refurbish operations without any help.
+	 * <p>
+	 * In particular, it publishes no new FormatDriver:
+	 * once the transaction is durable,
+	 * the change stream tells this bosk about the rewritten documents,
+	 * as it would for any other update.
 	 */
 	@Override
 	public void refurbish() throws IOException {
 		doRetryableDriverOperation(driverInUse -> () -> {
-			// refurbishTransaction doesn't return until the transaction has
-			// committed, so we publish the new driver only after the database
-			// changes are durable.
-			FormatDriver<R> newFormatDriver = refurbishTransaction(driverInUse, "refurbish");
-			// Refurbish doesn't change what state has been applied, so the old
-			// load time still describes the in-memory state.
-			publishFormatDriver(newFormatDriver, currentDrivers().loadTime());
-
-			// Because the state is unchanged, there's no downstream submit or
-			// flush, and no call to onHasBeenApplied.
+			refurbishTransaction(driverInUse, "refurbish");
 		}, "refurbish");
 	}
 
