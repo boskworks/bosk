@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
+import org.bson.BsonInvalidOperationException;
 import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonValue;
@@ -124,7 +125,13 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		// lock once the loaded state has actually been applied downstream.
 		replaceFlushLock(bsm.epoch(), revisionsBefore(bsm.documentRevisions()));
 
-		R root = formatter.document2object(bsm.state(), rootRef);
+		R root;
+		try {
+			root = formatter.document2object(bsm.state(), rootRef);
+		} catch (BsonInvalidOperationException e) {
+			// Only this exception means the data is bad; the others mean the code is bad.
+			throw new InvalidCollectionContentsException(format(), "State document could not be decoded", e);
+		}
 
 		return new StateAndMetadata<>(root, bsm.epoch(), bsm.documentRevisions());
 	}
