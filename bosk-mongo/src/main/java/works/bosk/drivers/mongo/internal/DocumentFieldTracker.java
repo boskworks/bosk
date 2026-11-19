@@ -44,6 +44,10 @@ final class DocumentFieldTracker {
 		return result.asDocument();
 	}
 
+	public void seed(BsonValue documentId, BsonDocument document) {
+		trackFields(documentId, document);
+	}
+
 	/**
 	 * Infers the latest values of tracked fields from a change stream event.
 	 */

@@ -368,6 +368,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				BsonString id = lastPart.getString("_id");
 				RevisionTuple revision = revisionOf(lastPart);
 				revisions.put(id, revision);
+				fieldTracker.seed(id, lastPart);
 				partsBuffer.add(lastPart);
 				// The root document sorts last by _id.
 				if (ROOT_DOCUMENT_ID.equals(id)) {

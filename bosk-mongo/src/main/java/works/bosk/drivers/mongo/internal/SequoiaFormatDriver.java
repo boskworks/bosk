@@ -139,6 +139,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			validateFormatId(document);
 			BsonString id = document.getString("_id");
 			RevisionTuple revision = RevisionTuple.from(document);
+			fieldTracker.seed(id, document);
 			return new BsonStateAndMetadata(
 				document.getDocument(DocumentFields.state.name()),
 				formatter.epochOf(document),
