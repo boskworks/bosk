@@ -242,6 +242,38 @@ and ordering; operations that may add or remove a stub stay transactional.
 transaction outcomes, and translates failures. Operations must not create, commit, or abort sessions or
 transactions themselves; they receive the live `SessionCollection`, which is bound to the current session.
 
+#### State document fields
+
+Every state document carries the `state` payload plus metadata that the driver needs:
+
+| Field | Scope | Purpose |
+| --- | --- | --- |
+| `_id` | document | The document's location in the conceptual state tree, so change stream events identify it |
+| `formatId` | document | Fences writes planned against a format that has since been refurbished away |
+| `epoch` | root | Identifies the collection's current initialization |
+| `incarnation` | document | Distinguishes one lifetime of the document's `revision` counter |
+| `revision` | document | Bumped by the topmost write of a transaction: the flush unit, the dedup key, and the signal that a transaction's event tree is complete |
+| `lockId` | document | Makes a transaction that read the document a writer of it, so a concurrent writer conflicts |
+| `diagnostics` | document | The `BoskContext` attributes of the write, for hooks |
+
+The `lockId` field follows MongoDB's
+[In-progress Transactions and Stale Reads](https://www.mongodb.com/docs/manual/core/transactions-production-consideration/#in-progress-transactions-and-stale-reads).
+MongoDB transactions are snapshot-isolated and detect only write-write conflicts, so a value read from one
+document can change before the transaction writes another. A conditional write whose precondition is in a
+different document therefore checks and locks that document in one update: the filter tests the precondition,
+and the update writes `lockId`. The transaction is now a writer of that document, so a concurrent writer waits
+or forces a retry, and a match failure means the precondition does not hold. Commit or abort releases the
+lock; there is no separate unlock. `onEvent` ignores lock-only updates, because they do not change the state.
+
+Conditional creation needs no lock: its condition is about the stub or field it is creating, and the write
+re-checks that itself. The ancestor-chain check for a nested graft point is not re-checked, so a concurrent
+deletion of an ancestor can leave an orphan document behind, but the entry does not become visible in the
+state.
+
+The logical-existence check for a cross-document precondition's entry is also not locked. If it reports the
+entry absent, the update does nothing, which is always safe; if it reports it present, a concurrent deletion
+can be treated as happening after the update, so locking the ancestor chain would buy nothing.
+
 #### `onEvent` and revision tracking
 
 The third feature that distinguishes a `FormatDriver` from a `MongoDriver`

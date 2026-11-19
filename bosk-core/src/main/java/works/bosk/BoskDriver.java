@@ -70,7 +70,10 @@ public interface BoskDriver {
 	/**
 	 * Like {@link #submitReplacement}, but has no effect unless
 	 * <code>precondition.valueIfExists()</code> is equal to <code>requiredValue</code>
-	 * immediately before the deletion.  <code>requiredValue</code> must not be null.
+	 * at the moment of the replacement.  <code>requiredValue</code> must not be null.
+	 * <p>
+	 * The check and the replacement are atomic, even when the precondition is in a
+	 * different part of the state tree.
 	 *
 	 * @see #submitReplacement
 	 */
@@ -105,7 +108,10 @@ public interface BoskDriver {
 	/**
 	 * Like {@link #submitDeletion(Reference)} but has no effect unless
 	 * <code>precondition.valueIfExists()</code> is equal to <code>requiredValue</code>
-	 * immediately before the deletion.  <code>requiredValue</code> must not be null.
+	 * at the moment of the deletion.  <code>requiredValue</code> must not be null.
+	 * <p>
+	 * The check and the deletion are atomic, even when the precondition is in a
+	 * different part of the state tree.
 	 * <p>
 	 * A non-deletable target is rejected with {@link IllegalArgumentException}
 	 * regardless of the precondition.

@@ -27,6 +27,7 @@ import org.bson.BsonInt32;
 import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonNull;
+import org.bson.BsonObjectId;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.bson.conversions.Bson;
@@ -215,10 +216,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			return atomic(() -> doAtomicReplacement(prepared, precondition, requiredValue));
 		} else {
 			return transactional(_ -> {
-				if (preconditionFailed(precondition, requiredValue)) {
-					return ABORT;
-				} else {
+				if (checkPrecondition(precondition, requiredValue)) {
 					return doReplacement(prepared);
+				} else {
+					return ABORT;
 				}
 			});
 		}
@@ -233,10 +234,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			return atomic(() -> doAtomicDeletion(target, precondition, requiredValue));
 		} else {
 			return transactional(_ -> {
-				if (preconditionFailed(precondition, requiredValue)) {
-					return ABORT;
-				} else {
+				if (checkPrecondition(precondition, requiredValue)) {
 					return doDelete(target);
+				} else {
+					return ABORT;
 				}
 			});
 		}
@@ -473,6 +474,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 */
 	@Override
 	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+		if (isLockOnlyUpdate(event)) {
+			LOGGER.trace("Ignoring lock-only update on {}", event.getDocumentKey());
+			return;
+		}
 		fieldTracker.processEvent(event);
 		assert event.getDocumentKey() != null;
 		BsonValue bsonDocumentID = event.getDocumentKey().get("_id");
@@ -534,6 +539,34 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			return false;
 		}
 		return ROOT_DOCUMENT_ID.equals(documentIdOf(event));
+	}
+
+	/**
+	 * @return true if this update changes only the {@code lockId} field, which does
+	 * not change the state
+	 */
+	private static boolean isLockOnlyUpdate(ChangeStreamDocument<BsonDocument> event) {
+		if (event.getOperationType() != OperationType.UPDATE) {
+			LOGGER.trace("Not a lock-only update: operation is {}", event.getOperationType());
+			return false;
+		}
+		UpdateDescription description = event.getUpdateDescription();
+		if (description == null) {
+			LOGGER.trace("Not a lock-only update: update has no description");
+			return false;
+		}
+		if (description.getRemovedFields() != null && !description.getRemovedFields().isEmpty()) {
+			LOGGER.trace("Not a lock-only update: removed fields {}", description.getRemovedFields());
+			return false;
+		}
+		BsonDocument updatedFields = description.getUpdatedFields();
+		if (updatedFields == null
+			|| updatedFields.size() != 1
+			|| !updatedFields.containsKey(DocumentFields.lockId.name())) {
+			LOGGER.trace("Not a lock-only update: updated fields {}", updatedFields);
+			return false;
+		}
+		return true;
 	}
 
 	private void processTree(List<ChangeStreamDocument<BsonDocument>> treeEvents) throws UnprocessableEventException {
@@ -978,20 +1011,35 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
-	private boolean preconditionFailed(Reference<Identifier> precondition, Identifier requiredValue) {
+	/**
+	 * Evaluates the precondition as a conditional update that also makes this
+	 * transaction a writer of the document that holds it, so a concurrent write cannot
+	 * change the value before this transaction commits. If the update matches nothing,
+	 * the precondition does not hold, and the caller must not write the target.
+	 * <p>
+	 * The lock is this transaction's write intent, so there is nothing to release;
+	 * commit or abort ends it.
+	 *
+	 * @return true if the precondition holds
+	 * @see <a href="https://www.mongodb.com/docs/manual/core/transactions-production-consideration/#in-progress-transactions-and-stale-reads">In-progress Transactions and Stale Reads</a>
+	 */
+	private boolean checkPrecondition(Reference<Identifier> precondition, Identifier requiredValue) {
 		Reference<?> preconditionDocRef = targetDocumentRef(precondition);
 		if (!preconditionDocRef.isRoot() && !entryExists(preconditionDocRef)) {
 			LOGGER.debug("Precondition fail: {} does not exist", preconditionDocRef);
-			return true;
+			return false;
 		}
 		BsonDocument filter = documentFilter(preconditionDocRef)
 			.append(dottedFieldNameOf(precondition, preconditionDocRef), new BsonString(requiredValue.toString()));
 		LOGGER.debug("Precondition filter: {}", filter);
-		boolean result = !documentExists(filter);
-		if (result) {
+		BsonDocument lockUpdate = new BsonDocument("$set",
+			new BsonDocument(DocumentFields.lockId.name(), new BsonObjectId()));
+		if (doUpdate(lockUpdate, filter)) {
+			return true;
+		} else {
 			LOGGER.debug("Precondition fail: {} != {}", precondition, requiredValue);
+			return false;
 		}
-		return result;
 	}
 
 	private boolean documentExists(BsonDocument filter) {

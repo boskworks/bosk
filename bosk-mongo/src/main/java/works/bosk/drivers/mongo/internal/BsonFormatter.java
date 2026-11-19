@@ -368,6 +368,21 @@ public class BsonFormatter {
 		revision,
 
 		/**
+		 * A marker written by any transaction that reads this document to decide whether
+		 * to write elsewhere. It makes the transaction a writer of this document,
+		 * so a concurrent writer either waits for the transaction or,
+		 * if it committed first, forces the transaction to retry.
+		 * (There's no corresponding "unlock" required: the commit or abort will do that.)
+		 * <p>
+		 * The value is a fresh ObjectId each time on purpose: an update that does not
+		 * modify the document is a no-op and takes no write intent, so it would not conflict.
+		 * We do not read the field, and ignore change events that change only this field.
+		 *
+		 * @see <a href="https://www.mongodb.com/docs/manual/core/transactions-production-consideration/#in-progress-transactions-and-stale-reads">In-progress Transactions and Stale Reads</a>
+		 */
+		lockId,
+
+		/**
 		 * The contents of {@link BoskContext#getAttributes()} corresponding to this
 		 * document's last update.
 		 */

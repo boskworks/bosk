@@ -1,7 +1,12 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoClientSettings;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
+import org.bson.BsonDocument;
+import org.bson.BsonString;
+import org.bson.BsonValue;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -28,7 +33,9 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 /**
  * A HASTY deletion can leave a whole subtree of orphan documents behind. A
  * conditional creation or replacement inside that subtree must not treat the
- * orphans as an existing parent, and must not write anything.
+ * orphans as an existing parent, and must not write the deleted subtree. A
+ * conditional update may still attempt its precondition lock; that is not a
+ * write to the subtree.
  * <p>
  * The tests delete only the top of the subtree and then target a node that has
  * never existed, so the membership check has to walk the ancestor chain. A
@@ -112,9 +119,16 @@ public class NestedOrphanTest {
 		}
 
 		@Test
-		void conditionalReplacementUnderDeletedParent_doesNotWrite() throws Exception {
+		void conditionalReplacementUnderDeletedParent_doesNotWriteDeletedSubtree() throws Exception {
 			AtomicInteger writeCount = new AtomicInteger();
-			Bosk<TestEntity> bosk = newBosk(writeCount, this::nestedInitialState);
+			// The conditional replacement takes a write lock on the precondition's
+			// document, which is a write, but it must not write the deleted subtree.
+			Bosk<TestEntity> bosk = newBosk(writeCount, this::nestedInitialState, filter -> {
+				BsonValue id = filter.get("_id");
+				return id instanceof BsonString s
+					&& (s.getValue().equals("|catalog|e0")
+						|| s.getValue().startsWith("|catalog|e0|"));
+			});
 			Refs refs = bosk.buildReferences(Refs.class);
 			bosk.driver().flush();
 
@@ -133,7 +147,7 @@ public class NestedOrphanTest {
 			bosk.driver().flush();
 
 			assertEquals(0, writeCount.get(),
-				"Conditional replacement under a deleted parent must not write");
+				"Conditional replacement under a deleted parent must not write the deleted subtree");
 			try (var _ = bosk.readSession()) {
 				assertNull(child.valueIfExists(), "The child must remain absent");
 			}
@@ -226,7 +240,20 @@ public class NestedOrphanTest {
 		}
 
 		protected Bosk<TestEntity> newBosk(AtomicInteger writeCount, Bosk.DefaultStateFunction<TestEntity> initialState) throws InvalidTypeException {
-			MainDriver.setProbes(TestProbes.noop().withWriteInterceptor(_ -> writeCount.incrementAndGet()));
+			return newBosk(writeCount, initialState, _ -> true);
+		}
+
+		protected Bosk<TestEntity> newBosk(
+			AtomicInteger writeCount,
+			Bosk.DefaultStateFunction<TestEntity> initialState,
+			Predicate<BsonDocument> countWrite
+		) throws InvalidTypeException {
+			MainDriver.setProbes(TestProbes.noop().withWriteInterceptor(filter -> {
+				BsonDocument filterDoc = filter.toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
+				if (countWrite.test(filterDoc)) {
+					writeCount.incrementAndGet();
+				}
+			}));
 			return new Bosk<>(
 				boskName(),
 				TestEntity.class,
