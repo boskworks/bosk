@@ -216,10 +216,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			return atomic(() -> doAtomicReplacement(prepared, precondition, requiredValue));
 		} else {
 			return transactional(_ -> {
-				if (!checkPrecondition(precondition, requiredValue)) {
-					return ABORT;
-				} else {
+				if (checkPrecondition(precondition, requiredValue)) {
 					return doReplacement(prepared);
+				} else {
+					return ABORT;
 				}
 			});
 		}
@@ -234,10 +234,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			return atomic(() -> doAtomicDeletion(target, precondition, requiredValue));
 		} else {
 			return transactional(_ -> {
-				if (!checkPrecondition(precondition, requiredValue)) {
-					return ABORT;
-				} else {
+				if (checkPrecondition(precondition, requiredValue)) {
 					return doDelete(target);
+				} else {
+					return ABORT;
 				}
 			});
 		}
@@ -1034,11 +1034,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.debug("Precondition filter: {}", filter);
 		BsonDocument lockUpdate = new BsonDocument("$set",
 			new BsonDocument(DocumentFields.lockId.name(), new BsonObjectId()));
-		if (!doUpdate(lockUpdate, filter)) {
+		if (doUpdate(lockUpdate, filter)) {
+			return true;
+		} else {
 			LOGGER.debug("Precondition fail: {} != {}", precondition, requiredValue);
 			return false;
 		}
-		return true;
 	}
 
 	private boolean documentExists(BsonDocument filter) {
