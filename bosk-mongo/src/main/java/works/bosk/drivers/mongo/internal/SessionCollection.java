@@ -384,22 +384,27 @@ class SessionCollection {
 	}
 
 	/**
-	 * Read the most recent value from the database regardless of the current session.
-	 * Uses {@link ReadConcern#LOCAL} and bypasses any session/transaction in progress.
-	 * Analogous to {@link Bosk#supersedingReadSession()} in that it bypasses the usual
-	 * determinism features and gives direct access to the very latest data.
+	 * Reads the primary's latest value, regardless of the current session.
+	 * Uses {@link ReadConcern#LOCAL} and {@link ReadPreference#primary()}, so it
+	 * sees data that a snapshot or majority read might not, and bypasses any
+	 * session/transaction in progress. Analogous to
+	 * {@link Bosk#supersedingReadSession()}.
 	 * <p>
-	 * This is appropriate for reading a single document, like a root document's
-	 * revision for {@link FormatDriver#flush()}. A {@code findLatest} cursor reads
-	 * each document at its own instant, so it is <em>not</em> appropriate for a
-	 * multi-document read: use {@link #find} within a transaction, which reads the
-	 * transaction's snapshot.
+	 * A cursor reads each document at its own instant, so a multi-document read
+	 * is not a consistent snapshot. Use {@link #find} within a transaction when
+	 * a consistent snapshot is required.
 	 * <p>
-	 * It's probably not appropriate for ordinary updates, which benefit from the
-	 * determinism and reproducibility of sessions and transactions.
+	 * Not appropriate for ordinary updates, which benefit from the determinism
+	 * and reproducibility of sessions and transactions.
 	 */
 	public FindBuilder findLatest(Bson filter) {
-		return new FindBuilder(this.downstream.withReadConcern(LOCAL).find(filter), filter, findInterceptor);
+		return new FindBuilder(
+			this.downstream
+				.withReadConcern(LOCAL)
+				.withReadPreference(ReadPreference.primary())
+				.find(filter),
+			filter,
+			findInterceptor);
 	}
 
 	public FindBuilder find(Bson filter) {

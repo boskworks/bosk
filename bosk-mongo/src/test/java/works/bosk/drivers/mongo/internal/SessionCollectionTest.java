@@ -1,17 +1,23 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoException;
 import com.mongodb.ReadConcern;
 import com.mongodb.ReadPreference;
 import com.mongodb.TransactionOptions;
 import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
+import com.mongodb.event.CommandListener;
+import com.mongodb.event.CommandStartedEvent;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.bson.BsonDocument;
@@ -21,6 +27,7 @@ import org.bson.BsonTimestamp;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import works.bosk.drivers.mongo.internal.SessionCollection.Session;
 import works.bosk.drivers.mongo.internal.SessionCollection.SessionType;
 
@@ -77,6 +84,53 @@ class SessionCollectionTest {
 		) {
 			assertTrue(cursor.hasNext());
 		}
+	}
+
+	@Test
+	void findLatest_readsFromPrimary(TestInfo testInfo) throws FailedMongoClientSessionException {
+		makeData("test");
+		List<String> readPreferenceModes = new CopyOnWriteArrayList<>();
+		CommandListener recorder = new CommandListener() {
+			@Override
+			public void commandStarted(CommandStartedEvent event) {
+				if ("find".equals(event.getCommandName())) {
+					// The command document is backed by a buffer that is only valid
+					// during this callback, so extract what we need right away.
+					BsonDocument readPreference = event.getCommand().getDocument("$readPreference", null);
+					readPreferenceModes.add(readPreference == null
+						? "primary"
+						: readPreference.getString("mode").getValue());
+				}
+			}
+		};
+		MongoClientSettings settings = MongoClientSettings
+			.builder(mongoService.clientSettings(testInfo))
+			// Without pinning, findLatest would inherit this preference and the
+			// read could be served by a secondary, where LOCAL is not the latest
+			// value in the deployment.
+			.readPreference(ReadPreference.secondaryPreferred())
+			.addCommandListener(recorder)
+			.build();
+		try (MongoClient secondaryClient = MongoClients.create(settings)) {
+			MongoCollection<BsonDocument> secondaryRaw = secondaryClient
+				.getDatabase(DB_NAME)
+				.getCollection(COLLECTION_NAME, BsonDocument.class);
+			SessionCollection secondaryCollection = SessionCollection.of(secondaryRaw, secondaryClient);
+			try (DocCursor cursor = secondaryCollection
+				.findLatest(new BsonDocument("_id", new BsonString("test")))
+				.cursor()
+			) {
+				assertTrue(cursor.hasNext());
+			}
+		}
+
+		assertEquals(1, readPreferenceModes.size(), "Expected one find command, got " + readPreferenceModes);
+		// The test client connects directly to a single replica-set member. The
+		// driver reports a primary read on such a connection as "primaryPreferred",
+		// because the one server it can see may be a secondary. What matters here
+		// is that the read does not carry the client's "secondaryPreferred".
+		assertEquals("primaryPreferred", readPreferenceModes.getFirst(),
+			"findLatest must not inherit the client's read preference");
 	}
 
 	@Test
