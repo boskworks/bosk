@@ -35,6 +35,7 @@ import works.bosk.Bosk;
 import works.bosk.logging.MdcKeys;
 
 import static com.mongodb.ReadConcern.LOCAL;
+import static java.util.Objects.requireNonNull;
 
 /**
  * A wrapper for {@link MongoCollection} that manages a thread-local
@@ -209,6 +210,15 @@ class SessionCollection {
 					}
 				}
 			}
+		}
+
+		/**
+		 * The operation time of this session's most recent acknowledged operation.
+		 * After a transaction commit, this is the cluster time of the commit,
+		 * which is later than every write in the transaction.
+		 */
+		public BsonTimestamp operationTime() {
+			return requireNonNull(clientSession.getOperationTime(), "Session operation time");
 		}
 
 		@Override

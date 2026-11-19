@@ -165,7 +165,9 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes this state document write and the manifest write atomic.
-		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, DOCUMENT_ID));
+		BsonDocument document = initialDocument(initialState, epoch, newRevision, DOCUMENT_ID);
+		fieldTracker.seed(DOCUMENT_ID, document);
+		BsonDocument update = new BsonDocument("$set", document);
 		BsonDocument filter = documentFilter(rootRef);
 		UpdateOptions options = new UpdateOptions().upsert(true);
 		LOGGER.debug("** Initial upsert for {}", DOCUMENT_ID);

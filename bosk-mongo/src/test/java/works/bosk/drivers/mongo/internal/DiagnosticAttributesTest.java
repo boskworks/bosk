@@ -7,6 +7,10 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
+import works.bosk.DriverFactory;
+import works.bosk.DriverStack;
+import works.bosk.Reference;
+import works.bosk.drivers.ContextScopeDriver;
 import works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.junit.InjectFields;
@@ -70,6 +74,36 @@ public class DiagnosticAttributesTest extends AbstractMongoDriverTest {
 			"The reader must use the diagnostics stored in the document it loaded");
 	}
 
+	@Test
+	void initializationSeedsTheFieldTracker() throws InvalidTypeException, IOException, InterruptedException {
+		DriverFactory<TestEntity> attributedDriverFactory = (boskInfo, downstream) -> DriverStack.of(
+			ContextScopeDriver.factory(context -> context.withAttribute("test", "original")),
+			driverFactory
+		).build(boskInfo, downstream);
+		Bosk<TestEntity> bosk = new Bosk<>(
+			boskName(),
+			TestEntity.class,
+			AbstractMongoDriverTest::initialState,
+			BoskConfig.<TestEntity>builder().driverFactory(attributedDriverFactory).build());
+		Reference<String> rootString = bosk.rootReference().then(String.class, "string");
+		CountDownLatch hookRan = new CountDownLatch(1);
+		AtomicReference<String> attributeSeenByHook = new AtomicReference<>();
+		bosk.hookRegistrar().registerHook("record", rootString, ref -> {
+			if ("changed".equals(ref.value())) {
+				attributeSeenByHook.set(bosk.context().getAttribute("test"));
+				hookRan.countDown();
+			}
+		});
+
+		// Initialization wrote this attribute, so the update carries the same
+		// diagnostics and the event omits them.
+		bosk.driver().submitReplacement(rootString, "changed");
+		bosk.driver().flush();
+
+		assertTrue(hookRan.await(30, SECONDS), "The hook must run for the update");
+		assertEquals("original", attributeSeenByHook.get(),
+			"The initializing driver must know the diagnostics it wrote");
+	}
 
 	private Bosk<TestEntity> newBosk() throws InvalidTypeException {
 		return new Bosk<>(

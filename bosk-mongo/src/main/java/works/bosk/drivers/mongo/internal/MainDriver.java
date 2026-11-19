@@ -152,12 +152,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	}
 
 	/**
-	 * The driver stack currently in use, and the time of the snapshot that the
-	 * in-memory state was loaded from.
+	 * The driver stack currently in use, and the time that the in-memory state
+	 * corresponds to.
 	 *
-	 * @param loadTime the time of the snapshot the state was loaded from, or
-	 * empty if no load has succeeded and there is no state to compare change
-	 * events against
+	 * @param loadTime the time of the snapshot the state was loaded from, or of
+	 * the commit that initialized it, or empty if there is no state to compare
+	 * change events against
 	 */
 	private record Drivers<R extends StateTreeNode>(
 		FormatDriver<R> formatDriver,
@@ -342,7 +342,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// Hasn't technically been applied, but we're still initializing the Bosk, and its constructor won't return until the state has been applied
 			loaded.driver().onHasBeenApplied(loaded.state());
 
-			publishFormatDriver(loaded.driver(), Optional.of(loaded.snapshotTime()));
+			publishFormatDriver(loaded.driver(), loaded.snapshotTime());
 		} catch (UninitializedCollectionException e) {
 			// We log this at warn because, in production, this is a big deal.
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
@@ -365,8 +365,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				}
 				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat(), formatId));
 				session.commitTransactionIfAny();
-				// We can now publish the driver knowing that the transaction has committed
-				publishFormatDriver(preferredDriver, Optional.empty());
+				// We can now publish the driver knowing that the transaction has committed.
+				// The commit's operation time is later than every initialization write,
+				// so events at or before it describe a state that we have already
+				// replaced: the deletions that emptied the collection, and our own
+				// writes. They must not be replayed into the new state.
+				publishFormatDriver(preferredDriver, session.operationTime());
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2, currentFormatDriver());
@@ -699,7 +703,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// before ours (below) because this code runs on the ChangeReceiver thread, which is
 				// the only thread that submits updates downstream.
 
-				publishFormatDriver(loaded.driver(), Optional.of(loaded.snapshotTime()));
+				publishFormatDriver(loaded.driver(), loaded.snapshotTime());
 
 				downstream.submitReplacement(boskInfo.rootReference(), loaded.state().state());
 				LOGGER.debug("Done submitting downstream");
@@ -743,9 +747,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				throw new UnprocessableEventException("Change event has no cluster time", event.getOperationType());
 			}
 			Optional<BsonTimestamp> loadTime = currentDrivers().loadTime();
-			// Events at or before the load time are already in the loaded state.
+			// Events at or before the load time are already reflected in the
+			// driver's state.
 			if (loadTime.isPresent() && eventTime.compareTo(loadTime.get()) <= 0) {
-				LOGGER.debug("Ignoring {} event at {}, at or before the load's snapshot at {}",
+				LOGGER.debug("Ignoring {} event at {}, at or before the state's boundary at {}",
 					event.getOperationType(), eventTime, loadTime.get());
 				return;
 			}
@@ -1193,15 +1198,15 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * Sets {@link #drivers} and also signals any threads waiting on {@link #driversChanged}
 	 * to retry their operation.
 	 *
-	 * @param loadTime the time of the snapshot the new driver's state was loaded
-	 * from, or empty if it loaded no state
+	 * @param loadTime the time of the state the new driver represents: the
+	 * snapshot it was loaded from, or the commit that initialized it, or empty if it loaded no state
 	 */
-	void publishFormatDriver(FormatDriver<R> newFormatDriver, Optional<BsonTimestamp> loadTime) {
+	void publishFormatDriver(FormatDriver<R> newFormatDriver, BsonTimestamp loadTime) {
 		LOGGER.debug("publishFormatDriver({}) (was {})", newFormatDriver.getClass().getSimpleName(), currentFormatDriver().getClass().getSimpleName());
 		try {
 			driversLock.lock();
 			currentFormatDriver().close();
-			drivers = new Drivers<>(newFormatDriver, newUpdateDriver(newFormatDriver), loadTime);
+			drivers = new Drivers<>(newFormatDriver, newUpdateDriver(newFormatDriver), Optional.of(loadTime));
 			LOGGER.debug("Signaling");
 			driversChanged.signalAll();
 		} finally {
