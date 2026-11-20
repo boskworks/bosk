@@ -1,6 +1,7 @@
 package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoClientSettings;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -217,6 +218,67 @@ public class NestedOrphanTest {
 			}
 		}
 
+		@Test
+		void wholeEntryReplacementUnderDeletedGrandparent_doesNotWrite() throws Exception {
+			RecordingWrites writes = new RecordingWrites();
+			Bosk<TestEntity> bosk = newBosk(writes, this::nestedInitialState);
+			Refs refs = bosk.buildReferences(Refs.class);
+			bosk.driver().flush();
+
+			Reference<TestEntity> grandparent = refs.catalog().then(grandparentID);
+			Reference<TestEntity> parent = refs.childCatalog(grandparentID).then(parentID);
+			CatalogReference<TestEntity> parentCatalog = parent.thenCatalog(TestEntity.class, TestEntity.Fields.catalog);
+			bosk.driver().submitDeletion(grandparent);
+			bosk.driver().flush();
+
+			// The replacement's catalog is non-empty, so it scatters into sub-parts
+			// before the replacement discovers that its ancestor has been deleted.
+			Identifier newChildID = Identifier.from("g3");
+			TestEntity replacement = TestEntity.empty(parentID, parentCatalog)
+				.withCatalog(Catalog.of(TestEntity.empty(newChildID, parentCatalog)));
+
+			writes.clear();
+			bosk.driver().submitReplacement(parent, replacement);
+			bosk.driver().flush();
+
+			assertEquals(List.of(), writes.documentIds(),
+				"A replacement under a deleted grandparent must not write anything");
+			try (var _ = bosk.readSession()) {
+				assertNull(grandparent.valueIfExists(), "The grandparent must remain absent");
+				assertNull(parent.valueIfExists(), "The parent must remain absent");
+			}
+		}
+
+		@Test
+		void fieldReplacementUnderDeletedGrandparent_doesNotWrite() throws Exception {
+			RecordingWrites writes = new RecordingWrites();
+			Bosk<TestEntity> bosk = newBosk(writes, this::nestedInitialState);
+			Refs refs = bosk.buildReferences(Refs.class);
+			bosk.driver().flush();
+
+			Reference<TestEntity> grandparent = refs.catalog().then(grandparentID);
+			Reference<TestEntity> parent = refs.childCatalog(grandparentID).then(parentID);
+			CatalogReference<TestEntity> parentCatalog = parent.thenCatalog(TestEntity.class, TestEntity.Fields.catalog);
+			bosk.driver().submitDeletion(grandparent);
+			bosk.driver().flush();
+
+			// The catalog is a field inside the parent's document, which remains
+			// behind as an orphan document.
+			Identifier newChildID = Identifier.from("g3");
+
+			writes.clear();
+			bosk.driver().submitReplacement(parentCatalog,
+				Catalog.of(TestEntity.empty(newChildID, parentCatalog)));
+			bosk.driver().flush();
+
+			assertEquals(List.of(), writes.documentIds(),
+				"A field replacement under a deleted grandparent must not write anything");
+			try (var _ = bosk.readSession()) {
+				assertNull(grandparent.valueIfExists(), "The grandparent must remain absent");
+				assertNull(parent.valueIfExists(), "The parent must remain absent");
+			}
+		}
+
 		private TestEntity nestedInitialState(Bosk<TestEntity> b) throws InvalidTypeException {
 			Refs refs = b.buildReferences(Refs.class);
 			CatalogReference<TestEntity> grandparentCatalog = refs.childCatalog(grandparentID);
@@ -248,12 +310,19 @@ public class NestedOrphanTest {
 			Bosk.DefaultStateFunction<TestEntity> initialState,
 			Predicate<BsonDocument> countWrite
 		) throws InvalidTypeException {
-			MainDriver.setProbes(TestProbes.noop().withWriteInterceptor(filter -> {
+			return newBosk(filter -> {
 				BsonDocument filterDoc = filter.toBsonDocument(BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
 				if (countWrite.test(filterDoc)) {
 					writeCount.incrementAndGet();
 				}
-			}));
+			}, initialState);
+		}
+
+		protected Bosk<TestEntity> newBosk(
+			WriteInterceptor writeInterceptor,
+			Bosk.DefaultStateFunction<TestEntity> initialState
+		) throws InvalidTypeException {
+			MainDriver.setProbes(TestProbes.noop().withWriteInterceptor(writeInterceptor));
 			return new Bosk<>(
 				boskName(),
 				TestEntity.class,

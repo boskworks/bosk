@@ -823,6 +823,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * an update whose value happened to be unchanged could leave us unable to
 	 * tell which state field changed.
 	 * <p>
+	 * Sub-parts are written only once the operation has established that the
+	 * replacement will write the target document, so a replacement that turns
+	 * out to be a no-op performs no writes at all.
+	 * <p>
 	 * <em>Implementation note</em>: While {@link SequoiaFormatDriver} has calls like <code>doUpdate</code>,
 	 * Pando uses <code>doReplacement</code> and <code>doDelete</code>.
 	 * The reason is that Sequoia, being a single-document format, can implement all its preconditions
@@ -846,11 +850,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (value instanceof BsonDocument) {
 			deletePartsUnder(target);
 		}
-		if (hasSubParts) {
-			writeSubParts(prepared.subParts(), null);
-		}
 		if (rootRef.equals(targetDocRef)) {
 			LOGGER.debug("| Root ref is topmost");
+			writeSubPartsIfAny(prepared);
 			if (hasSubParts) {
 				preDeleteField(prepared, rootRef, documentFilter(rootRef));
 			} else {
@@ -866,8 +868,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 		} else if (target.equals(targetDocRef)) {
 			return replaceGraftPointEntry(prepared);
+		} else if (hasSubParts && !containerExists(targetDocRef)) {
+			LOGGER.debug("Container is not part of the state; ignoring replacement of {}", target);
+			return ABORT;
 		} else {
-			// Update part of the topmost document (which must already exist)
+			writeSubPartsIfAny(prepared);
 			BsonDocument filter = documentFilter(targetDocRef);
 			if (hasSubParts) {
 				preDeleteField(prepared, targetDocRef, filter);
@@ -904,6 +909,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * write. That applies also when a deleted entry's document is still present as
 	 * an orphan, so the presence of the document alone does not mean the entry
 	 * exists.
+	 * <p>
+	 * The sub-parts are written only after the container check succeeds, so a
+	 * replacement into a deleted subtree performs no writes at all.
 	 */
 	private Outcome replaceGraftPointEntry(PreparedReplacement prepared) {
 		Reference<?> target = prepared.target();
@@ -912,6 +920,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			LOGGER.debug("Parent does not exist; ignoring replacement of {}", target);
 			return ABORT;
 		}
+		writeSubPartsIfAny(prepared);
 		if (hasStub(target, containerRef)) {
 			return updateGraftPointEntry(prepared);
 		} else {
@@ -1281,6 +1290,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
+
+	private void writeSubPartsIfAny(PreparedReplacement prepared) {
+		if (prepared.hasSubParts()) {
+			writeSubParts(prepared.subParts(), null);
+		}
+	}
 
 	/**
 	 * Writes the sub-part documents produced by {@link #scatter}.
