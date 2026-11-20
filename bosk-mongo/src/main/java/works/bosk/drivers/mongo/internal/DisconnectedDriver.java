@@ -24,7 +24,7 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 	}
 
 	@Override
-	public Identifier formatId() {
+	public Identifier epoch() {
 		throw disconnected();
 	}
 

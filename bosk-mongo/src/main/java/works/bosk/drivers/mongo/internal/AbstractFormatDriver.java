@@ -55,7 +55,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	final SessionCollection collection;
 	final BoskDriver downstream;
 	final Duration flushTimeout;
-	final Identifier formatId;
+	final Identifier epoch;
 
 	final AtomicReference<FlushLock> flushLock = new AtomicReference<>(null);
 
@@ -68,7 +68,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		SessionCollection collection,
 		BoskDriver downstream,
 		Duration flushTimeout,
-		Identifier formatId
+		Identifier epoch
 	) {
 		this.rootRef = rootRef;
 		this.context = context;
@@ -76,12 +76,12 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		this.collection = collection;
 		this.downstream = downstream;
 		this.flushTimeout = flushTimeout;
-		this.formatId = formatId;
+		this.epoch = epoch;
 	}
 
 	@Override
-	public Identifier formatId() {
-		return formatId;
+	public Identifier epoch() {
+		return epoch;
 	}
 
 	@Override
@@ -189,9 +189,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * proceeds top-down, so the ancestor's transaction is applied before its
 	 * descendants' revisions are interpreted.
 	 * <p>
-	 * Each document's format id is checked against this driver's, so a collection
-	 * that has been reinitialized or refurbished since the driver loaded it fails
-	 * the flush.
+	 * Each document's epoch is checked against this driver's, so a collection that
+	 * has been reinitialized or refurbished since the driver loaded it fails the flush.
 	 */
 	protected abstract List<FlushLock.Target> readRevisionsToFlush() throws FlushFailureException, InterruptedException;
 
@@ -238,67 +237,67 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * Adds this driver's format id to the given filter, so a write planned
+	 * Adds this driver's epoch to the given filter, so a write planned
 	 * against a format that has since been refurbished away matches nothing
 	 * rather than landing in a document from another format.
 	 */
-	protected BsonDocument withFormatId(BsonDocument filter) {
+	protected BsonDocument withEpoch(BsonDocument filter) {
 		BsonDocument result = filter.clone();
-		result.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
+		result.put(DocumentFields.epoch.name(), new BsonString(epoch.toString()));
 		return result;
 	}
 
 	/**
-	 * Verifies that a loaded state document carries the format id the manifest
+	 * Verifies that a loaded state document carries the epoch the manifest
 	 * declares.
 	 *
 	 * @throws InvalidCollectionContentsException if it doesn't
 	 */
-	protected void validateFormatId(BsonDocument document) throws InvalidCollectionContentsException {
-		BsonString expected = new BsonString(formatId.toString());
-		BsonValue found = document.get(DocumentFields.formatId.name());
+	protected void validateEpoch(BsonDocument document) throws InvalidCollectionContentsException {
+		BsonString expected = new BsonString(epoch.toString());
+		BsonValue found = document.get(DocumentFields.epoch.name());
 		if (!expected.equals(found)) {
-			throw new InvalidCollectionContentsException(format(), "Format id mismatch on state document "
+			throw new InvalidCollectionContentsException(format(), "Epoch mismatch on state document "
 				+ document.getString("_id").getValue() + ": expected " + expected.getValue()
 				+ " from the manifest, found " + (found == null? "nothing": found.asString().getValue()));
 		}
 	}
 
 	/**
-	 * Verifies that a change event carries this driver's format id. A document
+	 * Verifies that a change event carries this driver's epoch. A document
 	 * with a different one means the database has been refurbished, so the driver
 	 * must reload it.
 	 *
-	 * @throws FormatChangedException if the event's document has a different format id
-	 * @throws UnprocessableEventException if the event modifies the format id, which no valid update does
+	 * @throws FormatChangedException if the event's document has a different epoch
+	 * @throws UnprocessableEventException if the event modifies the epoch, which no valid update does
 	 */
-	protected void validateEventFormatId(ChangeStreamDocument<BsonDocument> event) throws FormatChangedException, UnprocessableEventException {
+	protected void validateEventEpoch(ChangeStreamDocument<BsonDocument> event) throws FormatChangedException, UnprocessableEventException {
 		BsonDocument fullDocument = event.getFullDocument();
 		if (fullDocument != null) {
-			BsonString expected = new BsonString(formatId.toString());
-			BsonValue found = fullDocument.get(DocumentFields.formatId.name());
+			BsonString expected = new BsonString(epoch.toString());
+			BsonValue found = fullDocument.get(DocumentFields.epoch.name());
 			if (!expected.equals(found)) {
 				throw new FormatChangedException("State document " + documentIdOf(event).getValue()
-					+ " has format id " + found + ", but this driver is using " + expected.getValue(),
+					+ " has epoch " + found + ", but this driver is using " + expected.getValue(),
 					event.getOperationType());
 			}
 		}
 		UpdateDescription updateDescription = event.getUpdateDescription();
-		if (updateDescription != null && modifiesFormatId(updateDescription)) {
-			throw new UnprocessableEventException("Update modifies the format id of " + documentIdOf(event).getValue(),
+		if (updateDescription != null && modifiesEpoch(updateDescription)) {
+			throw new UnprocessableEventException("Update modifies the epoch of " + documentIdOf(event).getValue(),
 				event.getOperationType());
 		}
 	}
 
-	private static boolean modifiesFormatId(UpdateDescription updateDescription) {
-		String field = DocumentFields.formatId.name();
+	private static boolean modifiesEpoch(UpdateDescription updateDescription) {
+		String field = DocumentFields.epoch.name();
 		List<String> removedFields = updateDescription.getRemovedFields();
 		return updateDescription.getUpdatedFields().containsKey(field)
 			|| (removedFields != null && removedFields.contains(field));
 	}
 
 	/**
-	 * Checks that the format id has not changed since this driver was initialized.
+	 * Checks that the epoch has not changed since this driver was initialized.
 	 * <p>
 	 * {@link UpdateDriver} calls this when an update changes nothing, because a
 	 * write that matched nothing may have missed because the collection was
@@ -310,19 +309,19 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	public void requireFormatUnchanged() throws FormatChangedDuringUpdateException {
 		try (var cursor = collection
 			.find(new BsonDocument("_id", MANIFEST_ID))
-			.projection(fields(include(DocumentFields.formatId.name())))
+			.projection(fields(include(DocumentFields.epoch.name())))
 			.limit(1)
 			.cursor()
 		) {
 			if (!cursor.hasNext()) {
 				throw new FormatChangedDuringUpdateException("Missing manifest document");
 			}
-			BsonValue value = cursor.next().get(DocumentFields.formatId.name());
-			if (!(value instanceof BsonString manifestFormatId)) {
-				throw new FormatChangedDuringUpdateException("Missing format ID in the manifest");
+			BsonValue value = cursor.next().get(DocumentFields.epoch.name());
+			if (!(value instanceof BsonString manifestEpoch)) {
+				throw new FormatChangedDuringUpdateException("Missing epoch in the manifest");
 			}
-			if (!manifestFormatId.getValue().equals(formatId.toString())) {
-				throw new FormatChangedDuringUpdateException("The database format ID changed from " + formatId + " to " + manifestFormatId.getValue() + " while an update was in progress");
+			if (!manifestEpoch.getValue().equals(epoch.toString())) {
+				throw new FormatChangedDuringUpdateException("The database epoch changed from " + epoch + " to " + manifestEpoch.getValue() + " while an update was in progress");
 			}
 		}
 	}
@@ -520,20 +519,20 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * Checks that {@code document} carries this driver's format id.
+	 * Checks that {@code document} carries this driver's epoch.
 	 * <p>
-	 * Revisions from a different format id are not comparable with the ones this
+	 * Revisions from a different epoch are not comparable with the ones this
 	 * driver has applied, so {@link #flush()} must not wait on them.
 	 *
 	 * @throws EpochMismatchException if it does not, meaning the collection has
 	 * been reinitialized or refurbished since this driver loaded it
 	 */
-	protected void checkFormatId(BsonDocument document) throws EpochMismatchException {
-		BsonString expected = new BsonString(formatId.toString());
-		BsonValue found = document.get(DocumentFields.formatId.name());
+	protected void checkEpoch(BsonDocument document) throws EpochMismatchException {
+		BsonString expected = new BsonString(epoch.toString());
+		BsonValue found = document.get(DocumentFields.epoch.name());
 		if (!expected.equals(found)) {
 			throw new EpochMismatchException("State document " + document.getString("_id").getValue()
-				+ " has format id " + found + ", but this driver is using " + formatId);
+				+ " has epoch " + found + ", but this driver is using " + epoch);
 		}
 	}
 
@@ -550,7 +549,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected BsonDocument initialDocument(BsonValue initialState, RevisionTuple revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
-		fieldValues.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
+		fieldValues.put(DocumentFields.epoch.name(), new BsonString(epoch.toString()));
 		revision.putInto(fieldValues);
 		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 		// The state goes last because it's the big field, and its size can change.

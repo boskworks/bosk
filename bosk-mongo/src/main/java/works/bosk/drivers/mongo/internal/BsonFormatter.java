@@ -312,22 +312,21 @@ public class BsonFormatter {
 		state,
 
 		/**
-		 * Identifies this instance of the database format. It is recorded in the
-		 * manifest at the time this document was created, and every state document
-		 * carries the same value.
+		 * A UUID that changes when the collection is initialized or refurbished
+		 * into another format. A refurbish that leaves the format alone keeps it.
+		 * The value is recorded in the manifest, and every state document carries
+		 * the same one.
 		 * <p>
 		 * Every write includes it in its filter, so a write planned against a
-		 * format that has since been refurbished away matches nothing. A refurbish
-		 * that changes the format rewrites this field on every state document; one
-		 * that leaves the format alone keeps it.
+		 * format that has since been refurbished away matches nothing.
 		 * <p>
-		 * A flush also compares it to the value it read, because a collection that
-		 * has been deleted and reinitialized may reuse revision numbers it has
-		 * already seen.
+		 * A flush compares it to the epoch the driver read from the manifest,
+		 * because a collection that has been deleted and reinitialized may reuse
+		 * revision numbers the driver has already seen.
 		 * <p>
 		 * This field is required on every state document.
 		 */
-		formatId,
+		epoch,
 
 		/**
 		 * A UUID identifying one lifetime of this document's

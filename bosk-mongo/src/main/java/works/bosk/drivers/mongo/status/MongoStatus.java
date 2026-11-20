@@ -21,17 +21,17 @@ public record MongoStatus(
 		return new MongoStatus(
 			this.error,
 			new ManifestStatus(
-				// The format id is not part of the desired state, so the preferred
-				// manifest borrows the actual one, keeping the id out of the comparison.
-				Manifest.forFormat(preferredFormat, formatIdOf(actualManifest)),
+				// The epoch is not part of the desired state, so the preferred
+				// manifest borrows the actual one, keeping the value out of the comparison.
+				Manifest.forFormat(preferredFormat, epochOf(actualManifest)),
 				actualManifest
 			),
 			this.state
 		);
 	}
 
-	private static Identifier formatIdOf(StateTreeNode actualManifest) {
-		return ((Manifest) actualManifest).formatId();
+	private static Identifier epochOf(StateTreeNode actualManifest) {
+		return ((Manifest) actualManifest).epoch();
 	}
 
 	public boolean isAllClear() {

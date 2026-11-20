@@ -962,9 +962,9 @@ which format family is in use, and for Pando which graft points divide the state
 A manifest document whose ID is `!Manifest` is the system of record for the format.
 The _layout_ is where the state documents sit; a format change usually moves them.
 
-Each state document records a `formatId` that matches the manifest's.
-A refurbish that changes the format mints a new id, and one that leaves the format alone keeps the existing one.
-The id lets an update that was planned against the old format recognise that the documents it meant to change
+Each state document records an `epoch` that matches the manifest's.
+A refurbish that changes the format mints a new epoch, and one that leaves the format alone keeps the existing one.
+The epoch lets an update that was planned against the old format recognise that the documents it meant to change
 have been replaced, rather than applying to whatever documents are there now.
 
 For Sequoia, the bosk state is stored in a single document within a single collection.
@@ -973,7 +973,7 @@ The document has these fields:
 
 - `_id`: always `boskDocument`
 - `state`: the entire bosk state tree
-- `formatId`: copied from the manifest when the document is written; a refurbish that changes the format rewrites it
+- `epoch`: copied from the manifest when the document is written; a refurbish that changes the format rewrites it
 - `incarnation`: a UUID that changes when the document is re-created (see [Version fields](#version-fields))
 - `revision`: incremented by every update that writes the document (see [Version fields](#version-fields))
 - `diagnostics`: diagnostic attributes from the most recent update
@@ -990,7 +990,7 @@ The code will have the details, but some high-level points about the BSON format
 For Pando, the situation is similar, except that instead of having a single document with an `_id` of `boskDocument`,
 there are multiple documents with `_id` values that start with `|` (vertical bar)
 and that describe where the document fits within the overall BSON structure.
-Every one of those documents carries the collection's `formatId` and its own `incarnation` and `revision`.
+Every one of those documents carries the collection's `epoch` and its own `incarnation` and `revision`.
 Only the topmost document changed by an update has its `revision` incremented:
 that is, the shallowest document whose `state` changes.
 Updates to different parts of the tree therefore write different documents and do not conflict
@@ -1002,32 +1002,31 @@ If something has gone wrong and you need to do an emergency repair,
 number of the topmost document you changed.
 See `MongoDriverRecoveryTest` for some of the scenarios we've envisaged and tested.
 It cannot, though, accommodate invalid collection contents.
-For example, a state document whose `formatId` disagrees with the manifest's makes the collection invalid,
-because its contents no longer match the format the manifest declares.
+For example, a state document whose `epoch` disagrees with the manifest's makes the collection invalid,
+because the document was written in a different epoch than the manifest declares.
 `MongoDriver` reports the problem rather than loading the collection.
 
 ##### Version fields
 
 State documents carry three values that are easy to confuse.
 One belongs to the whole collection:
-the `formatId` identifies the current instance of the format.
-It is minted when the collection is initialized,
-preserved by a refurbish that keeps the format,
-and replaced by one that changes the format.
+the `epoch` is minted when the collection is initialized
+or refurbished into another format,
+and preserved by a refurbish that keeps the format.
 The other two belong to a single document:
 the `incarnation` is set when the document is created,
 and the `revision` is incremented every time the document changes.
 
 All three are used for flushes, which wait for a change to reach the in-memory state:
-`formatId` tells the flush which collection instance it is waiting in,
+`epoch` tells the flush which collection instance it is waiting in,
 `incarnation` which lifetime of the document, and `revision` which change to it.
 
-- `formatId`: used for flushes and for updates.
+- `epoch`: used for flushes and for updates.
   Detects when the collection has been re-created or refurbished to a different format,
   either of which makes the revision numbers a flush previously read unreliable.
-  If a flush detects that the format id has changed,
+  If a flush detects that the epoch has changed,
   that triggers a disconnect and reconnect, so the driver reloads from the new collection.
-  For updates, if an update didn't match any documents and the manifest's id has changed,
+  For updates, if an update didn't match any documents and the manifest's epoch has changed,
   the driver disconnects and retries the update against the new format.
 - `incarnation`: used for flushes, alongside the revision.
   Detects when a document has been deleted and re-created,

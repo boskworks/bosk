@@ -351,8 +351,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			try (
 				var session = queryCollection.newSession()
 			) {
-				Identifier formatId = Manifest.newFormatId();
-				FormatDriver<R> preferredDriver = newPreferredFormatDriver(formatId);
+				Identifier epoch = Manifest.newEpoch();
+				FormatDriver<R> preferredDriver = newPreferredFormatDriver(epoch);
 				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Map.of());
 
 				// The state document(s) and the manifest must be written atomically,
@@ -363,7 +363,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				try (var _ = boskInfo.context().withOnly(diagnosticAttributes)) {
 					preferredDriver.writeAllState(priorContents);
 				}
-				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat(), formatId));
+				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat(), epoch));
 				session.commitTransactionIfAny();
 				// We can now publish the driver knowing that the transaction has committed.
 				// The commit's operation time is later than every initialization write,
@@ -446,7 +446,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 					testProbes.beforeRefurbishLoad().run();
 					try {
 						DatabaseFormat preferredFormat = driverSettings.preferredDatabaseFormat();
-						Identifier formatId;
+						Identifier epoch;
 						boolean formatChanged;
 						StateAndMetadata<R> allState;
 						// loadAllState replaces the live driver's FlushLock, which event
@@ -458,12 +458,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 							FormatDriver<R> loadingDriver = currentFormatDriver();
 							allState = loadingDriver.loadAllState();
 							formatChanged = !preferredFormat.equals(loadingDriver.format());
-							formatId = formatChanged ? Manifest.newFormatId() : loadingDriver.formatId();
+							epoch = formatChanged ? Manifest.newEpoch() : loadingDriver.epoch();
 						}
 
 						// The write goes through a temporary driver that is never published,
 						// so it has no effect on the live driver or its event processing.
-						FormatDriver<R> newFormatDriver = newPreferredFormatDriver(formatId);
+						FormatDriver<R> newFormatDriver = newPreferredFormatDriver(epoch);
 
 						// The manifest is replaced by writeManifest anyway,
 						// so deleting it has no value; and if we do delete it, then every
@@ -477,7 +477,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 						newFormatDriver.writeAllState(allState);
 						if (formatChanged) {
-							writeManifest(Manifest.forFormat(preferredFormat, formatId));
+							writeManifest(Manifest.forFormat(preferredFormat, epoch));
 						}
 						return null;
 					} catch (InvalidCollectionContentsException e) {
@@ -827,8 +827,8 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 	}
 
-	private FormatDriver<R> newPreferredFormatDriver(Identifier formatId) {
-		return newFormatDriver(driverSettings.preferredDatabaseFormat(), formatId);
+	private FormatDriver<R> newPreferredFormatDriver(Identifier epoch) {
+		return newFormatDriver(driverSettings.preferredDatabaseFormat(), epoch);
 	}
 
 	private FormatDriver<R> detectFormat() throws UninitializedCollectionException, UnrecognizedFormatException {
@@ -837,7 +837,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 	private FormatDriver<R> detectFormat(Manifest manifest) {
 		LOGGER.debug("Detecting format");
-		return newFormatDriver(manifest.format(), manifest.formatId());
+		return newFormatDriver(manifest.format(), manifest.epoch());
 	}
 
 	record ManifestInfo(Manifest manifest, @Nullable BsonString manifestId) {}
@@ -902,7 +902,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		return new UpdateDriver(driver, queryCollection, timescaleMS, reason -> setDisconnectedDriver(reason, driver));
 	}
 
-	private FormatDriver<R> newFormatDriver(DatabaseFormat format, Identifier formatId) {
+	private FormatDriver<R> newFormatDriver(DatabaseFormat format, Identifier epoch) {
 		return switch (format) {
 			case SequoiaFormat _ -> new SequoiaFormatDriver<>(
 				boskInfo,
@@ -911,7 +911,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				bsonSerializer,
 				flushTimeout,
 				downstream,
-				formatId
+				epoch
 			);
 			case PandoFormat pandoFormat -> new PandoFormatDriver<>(
 				boskInfo,
@@ -921,7 +921,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				bsonSerializer,
 				flushTimeout,
 				downstream,
-				formatId);
+				epoch);
 		};
 	}
 

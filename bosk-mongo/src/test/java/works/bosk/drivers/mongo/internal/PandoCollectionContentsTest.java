@@ -96,7 +96,7 @@ class PandoCollectionContentsTest extends AbstractMongoDriverTest {
 			TestEntity.class,
 			AbstractMongoDriverTest::initialRoot,
 			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		Identifier formatId = bosk.getDriver(MainDriver.class).loadManifestInfo().manifest().formatId();
+		Identifier epoch = bosk.getDriver(MainDriver.class).loadManifestInfo().manifest().epoch();
 		bosk.getDriver(MongoDriver.class).close();
 
 		SessionCollection sessionCollection = SessionCollection.of(collection(), mongoService.client());
@@ -108,7 +108,7 @@ class PandoCollectionContentsTest extends AbstractMongoDriverTest {
 			new BsonSerializer(),
 			Duration.ofSeconds(1),
 			bosk.driver(),
-			formatId);
+			epoch);
 		return new Fixture(sessionCollection, driver);
 	}
 

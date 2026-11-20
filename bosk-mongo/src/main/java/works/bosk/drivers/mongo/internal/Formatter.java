@@ -71,7 +71,7 @@ final class Formatter extends BsonFormatter {
 			if (detectedFormat == null) {
 				throw new UnrecognizedFormatException("Found none of the supported formats: " + supportedFormats);
 			}
-			HashSet<String> requiredKeys = new HashSet<>(asList("version", "formatId"));
+			HashSet<String> requiredKeys = new HashSet<>(asList("version", "epoch"));
 			if (!keys.equals(requiredKeys)) {
 				keys.removeAll(requiredKeys);
 				if (keys.isEmpty()) {
