@@ -353,7 +353,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			) {
 				Identifier formatId = Manifest.newFormatId();
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver(formatId);
-				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Optional.empty(), Map.of());
+				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Map.of());
 
 				// The state document(s) and the manifest must be written atomically,
 				// so that a failure partway through initialization doesn't leave the

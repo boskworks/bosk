@@ -4,10 +4,8 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import java.io.IOException;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Stream;
 import org.bson.BsonDocument;
-import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,15 +25,13 @@ import works.bosk.testing.drivers.state.TestValues;
 import works.bosk.testing.drivers.state.UpgradeableEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 
 /**
  * Tests the {@link MongoDriver#refurbish} operation: it creates fields that the
- * current schema lacks, repairs stray metadata fields, and preserves the
- * existing epoch while adding a missing one.
+ * current schema lacks and repairs stray metadata fields.
  */
 @InjectFields
 @ReplayLogsOnFailure
@@ -142,97 +138,6 @@ public class RefurbishTest extends AbstractMongoDriverTest {
 			assertNull(doc.get(bogusField));
 		}
 
-	}
-
-	@Test
-	void refurbish_preservesExistingEpoch(TestInfo testInfo) throws IOException, InterruptedException {
-		// Make the bosk whose refurbish operation we want to test
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("Main"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		// Get the new bosk connected, which initializes the collection with an epoch
-		bosk.driver().flush();
-
-		MongoCollection<BsonDocument> collection = mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(driverSettings.collection(), BsonDocument.class);
-		BsonDocument filterDoc = rootDocumentsFilter();
-		BsonString epochBefore;
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			epochBefore = cursor.next().getString(Formatter.DocumentFields.epoch.name());
-		}
-
-		// Refurbish
-		bosk.getDriver(MongoDriver.class).refurbish();
-
-		// The existing epoch must be preserved exactly
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonString epochAfter = cursor.next().getString(Formatter.DocumentFields.epoch.name());
-			assertEquals(epochBefore, epochAfter);
-		}
-
-	}
-
-	@Test
-	void refurbish_addsMissingEpoch(TestInfo testInfo) throws IOException, InterruptedException {
-		// Set up the database so it looks basically right
-		Bosk<TestEntity> initialBosk = new Bosk<>(
-			boskName("Initial"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-		initialBosk.getDriver(MongoDriver.class).close();
-
-		// Simulate a legacy collection by removing the epoch field
-		MongoCollection<BsonDocument> collection = mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(driverSettings.collection(), BsonDocument.class);
-		deleteFields(collection, Formatter.DocumentFields.epoch);
-
-		// Make the bosk whose refurbish operation we want to test
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("Main"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(createDriverFactory(logController, testInfo)).build());
-
-		// Get the new bosk connected
-		bosk.driver().flush();
-
-		// Refurbish
-		bosk.getDriver(MongoDriver.class).refurbish();
-
-		// The missing epoch must now be present, and must be a plausible UUID
-		BsonDocument filterDoc = rootDocumentsFilter();
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonString epoch = cursor.next().getString(Formatter.DocumentFields.epoch.name());
-			assertNotNull(epoch);
-			UUID.fromString(epoch.getValue());
-		}
-	}
-
-	private void deleteFields(MongoCollection<BsonDocument> collection, Formatter.DocumentFields... fields) {
-		BsonDocument fieldsToUnset = new BsonDocument();
-		for (Formatter.DocumentFields field: fields) {
-			fieldsToUnset.append(field.name(), BsonNull.VALUE); // Value is ignored
-		}
-		BsonDocument filterDoc = rootDocumentsFilter();
-		collection.updateOne(
-			filterDoc,
-			new BsonDocument("$unset", fieldsToUnset));
-
-		// Let's just make sure they're gone
-		try (MongoCursor<BsonDocument> cursor = collection.find(filterDoc).cursor()) {
-			BsonDocument doc = cursor.next();
-			for (Formatter.DocumentFields field: fields) {
-				assertNull(doc.get(field.name()));
-			}
-		}
-
-		errorRecorder.assertAllClear("after test");
 	}
 
 	private void addFields(MongoCollection<BsonDocument> collection, String... fieldNames) {

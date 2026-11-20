@@ -974,7 +974,6 @@ The document has these fields:
 - `_id`: always `boskDocument`
 - `state`: the entire bosk state tree
 - `formatId`: copied from the manifest when the document is written; a refurbish that changes the format rewrites it
-- `epoch`: a UUID identifying this initialization of the collection
 - `incarnation`: a UUID that changes when the document is re-created (see [Version fields](#version-fields))
 - `revision`: incremented by every update that writes the document (see [Version fields](#version-fields))
 - `diagnostics`: diagnostic attributes from the most recent update
@@ -1009,22 +1008,27 @@ because its contents no longer match the format the manifest declares.
 
 ##### Version fields
 
-State documents carry four values that are easy to confuse.
-Two belong to the whole collection:
-the `epoch` is set when the collection is initialized,
-and the `formatId` is set when a refurbish changes the format.
-Two belong to a single document:
+State documents carry three values that are easy to confuse.
+One belongs to the whole collection:
+the `formatId` identifies the current instance of the format.
+It is minted when the collection is initialized,
+preserved by a refurbish that keeps the format,
+and replaced by one that changes the format.
+The other two belong to a single document:
 the `incarnation` is set when the document is created,
 and the `revision` is incremented every time the document changes.
 
-Three of them are for flushes, which wait for a change to reach the in-memory state:
-`epoch` tells the flush which initialization of the collection it is waiting in,
+All three are used for flushes, which wait for a change to reach the in-memory state:
+`formatId` tells the flush which collection instance it is waiting in,
 `incarnation` which lifetime of the document, and `revision` which change to it.
 
-- `epoch`: used for flushes.
-  Detects when the collection has been re-created, which makes the revision counters unreliable.
-  If a flush detects that the epoch has changed,
+- `formatId`: used for flushes and for updates.
+  Detects when the collection has been re-created or refurbished to a different format,
+  either of which makes the revision numbers a flush previously read unreliable.
+  If a flush detects that the format id has changed,
   that triggers a disconnect and reconnect, so the driver reloads from the new collection.
+  For updates, if an update didn't match any documents and the manifest's id has changed,
+  the driver disconnects and retries the update against the new format.
 - `incarnation`: used for flushes, alongside the revision.
   Detects when a document has been deleted and re-created,
   which gives it a new incarnation and resets its revision to 1,
@@ -1038,13 +1042,6 @@ Three of them are for flushes, which wait for a change to reach the in-memory st
   A flush waits for each document's revision to reach the value it read,
   ancestors before descendants,
   so updates to unrelated graft points do not hold each other up.
-
-The fourth is for updates, which need to know whether the format they were planned against is still current.
-
-- `formatId`: used by updates.
-  Detects when the collection has been refurbished to a different format.
-  If an update didn't match any documents and the manifest's id has changed,
-  the driver disconnects and retries the update against the new format.
 
 ##### Format evolution
 

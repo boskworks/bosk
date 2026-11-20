@@ -86,7 +86,7 @@ We can state this as a set of properties that a running `MongoDriver` is expecte
 
 One subtlety is worth calling out because it is easy to get wrong:
 `flush()` is the only driver operation that reads the per-document revision numbers,
-so some problems (for example, a missing revision field or a changed epoch)
+so some problems (for example, a missing revision field or a changed format id)
 are naturally noticed there first.
 The same problems must also be detected asynchronously,
 by change stream processing or when the state is reloaded,
@@ -246,15 +246,14 @@ transactions themselves; they receive the live `SessionCollection`, which is bou
 
 Every state document carries the `state` payload plus metadata that the driver needs:
 
-| Field | Scope | Purpose |
-| --- | --- | --- |
-| `_id` | document | The document's location in the conceptual state tree, so change stream events identify it |
-| `formatId` | document | Fences writes planned against a format that has since been refurbished away |
-| `epoch` | root | Identifies the collection's current initialization |
-| `incarnation` | document | Distinguishes one lifetime of the document's `revision` counter |
-| `revision` | document | Bumped by the topmost write of a transaction: the flush unit, the dedup key, and the signal that a transaction's event tree is complete |
-| `lockId` | document | Makes a transaction that read the document a writer of it, so a concurrent writer conflicts |
-| `diagnostics` | document | The `BoskContext` attributes of the write, for hooks |
+| Field | Purpose |
+| --- | --- |
+| `_id` | The document's location in the conceptual state tree, so change stream events identify it |
+| `formatId` | A per-document copy of the manifest's format id, a UUID that changes when the collection is initialized or refurbished into another format. Writes include it in their filter, so a stale write matches nothing instead of corrupting a document whose format it does not understand; a flush, whose revision reads are not atomic, compares it in each document to tell which revisions are safe to wait for |
+| `incarnation` | Distinguishes one lifetime of the document's `revision` counter |
+| `revision` | Bumped by the topmost write of a transaction: the flush unit, the dedup key, and the signal that a transaction's event tree is complete |
+| `lockId` | Makes a transaction that read the document a writer of it, so a concurrent writer conflicts |
+| `diagnostics` | The `BoskContext` attributes of the write, for hooks |
 
 The `lockId` field follows MongoDB's
 [In-progress Transactions and Stale Reads](https://www.mongodb.com/docs/manual/core/transactions-production-consideration/#in-progress-transactions-and-stale-reads).

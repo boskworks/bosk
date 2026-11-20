@@ -90,28 +90,6 @@ class SequoiaReplaceRevisionTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
-	void sameRevisionWithNewEpoch_isApplied() throws Exception {
-		Fixture fixture = newFixture();
-
-		BsonDocument document = stateDocument();
-		BsonDocument reinitialized = document.clone();
-		reinitialized.put("epoch", new BsonString("a different initialization"));
-		reinitialized.getDocument("state").put("string", new BsonString("from a reinitialized collection"));
-
-		fixture.armed.set(true);
-		collection().replaceOne(new BsonDocument("_id", document.get("_id")), reinitialized);
-
-		assertTrue(fixture.replaceSeen.await(20, SECONDS), "The change stream did not see the replace");
-		assertEquals(1, fixture.rootReplacements.get(),
-			"A new epoch must be applied even when the revision is unchanged");
-		fixture.bosk.driver().flush();
-		try (var _ = fixture.bosk.readSession()) {
-			assertEquals("from a reinitialized collection",
-				fixture.bosk.rootReference().then(String.class, "string").value());
-		}
-	}
-
-	@Test
 	void sameRevisionWithNewIncarnation_isApplied() throws Exception {
 		Fixture fixture = newFixture();
 

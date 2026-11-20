@@ -76,7 +76,6 @@ Fields:
 - `state`: the bosk state
 - `formatId`: matches the manifest's
 - Any graft points (Catalogs or SideTables) map IDs to the value `true` (rather than containing the actual tree node)
-- `epoch`: identifies the collection initialization; used to detect a collection that has been deleted and re-created
 - `incarnation`, `revision`: the root document's revision number and incarnation (see below)
 - `diagnostics`: the diagnostic attributes from the most recent update for which this document was topmost
 

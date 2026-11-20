@@ -134,9 +134,9 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * <p>
 	 * The manifest is written by {@link MainDriver}, not here.
 	 * @param priorContents the desired state, with metadata representing a (possibly hypothetical)
-	 * "prior" state of the database; in particular, the epoch should be preserved if it exists,
-	 * and the revision numbers should be advanced so that a {@link #flush} after
-	 * a {@link MongoDriver#refurbish} succeeds in waiting for the new state.
+	 * "prior" state of the database; in particular, the revision numbers should be advanced
+	 * so that a {@link #flush} after a {@link MongoDriver#refurbish} succeeds in waiting
+	 * for the new state.
 	 */
 	void writeAllState(StateAndMetadata<R> priorContents);
 
