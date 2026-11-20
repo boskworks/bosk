@@ -368,6 +368,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				BsonString id = lastPart.getString("_id");
 				RevisionTuple revision = revisionOf(lastPart);
 				revisions.put(id, revision);
+				fieldTracker.seed(id, lastPart);
 				partsBuffer.add(lastPart);
 				// The root document sorts last by _id.
 				if (ROOT_DOCUMENT_ID.equals(id)) {
@@ -455,7 +456,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			writeSubParts(allParts.subList(0, allParts.size() - 1), writtenRevisions);
 			// initialState has now been stubbed-out where the sub-parts were written
 		}
-		BsonDocument update = new BsonDocument("$set", initialDocument(initialState, epoch, newRevision, ROOT_DOCUMENT_ID));
+		BsonDocument rootDocument = initialDocument(initialState, epoch, newRevision, ROOT_DOCUMENT_ID);
+		fieldTracker.seed(ROOT_DOCUMENT_ID, rootDocument);
+		BsonDocument update = new BsonDocument("$set", rootDocument);
 		BsonDocument filter = rootDocumentsFilter();
 		filter.put("_id", ROOT_DOCUMENT_ID);
 		UpdateOptions options = new UpdateOptions().upsert(true);
