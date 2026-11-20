@@ -823,6 +823,10 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * an update whose value happened to be unchanged could leave us unable to
 	 * tell which state field changed.
 	 * <p>
+	 * Sub-parts are written only once the operation has established that the
+	 * replacement will write the target document, so a replacement that turns
+	 * out to be a no-op performs no writes at all.
+	 * <p>
 	 * <em>Implementation note</em>: While {@link SequoiaFormatDriver} has calls like <code>doUpdate</code>,
 	 * Pando uses <code>doReplacement</code> and <code>doDelete</code>.
 	 * The reason is that Sequoia, being a single-document format, can implement all its preconditions
@@ -846,13 +850,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (value instanceof BsonDocument) {
 			deletePartsUnder(target);
 		}
-		if (hasSubParts) {
-			writeSubParts(prepared.subParts(), null);
-		}
 		if (rootRef.equals(targetDocRef)) {
 			LOGGER.debug("| Root ref is topmost");
+			writeSubPartsIfAny(prepared);
 			if (hasSubParts) {
-				preDeleteField(target, rootRef, documentFilter(rootRef));
+				preDeleteField(prepared, rootRef, documentFilter(rootRef));
 			} else {
 				LOGGER.debug("| Skipping root pre-delete for {}: no sub-parts", target);
 			}
@@ -865,12 +867,15 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				return ABORT;
 			}
 		} else if (target.equals(targetDocRef)) {
-			return replaceGraftPointEntry(target, value, hasSubParts);
+			return replaceGraftPointEntry(prepared);
+		} else if (hasSubParts && !containerExists(targetDocRef)) {
+			LOGGER.debug("Container is not part of the state; ignoring replacement of {}", target);
+			return ABORT;
 		} else {
-			// Update part of the topmost document (which must already exist)
+			writeSubPartsIfAny(prepared);
 			BsonDocument filter = documentFilter(targetDocRef);
 			if (hasSubParts) {
-				preDeleteField(target, targetDocRef, filter);
+				preDeleteField(prepared, targetDocRef, filter);
 			} else {
 				LOGGER.debug("| Skipping pre-delete for {}: no sub-parts", target);
 			}
@@ -904,17 +909,22 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * write. That applies also when a deleted entry's document is still present as
 	 * an orphan, so the presence of the document alone does not mean the entry
 	 * exists.
+	 * <p>
+	 * The sub-parts are written only after the container check succeeds, so a
+	 * replacement into a deleted subtree performs no writes at all.
 	 */
-	private <T> Outcome replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+	private Outcome replaceGraftPointEntry(PreparedReplacement prepared) {
+		Reference<?> target = prepared.target();
 		Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
 		if (!containerExists(containerRef)) {
 			LOGGER.debug("Parent does not exist; ignoring replacement of {}", target);
 			return ABORT;
 		}
+		writeSubPartsIfAny(prepared);
 		if (hasStub(target, containerRef)) {
-			return updateGraftPointEntry(target, value, hasSubParts);
+			return updateGraftPointEntry(prepared);
 		} else {
-			return createGraftPointEntryAndStub(target, containerRef, value);
+			return createGraftPointEntryAndStub(target, containerRef, prepared.value());
 		}
 	}
 
@@ -950,12 +960,13 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return documentExists(stubFilter);
 	}
 
-	private <T> Outcome updateGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+	private Outcome updateGraftPointEntry(PreparedReplacement prepared) {
+		Reference<?> target = prepared.target();
 		LOGGER.debug("| Replacing existing document {}", target);
-		if (hasSubParts) {
-			preDeleteField(target, target, documentFilter(target));
+		if (prepared.hasSubParts()) {
+			preDeleteField(prepared, target, documentFilter(target));
 		}
-		BsonDocument update = replacementDoc(target, value, target);
+		BsonDocument update = replacementDoc(target, prepared.value(), target);
 		// The container has a stub for this entry, so its document exists:
 		// creation and deletion write the two atomically.
 		if (doUpdate(update, documentFilter(target))) {
@@ -1131,7 +1142,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return new BsonDocument("_id", new BsonString(docBsonPath(docRef, rootRef)));
 	}
 
-	private <T> void preDeleteField(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
+	private void preDeleteField(PreparedReplacement prepared, Reference<?> startingRef, BsonDocument filter) {
+		Reference<?> target = prepared.target();
 		String key = dottedFieldNameOf(target, startingRef);
 		preDelete(target, startingRef, filter, key, new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)));
 	}
@@ -1278,6 +1290,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		}
 	}
 
+
+	private void writeSubPartsIfAny(PreparedReplacement prepared) {
+		if (prepared.hasSubParts()) {
+			writeSubParts(prepared.subParts(), null);
+		}
+	}
 
 	/**
 	 * Writes the sub-part documents produced by {@link #scatter}.
