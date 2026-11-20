@@ -205,11 +205,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		validateEventFormatId(event);
 		switch (event.getOperationType()) {
 			case INSERT: case REPLACE: {
-				// Note: an INSERT could be coming from this very bosk initializing the collection,
-				// in which case replacing the entire bosk state downstream is unnecessary.
-				// However, it could also be coming from another bosk, or even a human operator doing
-				// a repair, so we can't ignore it either.
-				// It seems unavoidable to pass the change downstream.
 				BsonDocument fullDocument = event.getFullDocument();
 				if (fullDocument == null) {
 					// The MongoDB docs are confusing, but it seems there should
@@ -218,20 +213,23 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					throw new UnprocessableEventException("Missing fullDocument", event.getOperationType());
 				}
 				BsonString docId = documentIdOf(event);
+				RevisionTuple revision = RevisionTuple.from(fullDocument);
+				Optional<BsonString> epoch = formatter.epochOf(fullDocument);
+				if (shouldSkip(epoch, docId, revision)) {
+					// An INSERT or REPLACE can carry a revision this driver has already
+					// applied, for example a metadata-only rewrite or a restored document.
+					LOGGER.debug("Skipping revision {} for {}", revision, docId);
+					return;
+				}
 				MapValue<String> diagnosticAttributes = diagnosticAttributesFor(docId);
 				try (
 					var _ = context.withOnly(diagnosticAttributes)
 				) {
-					RevisionTuple revision = RevisionTuple.from(fullDocument);
-					Optional<BsonString> epoch = formatter.epochOf(fullDocument);
 					BsonDocument state = fullDocument.getDocument(DocumentFields.state.name(), null);
 					if (state == null) {
 						throw new UnprocessableEventException("Missing state field", event.getOperationType());
 					}
 					R newRoot = formatter.document2object(state, rootRef);
-					// Note that we do not check the revision here. We probably should... but this actually
-					// saves us in MongoDriverResiliencyTest.documentReappears_recovers because when the doc
-					// disappears, we don't null out the applied revisions. TODO: Rethink what's the right way to handle this.
 					LOGGER.debug("| Replace {}", rootRef);
 					downstream.submitReplacement(rootRef, newRoot);
 					if (!flushLock.get().epochMatches(epoch)) {
