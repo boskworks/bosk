@@ -852,7 +852,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (rootRef.equals(targetDocRef)) {
 			LOGGER.debug("| Root ref is topmost");
 			if (hasSubParts) {
-				preDeleteField(target, rootRef, documentFilter(rootRef));
+				preDeleteField(prepared, rootRef, documentFilter(rootRef));
 			} else {
 				LOGGER.debug("| Skipping root pre-delete for {}: no sub-parts", target);
 			}
@@ -865,12 +865,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				return ABORT;
 			}
 		} else if (target.equals(targetDocRef)) {
-			return replaceGraftPointEntry(target, value, hasSubParts);
+			return replaceGraftPointEntry(prepared);
 		} else {
 			// Update part of the topmost document (which must already exist)
 			BsonDocument filter = documentFilter(targetDocRef);
 			if (hasSubParts) {
-				preDeleteField(target, targetDocRef, filter);
+				preDeleteField(prepared, targetDocRef, filter);
 			} else {
 				LOGGER.debug("| Skipping pre-delete for {}: no sub-parts", target);
 			}
@@ -905,16 +905,17 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * an orphan, so the presence of the document alone does not mean the entry
 	 * exists.
 	 */
-	private <T> Outcome replaceGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+	private Outcome replaceGraftPointEntry(PreparedReplacement prepared) {
+		Reference<?> target = prepared.target();
 		Reference<?> containerRef = targetDocumentRef(target.enclosingReference(Object.class));
 		if (!containerExists(containerRef)) {
 			LOGGER.debug("Parent does not exist; ignoring replacement of {}", target);
 			return ABORT;
 		}
 		if (hasStub(target, containerRef)) {
-			return updateGraftPointEntry(target, value, hasSubParts);
+			return updateGraftPointEntry(prepared);
 		} else {
-			return createGraftPointEntryAndStub(target, containerRef, value);
+			return createGraftPointEntryAndStub(target, containerRef, prepared.value());
 		}
 	}
 
@@ -950,12 +951,13 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return documentExists(stubFilter);
 	}
 
-	private <T> Outcome updateGraftPointEntry(Reference<T> target, BsonValue value, boolean hasSubParts) {
+	private Outcome updateGraftPointEntry(PreparedReplacement prepared) {
+		Reference<?> target = prepared.target();
 		LOGGER.debug("| Replacing existing document {}", target);
-		if (hasSubParts) {
-			preDeleteField(target, target, documentFilter(target));
+		if (prepared.hasSubParts()) {
+			preDeleteField(prepared, target, documentFilter(target));
 		}
-		BsonDocument update = replacementDoc(target, value, target);
+		BsonDocument update = replacementDoc(target, prepared.value(), target);
 		// The container has a stub for this entry, so its document exists:
 		// creation and deletion write the two atomically.
 		if (doUpdate(update, documentFilter(target))) {
@@ -1131,7 +1133,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		return new BsonDocument("_id", new BsonString(docBsonPath(docRef, rootRef)));
 	}
 
-	private <T> void preDeleteField(Reference<T> target, Reference<?> startingRef, BsonDocument filter) {
+	private void preDeleteField(PreparedReplacement prepared, Reference<?> startingRef, BsonDocument filter) {
+		Reference<?> target = prepared.target();
 		String key = dottedFieldNameOf(target, startingRef);
 		preDelete(target, startingRef, filter, key, new BsonDocument("$unset", new BsonDocument(key, BsonNull.VALUE)));
 	}
