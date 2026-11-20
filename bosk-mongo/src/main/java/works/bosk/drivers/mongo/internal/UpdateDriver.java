@@ -41,7 +41,7 @@ import static works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Out
  * the success path:
  * <ol><li>
  *     A write changes nothing if the format has changed, because every write
- *     filter requires the format id.
+ *     filter requires the epoch.
  * </li><li>
  *     An update that changes nothing says so: an atomic operation reports
  *     {@link AtomicUpdateOperation.Outcome.NothingChanged}, and a transactional

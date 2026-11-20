@@ -273,7 +273,7 @@ public class SchemaEvolutionTest {
 	record Configuration(DatabaseFormat preferredFormat) {
 		public ManifestInfo expectedManifestInfo() {
 			return new ManifestInfo(
-				Manifest.forFormat(preferredFormat, Manifest.newFormatId()),
+				Manifest.forFormat(preferredFormat, Manifest.newEpoch()),
 				MANIFEST_ID
 			);
 		}

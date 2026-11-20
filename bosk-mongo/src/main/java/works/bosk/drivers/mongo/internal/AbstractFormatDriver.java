@@ -8,7 +8,6 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -56,7 +55,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	final SessionCollection collection;
 	final BoskDriver downstream;
 	final Duration flushTimeout;
-	final Identifier formatId;
+	final Identifier epoch;
 
 	final AtomicReference<FlushLock> flushLock = new AtomicReference<>(null);
 
@@ -69,7 +68,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		SessionCollection collection,
 		BoskDriver downstream,
 		Duration flushTimeout,
-		Identifier formatId
+		Identifier epoch
 	) {
 		this.rootRef = rootRef;
 		this.context = context;
@@ -77,12 +76,12 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		this.collection = collection;
 		this.downstream = downstream;
 		this.flushTimeout = flushTimeout;
-		this.formatId = formatId;
+		this.epoch = epoch;
 	}
 
 	@Override
-	public Identifier formatId() {
-		return formatId;
+	public Identifier epoch() {
+		return epoch;
 	}
 
 	@Override
@@ -123,7 +122,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		// the in-memory state is still stale. Seeding the lock one revision short makes
 		// such flushes wait until MainDriver calls onHasBeenApplied, which advances the
 		// lock once the loaded state has actually been applied downstream.
-		replaceFlushLock(bsm.epoch(), revisionsBefore(bsm.documentRevisions()));
+		replaceFlushLock(revisionsBefore(bsm.documentRevisions()));
 
 		R root;
 		try {
@@ -133,7 +132,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 			throw new InvalidCollectionContentsException(format(), "State document could not be decoded", e);
 		}
 
-		return new StateAndMetadata<>(root, bsm.epoch(), bsm.documentRevisions());
+		return new StateAndMetadata<>(root, bsm.documentRevisions());
 	}
 
 	@Override
@@ -162,8 +161,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * revision one short, because the loaded state is not applied until
 	 * {@link #onHasBeenApplied}.
 	 */
-	protected void replaceFlushLock(Optional<BsonString> epoch, Map<BsonString, RevisionTuple> applied) {
-		flushLock.set(new FlushLock(epoch, applied, flushTimeout));
+	protected void replaceFlushLock(Map<BsonString, RevisionTuple> applied) {
+		flushLock.set(new FlushLock(applied, flushTimeout));
 	}
 
 	abstract BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException;
@@ -189,8 +188,11 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * removal and therefore observes the ancestor's new revision. Waiting then
 	 * proceeds top-down, so the ancestor's transaction is applied before its
 	 * descendants' revisions are interpreted.
+	 * <p>
+	 * Each document's epoch is checked against this driver's, so a collection that
+	 * has been reinitialized or refurbished since the driver loaded it fails the flush.
 	 */
-	protected abstract FlushRevisions readRevisionsToFlush() throws FlushFailureException, InterruptedException;
+	protected abstract List<FlushLock.Target> readRevisionsToFlush() throws FlushFailureException, InterruptedException;
 
 	/**
 	 * The change to the topmost document of a transaction: it bumps that
@@ -235,67 +237,67 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * Adds this driver's format id to the given filter, so a write planned
+	 * Adds this driver's epoch to the given filter, so a write planned
 	 * against a format that has since been refurbished away matches nothing
 	 * rather than landing in a document from another format.
 	 */
-	protected BsonDocument withFormatId(BsonDocument filter) {
+	protected BsonDocument withEpoch(BsonDocument filter) {
 		BsonDocument result = filter.clone();
-		result.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
+		result.put(DocumentFields.epoch.name(), new BsonString(epoch.toString()));
 		return result;
 	}
 
 	/**
-	 * Verifies that a loaded state document carries the format id the manifest
+	 * Verifies that a loaded state document carries the epoch the manifest
 	 * declares.
 	 *
 	 * @throws InvalidCollectionContentsException if it doesn't
 	 */
-	protected void validateFormatId(BsonDocument document) throws InvalidCollectionContentsException {
-		BsonString expected = new BsonString(formatId.toString());
-		BsonValue found = document.get(DocumentFields.formatId.name());
+	protected void validateEpoch(BsonDocument document) throws InvalidCollectionContentsException {
+		BsonString expected = new BsonString(epoch.toString());
+		BsonValue found = document.get(DocumentFields.epoch.name());
 		if (!expected.equals(found)) {
-			throw new InvalidCollectionContentsException(format(), "Format id mismatch on state document "
+			throw new InvalidCollectionContentsException(format(), "Epoch mismatch on state document "
 				+ document.getString("_id").getValue() + ": expected " + expected.getValue()
 				+ " from the manifest, found " + (found == null? "nothing": found.asString().getValue()));
 		}
 	}
 
 	/**
-	 * Verifies that a change event carries this driver's format id. A document
+	 * Verifies that a change event carries this driver's epoch. A document
 	 * with a different one means the database has been refurbished, so the driver
 	 * must reload it.
 	 *
-	 * @throws FormatChangedException if the event's document has a different format id
-	 * @throws UnprocessableEventException if the event modifies the format id, which no valid update does
+	 * @throws FormatChangedException if the event's document has a different epoch
+	 * @throws UnprocessableEventException if the event modifies the epoch, which no valid update does
 	 */
-	protected void validateEventFormatId(ChangeStreamDocument<BsonDocument> event) throws FormatChangedException, UnprocessableEventException {
+	protected void validateEventEpoch(ChangeStreamDocument<BsonDocument> event) throws FormatChangedException, UnprocessableEventException {
 		BsonDocument fullDocument = event.getFullDocument();
 		if (fullDocument != null) {
-			BsonString expected = new BsonString(formatId.toString());
-			BsonValue found = fullDocument.get(DocumentFields.formatId.name());
+			BsonString expected = new BsonString(epoch.toString());
+			BsonValue found = fullDocument.get(DocumentFields.epoch.name());
 			if (!expected.equals(found)) {
 				throw new FormatChangedException("State document " + documentIdOf(event).getValue()
-					+ " has format id " + found + ", but this driver is using " + expected.getValue(),
+					+ " has epoch " + found + ", but this driver is using " + expected.getValue(),
 					event.getOperationType());
 			}
 		}
 		UpdateDescription updateDescription = event.getUpdateDescription();
-		if (updateDescription != null && modifiesFormatId(updateDescription)) {
-			throw new UnprocessableEventException("Update modifies the format id of " + documentIdOf(event).getValue(),
+		if (updateDescription != null && modifiesEpoch(updateDescription)) {
+			throw new UnprocessableEventException("Update modifies the epoch of " + documentIdOf(event).getValue(),
 				event.getOperationType());
 		}
 	}
 
-	private static boolean modifiesFormatId(UpdateDescription updateDescription) {
-		String field = DocumentFields.formatId.name();
+	private static boolean modifiesEpoch(UpdateDescription updateDescription) {
+		String field = DocumentFields.epoch.name();
 		List<String> removedFields = updateDescription.getRemovedFields();
 		return updateDescription.getUpdatedFields().containsKey(field)
 			|| (removedFields != null && removedFields.contains(field));
 	}
 
 	/**
-	 * Checks that the format id has not changed since this driver was initialized.
+	 * Checks that the epoch has not changed since this driver was initialized.
 	 * <p>
 	 * {@link UpdateDriver} calls this when an update changes nothing, because a
 	 * write that matched nothing may have missed because the collection was
@@ -307,19 +309,19 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	public void requireFormatUnchanged() throws FormatChangedDuringUpdateException {
 		try (var cursor = collection
 			.find(new BsonDocument("_id", MANIFEST_ID))
-			.projection(fields(include(DocumentFields.formatId.name())))
+			.projection(fields(include(DocumentFields.epoch.name())))
 			.limit(1)
 			.cursor()
 		) {
 			if (!cursor.hasNext()) {
 				throw new FormatChangedDuringUpdateException("Missing manifest document");
 			}
-			BsonValue value = cursor.next().get(DocumentFields.formatId.name());
-			if (!(value instanceof BsonString manifestFormatId)) {
-				throw new FormatChangedDuringUpdateException("Missing format ID in the manifest");
+			BsonValue value = cursor.next().get(DocumentFields.epoch.name());
+			if (!(value instanceof BsonString manifestEpoch)) {
+				throw new FormatChangedDuringUpdateException("Missing epoch in the manifest");
 			}
-			if (!manifestFormatId.getValue().equals(formatId.toString())) {
-				throw new FormatChangedDuringUpdateException("The database format ID changed from " + formatId + " to " + manifestFormatId.getValue() + " while an update was in progress");
+			if (!manifestEpoch.getValue().equals(epoch.toString())) {
+				throw new FormatChangedDuringUpdateException("The database epoch changed from " + epoch + " to " + manifestEpoch.getValue() + " while an update was in progress");
 			}
 		}
 	}
@@ -447,20 +449,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * An event from a different epoch indicates the collection has been reinitialized,
-	 * so we must not skip it based on the previous initialization's revision numbers.
-	 *
-	 * @param eventEpoch the collection epoch at the time of the event; {@link Optional#empty()}
-	 * for legacy databases, in which case only the revision is considered
-	 * @param documentId the document whose revision is being compared
-	 * @param revision the document's revision from the event
-	 */
-	protected boolean shouldSkip(Optional<BsonString> eventEpoch, BsonString documentId, RevisionTuple revision) {
-		FlushLock lock = flushLock.get();
-		return lock.epochMatches(eventEpoch) && lock.alreadySeen(documentId, revision);
-	}
-
-	/**
 	 * We're required to cope with anything we might ourselves do during initialization
 	 * (writing the state documents in {@link FormatDriver#writeAllState}, and the
 	 * manifest that {@link MainDriver} writes), but outside that, we want to be as
@@ -521,21 +509,31 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		// The revision read uses findLatest, which bypasses the session and reads
 		// the latest committed values, so flush needs no session or transaction.
 		collection.requireNoTransaction();
-		FlushRevisions revisions = readRevisionsToFlush();
+		List<FlushLock.Target> targets = readRevisionsToFlush();
 		FlushLock lock = flushLock.get();
 
-		if (!lock.epochMatches(revisions.epoch())) {
-			// The collection has been reinitialized since we loaded it.
-			// We must not wait on our stale revision numbers; instead, throw
-			// so the driver disconnects, reloads the new state, and retries.
-			throw new EpochMismatchException("Collection epoch has changed from "
-				+ lock.epoch() + " to " + revisions.epoch());
-		}
-
-		LOGGER.debug("Revisions to flush: {}", revisions.targets());
-		lock.awaitAll(revisions.targets());
+		LOGGER.debug("Revisions to flush: {}", targets);
+		lock.awaitAll(targets);
 		LOGGER.debug("| Flush downstream");
 		downstream.flush();
+	}
+
+	/**
+	 * Checks that {@code document} carries this driver's epoch.
+	 * <p>
+	 * Revisions from a different epoch are not comparable with the ones this
+	 * driver has applied, so {@link #flush()} must not wait on them.
+	 *
+	 * @throws EpochMismatchException if it does not, meaning the collection has
+	 * been reinitialized or refurbished since this driver loaded it
+	 */
+	protected void checkEpoch(BsonDocument document) throws EpochMismatchException {
+		BsonString expected = new BsonString(epoch.toString());
+		BsonValue found = document.get(DocumentFields.epoch.name());
+		if (!expected.equals(found)) {
+			throw new EpochMismatchException("State document " + document.getString("_id").getValue()
+				+ " has epoch " + found + ", but this driver is using " + epoch);
+		}
 	}
 
 	@Override
@@ -548,11 +546,10 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		}
 	}
 
-	protected BsonDocument initialDocument(BsonValue initialState, BsonString epoch, RevisionTuple revision, BsonString documentId) {
+	protected BsonDocument initialDocument(BsonValue initialState, RevisionTuple revision, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
-		fieldValues.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
-		fieldValues.put(DocumentFields.epoch.name(), epoch);
+		fieldValues.put(DocumentFields.epoch.name(), new BsonString(epoch.toString()));
 		revision.putInto(fieldValues);
 		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 		// The state goes last because it's the big field, and its size can change.
@@ -570,18 +567,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 */
 	record BsonStateAndMetadata(
 		BsonDocument state,
-		Optional<BsonString> epoch,
 		Map<BsonString, RevisionTuple> documentRevisions
 	){}
-
-	/**
-	 * The revisions {@link #flush()} should wait for, plus the collection epoch
-	 * to validate them against.
-	 *
-	 * @param epoch the collection epoch, empty for a legacy database
-	 * @param targets the documents to wait for, in top-down order
-	 */
-	record FlushRevisions(Optional<BsonString> epoch, List<FlushLock.Target> targets) {}
 
 	/**
 	 * Fails unless {@code target} is a reference that the {@link BoskDriver}

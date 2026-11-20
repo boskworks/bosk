@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.bson.BsonString;
@@ -29,24 +28,6 @@ import static java.lang.System.identityHashCode;
  * incarnation and the applied revision is at least the target revision. A
  * re-created document gets a fresh incarnation, so its reset revision counter
  * cannot be mistaken for an old revision of the previous incarnation.
- *
- * <p>
- * The <code>epoch</code> identifies a particular initialization of the database
- * collection. It is generated when the collection is first initialized, and
- * preserved when the collection is reinitialized with the same state (eg. by a
- * refurbish operation). It is NOT preserved when a different process deletes the
- * collection and starts over, because the start-over is a genuinely new
- * initialization.
- *
- * <p>
- * The reason for the epoch is to detect the scenario where a
- * document/collection/database is deleted, and then a new bosk reinitializes the
- * database with a different state. The per-document revision numbers alone are
- * an insufficient signal in this case: the reinitialized collection may very
- * well have the same revision numbers as what we've already seen, in which case
- * the flush would wrongly conclude that there is no need to wait. Hence, we
- * also track the epoch: a flush needs to wait unless it has already seen both
- * the current <code>epoch</code> and the current revision numbers.
  */
 class FlushLock {
 	/**
@@ -57,7 +38,6 @@ class FlushLock {
 	private final Duration flushTimeout;
 	private final ReentrantLock lock = new ReentrantLock();
 	private final Condition changed = lock.newCondition();
-	private final Optional<BsonString> epoch;
 
 	// All of the following are guarded by lock.
 	private final Map<BsonString, RevisionTuple> applied = new HashMap<>();
@@ -65,33 +45,14 @@ class FlushLock {
 	private int waiters;
 
 	/**
-	 * @param epoch the exact epoch from the database; {@link Optional#empty()}
-	 * indicates a legacy database that predates the epoch mechanism, and matches
-	 * only another empty epoch.
 	 * @param applied the revisions the new lock should consider already applied;
 	 * a load typically passes each loaded revision decremented by one, so that a
 	 * flush waits until {@link AbstractFormatDriver#onHasBeenApplied} advances it
 	 */
-	public FlushLock(Optional<BsonString> epoch, Map<BsonString, RevisionTuple> applied, Duration flushTimeout) {
-		LOGGER.debug("New flush lock at epoch {} [{}]", epoch, identityHashCode(this));
+	public FlushLock(Map<BsonString, RevisionTuple> applied, Duration flushTimeout) {
+		LOGGER.debug("New flush lock [{}]", identityHashCode(this));
 		this.flushTimeout = flushTimeout;
-		this.epoch = epoch;
 		this.applied.putAll(applied);
-	}
-
-	/**
-	 * @return true if the lock and the database agree on the collection's epoch:
-	 * either both have the same epoch, or both are legacy databases with no epoch
-	 */
-	boolean epochMatches(Optional<BsonString> databaseEpoch) {
-		return epoch.equals(databaseEpoch);
-	}
-
-	/**
-	 * @return the epoch this lock was created for
-	 */
-	Optional<BsonString> epoch() {
-		return epoch;
 	}
 
 	/**

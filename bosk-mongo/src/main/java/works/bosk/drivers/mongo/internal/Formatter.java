@@ -4,7 +4,6 @@ import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.bson.BsonBinaryWriter;
 import org.bson.BsonDocument;
@@ -72,7 +71,7 @@ final class Formatter extends BsonFormatter {
 			if (detectedFormat == null) {
 				throw new UnrecognizedFormatException("Found none of the supported formats: " + supportedFormats);
 			}
-			HashSet<String> requiredKeys = new HashSet<>(asList("version", "formatId"));
+			HashSet<String> requiredKeys = new HashSet<>(asList("version", "epoch"));
 			if (!keys.equals(requiredKeys)) {
 				keys.removeAll(requiredKeys);
 				if (keys.isEmpty()) {
@@ -125,13 +124,6 @@ final class Formatter extends BsonFormatter {
 			codec.encode(w, bson, EncoderContext.builder().build());
 			return buffer.getPosition();
 		}
-	}
-
-	Optional<BsonString> epochOf(BsonDocument fullDocument) {
-		if (fullDocument == null) {
-			return Optional.empty();
-		}
-		return Optional.ofNullable(fullDocument.getString(DocumentFields.epoch.name(), null));
 	}
 
 }

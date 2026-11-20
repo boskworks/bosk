@@ -1,7 +1,6 @@
 package works.bosk.drivers.mongo.internal;
 
 import java.util.Map;
-import java.util.Optional;
 import org.bson.BsonString;
 import works.bosk.StateTreeNode;
 
@@ -14,6 +13,5 @@ import works.bosk.StateTreeNode;
  */
 public record StateAndMetadata<R extends StateTreeNode>(
 	R state,
-	Optional<BsonString> epoch,
 	Map<BsonString, RevisionTuple> documentRevisions
 ) { }

@@ -18,8 +18,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
-import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.bson.BsonDocument;
@@ -102,7 +100,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		BsonSerializer bsonSerializer,
 		Duration flushTimeout,
 		BoskDriver downstream,
-		Identifier formatId
+		Identifier epoch
 	) {
 		super(
 			boskInfo.rootReference(),
@@ -111,7 +109,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			collection,
 			downstream,
 			flushTimeout,
-			formatId
+			epoch
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
@@ -364,7 +362,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		) {
 			while (cursor.hasNext()) {
 				BsonDocument lastPart = cursor.next();
-				validateFormatId(lastPart);
+				validateEpoch(lastPart);
 				BsonString id = lastPart.getString("_id");
 				RevisionTuple revision = revisionOf(lastPart);
 				revisions.put(id, revision);
@@ -379,7 +377,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 					bsm = new BsonStateAndMetadata(
 						state,
-						formatter.epochOf(lastPart),
 						Map.copyOf(revisions)
 					);
 
@@ -428,15 +425,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public void writeAllState(StateAndMetadata<R> priorContents) {
-		BsonString epoch = priorContents.epoch().orElseGet(() -> new BsonString(UUID.randomUUID().toString()));
-		replaceFlushLock(Optional.of(epoch), priorContents.documentRevisions());
+		replaceFlushLock(priorContents.documentRevisions());
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		RevisionTuple rootRevision = RevisionTuple.nextAfter(
 			priorContents.documentRevisions().get(ROOT_DOCUMENT_ID));
 		Map<BsonString, RevisionTuple> written = new HashMap<>();
 
 		LOGGER.debug("** Initial upsert");
-		writeAllState(initialState, epoch, rootRevision, written);
+		writeAllState(initialState, rootRevision, written);
 
 		// The local state will be up to date with no need to process a change stream event.
 		finishedRevisions(written);
@@ -444,7 +440,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	private void writeAllState(
 		BsonValue initialState,
-		BsonString epoch,
 		RevisionTuple newRevision,
 		Map<BsonString, RevisionTuple> writtenRevisions
 	) {
@@ -456,7 +451,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			writeSubParts(allParts.subList(0, allParts.size() - 1), writtenRevisions);
 			// initialState has now been stubbed-out where the sub-parts were written
 		}
-		BsonDocument rootDocument = initialDocument(initialState, epoch, newRevision, ROOT_DOCUMENT_ID);
+		BsonDocument rootDocument = initialDocument(initialState, newRevision, ROOT_DOCUMENT_ID);
 		fieldTracker.seed(ROOT_DOCUMENT_ID, rootDocument);
 		BsonDocument update = new BsonDocument("$set", rootDocument);
 		BsonDocument filter = rootDocumentsFilter();
@@ -489,14 +484,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			 * but outside that, we want to be as strict as we can
 			 * so incompatible database changes don't go unnoticed.
 			 */
-			validateManifestEvent(event, Manifest.forPando(format, formatId));
+			validateManifestEvent(event, Manifest.forPando(format, epoch));
 			return;
 		}
 		if (!(bsonDocumentID instanceof BsonString s) || !(s.getValue().contains("|"))) {
 			LOGGER.debug("Ignoring event for unrecognized document key: {} type {}", event.getDocumentKey(), bsonDocumentID.getClass());
 			return;
 		}
-		validateEventFormatId(event);
+		validateEventEpoch(event);
 
 		// This is an event we care about
 		routeEvent(event);
@@ -594,9 +589,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					if (fullDocument == null) {
 						throw new UnprocessableEventException("Missing fullDocument on final event", topmostEvent.getOperationType());
 					}
-					Optional<BsonString> epoch = formatter.epochOf(fullDocument);
 					RevisionTuple revision = RevisionTuple.from(fullDocument);
-					if (shouldSkip(epoch, docId, revision)) {
+					if (flushLock.get().alreadySeen(docId, revision)) {
 						LOGGER.debug("Skipping revision {} for {}", revision, docId);
 						return;
 					}
@@ -604,16 +598,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					LOGGER.debug("Topmost event is {}", topmostEvent.getOperationType());
 					propagateDownstream(topmostEvent, priorEvents);
 
-					if (!flushLock.get().epochMatches(epoch)) {
-						// Adopt the new epoch so future flushes don't needlessly reconnect
-						replaceFlushLock(epoch, Map.of());
-					}
 					recordRevisions(priorEvents);
 					finishedRevision(docId, revision);
 				} break;
 				case UPDATE: {
 					RevisionTuple revision = revisionFromUpdateEvent(docId, topmostEvent);
-					if (shouldSkip(flushLock.get().epoch(), docId, revision)) {
+					if (flushLock.get().alreadySeen(docId, revision)) {
 						LOGGER.debug("Skipping revision {} for {}", revision, docId);
 						return;
 					}
@@ -628,7 +618,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					// This can happen during a refurbish, so we don't want to throw UnprocessableEventException
 					// even though it's highly disruptive.
 					// We deliberately don't clear the applied revisions: the re-created
-					// document's revision and the epoch mechanism together ensure that
+					// document's revision and the epoch together ensure that
 					// flushes still wait for the re-initialized collection.
 					LOGGER.debug("Root document has been deleted");
 				} break;
@@ -980,7 +970,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private <T> Outcome createGraftPointEntryAndStub(Reference<T> target, Reference<?> containerRef, BsonValue value) {
 		LOGGER.debug("| Creating document {}", target);
 		BsonDocument document = documentFilter(target).clone()
-			.append(DocumentFields.formatId.name(), new BsonString(formatId.toString()))
+			.append(DocumentFields.epoch.name(), new BsonString(epoch.toString()))
 			.append(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
 		RevisionTuple.newLifetime().putInto(document);
 		// The state goes last because it's the big field, and its size can change.
@@ -1097,7 +1087,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	protected FlushRevisions readRevisionsToFlush() throws FlushFailureException, InterruptedException {
+	protected List<FlushLock.Target> readRevisionsToFlush() throws FlushFailureException, InterruptedException {
 		LOGGER.debug("readRevisionsToFlush");
 		try (DocCursor cursor = collection
 			.findLatest(regex("_id", "^[|]"))
@@ -1110,14 +1100,13 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			.cursor()
 		) {
 			List<FlushLock.Target> bottomUp = new ArrayList<>();
-			Optional<BsonString> epoch = Optional.empty();
 			boolean foundRoot = false;
 			while (cursor.hasNext()) {
 				BsonDocument document = cursor.next();
 				BsonString id = document.getString("_id");
+				checkEpoch(document);
 				bottomUp.add(new FlushLock.Target(id, RevisionTuple.from(document)));
 				if (isRootDocumentId(id)) {
-					epoch = formatter.epochOf(document);
 					foundRoot = true;
 				}
 			}
@@ -1126,7 +1115,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 			// Wait top-down: ancestors before descendants.
 			Collections.reverse(bottomUp);
-			return new FlushRevisions(epoch, bottomUp);
+			return bottomUp;
 		} catch (MongoInterruptedException e) {
 			Thread.interrupted();
 			InterruptedException exception = new InterruptedException("Interrupted while reading revisions");
@@ -1159,7 +1148,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 */
 	@Override
 	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument rawFilter) {
-		BsonDocument filter = withFormatId(rawFilter);
+		BsonDocument filter = withEpoch(rawFilter);
 		LOGGER.debug("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
@@ -1175,7 +1164,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * exists, this creates the document when it is absent.
 	 */
 	private void doReplace(BsonDocument rawFilter, BsonDocument replacement) {
-		BsonDocument filter = withFormatId(rawFilter);
+		BsonDocument filter = withEpoch(rawFilter);
 		LOGGER.debug("| Replace: filter={} replacement={}", filter, replacement);
 		UpdateResult result = collection.replaceOne(filter, replacement, new ReplaceOptions().upsert(true));
 		LOGGER.debug("| Replace result: {}", result);
@@ -1314,7 +1303,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			BsonDocument filter = new BsonDocument("_id", id);
 			RevisionTuple newRevision = RevisionTuple.newLifetime();
 			newRevision.putInto(part);
-			part.put(DocumentFields.formatId.name(), new BsonString(formatId.toString()));
+			part.put(DocumentFields.epoch.name(), new BsonString(epoch.toString()));
 			// We _must_ get the precise full document for sub-parts in the event
 			// stream, or we can't form the whole. Both an INSERT (when the part is
 			// absent) and a REPLACE (when it already exists) carry it, so one

@@ -3,7 +3,6 @@ package works.bosk.drivers.mongo.internal;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.bson.BsonString;
 import org.junit.jupiter.api.Test;
@@ -23,7 +22,7 @@ class FlushLockTest {
 
 	@Test
 	void awaitAll_alreadySeenRevision_returnsImmediately() throws InterruptedException, FlushTimeoutException {
-		FlushLock lock = new FlushLock(Optional.empty(), Map.of(DOC1, new RevisionTuple(INCARNATION, 100)), Duration.ofSeconds(5));
+		FlushLock lock = new FlushLock(Map.of(DOC1, new RevisionTuple(INCARNATION, 100)), Duration.ofSeconds(5));
 
 		lock.awaitAll(List.of(new Target(DOC1, new RevisionTuple(INCARNATION, 50))));
 
@@ -32,7 +31,7 @@ class FlushLockTest {
 
 	@Test
 	void awaitAll_differentIncarnation_isSatisfied() throws InterruptedException, FlushTimeoutException {
-		FlushLock lock = new FlushLock(Optional.empty(), Map.of(DOC1, new RevisionTuple(OTHER_INCARNATION, 1)), Duration.ofSeconds(5));
+		FlushLock lock = new FlushLock(Map.of(DOC1, new RevisionTuple(OTHER_INCARNATION, 1)), Duration.ofSeconds(5));
 
 		lock.awaitAll(List.of(new Target(DOC1, new RevisionTuple(INCARNATION, 999))));
 
@@ -41,14 +40,14 @@ class FlushLockTest {
 
 	@Test
 	void awaitAll_timeout_throwsFlushTimeoutException() {
-		FlushLock lock = new FlushLock(Optional.empty(), Map.of(), Duration.ofMillis(10));
+		FlushLock lock = new FlushLock(Map.of(), Duration.ofMillis(10));
 		assertThrows(FlushTimeoutException.class,
 			() -> lock.awaitAll(List.of(new Target(DOC1, new RevisionTuple(INCARNATION, 10)))));
 	}
 
 	@Test
 	void awaitAll_higherRevisionInSameIncarnation_waits() {
-		FlushLock lock = new FlushLock(Optional.empty(), Map.of(DOC1, new RevisionTuple(INCARNATION, 999)), Duration.ofMillis(10));
+		FlushLock lock = new FlushLock(Map.of(DOC1, new RevisionTuple(INCARNATION, 999)), Duration.ofMillis(10));
 
 		assertThrows(FlushTimeoutException.class,
 			() -> lock.awaitAll(List.of(new Target(DOC1, new RevisionTuple(INCARNATION, 1000)))));
@@ -59,7 +58,7 @@ class FlushLockTest {
 		// The old incarnation had a higher revision than the re-created
 		// document will reach. A target from the new incarnation must still
 		// wait for the new incarnation's revision.
-		FlushLock lock = new FlushLock(Optional.empty(), Map.of(DOC1, new RevisionTuple(OTHER_INCARNATION, 5)), Duration.ofMillis(10));
+		FlushLock lock = new FlushLock(Map.of(DOC1, new RevisionTuple(OTHER_INCARNATION, 5)), Duration.ofMillis(10));
 		lock.finished(DOC1, new RevisionTuple(INCARNATION, 1));
 		assertThrows(FlushTimeoutException.class,
 			() -> lock.awaitAll(List.of(new Target(DOC1, new RevisionTuple(INCARNATION, 2)))),
@@ -68,7 +67,7 @@ class FlushLockTest {
 
 	@Test
 	void awaitAll_newRevision_wakesWhenFinished() throws InterruptedException {
-		FlushLock lock = new FlushLock(Optional.empty(), Map.of(), Duration.ofSeconds(5));
+		FlushLock lock = new FlushLock(Map.of(), Duration.ofSeconds(5));
 		Thread awaiting = new Thread(() -> {
 			try {
 				lock.awaitAll(List.of(new Target(DOC1, new RevisionTuple(INCARNATION, 10))));
@@ -86,7 +85,7 @@ class FlushLockTest {
 
 	@Test
 	void awaitAll_multipleDocuments_waitsForEach() throws InterruptedException {
-		FlushLock lock = new FlushLock(Optional.empty(), Map.of(), Duration.ofSeconds(5));
+		FlushLock lock = new FlushLock(Map.of(), Duration.ofSeconds(5));
 		Thread awaiting = new Thread(() -> {
 			try {
 				lock.awaitAll(List.of(
@@ -111,7 +110,7 @@ class FlushLockTest {
 		// when publishFormatDriver closes the old format driver's FlushLock,
 		// a thread waiting in awaitAll must throw DisconnectedException
 		// rather than silently succeeding as though the revision had arrived.
-		FlushLock lock = new FlushLock(Optional.empty(), Map.of(), Duration.ofSeconds(5));
+		FlushLock lock = new FlushLock(Map.of(), Duration.ofSeconds(5));
 		AtomicReference<Throwable> failure = new AtomicReference<>();
 		Thread awaiting = new Thread(() -> {
 			try {

@@ -39,13 +39,14 @@ import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
- * The format id identifies one instance of the database format. It is recorded
- * in the manifest and on every state document, is preserved by a refurbish that
- * doesn't change the format, and is replaced by one that does.
+ * The epoch changes when the collection is initialized or refurbished into
+ * another format. It is recorded in the manifest and on every state document,
+ * is preserved by a refurbish that doesn't change the format, and is replaced
+ * by one that does.
  */
 @ReplayLogsOnFailure
 @InjectFields
-class FormatIdTest extends AbstractMongoDriverTest {
+class EpochTest extends AbstractMongoDriverTest {
 	private TestInfo testInfo;
 
 	@InjectorMethod
@@ -65,24 +66,27 @@ class FormatIdTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
-	void initialState_recordsFormatIdInManifestAndDocuments() {
+	void initialState_recordsEpochInManifestAndDocuments() {
 		Bosk<TestEntity> bosk = newBosk(driverSettings, "bosk");
-		assertEquals(formatIdOf(bosk), formatIdInRootDocument(driverSettings.preferredDatabaseFormat()),
-			"The root document should carry the manifest's format id");
+		assertEquals(epochOf(bosk), epochInRootDocument(driverSettings.preferredDatabaseFormat()),
+			"The root document should carry the manifest's epoch");
 	}
 
 	@Test
-	void sameFormatRefurbish_keepsFormatId() throws Exception {
+	void sameFormatRefurbish_keepsEpoch() throws Exception {
 		Bosk<TestEntity> bosk = newBosk(driverSettings, "bosk");
-		Identifier before = formatIdOf(bosk);
+		Identifier before = epochOf(bosk);
+		Identifier beforeInDocument = epochInRootDocument(driverSettings.preferredDatabaseFormat());
 		bosk.getDriver(MongoDriver.class).refurbish();
-		assertEquals(before, formatIdOf(bosk), "Refurbishing to the same format should keep the format id");
+		assertEquals(before, epochOf(bosk), "Refurbishing to the same format should keep the epoch");
+		assertEquals(beforeInDocument, epochInRootDocument(driverSettings.preferredDatabaseFormat()),
+			"The state documents should keep the same epoch");
 	}
 
 	@Test
-	void formatChangingRefurbish_mintsNewFormatId() throws Exception {
+	void formatChangingRefurbish_mintsNewEpoch() throws Exception {
 		Bosk<TestEntity> bosk = newBosk(driverSettings, "bosk");
-		Identifier before = formatIdOf(bosk);
+		Identifier before = epochOf(bosk);
 
 		MongoDriverSettings refurbishedSettings = driverSettings.toBuilder()
 			.preferredDatabaseFormat(differentFormat(driverSettings.preferredDatabaseFormat()))
@@ -90,15 +94,15 @@ class FormatIdTest extends AbstractMongoDriverTest {
 		Bosk<TestEntity> refurbisher = newBosk(refurbishedSettings, "refurbisher");
 		refurbisher.getDriver(MongoDriver.class).refurbish();
 
-		assertNotEquals(before, formatIdOf(refurbisher), "Changing the format should mint a new format id");
-		assertEquals(formatIdOf(refurbisher), formatIdInRootDocument(refurbishedSettings.preferredDatabaseFormat()),
-			"The documents should carry the new format id");
+		assertNotEquals(before, epochOf(refurbisher), "Changing the format should mint a new epoch");
+		assertEquals(epochOf(refurbisher), epochInRootDocument(refurbishedSettings.preferredDatabaseFormat()),
+			"The documents should carry the new epoch");
 	}
 
 	@Test
-	void mismatchedFormatId_failsToLoad() throws Exception {
+	void mismatchedEpoch_failsToLoad() throws Exception {
 		Bosk<TestEntity> bosk = newBosk(driverSettings, "bosk");
-		Identifier original = formatIdOf(bosk);
+		Identifier original = epochOf(bosk);
 
 		// Stop this bosk before corrupting the collection: otherwise its receiver
 		// spends the rest of the test failing to load the corrupted contents.
@@ -107,7 +111,7 @@ class FormatIdTest extends AbstractMongoDriverTest {
 		// Corrupt one document, as something outside Bosk might.
 		collection().updateOne(
 			new BsonDocument("_id", new BsonString(rootDocumentId(driverSettings.preferredDatabaseFormat()))),
-			new BsonDocument("$set", new BsonDocument(DocumentFields.formatId.name(), new BsonString("not-the-format-id")))
+			new BsonDocument("$set", new BsonDocument(DocumentFields.epoch.name(), new BsonString("not-the-epoch")))
 		);
 
 		// Load with a format driver directly, without starting another bosk.
@@ -118,19 +122,19 @@ class FormatIdTest extends AbstractMongoDriverTest {
 			e = assertThrows(InvalidCollectionContentsException.class, driver::loadAllState);
 		}
 		String message = e.getMessage();
-		assertTrue(message.contains("Format id mismatch on state document"), "Message should describe the mismatch: " + message);
-		assertTrue(message.contains(original.toString()), "Message should name the expected format id: " + message);
-		assertTrue(message.contains("not-the-format-id"), "Message should name the found format id: " + message);
+		assertTrue(message.contains("Epoch mismatch on state document"), "Message should describe the mismatch: " + message);
+		assertTrue(message.contains(original.toString()), "Message should name the expected epoch: " + message);
+		assertTrue(message.contains("not-the-epoch"), "Message should name the found epoch: " + message);
 	}
 
 	@Test
-	void updateThatUnsetsFormatId_isRejected() throws Exception {
+	void updateThatUnsetsEpoch_isRejected() throws Exception {
 		Bosk<TestEntity> bosk = newBosk(driverSettings, "bosk");
-		Identifier formatId = formatIdOf(bosk);
+		Identifier epoch = epochOf(bosk);
 		bosk.getDriver(MongoDriver.class).close();
 
 		SessionCollection sessionCollection = SessionCollection.of(collection(), mongoService.client());
-		AbstractFormatDriver<TestEntity> driver = newFormatDriver(bosk, sessionCollection, formatId);
+		AbstractFormatDriver<TestEntity> driver = newFormatDriver(bosk, sessionCollection, epoch);
 
 		ChangeStreamDocument<BsonDocument> event = new ChangeStreamDocument<>(
 			"update",
@@ -142,7 +146,7 @@ class FormatIdTest extends AbstractMongoDriverTest {
 			null,
 			new BsonDocument("_id", new BsonString(rootDocumentId(driverSettings.preferredDatabaseFormat()))),
 			null,
-			new UpdateDescription(List.of(DocumentFields.formatId.name()), new BsonDocument()),
+			new UpdateDescription(List.of(DocumentFields.epoch.name()), new BsonDocument()),
 			null,
 			null,
 			null,
@@ -150,7 +154,40 @@ class FormatIdTest extends AbstractMongoDriverTest {
 			null
 		);
 
-		assertThrows(UnprocessableEventException.class, () -> driver.validateEventFormatId(event));
+		assertThrows(UnprocessableEventException.class, () -> driver.validateEventEpoch(event));
+	}
+
+	@Test
+	void replaceWithForeignEpoch_isRejected() throws Exception {
+		Bosk<TestEntity> bosk = newBosk(driverSettings, "bosk");
+		Identifier epoch = epochOf(bosk);
+		bosk.getDriver(MongoDriver.class).close();
+
+		SessionCollection sessionCollection = SessionCollection.of(collection(), mongoService.client());
+		AbstractFormatDriver<TestEntity> driver = newFormatDriver(bosk, sessionCollection, epoch);
+
+		BsonString documentId = new BsonString(rootDocumentId(driverSettings.preferredDatabaseFormat()));
+		BsonDocument foreignDocument = new BsonDocument("_id", documentId)
+			.append(DocumentFields.epoch.name(), new BsonString("not-the-epoch"));
+		ChangeStreamDocument<BsonDocument> event = new ChangeStreamDocument<>(
+			"replace",
+			new BsonDocument(),
+			null,
+			null,
+			null,
+			foreignDocument,
+			null,
+			new BsonDocument("_id", documentId),
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null
+		);
+
+		assertThrows(FormatChangedException.class, () -> driver.validateEventEpoch(event));
 	}
 
 	@Test
@@ -198,8 +235,8 @@ class FormatIdTest extends AbstractMongoDriverTest {
 		Manifest manifest = victim.getDriver(MainDriver.class).loadManifestInfo().manifest();
 		assertEquals(driverSettings.preferredDatabaseFormat(), manifest.format(),
 			"The refurbish should leave the manifest describing the preferred format");
-		assertEquals(manifest.formatId(), formatIdInRootDocument(driverSettings.preferredDatabaseFormat()),
-			"The manifest and the state documents should carry the same format id");
+		assertEquals(manifest.epoch(), epochInRootDocument(driverSettings.preferredDatabaseFormat()),
+			"The manifest and the state documents should carry the same epoch");
 	}
 
 	private MongoDriverSettings differentSettings() {
@@ -208,14 +245,14 @@ class FormatIdTest extends AbstractMongoDriverTest {
 			.build();
 	}
 
-	private AbstractFormatDriver<TestEntity> newFormatDriver(Bosk<TestEntity> bosk, SessionCollection sessionCollection, Identifier formatId) {
+	private AbstractFormatDriver<TestEntity> newFormatDriver(Bosk<TestEntity> bosk, SessionCollection sessionCollection, Identifier epoch) {
 		BsonSerializer serializer = new BsonSerializer();
 		Duration flushTimeout = Duration.ofSeconds(1);
 		return switch (driverSettings.preferredDatabaseFormat()) {
 			case MongoDriverSettings.SequoiaFormat _ -> new SequoiaFormatDriver<>(
-				bosk, sessionCollection, driverSettings, serializer, flushTimeout, bosk.driver(), formatId);
+				bosk, sessionCollection, driverSettings, serializer, flushTimeout, bosk.driver(), epoch);
 			case PandoFormat pandoFormat -> new PandoFormatDriver<>(
-				bosk, sessionCollection, driverSettings, pandoFormat, serializer, flushTimeout, bosk.driver(), formatId);
+				bosk, sessionCollection, driverSettings, pandoFormat, serializer, flushTimeout, bosk.driver(), epoch);
 		};
 	}
 
@@ -236,20 +273,21 @@ class FormatIdTest extends AbstractMongoDriverTest {
 			BoskConfig.<TestEntity>builder().driverFactory(factory).build());
 	}
 
-	private Identifier formatIdOf(Bosk<TestEntity> bosk) {
+	private Identifier epochOf(Bosk<TestEntity> bosk) {
 		try {
-			return bosk.getDriver(MainDriver.class).loadManifestInfo().manifest().formatId();
+			return bosk.getDriver(MainDriver.class).loadManifestInfo().manifest().epoch();
 		} catch (Exception e) {
 			throw new AssertionError(e);
 		}
 	}
 
-	private Identifier formatIdInRootDocument(MongoDriverSettings.DatabaseFormat format) {
+	private Identifier epochInRootDocument(MongoDriverSettings.DatabaseFormat format) {
 		BsonDocument document = collection()
 			.find(new BsonDocument("_id", new BsonString(rootDocumentId(format))))
 			.first();
-		return Identifier.from(document.getString(DocumentFields.formatId.name()).getValue());
+		return Identifier.from(document.getString(DocumentFields.epoch.name()).getValue());
 	}
+
 
 	private MongoCollection<BsonDocument> collection() {
 		return mongoService.client()

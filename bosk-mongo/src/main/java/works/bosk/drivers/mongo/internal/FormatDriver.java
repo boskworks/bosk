@@ -85,10 +85,10 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * <p>
 	 * {@link UpdateDriver} calls this whenever an update changes nothing.
 	 * A write that matched a document proves the format was right, because every
-	 * document carries the format id the write required in its filter. A write
+	 * document carries the epoch the write required in its filter. A write
 	 * that matched nothing proves nothing: it may have had nothing to do, or it
 	 * may have missed because the collection was refurbished to another format.
-	 * Only this driver can tell those apart, because only it knows the format id
+	 * Only this driver can tell those apart, because only it knows the epoch
 	 * it was using.
 	 *
 	 * @throws FormatChangedDuringUpdateException if the format has changed
@@ -134,9 +134,9 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * <p>
 	 * The manifest is written by {@link MainDriver}, not here.
 	 * @param priorContents the desired state, with metadata representing a (possibly hypothetical)
-	 * "prior" state of the database; in particular, the epoch should be preserved if it exists,
-	 * and the revision numbers should be advanced so that a {@link #flush} after
-	 * a {@link MongoDriver#refurbish} succeeds in waiting for the new state.
+	 * "prior" state of the database; in particular, the revision numbers should be advanced
+	 * so that a {@link #flush} after a {@link MongoDriver#refurbish} succeeds in waiting
+	 * for the new state.
 	 */
 	void writeAllState(StateAndMetadata<R> priorContents);
 
@@ -152,11 +152,11 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	DatabaseFormat format();
 
 	/**
-	 * @return the id of the format this driver was built for, as recorded in the
-	 * manifest and on every state document; a refurbish that changes the format
-	 * gives the replacement driver a different value
+	 * @return the epoch this driver was built for, as recorded in the manifest
+	 * and on every state document; a refurbish that changes the format gives the
+	 * replacement driver a different value
 	 */
-	Identifier formatId();
+	Identifier epoch();
 
 	/**
 	 * Indicates that the given state has been {@link #flush() flushed} to the downstream driver already,
