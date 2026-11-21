@@ -93,10 +93,14 @@ final class Formatter extends BsonFormatter {
 		BsonDocument manifest = manifestDoc.clone();
 		manifest.remove("_id");
 		validateManifest(manifest);
-		return (Manifest) this.manifestCodec
-			.decode(
-				new BsonDocumentReader(manifest),
-				DecoderContext.builder().build());
+		try {
+			return (Manifest) this.manifestCodec
+				.decode(
+					new BsonDocumentReader(manifest),
+					DecoderContext.builder().build());
+		} catch (IllegalStateException e) {
+			throw new UnrecognizedFormatException("Manifest contents are invalid", e);
+		}
 	}
 
 	BsonDocument encodeDiagnostics(MapValue<String> attributes) {
