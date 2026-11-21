@@ -442,7 +442,7 @@ public final class BsonSerializer extends StateTreeSerializer {
 				try {
 					parameterValues = parameterValueList(nodeType, parameterValuesByName, parametersByName, boskInfo);
 				} catch (DeserializationException e) {
-					throw new IllegalStateException(e);
+					throw new BsonFormatException(e);
 				}
 				try {
 					return (T) factoryHandle.invoke(parameterValues.toArray());
