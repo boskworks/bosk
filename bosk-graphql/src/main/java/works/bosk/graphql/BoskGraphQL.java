@@ -553,7 +553,9 @@ public class BoskGraphQL {
 						.name(TAG_FIELD)
 						.type(nonNull(GraphQLString))
 						.build());
-					emitRecordComponents(objBuilder, caseType, reg);
+					reg.dataFetcher(coordinates(typeName, TAG_FIELD), (DataFetcher<?>) env ->
+						((TaggedUnionCase) env.getSource()).tag());
+					emitCaseComponents(objBuilder, caseType, reg);
 					builtTypesByName.put(typeName, objBuilder.build());
 				}
 
@@ -574,12 +576,17 @@ public class BoskGraphQL {
 				(_, value) -> ((TaggedUnion<V>) value).value());
 		}
 
-		private void emitRecordComponents(
+		private void emitCaseComponents(
 			GraphQLObjectType.Builder builder,
 			Type recordType,
 			GraphQLCodeRegistry.Builder reg
 		) {
 			for (RecordComponent component : rawClass(recordType).getRecordComponents()) {
+				if (component.getName().equals(TAG_FIELD)) {
+					// The field is the union's discriminator rather than case
+					// data, so a component with this name would only duplicate it.
+					continue;
+				}
 				addRecordComponent(builder, component, recordType, typeName(recordType), reg);
 			}
 		}

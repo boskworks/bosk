@@ -52,7 +52,7 @@ not supported; listing entries are represented by the enclosing `Listing` field 
 
 ## Tagged unions
 
-A `TaggedUnion<C>` maps to a GraphQL interface named after the case supertype `C`, and each case maps to an object type that implements the interface. The interface has a `tag` field; each case type has the same `tag` field plus fields for the case's own components. The `tag` field always contains the value returned by `TaggedUnionCase.tag()`, even if the case record also has a component named `tag`.
+A `TaggedUnion<C>` maps to a GraphQL interface named after the case supertype `C`, and each case maps to an object type that implements the interface. The interface and each case type have a `tag` field containing `TaggedUnionCase.tag()`, the case-map key that identifies the active case; a case record's own `tag` component does not add a second field.
 
 The `tag` is the discriminator: a value resolves to the case type whose case-map entry has the value's `tag()`. A `tag()` with no entry in the case map fails rather than falling back to the value's runtime class.
 
