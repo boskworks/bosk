@@ -102,20 +102,42 @@ Two things follow from the numbers:
 - **Grafted Pando now scales when flush is not in the way.** With `--flush=end` it reaches 2,020
   ops/s at one thread and 7,761 at six, well above SEQUOIA's 661. The earlier "treat grafted Pando
   as single-writer" guidance is obsolete.
-- **`flush()` is now O(number of documents).** `PandoFormatDriver.readRevisionsToFlush` lists every
+- **`flush()` was O(number of documents).** `PandoFormatDriver.readRevisionsToFlush` lists every
   state document and asks the change receiver about each one. With 10,000 grafted entities,
   flush p50 grows from 13.5 ms at one thread to 229 ms at 24, and throughput falls to 66-99 ops/s.
   At 1,000 entities the same configuration gets 318 ops/s at one thread and 1,266 at six. Flush
   cost, not write concurrency, is the first bottleneck for a grafted Pando deployment with
-  flush-per-update. This is worth a dedicated issue: the fix is presumably to flush only the
-  documents the caller wrote, or to track dirty documents locally rather than scanning the
-  collection.
+  flush-per-update. The change-stream barrier below (#567) replaces this scan.
 
 `mongo-pando` (one big document) also improved sharply at one thread, from 28 to 404 ops/s,
 consistent with dropping the pre-delete and the transaction. It still plateaus around 600-690
 ops/s at higher concurrency, which is the single-document write ceiling. `SEQUOIA` is unchanged in
 shape: 303 → 661 → 606 → 545, with submit p99 growing to 720 ms. Since submit performs a
 synchronous database write, that tail is document-level write queueing, not the Bosk monitor.
+
+## Change-stream flush barrier (2026-11-21)
+
+Branch `flush-barrier`. This replaces the per-document
+revision scan in `PandoFormatDriver.flush()` with a change-stream probe from the receiver's
+applied position, and retires the per-document `incarnation` and `revision` fields (#567).
+The scan numbers below are from the pre-change commit.
+
+Grafted Pando, 10,000 entities, 16-byte values, per-op flush, 10 s warmup, 30 s measurement.
+
+| Threads | Scan ops/s | Scan flush p50 | Barrier ops/s | Barrier flush p50 |
+|---:|---:|---:|---:|---:|
+| 1 | 69 | 13.2 ms | **172** | **4.5 ms** |
+| 6 | 197 | 29.0 ms | **909** | **5.8 ms** |
+| 12 | 112 | 104.9 ms | **1,027** | **10.1 ms** |
+| 24 | 100 | 238.0 ms | **942** | **22.4 ms** |
+
+- Throughput improves by 2.5x, 4.6x, 9.2x and 9.4x; flush p50 falls by 2.9x, 5.0x, 10.4x and 10.6x.
+- The barrier's idle flush is 4.5 ms, matching the predicted ~5-7 ms: opening the probe change
+  stream dominates, not the await itself.
+- Submit latency is essentially unchanged (p50 1.0-2.4 ms), so the write path does not pay for it.
+- No errors, no stalls, and `Verified: true (10000 checked, 0 failed)` in every run.
+- The p50 growth from 4.5 ms to 22.4 ms at 24 threads is the probe cost multiplying across
+  concurrent flush calls. Single-flight is not implemented yet; it is the remaining optimisation.
 
 ## Reads and read sessions
 
