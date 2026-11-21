@@ -8,8 +8,6 @@ import works.bosk.BoskDriver;
 
 import static works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat.SEQUOIA;
 import static works.bosk.drivers.mongo.MongoDriverSettings.InitialDatabaseUnavailableMode.DISCONNECT;
-import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.EARNEST;
-import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
 
 @Value
 @Builder(toBuilder = true)
@@ -63,6 +61,11 @@ public class MongoDriverSettings {
 	@Default int timescaleMS = 10_000;
 
 	/**
+	 * The format this bosk uses to initialize a collection, and the format it
+	 * migrates to on {@link MongoDriver#refurbish() refurbish}.
+	 * Once the collection exists, its manifest's format governs, so this setting
+	 * cannot make two bosks disagree about the collection's format.
+	 *
 	 * @see DatabaseFormat#SEQUOIA
 	 * @see PandoFormat
 	 */
@@ -75,17 +78,7 @@ public class MongoDriverSettings {
 	 */
 	@Default InitialDatabaseUnavailableMode initialDatabaseUnavailableMode = DISCONNECT;
 
-	@Default Experimental experimental = Experimental.builder().build();
 	@Default Testing testing = Testing.builder().build();
-
-	/**
-	 * Settings with no guarantee of long-term support.
-	 */
-	@Value
-	@Builder
-	public static class Experimental {
-		@Default OrphanDocumentMode orphanDocumentMode = HASTY;
-	}
 
 	/**
 	 * Settings not meant to be used in production.
@@ -145,29 +138,12 @@ public class MongoDriverSettings {
 		FAIL_FAST
 	}
 
-	public enum OrphanDocumentMode {
-		/**
-		 * Unused documents are always deleted before the end of the transaction.
-		 */
-		EARNEST,
-
-		/**
-		 * Unused documents may be left behind, to be cleaned up later.
-		 */
-		HASTY,
-	}
-
 	public void validate() {
 		if (database == null || database.isBlank()) {
 			throw new IllegalArgumentException("Database name must not be blank");
 		}
 		if (collection == null || collection.isBlank()) {
 			throw new IllegalArgumentException("Collection name must not be blank");
-		}
-		if (preferredDatabaseFormat() instanceof PandoFormat) {
-			if (experimental.orphanDocumentMode() == EARNEST) {
-				throw new IllegalArgumentException("Pando format does not support earnest orphan document cleanup");
-			}
 		}
 	}
 

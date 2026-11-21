@@ -47,6 +47,19 @@ class ManifestDecodeTest {
 			"The cause should name the missing field: " + e.getCause().getMessage());
 	}
 
+	@Test
+	void manifestWithoutOrphanDocumentMode_isUnrecognized() {
+		BsonDocument document = encodedManifest();
+		document.getDocument("pando").remove("orphanDocumentMode");
+
+		UnrecognizedFormatException e = assertThrows(UnrecognizedFormatException.class,
+			() -> formatter.decodeManifest(document));
+
+		assertEquals("Manifest contents are invalid", e.getMessage());
+		assertTrue(e.getCause().getMessage().contains("orphanDocumentMode"),
+			"The cause should name the missing field: " + e.getCause().getMessage());
+	}
+
 	private BsonDocument encodedManifest() {
 		Manifest manifest = Manifest.forPando(
 			PandoFormat.withGraftPoints("/catalog"),

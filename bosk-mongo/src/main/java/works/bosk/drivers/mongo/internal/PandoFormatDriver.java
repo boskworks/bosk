@@ -69,7 +69,7 @@ import static works.bosk.Path.parseParameterized;
 import static works.bosk.ReferenceUtils.isTaggedUnionCase;
 import static works.bosk.ReferenceUtils.requireNotTaggedUnionCase;
 import static works.bosk.ReferenceUtils.requireTagMatchesIfTaggedUnion;
-import static works.bosk.drivers.mongo.MongoDriverSettings.OrphanDocumentMode.HASTY;
+import static works.bosk.drivers.mongo.PandoFormat.OrphanDocumentMode.HASTY;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.DONE;
 import static works.bosk.drivers.mongo.internal.AtomicUpdateOperation.Outcome.NOTHING_CHANGED;
 import static works.bosk.drivers.mongo.internal.BsonFormatter.docBsonPath;
@@ -84,7 +84,6 @@ import static works.bosk.util.Classes.enumerableByIdentifier;
 final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDriver<R> {
 	private final String description;
 	private final PandoFormat format;
-	private final MongoDriverSettings settings;
 	private final BsonSurgeon bsonSurgeon;
 	private final Demultiplexer demultiplexer = new Demultiplexer();
 	private final List<Reference<? extends EnumerableByIdentifier<?>>> graftPoints;
@@ -112,7 +111,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			epoch
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
-		this.settings = driverSettings;
 		this.format = format;
 		this.graftPoints = format.graftPoints().stream()
 			.map(s -> referenceTo(s, rootRef))
@@ -251,7 +249,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * deleted atomically. EARNEST mode is not implemented yet.
 	 */
 	private boolean deletionWritesOneDocument() {
-		return settings.experimental().orphanDocumentMode() == HASTY;
+		return format.orphanDocumentMode() == HASTY;
 	}
 
 	private <T> PreparedReplacement prepareReplacement(Reference<T> target, T newValue) {
@@ -993,7 +991,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		Reference<?> topmostRef = targetDocRef;
 		if (targetDocRef.equals(target)) {
 			// Delete the whole document
-			if (settings.experimental().orphanDocumentMode() == HASTY) {
+			if (format.orphanDocumentMode() == HASTY) {
 				LOGGER.debug("Skipping deleting document({}) in {} mode", target, HASTY);
 			} else {
 				throw new NotYetImplementedException("Earnest mode not yet implemented");
@@ -1256,7 +1254,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		// This whole method is pretty "best-effort" right now. More work to do if we really want to be EARNEST
 		Reference<?> targetDocRef = targetDocumentRef(target);
 		if (targetDocRef.equals(target)) {
-			if (settings.experimental().orphanDocumentMode() == HASTY) {
+			if (format.orphanDocumentMode() == HASTY) {
 				LOGGER.debug("Skipping deletePartsUnder({}) in {} mode", target, HASTY);
 			} else {
 				String prefix;
@@ -1274,7 +1272,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 		} else {
 			// TODO!
-			assert settings.experimental().orphanDocumentMode() == HASTY;
+			assert format.orphanDocumentMode() == HASTY;
 			LOGGER.debug("Skipping deletePartsUnder({}) because target document is different: {}", target, targetDocRef);
 		}
 	}

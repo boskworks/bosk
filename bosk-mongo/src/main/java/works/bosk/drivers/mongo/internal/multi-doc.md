@@ -64,7 +64,7 @@ the conventions for the manifest document itself
 - `epoch`: a UUID that changes when the collection is initialized or refurbished into another format; every state document carries the same value
 - Variants: only one of the following fields is permitted:
 - `sequoia`: an empty document signifying that the database contents are stored in accordance with the Sequoia format
-- `pando`: a document containing a `graftPoints` field which describes how the state tree is to be carved up into documents
+- `pando`: a document containing a `graftPoints` field which describes how the state tree is to be carved up into documents, and an `orphanDocumentMode` field which says what a deletion does with documents the state tree no longer references
 
 #### Document `|`
 

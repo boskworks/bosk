@@ -20,7 +20,7 @@ import works.bosk.Reference;
 import works.bosk.SideTableReference;
 import works.bosk.annotations.ReferencePath;
 import works.bosk.drivers.mongo.BsonSerializer;
-import works.bosk.drivers.mongo.MongoDriverSettings;
+import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.testing.drivers.AbstractDriverTest;
 import works.bosk.testing.drivers.state.TestEntity;
@@ -190,7 +190,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	}
 
 	/**
-	 * This behaviour supports {@link MongoDriverSettings.OrphanDocumentMode#HASTY} mode.
+	 * This behaviour supports {@link PandoFormat.OrphanDocumentMode#HASTY} mode.
 	 * In isolation, this seems surprising for {@link BsonSurgeon};
 	 * I'm not sure it's desirable. TODO: Reconsider this.
 	 */

@@ -957,9 +957,14 @@ You can include these in your encoder pattern as well, for example `%X{bosk.Mong
 - The _Sequoia_ format (the default) stores the entire bosk state in a single document in a single collection.
 - The _Pando_ format divides up the bosk state into multiple documents, to overcome the MongoDB limit of 16MB for a single document.
 
-The _format_ is the contract that determines how the collection's contents are to be interpreted:
-which format family is in use, and for Pando which graft points divide the state into documents.
+The _format_ is the contract that determines how the state tree maps to the collection's documents
+and how those documents may be modified:
+which format family is in use, and for Pando which graft points divide the state into documents
+and what a deletion does with documents the state tree no longer references.
 A manifest document whose ID is `!Manifest` is the system of record for the format.
+A bosk's preferred format is used when it initializes a collection, or when it is asked to refurbish one;
+otherwise the manifest's format governs, so bosks with different preferred formats still interpret
+an existing collection the same way.
 The _layout_ is where the state documents sit; a format change usually moves them.
 
 Each state document records an `epoch` that matches the manifest's.

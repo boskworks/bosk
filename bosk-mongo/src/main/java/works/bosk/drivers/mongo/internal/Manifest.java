@@ -51,8 +51,8 @@ public record Manifest(
 		return new Manifest(1, epoch, Optional.of(new EmptyNode()), Optional.empty());
 	}
 
-	public static Manifest forPando(PandoFormat settings, Identifier epoch) {
-		return new Manifest(1, epoch, Optional.empty(), Optional.of(settings));
+	public static Manifest forPando(PandoFormat format, Identifier epoch) {
+		return new Manifest(1, epoch, Optional.empty(), Optional.of(format));
 	}
 
 	public static Manifest forFormat(DatabaseFormat format, Identifier epoch) {
