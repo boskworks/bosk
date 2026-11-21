@@ -9,6 +9,7 @@ import org.bson.BsonBinaryWriter;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
 import org.bson.BsonInt32;
+import org.bson.BsonInvalidOperationException;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.bson.codecs.BsonValueCodec;
@@ -21,6 +22,7 @@ import works.bosk.MapValue;
 import works.bosk.Reference;
 import works.bosk.StateTreeSerializer;
 import works.bosk.drivers.mongo.BsonSerializer;
+import works.bosk.drivers.mongo.exceptions.BsonFormatException;
 
 import static java.util.Arrays.asList;
 import static works.bosk.ReferenceUtils.rawClass;
@@ -84,7 +86,7 @@ final class Formatter extends BsonFormatter {
 			if (!SUPPORTED_MANIFEST_VERSIONS.contains(manifest.getInt32("version"))) {
 				throw new UnrecognizedFormatException("Manifest version " + manifest.getInt32("version") + " not supported");
 			}
-		} catch (ClassCastException e) {
+		} catch (BsonInvalidOperationException e) {
 			throw new UnrecognizedFormatException("Manifest field has unexpected type", e);
 		}
 	}
@@ -93,10 +95,14 @@ final class Formatter extends BsonFormatter {
 		BsonDocument manifest = manifestDoc.clone();
 		manifest.remove("_id");
 		validateManifest(manifest);
-		return (Manifest) this.manifestCodec
-			.decode(
-				new BsonDocumentReader(manifest),
-				DecoderContext.builder().build());
+		try {
+			return (Manifest) this.manifestCodec
+				.decode(
+					new BsonDocumentReader(manifest),
+					DecoderContext.builder().build());
+		} catch (BsonFormatException | BsonInvalidOperationException e) {
+			throw new UnrecognizedFormatException("Manifest contents are invalid", e);
+		}
 	}
 
 	BsonDocument encodeDiagnostics(MapValue<String> attributes) {
