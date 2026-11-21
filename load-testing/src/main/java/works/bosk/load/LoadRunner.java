@@ -105,6 +105,22 @@ public final class LoadRunner {
 			});
 		}
 
+		LatencyRecorder[] readLatencies = new LatencyRecorder[config.readers()];
+		long[] readCounts = new long[config.readers()];
+		Thread[] readers = new Thread[config.readers()];
+		for (int i = 0; i < readers.length; i++) {
+			readLatencies[i] = new LatencyRecorder();
+			int threadIndex = i;
+			readers[i] = new Thread(
+				() -> runReader(threadIndex, workload, bosk, config, start, measuring, stop, readLatencies[threadIndex], readCounts, errors, firstError),
+				"load-reader-" + i);
+			readers[i].setUncaughtExceptionHandler((_, error) -> {
+				recordError(errors, firstError, error);
+				stop.set(true);
+			});
+		}
+		Thread[] allThreads = concat(workers, readers);
+
 		long heapUsedBefore = JvmMetrics.heapUsed();
 		long gcCountBefore = JvmMetrics.gcCount();
 		long gcTimeBefore = JvmMetrics.gcTimeMillis();
@@ -114,7 +130,7 @@ public final class LoadRunner {
 		long measureStart = 0;
 		long measureEnd = 0;
 		try {
-			for (Thread worker : workers) {
+			for (Thread worker : allThreads) {
 				worker.start();
 			}
 			start.countDown();
@@ -127,11 +143,11 @@ public final class LoadRunner {
 			measuring.set(false);
 			stop.set(true);
 			sampler.stop();
-			stalled = joinWorkers(workers, config.stallTimeout());
+			stalled = joinWorkers(allThreads, config.stallTimeout());
 		} catch (InterruptedException e) {
 			stop.set(true);
 			sampler.stop();
-			for (Thread worker : workers) {
+			for (Thread worker : allThreads) {
 				worker.interrupt();
 			}
 			throw e;
@@ -163,6 +179,10 @@ public final class LoadRunner {
 		for (long opCount : opCounts) {
 			ops += opCount;
 		}
+		long reads = 0;
+		for (long readCount : readCounts) {
+			reads += readCount;
+		}
 		long measuredNanos = Math.max(0, measureEnd - measureStart);
 
 		return new LoadResult(
@@ -173,8 +193,10 @@ public final class LoadRunner {
 			measuredNanos,
 			ops,
 			errors.sum(),
+			reads,
 			mergeLatencies(submitLatencies),
 			mergeLatencies(flushLatencies),
+			mergeLatencies(readLatencies),
 			verified,
 			verificationMessage,
 			verificationChecked,
@@ -255,6 +277,88 @@ public final class LoadRunner {
 			case EVERY_N -> iteration % config.flushEvery() == 0;
 			case END_ONLY -> false;
 		};
+	}
+
+	private static void runReader(
+		int readerIndex,
+		Workload workload,
+		Bosk<TestEntity> bosk,
+		LoadConfig config,
+		CountDownLatch start,
+		AtomicBoolean measuring,
+		AtomicBoolean stop,
+		LatencyRecorder readLatency,
+		long[] readCounts,
+		LongAdder errors,
+		AtomicReference<Throwable> firstError
+	) {
+		try {
+			start.await();
+			if (config.readers() == 0) {
+				return;
+			}
+			int index = (int) ((long) config.entityCount() * readerIndex / config.readers());
+			Reference<TestEntity> entity = workload.entity(bosk, index);
+			Reference<?> target = switch (config.readShape()) {
+				case LEAF -> entity.then(String.class, TestEntity.Fields.string);
+				case ENTITY -> entity;
+				case CATALOG -> bosk.rootReference().thenCatalog(TestEntity.class, TestEntity.Fields.catalog);
+			};
+			if (config.sessionLifetime() == SessionLifetime.PER_THREAD) {
+				try (var _ = bosk.readSession()) {
+					readLoop(target, readerIndex, measuring, stop, readLatency, readCounts);
+				}
+			} else {
+				while (!stop.get()) {
+					boolean record = measuring.get();
+					long readStart = System.nanoTime();
+					try (var _ = bosk.readSession()) {
+						target.value();
+					} catch (RuntimeException e) {
+						recordError(errors, firstError, e);
+						continue;
+					}
+					long readEnd = System.nanoTime();
+					if (record) {
+						readLatency.record(readEnd - readStart);
+						readCounts[readerIndex]++;
+					}
+				}
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (InvalidTypeException e) {
+			recordError(errors, firstError, e);
+		} catch (RuntimeException e) {
+			recordError(errors, firstError, e);
+		}
+	}
+
+	private static void readLoop(
+		Reference<?> target,
+		int readerIndex,
+		AtomicBoolean measuring,
+		AtomicBoolean stop,
+		LatencyRecorder readLatency,
+		long[] readCounts
+	) {
+		while (!stop.get()) {
+			boolean record = measuring.get();
+			long readStart = System.nanoTime();
+			target.value();
+			long readEnd = System.nanoTime();
+			if (record) {
+				readLatency.record(readEnd - readStart);
+				readCounts[readerIndex]++;
+			}
+		}
+	}
+
+	private static Thread[] concat(Thread[] a, Thread[] b) {
+		Thread[] result = new Thread[a.length + b.length];
+		System.arraycopy(a, 0, result, 0, a.length);
+		System.arraycopy(b, 0, result, a.length, b.length);
+		return result;
 	}
 
 	private static boolean joinWorkers(Thread[] workers, Duration timeout) throws InterruptedException {

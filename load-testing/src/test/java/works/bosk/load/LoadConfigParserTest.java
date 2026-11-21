@@ -62,6 +62,9 @@ class LoadConfigParserTest {
 			"--hookScope=entity",
 			"--hookCount=3",
 			"--hookQueueMaxSize=17",
+			"--readers=2",
+			"--readShape=catalog",
+			"--sessionLifetime=perThread",
 			"--seed=42",
 			"--label=example",
 			"--out=somewhere"
@@ -78,6 +81,9 @@ class LoadConfigParserTest {
 		assertEquals(HookScope.ENTITY, config.hookScope());
 		assertEquals(3, config.hookCount());
 		assertEquals(17, config.hookQueueMaxSize());
+		assertEquals(2, config.readers());
+		assertEquals(ReadShape.CATALOG, config.readShape());
+		assertEquals(SessionLifetime.PER_THREAD, config.sessionLifetime());
 		assertEquals(42, config.seed());
 		assertEquals("example", config.label());
 		assertEquals(Path.of("somewhere"), config.outputDirectory());

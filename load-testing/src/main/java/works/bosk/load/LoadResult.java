@@ -12,9 +12,11 @@ import java.util.List;
  * @param environment         the machine and JVM that ran it
  * @param measuredNanos       the actual measurement duration
  * @param ops                 operations completed during measurement
- * @param errors              exceptions seen by the workers or the verifier
+ * @param errors              exceptions seen by the workers, readers, or the verifier
+ * @param reads               read operations completed during measurement
  * @param submitLatency       update submission latency
  * @param flushLatency        flush latency; empty when the run never flushed during measurement
+ * @param readLatency         read latency; empty when the run had no readers
  * @param verified            whether the final state matched the expected state
  * @param verificationMessage why verification failed, or {@code null}
  * @param verificationChecked the number of targets verification examined
@@ -37,8 +39,10 @@ public record LoadResult(
 	long measuredNanos,
 	long ops,
 	long errors,
+	long reads,
 	LatencySummary submitLatency,
 	LatencySummary flushLatency,
+	LatencySummary readLatency,
 	boolean verified,
 	String verificationMessage,
 	int verificationChecked,

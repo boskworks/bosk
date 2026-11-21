@@ -26,6 +26,9 @@ import static java.util.Objects.requireNonNull;
  * @param hookScope        whether each hook is scoped to the root or to every entity's string
  * @param hookCount        how many hooks to register
  * @param hookQueueMaxSize the hook queue threshold at which overload mode begins
+ * @param readers          how many reader threads read concurrently with the writers; zero disables reads
+ * @param readShape        what each reader thread reads
+ * @param sessionLifetime  how long each reader keeps its read session open
  * @param seed             reserved for future randomized workloads
  * @param stallTimeout     how long to wait for workers to stop before declaring a stall
  * @param outputDirectory  where the summary and sample CSVs are written
@@ -44,6 +47,9 @@ public record LoadConfig(
 	HookScope hookScope,
 	int hookCount,
 	int hookQueueMaxSize,
+	int readers,
+	ReadShape readShape,
+	SessionLifetime sessionLifetime,
 	long seed,
 	Duration stallTimeout,
 	Path outputDirectory
@@ -57,6 +63,8 @@ public record LoadConfig(
 		requireNonNull(flushMode, "flushMode");
 		requireNonNull(hookLatency, "hookLatency");
 		requireNonNull(hookScope, "hookScope");
+		requireNonNull(readShape, "readShape");
+		requireNonNull(sessionLifetime, "sessionLifetime");
 		requireNonNull(stallTimeout, "stallTimeout");
 		requireNonNull(outputDirectory, "outputDirectory");
 		if (entityCount <= 0) {
@@ -89,6 +97,9 @@ public record LoadConfig(
 		if (hookQueueMaxSize <= 0) {
 			throw new IllegalArgumentException("hookQueueMaxSize must be positive");
 		}
+		if (readers < 0) {
+			throw new IllegalArgumentException("readers must not be negative");
+		}
 	}
 
 	public static Builder builder() {
@@ -109,6 +120,9 @@ public record LoadConfig(
 		private HookScope hookScope = HookScope.ROOT;
 		private int hookCount = 1;
 		private int hookQueueMaxSize = 1000;
+		private int readers = 0;
+		private ReadShape readShape = ReadShape.LEAF;
+		private SessionLifetime sessionLifetime = SessionLifetime.PER_OP;
 		private long seed = 1L;
 		private Duration stallTimeout = Duration.ofSeconds(60);
 		private Path outputDirectory = Path.of("build", "load-results");
@@ -178,6 +192,21 @@ public record LoadConfig(
 			return this;
 		}
 
+		public Builder readers(int readers) {
+			this.readers = readers;
+			return this;
+		}
+
+		public Builder readShape(ReadShape readShape) {
+			this.readShape = readShape;
+			return this;
+		}
+
+		public Builder sessionLifetime(SessionLifetime sessionLifetime) {
+			this.sessionLifetime = sessionLifetime;
+			return this;
+		}
+
 		public Builder seed(long seed) {
 			this.seed = seed;
 			return this;
@@ -208,6 +237,9 @@ public record LoadConfig(
 				hookScope,
 				hookCount,
 				hookQueueMaxSize,
+				readers,
+				readShape,
+				sessionLifetime,
 				seed,
 				stallTimeout,
 				outputDirectory

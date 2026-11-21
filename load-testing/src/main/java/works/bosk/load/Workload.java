@@ -2,6 +2,7 @@ package works.bosk.load;
 
 import works.bosk.Bosk;
 import works.bosk.BoskDriver;
+import works.bosk.Reference;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.testing.drivers.state.TestEntity;
 
@@ -29,6 +30,16 @@ public interface Workload {
 	 * share mutable state between {@code threadIndex} values unless it is safe to do so.
 	 */
 	void submit(BoskDriver driver, int threadIndex, long iteration);
+
+	/**
+	 * The entity at the given index, for reader threads.
+	 *
+	 * <p>Indexes are taken modulo the entity count, so a run with more readers than entities is
+	 * still well defined.
+	 *
+	 * @throws InvalidTypeException if the state type does not match the workload's assumption
+	 */
+	Reference<TestEntity> entity(Bosk<TestEntity> bosk, int index) throws InvalidTypeException;
 
 	/**
 	 * Verifies that the final state matches what the submitted updates should have produced.

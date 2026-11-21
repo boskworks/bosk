@@ -46,6 +46,9 @@ Options:
 | `--hookScope` | `root` | Hook scope: `root` or `entity` |
 | `--hookCount` | `1` | Number of hooks to register |
 | `--hookQueueMaxSize` | `1000` | Hook queue threshold at which overload mode begins |
+| `--readers` | `0` | Reader threads running alongside the writers; zero disables reads |
+| `--readShape` | `leaf` | What readers read: `leaf`, `entity`, or `catalog` |
+| `--sessionLifetime` | `perOp` | `perOp` opens a session per read; `perThread` holds one open for the run |
 | `--stallTimeout` | `60s` | How long to wait for workers to stop before dumping threads |
 | `--label` | empty | Label included in the output |
 | `--out` | `build/load-results` | Output directory |
@@ -113,6 +116,25 @@ consistent with dropping the pre-delete and the transaction. It still plateaus a
 ops/s at higher concurrency, which is the single-document write ceiling. `SEQUOIA` is unchanged in
 shape: 303 → 661 → 606 → 545, with submit p99 growing to 720 ms. Since submit performs a
 synchronous database write, that tail is document-level write queueing, not the Bosk monitor.
+
+## Reads and read sessions
+
+Reader threads run alongside the writers and record their own latency histogram. They are separate
+threads rather than a read fraction inside the writer loop, so read latency is not confounded with
+flush latency.
+
+`mongo-sequoia`, 16-byte values, 3 s warmup:
+
+| Entities | Writers | Readers | Session | Duration | Writes (ops/s) | Reads (ops/s) | Read p99 |
+|---:|---:|---:|---|---:|---:|---:|---:|
+| 1,000 | 4 | 4 | perOp | 10 s | 1,833 | 15,508,240 | 375 ns |
+| 10,000 | 2 | 2 | perThread | 15 s | 474 | 13,826,745 | 167 ns |
+
+Reads are roughly three orders of magnitude cheaper than Mongo writes even with a session opened
+and closed per read. The long-lived-session run held two sessions open while writers churned
+10,000 entities; heap oscillated between about 60 and 210 MB without monotonic growth, so two
+pinned versions are not a retention problem. The useful retention experiment is many long-lived
+sessions or repeated start/stop, not a single held session.
 
 ## First baseline
 

@@ -85,6 +85,11 @@ public final class DisjointFieldUpdates implements Workload {
 	}
 
 	@Override
+	public Reference<TestEntity> entity(Bosk<TestEntity> bosk, int index) throws InvalidTypeException {
+		return catalogRef(bosk).then(ids[Math.floorMod(index, entityCount)]);
+	}
+
+	@Override
 	public Verification verify(Bosk<TestEntity> bosk) {
 		try (var _ = bosk.readSession()) {
 			CatalogReference<TestEntity> catalogRef = catalogRef(bosk);

@@ -44,6 +44,9 @@ public final class LoadConfigParser {
 				case "hookScope" -> builder.hookScope(HookScope.fromCli(value));
 				case "hookCount" -> builder.hookCount(intValue(name, value));
 				case "hookQueueMaxSize" -> builder.hookQueueMaxSize(intValue(name, value));
+				case "readers" -> builder.readers(intValue(name, value));
+				case "readShape" -> builder.readShape(ReadShape.fromCli(value));
+				case "sessionLifetime" -> builder.sessionLifetime(SessionLifetime.fromCli(value));
 				case "seed" -> builder.seed(longValue(name, value));
 				case "stallTimeout" -> builder.stallTimeout(parseDuration(name, value));
 				case "out" -> builder.outputDirectory(Path.of(value));

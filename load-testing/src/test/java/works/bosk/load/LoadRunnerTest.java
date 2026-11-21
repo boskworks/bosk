@@ -41,4 +41,29 @@ class LoadRunnerTest {
 			assertTrue(result.flushLatency().count() > 0, "This flush mode must record flushes");
 		}
 	}
+
+	@ParameterizedTest
+	@EnumSource(SessionLifetime.class)
+	void readsAlongsideWrites(SessionLifetime sessionLifetime) throws InvalidTypeException, IOException, InterruptedException {
+		LoadConfig config = LoadConfig.builder()
+			.driver(DriverKind.SIMPLE)
+			.entityCount(200)
+			.threads(2)
+			.readers(2)
+			.readShape(ReadShape.LEAF)
+			.sessionLifetime(sessionLifetime)
+			.warmup(Duration.ofMillis(100))
+			.duration(Duration.ofMillis(500))
+			.valueBytes(8)
+			.stallTimeout(Duration.ofSeconds(10))
+			.outputDirectory(Path.of("build", "test-load-results"))
+			.build();
+
+		LoadResult result = new LoadRunner().run(config);
+
+		assertEquals(0, result.errors(), "The run must not see errors: " + result.firstError());
+		assertTrue(result.success(), result.verificationMessage());
+		assertTrue(result.reads() > 0, "Readers must complete at least one read during measurement");
+		assertTrue(result.readLatency().count() > 0, "Read latency must be recorded");
+	}
 }

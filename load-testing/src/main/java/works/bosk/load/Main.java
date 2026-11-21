@@ -91,6 +91,11 @@ public final class Main {
 			result.ops(), result.measuredNanos() / 1_000_000, result.throughputOpsPerSecond(), result.errors());
 		System.out.println("Submit latency: " + result.submitLatency().describe());
 		System.out.println("Flush latency:  " + result.flushLatency().describe());
+		if (config.readers() > 0) {
+			System.out.println("Read latency:   " + result.readLatency().describe()
+				+ "  (" + result.reads() + " reads, " + config.readShape()
+				+ ", " + config.sessionLifetime() + " sessions)");
+		}
 		System.out.println("Heap: " + formatMegabytes(result.heapUsedBefore())
 			+ " -> " + formatMegabytes(result.heapUsedAfter())
 			+ "  GC: +" + result.gcCountDelta() + " collections, +" + result.gcTimeMillisDelta() + " ms");
@@ -121,6 +126,9 @@ public final class Main {
 			--hookScope=root         Hook scope: root or entity
 			--hookCount=1            Number of hooks to register
 			--hookQueueMaxSize=1000  Hook queue threshold for overload mode
+			--readers=0              Reader threads running alongside the writers; zero disables reads
+			--readShape=leaf         Read shape: leaf, entity, or catalog
+			--sessionLifetime=perOp  Read session lifetime: perOp or perThread
 			--seed=1                 Reserved for future randomized workloads
 			--stallTimeout=60s       How long to wait for workers to stop
 			--label=...              Label included in the output
