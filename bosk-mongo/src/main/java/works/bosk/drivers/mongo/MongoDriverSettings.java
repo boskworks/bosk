@@ -99,6 +99,14 @@ public class MongoDriverSettings {
 		 * so that events have a chance to arrive first.
 		 */
 		@Default long eventDelayMS = 0;
+
+		/**
+		 * Use the change-stream barrier instead of reading every document's
+		 * revision during {@link works.bosk.BoskDriver#flush()}.
+		 * Experimental, phase 1 of issue #567.
+		 */
+		@Default boolean flushBarrier = false;
+
 	}
 
 	public sealed interface DatabaseFormat

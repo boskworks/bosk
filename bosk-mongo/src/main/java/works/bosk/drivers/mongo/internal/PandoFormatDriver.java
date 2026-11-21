@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import org.bson.conversions.Bson;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
@@ -27,6 +28,7 @@ import org.bson.BsonInvalidOperationException;
 import org.bson.BsonNull;
 import org.bson.BsonObjectId;
 import org.bson.BsonString;
+import org.bson.BsonTimestamp;
 import org.bson.BsonValue;
 import org.bson.conversions.Bson;
 import org.jspecify.annotations.NonNull;
@@ -53,6 +55,8 @@ import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
 
+import static com.mongodb.client.model.Filters.exists;
+import static com.mongodb.client.model.Filters.or;
 import static com.mongodb.client.model.Filters.regex;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
@@ -109,7 +113,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			collection,
 			downstream,
 			flushTimeout,
-			epoch
+			epoch,
+			driverSettings.testing().flushBarrier()
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
@@ -574,11 +579,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (treeEvents.isEmpty()) {
 			return;
 		}
-		// In the per-document revision design, the last event is always the
-		// topmost event: the write that changed the shallowest document's state
-		// also bumped its revision. (Initialization is the same: the root write
-		// carries both the state and the revision.)
+		// The writer sends the topmost document's write last, so the last event
+		// is the topmost write, and its cluster time is the position a flush
+		// waits for.
 		ChangeStreamDocument<BsonDocument> topmostEvent = treeEvents.getLast();
+		BsonTimestamp submitted = requireNonNull(topmostEvent.getClusterTime());
 		List<ChangeStreamDocument<BsonDocument>> priorEvents = treeEvents.subList(0, treeEvents.size() - 1);
 		BsonString docId = documentIdOf(topmostEvent);
 		MapValue<String> diagnosticAttributes = diagnosticAttributesFor(docId);
@@ -595,6 +600,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					RevisionTuple revision = RevisionTuple.from(fullDocument);
 					if (flushLock.get().alreadySeen(docId, revision)) {
 						LOGGER.debug("Skipping revision {} for {}", revision, docId);
+						markSubmitted(submitted);
 						return;
 					}
 
@@ -608,6 +614,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					RevisionTuple revision = revisionFromUpdateEvent(docId, topmostEvent);
 					if (flushLock.get().alreadySeen(docId, revision)) {
 						LOGGER.debug("Skipping revision {} for {}", revision, docId);
+						markSubmitted(submitted);
 						return;
 					}
 
@@ -626,6 +633,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				}
 			}
 		}
+		markSubmitted(submitted);
 	}
 
 	/**
@@ -1331,5 +1339,16 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	// INSERT when the document is absent and a REPLACE when it is an orphan left
 	// behind by a deletion. Both carry the full document we need to gather.
 	private static final EnumSet<OperationType> OPERATIONS_TO_INCLUDE_IN_GATHER = EnumSet.of(INSERT, REPLACE);
+
+	@Override
+	protected Bson lastStateChangeFilter() {
+		// A state write carries a revision; lock-only updates and manifest
+		// events do not.
+		return or(
+			exists("fullDocument." + DocumentFields.revision.name()),
+			exists("updateDescription.updatedFields." + DocumentFields.revision.name())
+		);
+	}
+
 	private static final Logger LOGGER = LoggerFactory.getLogger(PandoFormatDriver.class);
 }

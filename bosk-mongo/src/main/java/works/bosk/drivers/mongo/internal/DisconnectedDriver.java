@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
+import org.bson.BsonTimestamp;
 import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
@@ -79,6 +80,11 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 
 	@Override
 	public void onEvent(ChangeStreamDocument<BsonDocument> event) {
+		throw disconnected();
+	}
+
+	@Override
+	public void markSubmitted(BsonTimestamp position) {
 		throw disconnected();
 	}
 

@@ -12,10 +12,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.function.BooleanSupplier;
+import org.bson.conversions.Bson;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonString;
+import org.bson.BsonTimestamp;
 import org.bson.BsonValue;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -68,7 +70,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			collection,
 			downstream,
 			flushTimeout,
-			epoch
+			epoch,
+			driverSettings.testing().flushBarrier()
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 	}
@@ -192,10 +195,12 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			 * so incompatible database changes don't go unnoticed.
 			 */
 			validateManifestEvent(event, Manifest.forSequoia(epoch));
+			markSubmitted(requireNonNull(event.getClusterTime()));
 			return;
 		}
 		if (!DOCUMENT_FILTER.equals(event.getDocumentKey())) {
 			LOGGER.debug("Ignoring event for unrecognized document key: {}", event.getDocumentKey());
+			markSubmitted(requireNonNull(event.getClusterTime()));
 			return;
 		}
 		validateEventEpoch(event);
@@ -214,6 +219,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					// An INSERT or REPLACE can carry a revision this driver has already
 					// applied, for example a metadata-only rewrite or a restored document.
 					LOGGER.debug("Skipping revision {} for {}", revision, docId);
+					markSubmitted(requireNonNull(event.getClusterTime()));
 					return;
 				}
 				MapValue<String> diagnosticAttributes = diagnosticAttributesFor(docId);
@@ -252,6 +258,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					) {
 						if (flushLock.get().alreadySeen(updateDocId, revision)) {
 							LOGGER.debug("Skipping revision {} for {}", revision, updateDocId);
+							markSubmitted(requireNonNull(event.getClusterTime()));
 							return;
 						}
 
@@ -271,11 +278,19 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				throw new UnprocessableEventException("Cannot process event", event.getOperationType());
 			}
 		}
+		markSubmitted(requireNonNull(event.getClusterTime()));
 	}
+
 
 	//
 	// MongoDB helpers
 	//
+
+	@Override
+	protected Bson lastStateChangeFilter() {
+		// The state is one document, so every write to it is a state write.
+		return new BsonDocument("documentKey._id", DOCUMENT_ID);
+	}
 
 	@Override
 	protected BsonDocument documentFilter(Reference<?> documentRef) {

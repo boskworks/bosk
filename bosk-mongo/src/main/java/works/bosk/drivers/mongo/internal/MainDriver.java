@@ -343,6 +343,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			loaded.driver().onHasBeenApplied(loaded.state());
 
 			publishFormatDriver(loaded.driver(), loaded.snapshotTime());
+			// The state isn't in the tree yet, but the constructor won't return
+			// until it is, and nothing can flush before then.
+			loaded.driver().markSubmitted(loaded.snapshotTime());
 		} catch (UninitializedCollectionException e) {
 			// We log this at warn because, in production, this is a big deal.
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
@@ -370,7 +373,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// so events at or before it describe a state that we have already
 				// replaced: the deletions that emptied the collection, and our own
 				// writes. They must not be replayed into the new state.
-				publishFormatDriver(preferredDriver, session.operationTime());
+				BsonTimestamp initializationTime = session.operationTime();
+				publishFormatDriver(preferredDriver, initializationTime);
+				preferredDriver.markSubmitted(initializationTime);
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2, currentFormatDriver());
@@ -710,6 +715,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 				downstream.flush();
 				loaded.driver().onHasBeenApplied(loaded.state());
+				loaded.driver().markSubmitted(loaded.snapshotTime());
 			} else {
 				LOGGER.debug("Running initialStateTask");
 				try {

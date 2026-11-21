@@ -686,7 +686,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		//   assert flush is blocked
 		//   reconnectGate.release()        (submitReplacement completes)
 		//                                   downstream.flush()
-		//                                   onHasBeenApplied (releases the flush)
+		//                                   markSubmitted (releases the flush)
 		//   flush() returns; a read session sees the fresh state
 
 		suppressLogging(WARN, MainDriver.class, ChangeReceiver.class, AbstractFormatDriver.class);

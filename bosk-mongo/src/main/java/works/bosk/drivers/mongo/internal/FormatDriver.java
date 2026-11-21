@@ -5,6 +5,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import java.io.IOException;
 import org.bson.BsonDocument;
+import org.bson.BsonTimestamp;
 import works.bosk.BoskContext;
 import works.bosk.Identifier;
 import works.bosk.Reference;
@@ -43,7 +44,23 @@ import works.bosk.drivers.mongo.status.MongoStatus;
  */
 sealed public interface FormatDriver<R extends StateTreeNode>
 	permits AbstractFormatDriver, DisconnectedDriver {
+	/**
+	 * Processes one change event, marking the cluster time through which the
+	 * receiver has submitted the event's changes downstream once those changes
+	 * are ready. An event that needs nothing submitted is trivially submitted
+	 * through.
+	 */
 	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException;
+
+	/**
+	 * Records that everything through {@code position} has been submitted to the
+	 * downstream driver. The receiver calls this from {@link #onEvent} once the
+	 * event's changes are ready; the first call on a freshly published driver is
+	 * the initial state's position, which is the cluster time of the snapshot it
+	 * was loaded from or of the commit that initialized the collection. The
+	 * receiver thread guarantees that no event is marked before it.
+	 */
+	void markSubmitted(BsonTimestamp position);
 
 	/**
 	 * Describes how to replace the object referenced by {@code target}.
