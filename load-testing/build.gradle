@@ -1,0 +1,51 @@
+plugins {
+	id 'application'
+}
+
+def jdkVersion = providers.gradleProperty("jdkVersion").get().toInteger()
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(jdkVersion)
+	}
+}
+
+dependencies {
+	implementation platform(libs.junit.bom)
+	implementation project(":bosk-core")
+	implementation project(":bosk-mongo")
+	implementation project(":bosk-testing")
+	implementation libs.slf4j.api
+	implementation libs.hdrhistogram
+	implementation libs.testcontainers
+	implementation libs.testcontainers.mongodb
+	runtimeOnly libs.logback.classic
+
+	testImplementation platform(libs.junit.bom)
+	testImplementation libs.junit.api
+	testImplementation libs.junit.params
+	testRuntimeOnly libs.junit.engine
+	testRuntimeOnly libs.junit.launcher
+}
+
+application {
+	mainClass = 'works.bosk.load.Main'
+}
+
+tasks.withType(Test).configureEach {
+	useJUnitPlatform()
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(jdkVersion)
+	}
+	enableAssertions = true
+	reports.junitXml.required = true
+}
+
+tasks.named('run') {
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(jdkVersion)
+	}
+	if (project.hasProperty('loadJvmArgs')) {
+		jvmArgs(project.property('loadJvmArgs').toString().split('\\s+'))
+	}
+}
