@@ -1149,7 +1149,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	@Override
 	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument rawFilter) {
 		BsonDocument filter = withEpoch(rawFilter);
-		LOGGER.debug("| Update: {}", updateDoc);
+		LOGGER.trace("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
@@ -1309,7 +1309,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			// absent) and a REPLACE (when it already exists) carry it, so one
 			// upserting replace suffices; a delete followed by an insert would be
 			// two writes per part.
-			LOGGER.debug("Upsert sub-part: filter={} replacement={}", filter, part);
+			LOGGER.trace("Upsert sub-part: filter={} replacement={}", filter, part);
 			UpdateResult result = collection.replaceOne(filter, part, new ReplaceOptions().upsert(true));
 			LOGGER.debug("| Upsert result: {}", result);
 			if (writtenRevisions != null) {

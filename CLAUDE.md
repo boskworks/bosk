@@ -149,6 +149,11 @@ or nothing at all.
 The log records that the branch was taken, and its message can explain why,
 so the reader learns both from the same place.
 
+Log output at debug level and above is bounded:
+don't log a collection, a document, or any other value whose size grows with the data.
+Log a count instead.
+Trace-level messages can be as verbose as you like.
+
 ### Comments
 
 A comment should describe the code it is attached to.

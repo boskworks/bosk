@@ -44,7 +44,7 @@ from match_findings import match_findings
 
 sys.stdout.reconfigure(line_buffering=True)
 
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+DEFAULT_MODEL = "deepseek/deepseek-flash"
 DEFAULT_JOBS = 4
 DEFAULT_GEN_TIMEOUT = 900
 EVAL_ROUND = 1

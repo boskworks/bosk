@@ -328,7 +328,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	protected <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {
 		String key = dottedFieldNameOf(target, startingRef);
-		LOGGER.debug("| Set field {}: {}", key, value);
+		LOGGER.debug("| Set field {}", key);
+		LOGGER.trace("| Set field {}: {}", key, value);
 		BsonDocument result = revisionBump();
 		result.getDocument("$set").append(key, value);
 		return result;
