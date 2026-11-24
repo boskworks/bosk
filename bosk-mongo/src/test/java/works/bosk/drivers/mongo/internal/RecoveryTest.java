@@ -429,6 +429,39 @@ class RecoveryTest {
 			}, (_) -> initializeDatabase("after drop"));
 		}
 
+		/**
+		 * Deleting the root state document leaves the collection invalid.
+		 * Outside a refurbish, the driver never deletes it, so the deletion
+		 * signals that the state is being replaced. Both formats disconnect on
+		 * the DELETE itself rather than waiting for a flush to find it missing.
+		 */
+		@Test
+		void rootDocumentDeleted_reconnectsAndReloads() throws InterruptedException, IOException {
+			TestEntity before = initializeDatabase("before root deletion");
+			Bosk<TestEntity> bosk = new Bosk<>(
+				boskName(getClass().getSimpleName()),
+				TestEntity.class,
+				AbstractMongoDriverTest::initialState,
+				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+			assertEventuallyEquals(bosk, before, () -> bosk.rootReference().value());
+
+			LOGGER.debug("Delete the root state document");
+			MongoCollection<BsonDocument> collection = mongoService.client()
+				.getDatabase(driverSettings.database())
+				.getCollection(driverSettings.collection(), BsonDocument.class);
+			collection.deleteMany(rootDocumentsFilter());
+
+			LOGGER.debug("Rebuild the collection so the driver can reload");
+			collection.deleteMany(new BsonDocument());
+			TestEntity after = initializeDatabase("after root deletion");
+			assertEventuallyEquals(bosk, after, () -> bosk.rootReference().value());
+
+			assertTrue(errorRecorder.disconnections.stream()
+					.anyMatch(e -> e instanceof CollectionRewrittenException
+						&& String.valueOf(e.getMessage()).contains("Root document has been deleted")),
+				"Deleting the root state document must make the receiver reload: " + errorRecorder);
+		}
+
 		@Test
 		void documentDeleted_recovers() throws InterruptedException, IOException {
 			testRecovery(() -> {

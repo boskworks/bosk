@@ -491,6 +491,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			LOGGER.debug("Ignoring event for unrecognized document key: {} type {}", event.getDocumentKey(), bsonDocumentID.getClass());
 			return;
 		}
+		if (event.getOperationType() == DELETE && ROOT_DOCUMENT_ID.equals(bsonDocumentID)) {
+			throw new CollectionRewrittenException("Root document has been deleted", event.getOperationType());
+		}
 		validateEventEpoch(event);
 
 		// This is an event we care about
@@ -614,13 +617,9 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					finishedRevision(docId, revision);
 				} break;
 				case DELETE: {
-					// No other events in the transaction matter if the root document is gone.
-					// This can happen during a refurbish, so we don't want to throw UnprocessableEventException
-					// even though it's highly disruptive.
-					// We deliberately don't clear the applied revisions: the re-created
-					// document's revision and the epoch together ensure that
-					// flushes still wait for the re-initialized collection.
-					LOGGER.debug("Root document has been deleted");
+					// Root-document deletions are rejected in onEvent, so this is a
+					// sub-document deletion, which leaves the assembled state unchanged.
+					LOGGER.debug("Document has been deleted");
 				} break;
 				default: {
 					throw new UnprocessableEventException("Cannot process event", topmostEvent.getOperationType());

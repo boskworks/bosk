@@ -223,8 +223,8 @@ class ChangeReceiver implements Closeable {
 								}
 							}
 						} catch (CollectionRewrittenException e) {
-							// Expected when another replica refurbishes the collection to a different format.
-							disconnectExpected("Database format changed", REMEDY_CONTINUE, e);
+							// Expected when the collection is rewritten: a refurbish, or a deleted root document.
+							disconnectExpected("Collection rewritten", REMEDY_CONTINUE, e);
 							continue;
 						} catch (UnprocessableEventException | UnexpectedEventProcessingException e) {
 							disconnect("Unable to process MongoDB change event", REMEDY_CONTINUE, e);

@@ -284,10 +284,11 @@ The `FormatDriver` is expected to perform the appropriate operations in order to
 or else it can throw `UnprocessableEventException`, which causes the `ChangeReceiver` to reset
 and reinitialize from scratch with a new `FormatDriver`.
 
-If instead the collection's manifest now describes a different format than the one this driver loaded,
-`onEvent` throws `CollectionRewrittenException`.
+If instead the collection has been rewritten, `onEvent` throws
+`CollectionRewrittenException`: a manifest that describes a different format,
+a deleted root state document, or a same-format refurbish.
 This is expected rather than exceptional;
-it happens in particular when another bosk performs a `refurbish` to a different format.
+it happens in particular when another bosk performs a `refurbish`.
 The `ChangeReceiver` reloads the state and continues without treating it as a problem.
 
 The `FormatDriver` keeps a `FlushLock` that tracks the revision number of every state document
@@ -403,9 +404,8 @@ A pleasant consequence of this design is that
 the driver gracefully reinitializes if some other server performs a `refurbish` operation:
 if the refurbish changes the format, then the driver will receive some change event it can't process,
 causing it to reinitialize, which naturally re-reads the manifest and re-detects the format.
-On the other hand, if the refurbish doesn't change the format,
-then the driver will see no change events it can't handle,
-and it will simply continue running without interruption.
+For a same-format refurbish, the state document is deleted and rewritten,
+so both formats reload and pick up the new state.
 
 `MainDriver` and `ChangeReceiver` have a lifetime that coincides with that of the `Bosk`.
 `FormatDriver` and `FlushLock` have a lifetime that coincides with that of the cursor.

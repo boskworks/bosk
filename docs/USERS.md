@@ -998,8 +998,8 @@ on a shared document.
 
 `MongoDriver` is designed to tolerate some amount of manual intervention in the database by an operator.
 If something has gone wrong and you need to do an emergency repair,
-`MongoDriver` will try to accommodate your changes, especially if you increment the `revision`
-number of the topmost document you changed.
+`MongoDriver` will try to do something reasonable,
+and once the state is repaired, connected instances will eventually recover.
 See `MongoDriverRecoveryTest` for some of the scenarios we've envisaged and tested.
 It cannot, though, accommodate invalid collection contents.
 For example, a state document whose `epoch` disagrees with the manifest's makes the collection invalid,

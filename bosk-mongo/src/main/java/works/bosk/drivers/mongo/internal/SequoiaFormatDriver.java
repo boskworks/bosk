@@ -262,12 +262,11 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 				}
 			} break;
 			case DELETE: {
-				// The revision number and incarnation have been deleted along with
-				// the document. We deliberately don't clear the applied revisions:
-				// the re-created document's revision and the epoch together
-				// ensure that flushes still wait for the re-initialized collection.
-				LOGGER.debug("Document containing the revision has been deleted");
-			} break;
+				// The only state document is the root, so its deletion means the
+				// stored state is gone. Outside a refurbish, the driver never
+				// deletes it, so the deletion signals a rewrite: reload.
+				throw new CollectionRewrittenException("Root document has been deleted", event.getOperationType());
+			}
 			default: {
 				throw new UnprocessableEventException("Cannot process event", event.getOperationType());
 			}
