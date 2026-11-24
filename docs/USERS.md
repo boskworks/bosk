@@ -1017,30 +1017,21 @@ The other two belong to a single document:
 the `incarnation` is set when the document is created,
 and the `revision` is incremented every time the document changes.
 
-All three are used for flushes, which wait for a change to reach the in-memory state:
-`epoch` tells the flush which collection instance it is waiting in,
-`incarnation` which lifetime of the document, and `revision` which change to it.
+A flush does not read these values. It waits for the receiver's submitted cluster
+time and probes the change stream for state writes after it; it also reads the
+manifest and root with local read concern to confirm that the collection has not
+been rewritten.
 
-- `epoch`: used for flushes and for updates.
-  Detects when the collection has been re-created or refurbished to a different format,
-  either of which makes the revision numbers a flush previously read unreliable.
+- `epoch`: detects when the collection has been re-created or refurbished to a different format.
   If a flush detects that the epoch has changed,
   that triggers a disconnect and reconnect, so the driver reloads from the new collection.
   For updates, if an update didn't match any documents and the manifest's epoch has changed,
   the driver disconnects and retries the update against the new format.
-- `incarnation`: used for flushes, alongside the revision.
-  Detects when a document has been deleted and re-created,
-  which gives it a new incarnation and resets its revision to 1,
-  making the old revision numbers incomparable with the new ones.
-  A flush treats a different incarnation as already satisfied,
-  because the target belongs to a superseded lifetime,
-  and otherwise waits for the revision to catch up within the same lifetime.
-- `revision`: used for flushes, and to recognise change events the driver has already applied.
-  Each update increments the revision of the topmost document it writes,
-  so a document's revision counts the updates that wrote it.
-  A flush waits for each document's revision to reach the value it read,
-  ancestors before descendants,
-  so updates to unrelated graft points do not hold each other up.
+- `incarnation`: identifies a document's lifetime.
+  A document that has been deleted and re-created gets a new incarnation,
+  which makes its revision numbers incomparable with the old ones.
+- `revision`: counts the updates that wrote the document.
+  Each update increments the revision of the topmost document it writes.
 
 ##### Format evolution
 

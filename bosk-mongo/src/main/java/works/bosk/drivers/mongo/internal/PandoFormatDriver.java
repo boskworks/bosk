@@ -1,7 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.MongoException;
-import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.UpdateOptions;
@@ -12,7 +10,6 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -20,10 +17,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
-import org.bson.conversions.Bson;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
-import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonNull;
 import org.bson.BsonObjectId;
@@ -51,15 +46,12 @@ import works.bosk.drivers.mongo.PandoFormat;
 import works.bosk.drivers.mongo.exceptions.FormatMisconfigurationException;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
 import works.bosk.drivers.mongo.internal.TransactionalUpdateOperation.Outcome;
-import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 import works.bosk.exceptions.NotYetImplementedException;
 
 import static com.mongodb.client.model.Filters.exists;
 import static com.mongodb.client.model.Filters.or;
 import static com.mongodb.client.model.Filters.regex;
-import static com.mongodb.client.model.Projections.fields;
-import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.DELETE;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
@@ -113,8 +105,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			collection,
 			downstream,
 			flushTimeout,
-			epoch,
-			driverSettings.testing().flushBarrier()
+			epoch
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
@@ -430,30 +421,24 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	@Override
 	public void writeAllState(StateAndMetadata<R> priorContents) {
-		replaceFlushLock(priorContents.documentRevisions());
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		RevisionTuple rootRevision = RevisionTuple.nextAfter(
 			priorContents.documentRevisions().get(ROOT_DOCUMENT_ID));
-		Map<BsonString, RevisionTuple> written = new HashMap<>();
 
 		LOGGER.debug("** Initial upsert");
-		writeAllState(initialState, rootRevision, written);
-
-		// The local state will be up to date with no need to process a change stream event.
-		finishedRevisions(written);
+		writeAllState(initialState, rootRevision);
 	}
 
 	private void writeAllState(
 		BsonValue initialState,
-		RevisionTuple newRevision,
-		Map<BsonString, RevisionTuple> writtenRevisions
+		RevisionTuple newRevision
 	) {
 		// The diagnostic attributes come from the current thread.
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes these state document writes and the manifest write atomic.
 		if (initialState instanceof BsonDocument initialStateDocument) {
 			List<BsonDocument> allParts = scatter(rootRef, initialStateDocument);
-			writeSubParts(allParts.subList(0, allParts.size() - 1), writtenRevisions);
+			writeSubParts(allParts.subList(0, allParts.size() - 1));
 			// initialState has now been stubbed-out where the sub-parts were written
 		}
 		BsonDocument rootDocument = initialDocument(initialState, newRevision, ROOT_DOCUMENT_ID);
@@ -467,7 +452,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		LOGGER.trace("| Options: {}", options);
 		UpdateResult result = collection.updateOne(filter, update, options);
 		LOGGER.debug("| Result: {}", result);
-		writtenRevisions.put(ROOT_DOCUMENT_ID, newRevision);
 	}
 
 	/**
@@ -597,35 +581,18 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 					if (fullDocument == null) {
 						throw new UnprocessableEventException("Missing fullDocument on topmost event", topmostEvent.getOperationType());
 					}
-					RevisionTuple revision = RevisionTuple.from(fullDocument);
-					if (flushLock.get().alreadySeen(docId, revision)) {
-						LOGGER.debug("Skipping revision {} for {}", revision, docId);
-						markSubmitted(submitted);
-						return;
-					}
 
 					LOGGER.debug("Topmost event is last event: {}", topmostEvent.getOperationType());
 					propagateDownstream(topmostEvent, priorEvents);
-
-					recordRevisions(priorEvents);
-					finishedRevision(docId, revision);
 				} break;
 				case UPDATE: {
-					RevisionTuple revision = revisionFromUpdateEvent(docId, topmostEvent);
-					if (flushLock.get().alreadySeen(docId, revision)) {
-						LOGGER.debug("Skipping revision {} for {}", revision, docId);
-						markSubmitted(submitted);
-						return;
-					}
-
 					LOGGER.debug("Topmost event is last event");
 					propagateDownstream(topmostEvent, priorEvents);
-					recordRevisions(priorEvents);
-					finishedRevision(docId, revision);
 				} break;
 				case DELETE: {
 					// Root-document deletions are rejected in onEvent, so this is a
 					// sub-document deletion, which leaves the assembled state unchanged.
+					assert !ROOT_DOCUMENT_ID.equals(docId) : "Root document deletion should have been rejected";
 					LOGGER.debug("Document has been deleted");
 				} break;
 				default: {
@@ -634,48 +601,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			}
 		}
 		markSubmitted(submitted);
-	}
-
-	/**
-	 * @return the revision for the document whose revision was bumped by
-	 * {@code event}, combining the event's new revision number with the
-	 * document's current incarnation (a plain revision bump does not change the
-	 * incarnation)
-	 */
-	private RevisionTuple revisionFromUpdateEvent(BsonString docId, ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
-		UpdateDescription updateDescription = event.getUpdateDescription();
-		if (updateDescription == null) {
-			throw new UnprocessableEventException("Missing update description on last event", event.getOperationType());
-		}
-		BsonDocument updatedFields = updateDescription.getUpdatedFields();
-		BsonInt64 revision = updatedFields.getInt64(DocumentFields.revision.name(), null);
-		if (revision == null) {
-			throw new UnprocessableEventException("Last event does not carry a revision", event.getOperationType());
-		}
-		BsonString incarnation = updatedFields.getString(DocumentFields.incarnation.name(), null);
-		String incarnationValue = incarnation == null
-			? requireNonNull(flushLock.get().currentIncarnation(docId), "Current incarnation")
-			: incarnation.getValue();
-		return new RevisionTuple(incarnationValue, revision.longValue());
-	}
-
-	/**
-	 * Records the revisions carried by documents written earlier in the same
-	 * transaction, so future flushes can wait for them even though only the
-	 * topmost document's revision advances on ordinary updates.
-	 */
-	private void recordRevisions(List<ChangeStreamDocument<BsonDocument>> priorEvents) {
-		for (ChangeStreamDocument<BsonDocument> event: priorEvents) {
-			switch (event.getOperationType()) {
-				case INSERT, REPLACE -> {
-					BsonDocument fullDocument = event.getFullDocument();
-					if (fullDocument != null) {
-						finishedRevision(documentIdOf(event), RevisionTuple.from(fullDocument));
-					}
-				}
-				default -> { /* Other events do not carry a revision number */ }
-			}
-		}
 	}
 
 	private void propagateDownstream(ChangeStreamDocument<BsonDocument> topmostEvent, List<ChangeStreamDocument<BsonDocument>> priorEvents) throws UnprocessableEventException {
@@ -1094,46 +1019,6 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	@Override
-	protected List<FlushLock.Target> readRevisionsToFlush() throws FlushFailureException, InterruptedException {
-		LOGGER.debug("readRevisionsToFlush");
-		try (DocCursor cursor = collection
-			.findLatest(regex("_id", "^[|]"))
-			.projection(fields(include(
-				"_id",
-				DocumentFields.epoch.name(),
-				DocumentFields.incarnation.name(),
-				DocumentFields.revision.name())))
-			.sort(new BsonDocument("_id", new BsonInt32(-1))) // Bottom-up: root last
-			.cursor()
-		) {
-			List<FlushLock.Target> bottomUp = new ArrayList<>();
-			boolean foundRoot = false;
-			while (cursor.hasNext()) {
-				BsonDocument document = cursor.next();
-				BsonString id = document.getString("_id");
-				checkEpoch(document);
-				bottomUp.add(new FlushLock.Target(id, RevisionTuple.from(document)));
-				if (isRootDocumentId(id)) {
-					foundRoot = true;
-				}
-			}
-			if (!foundRoot) {
-				throw new RevisionFieldDisruptedException("No root documents found");
-			}
-			// Wait top-down: ancestors before descendants.
-			Collections.reverse(bottomUp);
-			return bottomUp;
-		} catch (MongoInterruptedException e) {
-			Thread.interrupted();
-			InterruptedException exception = new InterruptedException("Interrupted while reading revisions");
-			exception.initCause(e);
-			throw exception;
-		} catch (MongoException e) {
-			throw new FlushFailureException("Failed to read revisions", e);
-		}
-	}
-
-	@Override
 	protected BsonDocument documentFilter(Reference<?> docRef) {
 		return new BsonDocument("_id", new BsonString(docBsonPath(docRef, rootRef)));
 	}
@@ -1289,20 +1174,14 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 
 	private void writeSubPartsIfAny(PreparedReplacement prepared) {
 		if (prepared.hasSubParts()) {
-			writeSubParts(prepared.subParts(), null);
+			writeSubParts(prepared.subParts());
 		}
 	}
 
 	/**
 	 * Writes the sub-part documents produced by {@link #scatter}.
-	 *
-	 * @param writtenRevisions if non-null, receives the revision assigned to each
-	 * sub-part written
 	 */
-	private void writeSubParts(
-		List<BsonDocument> subParts,
-		@Nullable Map<BsonString, RevisionTuple> writtenRevisions
-	) {
+	private void writeSubParts(List<BsonDocument> subParts) {
 		LOGGER.debug("Document has {} sub-parts", subParts.size());
 		for (BsonDocument part: subParts) {
 			// scatter() already prepended idPrefix to the _id; don't prepend it again
@@ -1319,15 +1198,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			LOGGER.trace("Upsert sub-part: filter={} replacement={}", filter, part);
 			UpdateResult result = collection.replaceOne(filter, part, new ReplaceOptions().upsert(true));
 			LOGGER.debug("| Upsert result: {}", result);
-			if (writtenRevisions != null) {
-				writtenRevisions.put(id, newRevision);
-			}
 		}
-	}
-
-	@Override
-	public void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata) {
-		super.onHasBeenApplied(stateAndMetadata);
 	}
 
 	@Override

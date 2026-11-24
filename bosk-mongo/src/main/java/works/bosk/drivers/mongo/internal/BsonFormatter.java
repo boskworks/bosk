@@ -320,9 +320,11 @@ public class BsonFormatter {
 		 * Every write includes it in its filter, so a write planned against a
 		 * format that has since been refurbished away matches nothing.
 		 * <p>
-		 * A flush compares it to the epoch the driver read from the manifest,
-		 * because a collection that has been deleted and reinitialized may reuse
-		 * revision numbers the driver has already seen.
+		 * An INSERT or REPLACE carrying a different epoch means this driver's view
+		 * of the collection is stale, so the receiver reloads. An UPDATE that
+		 * modifies it is rejected. A collection that has been deleted and
+		 * reinitialized may otherwise reuse document identities the driver has
+		 * already seen.
 		 * <p>
 		 * This field is required on every state document.
 		 */

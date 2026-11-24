@@ -38,7 +38,6 @@ public class TestParameters {
 				+ "_" + dbCounter.incrementAndGet()
 				+ "_" + format.getClass().getSimpleName()
 				+ timing.suffix;
-			boolean flushBarrier = Boolean.getBoolean("bosk.test.flushBarrier");
 			return new ParameterSet(
 				format + "," + timing,
 				MongoDriverSettings.builder()
@@ -46,7 +45,6 @@ public class TestParameters {
 					.timescaleMS(LONG_TIMESCALE)
 					.testing(MongoDriverSettings.Testing.builder()
 						.eventDelayMS(timing.eventDelayMS)
-						.flushBarrier(flushBarrier)
 						.build())
 					.database(dbName)
 			);

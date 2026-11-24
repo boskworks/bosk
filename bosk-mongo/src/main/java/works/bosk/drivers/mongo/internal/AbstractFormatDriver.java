@@ -9,14 +9,12 @@ import com.mongodb.client.model.changestream.UpdateDescription;
 import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
-import org.bson.conversions.Bson;
 import org.bson.BsonDocument;
+import org.bson.conversions.Bson;
 import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonNull;
@@ -68,9 +66,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	final Duration flushTimeout;
 	final Identifier epoch;
 
-	final AtomicReference<FlushLock> flushLock = new AtomicReference<>(null);
 	final FlushBarrier barrier;
-	private final boolean flushBarrierEnabled;
 
 	final DocumentFieldTracker fieldTracker = new DocumentFieldTracker();
 
@@ -81,8 +77,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		SessionCollection collection,
 		BoskDriver downstream,
 		Duration flushTimeout,
-		Identifier epoch,
-		boolean flushBarrierEnabled
+		Identifier epoch
 	) {
 		this.rootRef = rootRef;
 		this.context = context;
@@ -91,7 +86,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		this.downstream = downstream;
 		this.flushTimeout = flushTimeout;
 		this.epoch = epoch;
-		this.flushBarrierEnabled = flushBarrierEnabled;
 		this.barrier = new FlushBarrier();
 	}
 
@@ -131,14 +125,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		if (bsm.state() == null) {
 			throw new IOException("No existing state in document");
 		}
-		// The new FlushLock must not consider the loaded revisions "already seen":
-		// MainDriver publishes this driver before applying the loaded state downstream,
-		// and a flush that failed during a disconnect and is retrying could wake up on the
-		// publish and, seeing the loaded revision already satisfied, report success while
-		// the in-memory state is still stale. Seeding the lock one revision short makes
-		// such flushes wait until MainDriver calls onHasBeenApplied, which advances the
-		// lock once the loaded state has actually been applied downstream.
-		replaceFlushLock(revisionsBefore(bsm.documentRevisions()));
 
 		R root;
 		try {
@@ -152,38 +138,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	@Override
-	public void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata) {
-		flushLock.get().finishedAll(stateAndMetadata.documentRevisions());
-	}
-
-	@Override
 	public void markSubmitted(BsonTimestamp position) {
 		barrier.markSubmitted(position);
-	}
-
-	/**
-	 * @return a copy of {@code revisions} with each revision decremented by one,
-	 * suitable for seeding a {@link FlushLock} before the loaded state has been
-	 * applied downstream
-	 */
-	static Map<BsonString, RevisionTuple> revisionsBefore(Map<BsonString, RevisionTuple> revisions) {
-		Map<BsonString, RevisionTuple> result = new HashMap<>(revisions.size());
-		revisions.forEach((documentId, revision) ->
-			result.put(documentId, new RevisionTuple(revision.incarnation(), revision.revision() - 1)));
-		return result;
-	}
-
-	/**
-	 * Must be called before {@link FormatDriver#onHasBeenApplied} or any event processing.
-	 *
-	 * @param applied the revision whose state has already been applied to the
-	 * local Bosk state, for each document, keyed by document ID. A flush returns
-	 * immediately for these and waits for anything newer. A load passes each
-	 * revision one short, because the loaded state is not applied until
-	 * {@link #onHasBeenApplied}.
-	 */
-	protected void replaceFlushLock(Map<BsonString, RevisionTuple> applied) {
-		flushLock.set(new FlushLock(applied, flushTimeout));
 	}
 
 	abstract BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException;
@@ -199,21 +155,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * @return true if the update matched at least one document
 	 */
 	protected abstract boolean doUpdate(BsonDocument updateDoc, BsonDocument filter);
-
-	/**
-	 * Reads every state document's revision number and incarnation, in bottom-up
-	 * order (descendants before ancestors), for {@link #flush()} to wait on.
-	 * <p>
-	 * Descendants are read first so that, if a concurrent transaction removes a
-	 * descendant and bumps an ancestor, the ancestor read happens after the
-	 * removal and therefore observes the ancestor's new revision. Waiting then
-	 * proceeds top-down, so the ancestor's transaction is applied before its
-	 * descendants' revisions are interpreted.
-	 * <p>
-	 * Each document's epoch is checked against this driver's, so a collection that
-	 * has been reinitialized or refurbished since the driver loaded it fails the flush.
-	 */
-	protected abstract List<FlushLock.Target> readRevisionsToFlush() throws FlushFailureException, InterruptedException;
 
 	/**
 	 * The change to the topmost document of a transaction: it bumps that
@@ -497,29 +438,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		LOGGER.debug("Ignoring benign manifest change event");
 	}
 
-	/**
-	 * Marks the given documents' revisions as applied, waking any flush waiting
-	 * for them.
-	 */
-	protected void finishedRevisions(Map<BsonString, RevisionTuple> revisions) {
-		flushLock.get().finishedAll(revisions);
-	}
-
-	/**
-	 * Marks one document's revision as applied, waking any flush waiting for it.
-	 */
-	protected void finishedRevision(BsonString documentId, RevisionTuple revision) {
-		flushLock.get().finished(documentId, revision);
-	}
-
-	/**
-	 * @return true if {@code documentId} identifies the root document, as
-	 * selected by {@link #rootDocumentsFilter()}
-	 */
-	protected boolean isRootDocumentId(BsonString documentId) {
-		return documentId.equals(rootDocumentsFilter().get("_id"));
-	}
-
 	private RevisionTuple rootRevision(BsonStateAndMetadata bsm) {
 		return requireNonNull(
 			bsm.documentRevisions().get(rootDocumentsFilter().getString("_id")),
@@ -528,30 +446,27 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		// The manifest and root reads use the raw collection, so they bypass the
-		// session and read the latest committed values: flush needs no session or
-		// transaction.
+		// The manifest read is what lets the probes watch only state writes:
+		// a rewritten collection changes the manifest's epoch.
+		// The root read covers a root deleted without replacing the collection.
 		collection.requireNoTransaction();
-		if (flushBarrierEnabled) {
-			requireExpectedEpoch();
-			// A single absolute deadline for the whole attempt: both waits stop at the
-			// same instant, so their combined time cannot exceed flushTimeout.
-			long flushDeadline = System.nanoTime() + flushTimeout.toNanos();
-			awaitCaughtUpTo(barrier.awaitSubmitted(flushDeadline), flushDeadline);
-		} else {
-			List<FlushLock.Target> targets = readRevisionsToFlush();
-			LOGGER.debug("Revisions to flush: {}", targets);
-			flushLock.get().awaitAll(targets);
-		}
+		requireExpectedEpoch();
+		// A single absolute deadline for the whole attempt: both waits stop at the
+		// same instant, so their combined time cannot exceed flushTimeout.
+		long flushDeadline = System.nanoTime() + flushTimeout.toNanos();
+		awaitCaughtUpTo(barrier.awaitSubmitted(flushDeadline), flushDeadline);
 		LOGGER.debug("| Flush downstream");
 		downstream.flush();
 	}
 
 	/**
 	 * Checks that the manifest and root still carry this driver's epoch.
-	 * The manifest check is what lets the probes watch only state writes:
-	 * a collection that has been rewritten or reinitialized changes the
-	 * manifest's epoch, so the probe need not watch for those events.
+	 * A collection rewritten into another format has a different epoch, and so
+	 * does a reinitialized collection, so a flush fails and reloads rather than
+	 * waiting for writes that belong to the new collection.
+	 * A same-format refurbish keeps the epoch, but it deletes the root, which
+	 * makes the receiver reload; its writes are state writes, so a flush waits
+	 * for them in any case.
 	 * The root check covers a root deleted without replacing the collection.
 	 *
 	 * @throws FlushFailureException if the manifest or root is missing,
@@ -697,32 +612,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 */
 	private static final int BACKLOG_PROBE_BATCH_SIZE = 100;
 
-	/**
-	 * Checks that {@code document} carries this driver's epoch.
-	 * <p>
-	 * Revisions from a different epoch are not comparable with the ones this
-	 * driver has applied, so {@link #flush()} must not wait on them.
-	 *
-	 * @throws EpochMismatchException if it does not, meaning the collection has
-	 * been reinitialized or refurbished since this driver loaded it
-	 */
-	protected void checkEpoch(BsonDocument document) throws EpochMismatchException {
-		BsonString expected = new BsonString(epoch.toString());
-		BsonValue found = document.get(DocumentFields.epoch.name());
-		if (!expected.equals(found)) {
-			throw new EpochMismatchException("State document " + document.getString("_id").getValue()
-				+ " has epoch " + found + ", but this driver is using " + epoch);
-		}
-	}
-
 	@Override
 	public void close() {
 		LOGGER.debug("+ close()");
-		FlushLock lock = flushLock.get();
-		if (lock != null) {
-			// A driver that was created but never loaded its state has no FlushLock.
-			lock.close();
-		}
 		barrier.close();
 	}
 

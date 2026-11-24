@@ -123,8 +123,6 @@ leaves its document behind but removes the container's stub (see
 [Deleted nodes can be left behind](#deleted-nodes-can-be-left-behind)), so the
 presence of the document alone does not mean the entry exists.
 
-`flush()` reads every document's revision number and incarnation in bottom-up
-order (descendants before ancestors) using `ReadConcern.LOCAL`; it is read-only.
-It then waits for them in top-down order (ancestors before descendants).
-Waiting for each document's revision means a flush observes changes to graft
-documents that do not touch the root.
+`flush()` does not scan the state documents. It reads the manifest and root with
+`ReadConcern.LOCAL` to confirm the collection has not been rewritten, then waits
+for the change-stream barrier to reach the cluster time it captured.

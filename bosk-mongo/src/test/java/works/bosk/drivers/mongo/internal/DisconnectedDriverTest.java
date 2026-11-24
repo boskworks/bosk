@@ -10,16 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class DisconnectedDriverTest {
 
 	@Test
-	void revisionFieldDisrupted_immediateReconnect() {
+	void formatChangedDuringUpdate_immediateReconnect() {
 		var driver = new DisconnectedDriver<TestEntity>(
-			new RevisionFieldDisruptedException("No root documents found"));
-		assertThrows(ImmediateReconnectException.class, driver::flush);
-	}
-
-	@Test
-	void epochMismatch_immediateReconnect() {
-		var driver = new DisconnectedDriver<TestEntity>(
-			new EpochMismatchException("Collection epoch has changed"));
+			new FormatChangedDuringUpdateException("Collection format changed"));
 		assertThrows(ImmediateReconnectException.class, driver::flush);
 	}
 
@@ -29,7 +22,7 @@ class DisconnectedDriverTest {
 			new IllegalStateException("Something else went wrong"));
 		DisconnectedException e = assertThrows(DisconnectedException.class, driver::flush);
 		assertEquals(DisconnectedException.class, e.getClass(),
-			"Only revision disruptions warrant an immediate reconnect");
+			"Only a format change warrants an immediate reconnect");
 	}
 
 }

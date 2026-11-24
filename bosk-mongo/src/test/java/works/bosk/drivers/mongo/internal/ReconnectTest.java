@@ -551,9 +551,9 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 	@Test
 	void interruptedFlush_doesNotDisconnectHealthyDriver(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		// Regression test for a bug in doRetryableDriverOperation: an InterruptedException
-		// thrown by a driver operation (here, a flush interrupted while waiting on a
-		// FlushLock) used to be treated as a general failure, disconnecting a perfectly
-		// healthy driver and forcing a full reconnect cycle. An interrupt is not a
+		// thrown by a driver operation (here, a flush interrupted while waiting for the
+		// receiver to catch up) used to be treated as a general failure, disconnecting a
+		// perfectly healthy driver and forcing a full reconnect cycle. An interrupt is not a
 		// database-health problem, so the driver must stay connected and the operation
 		// should be retried.
 		//
@@ -632,8 +632,9 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 			});
 			flusher.start();
 
-			// Give the flush a moment to block on the flush lock, then interrupt it
+			// Give the flush a moment to block in the flush barrier, then interrupt it
 			Thread.sleep(2 * SHORT_TIMESCALE);
+			assertTrue(flusher.isAlive(), "Flush should be blocked in the barrier before the interrupt");
 			flusher.interrupt();
 
 			// Release the gated event so the flush can complete
@@ -654,9 +655,9 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		// Regression test for a race where, on reconnect, MainDriver publishes the new
 		// FormatDriver BEFORE it applies the freshly-loaded database state to the in-memory
 		// tree. A flush that failed during the disconnect and is retrying can wake up on
-		// the publish, find the new FlushLock's revision already satisfied (because
-		// loadAllState seeded it with the loaded revision), and return success while the
-		// in-memory state still holds the pre-reconnect contents.
+		// the publish and return success while the in-memory state still holds the
+		// pre-reconnect contents. The barrier prevents that: it has no position until
+		// markSubmitted runs, which happens only after the fresh state is submitted.
 		//
 		// We force a disconnect, write fresh state to the database while disconnected, and
 		// then hold the ChangeReceiver between publishFormatDriver and
@@ -677,15 +678,14 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		//          await(driversChanged)
 		//   countDown(proceedWithReconnect)
 		//                                 onConnectionSucceeded
-		//                                   loadAllState (seeds the flush lock)
+		//                                   loadAllState (reads the snapshot)
 		//                                   publishFormatDriver (wakes the flush)
-		//     (flush retries, reads the    downstream.submitReplacement
-		//      fresh revision, and must     reconnectGate.signal()
+		//     (flush retries against the   downstream.submitReplacement
+		//      new driver, and must        reconnectGate.signal()
 		//      block awaiting it)           reconnectGate.awaitRelease
 		//   await(reconnectGate)
 		//   assert flush is blocked
 		//   reconnectGate.release()        (submitReplacement completes)
-		//                                   downstream.flush()
 		//                                   markSubmitted (releases the flush)
 		//   flush() returns; a read session sees the fresh state
 

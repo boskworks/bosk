@@ -339,9 +339,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			LoadResult<R> loaded = loadState();
 			entireState = loaded.state().state();
 
-			// Hasn't technically been applied, but we're still initializing the Bosk, and its constructor won't return until the state has been applied
-			loaded.driver().onHasBeenApplied(loaded.state());
-
 			publishFormatDriver(loaded.driver(), loaded.snapshotTime());
 			// The state isn't in the tree yet, but the constructor won't return
 			// until it is, and nothing can flush before then.
@@ -454,8 +451,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						Identifier epoch;
 						boolean formatChanged;
 						StateAndMetadata<R> allState;
-						// loadAllState replaces the live driver's FlushLock, which event
-						// processing also updates, so the two must not run concurrently.
+						// loadAllState seeds the live driver's field tracker, which
+						// event processing also updates, so the two must not run
+						// concurrently.
 						synchronized (receiver) {
 							// Use the driver that does the load throughout: a retry can run after
 							// another replica refurbished the collection, so the driver this
@@ -713,8 +711,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				downstream.submitReplacement(boskInfo.rootReference(), loaded.state().state());
 				LOGGER.debug("Done submitting downstream");
 
-				downstream.flush();
-				loaded.driver().onHasBeenApplied(loaded.state());
 				loaded.driver().markSubmitted(loaded.snapshotTime());
 			} else {
 				LOGGER.debug("Running initialStateTask");
@@ -1203,6 +1199,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	/**
 	 * Sets {@link #drivers} and also signals any threads waiting on {@link #driversChanged}
 	 * to retry their operation.
+	 * <p>
+	 * The new driver's barrier has no position until the caller reports its
+	 * initial state's position with {@link FormatDriver#markSubmitted}, so a
+	 * flush that retries against the new driver waits for that.
 	 *
 	 * @param loadTime the time of the state the new driver represents: the
 	 * snapshot it was loaded from, or the commit that initialized it, or empty if it loaded no state

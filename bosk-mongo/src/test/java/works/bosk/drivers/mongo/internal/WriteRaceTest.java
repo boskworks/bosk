@@ -133,7 +133,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 	 * {@link #loadConcurrentWithWrite_mustConverge()}: the change receiver can
 	 * process events before the constructor has applied the loaded state to the
 	 * in-memory tree, in which case the events are ignored as "root does not
-	 * exist" while still advancing the flush lock, leaving the state permanently
+	 * exist" while still advancing the submitted cluster time, leaving the state permanently
 	 * stale.
 	 */
 	@Test

@@ -30,12 +30,6 @@ class MainDriverFlushClassificationTest {
 	}
 
 	@Test
-	void revisionDisruption_staysFlushFailure() {
-		RevisionFieldDisruptedException e = new RevisionFieldDisruptedException("Disrupted");
-		assertSame(e, MainDriver.classifyFlushFailure(e, RETRY_AFTER));
-	}
-
-	@Test
 	void retryableFlush_staysRetryableFlush() {
 		RetryableFlushException e = new RetryableFlushException("Retry later", RETRY_AFTER);
 		assertSame(e, MainDriver.classifyFlushFailure(e, RETRY_AFTER));
@@ -57,7 +51,7 @@ class MainDriverFlushClassificationTest {
 
 	@Test
 	void immediateReconnect_staysFlushFailure() {
-		ImmediateReconnectException e = new ImmediateReconnectException(new RevisionFieldDisruptedException("Disrupted"));
+		ImmediateReconnectException e = new ImmediateReconnectException(new IllegalStateException("Disrupted"));
 		FlushFailureException result = assertInstanceOf(FlushFailureException.class,
 			MainDriver.classifyFlushFailure(e, RETRY_AFTER));
 		assertFalse(result instanceof RetryableFlushException,

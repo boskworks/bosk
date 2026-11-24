@@ -25,7 +25,7 @@ import works.bosk.drivers.mongo.status.MongoStatus;
  * </li><li>
  *     Describing updates as {@link UpdateOperation} objects
  * </li><li>
- *     Implementing {@link #flush()} (consider using {@link FlushLock})
+ *     Implementing {@link #flush()}
  * </li><li>
  *     Propagating {@link BoskContext context} downstream.
  * </li></ol>
@@ -174,12 +174,6 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * replacement driver a different value
 	 */
 	Identifier epoch();
-
-	/**
-	 * Indicates that the given state has been {@link #flush() flushed} to the downstream driver already,
-	 * or are otherwise known to have been applied to the bosk state.
-	 */
-	void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata);
 
 	/**
 	 * Waits until all prior updates have been applied to the downstream driver.

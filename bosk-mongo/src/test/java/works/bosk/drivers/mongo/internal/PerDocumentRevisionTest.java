@@ -1,6 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
@@ -18,7 +17,6 @@ import java.util.stream.Stream;
 import org.bson.BsonDocument;
 import org.bson.BsonInt64;
 import org.bson.BsonString;
-import org.bson.conversions.Bson;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
@@ -325,53 +323,6 @@ public class PerDocumentRevisionTest extends AbstractMongoDriverTest {
 			&& documentId.equals(event.getDocumentKey().getString("_id").getValue())
 			&& event.getUpdateDescription() != null
 			&& event.getUpdateDescription().getUpdatedFields().containsKey(DocumentFields.revision.name());
-	}
-
-	@Test
-	void flushReadsDocumentsBottomUp() throws Exception {
-		List<String> readOrder = new CopyOnWriteArrayList<>();
-		MainDriver.setProbes(TestProbes.noop().withFindInterceptor((filter, options, cursor) -> {
-			if (isFlushRevisionRead(options)) {
-				return new DocCursor() {
-					@Override
-					public boolean hasNext() {
-						return cursor.hasNext();
-					}
-
-					@Override
-					public BsonDocument next() {
-						BsonDocument document = cursor.next();
-						readOrder.add(document.getString("_id").getValue());
-						return document;
-					}
-
-					@Override
-					public void close() {
-						cursor.close();
-					}
-				};
-			} else {
-				return cursor;
-			}
-		}));
-		Bosk<TestEntity> bosk = newBosk();
-		bosk.driver().flush();
-		readOrder.clear();
-
-		bosk.driver().flush();
-
-		assertEquals(List.of("|catalog|124", "|catalog|123", "|"), readOrder,
-			"The flush read must go bottom-up, with the root last");
-	}
-
-	private static boolean isFlushRevisionRead(ReadOptions options) {
-		Bson projection = options.projection();
-		if (projection == null) {
-			return false;
-		}
-		BsonDocument projectionDocument = projection.toBsonDocument(
-			BsonDocument.class, MongoClientSettings.getDefaultCodecRegistry());
-		return projectionDocument.containsKey(DocumentFields.incarnation.name());
 	}
 
 	@Test

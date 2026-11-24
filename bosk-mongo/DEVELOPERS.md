@@ -85,12 +85,10 @@ We can state this as a set of properties that a running `MongoDriver` is expecte
   not of constructing a new `Bosk`.
 
 One subtlety is worth calling out because it is easy to get wrong:
-`flush()` is the only driver operation that reads the per-document revision numbers,
-so some problems (for example, a missing revision field or a changed epoch)
-are naturally noticed there first.
-The same problems must also be detected asynchronously,
-by change stream processing or when the state is reloaded,
-so that a driver whose application never flushes still recovers.
+a flush that cannot complete triggers a reconnect and reload.
+That is a strong form of recovery, and it can mask a problem
+that a driver whose application never flushes must still detect on its own,
+by change stream processing or when the state is reloaded.
 
 A consequence for tests:
 the driver's behaviour when `flush()` is never called is the ordinary case, not an exotic one,
@@ -249,7 +247,7 @@ Every state document carries the `state` payload plus metadata that the driver n
 | Field | Purpose |
 | --- | --- |
 | `_id` | The document's location in the conceptual state tree, so change stream events identify it |
-| `epoch` | A per-document copy of the manifest's epoch, a UUID that changes when the collection is initialized or refurbished into another format. Writes include it in their filter, so a stale write matches nothing instead of corrupting a document whose format it does not understand; a flush, whose revision reads are not atomic, compares it in each document to tell which revisions are safe to wait for |
+| `epoch` | A per-document copy of the manifest's epoch, a UUID that changes when the collection is initialized or refurbished into another format. Writes include it in their filter, so a stale write matches nothing instead of corrupting a document whose format it does not understand. |
 | `incarnation` | Distinguishes one lifetime of the document's `revision` counter |
 | `revision` | Bumped by the topmost write of a transaction: the flush unit, the dedup key, and the signal that a transaction's event tree is complete |
 | `lockId` | Makes a transaction that read the document a writer of it, so a concurrent writer conflicts |
@@ -273,7 +271,7 @@ The logical-existence check for a cross-document precondition's entry is also no
 entry absent, the update does nothing, which is always safe; if it reports it present, a concurrent deletion
 can be treated as happening after the update, so locking the ancestor chain would buy nothing.
 
-#### `onEvent` and revision tracking
+#### `onEvent` and `markSubmitted`
 
 The third feature that distinguishes a `FormatDriver` from a `MongoDriver`
 is that `FormatDriver` is expected to respond to change stream events.
@@ -291,15 +289,17 @@ This is expected rather than exceptional;
 it happens in particular when another bosk performs a `refurbish`.
 The `ChangeReceiver` reloads the state and continues without treating it as a problem.
 
-The `FormatDriver` keeps a `FlushLock` that tracks the revision number of every state document
-that has been applied downstream.
-When `loadAllState` reads the database, it seeds the lock one revision short of each
-loaded revision; `onHasBeenApplied` then advances the lock once `MainDriver` has applied the
-loaded state to the in-memory tree.
-This prevents a flush that is retrying across a reconnect from reporting success while the
-in-memory state is still stale.
-Each change event advances the revisions it carries, and `flush()` waits for the revisions it
-reads from the database to appear in the lock.
+The `FormatDriver` keeps a `FlushBarrier` that records the cluster time of the last event
+whose changes have been submitted downstream.
+The barrier has no position until the driver marks the initial state's position with
+`markSubmitted`: the snapshot's cluster time, or the commit that initialized the collection.
+The receiver thread marks it before it processes any event, so the first position is always
+the initial state's. This prevents a flush that is retrying across a reconnect from starting
+before the initial state has been handed to the downstream driver.
+Each event whose changes are submitted advances the cluster time.
+`flush()` first reads the manifest and root with local read concern to confirm
+the collection has not been rewritten, then captures that cluster time, probes the
+change stream for events after it, and waits for the receiver to submit them.
 
 #### Division of responsibilities
 
@@ -408,7 +408,7 @@ For a same-format refurbish, the state document is deleted and rewritten,
 so both formats reload and pick up the new state.
 
 `MainDriver` and `ChangeReceiver` have a lifetime that coincides with that of the `Bosk`.
-`FormatDriver` and `FlushLock` have a lifetime that coincides with that of the cursor.
+`FormatDriver` and `FlushBarrier` have a lifetime that coincides with that of the cursor.
 
 ### Miscellaneous development notes
 

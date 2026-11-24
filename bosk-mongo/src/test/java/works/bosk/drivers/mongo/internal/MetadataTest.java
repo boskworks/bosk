@@ -3,7 +3,6 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.MongoCollection;
 import java.io.IOException;
 import java.util.stream.Stream;
-import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
 import org.bson.BsonInt64;
@@ -25,7 +24,6 @@ import works.bosk.junit.InjectorMethod;
 import works.bosk.logback.ReplayLogsOnFailure;
 import works.bosk.testing.drivers.state.TestEntity;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.slf4j.event.Level.WARN;
 import static works.bosk.TypeValidation.validateType;
@@ -65,35 +63,6 @@ public class MetadataTest extends AbstractMongoDriverTest {
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
 		return TestParameters.standardDriverSettings();
-	}
-
-	@Test
-	void revisionFieldWrongType_flushThrowsFlushFailureException() throws InvalidTypeException, IOException, InterruptedException {
-		suppressLogging(WARN, MainDriver.class, ChangeReceiver.class);
-
-		Bosk<TestEntity> bosk = new Bosk<>(
-			boskName("revisionWrongType"),
-			TestEntity.class,
-			AbstractMongoDriverTest::initialState,
-			BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-		try (var _ = bosk.readSession()) {
-			assertEquals(initialRoot(bosk), bosk.rootReference().value());
-		}
-
-		// Corrupt the revision field by giving it the wrong BSON type.
-		// The $exists filter targets only the document(s) that have a revision field,
-		// which is the root document in both formats.
-		mongoService.client()
-			.getDatabase(driverSettings.database())
-			.getCollection(driverSettings.collection(), BsonDocument.class)
-			.updateMany(
-				new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonDocument("$exists", BsonBoolean.TRUE)),
-				new BsonDocument("$set", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonString("oops")))
-			);
-
-		// A malformed revision must surface as a checked FlushFailureException at the driver
-		// boundary, never as a raw RuntimeException like BsonInvalidOperationException.
-		assertThrows(FlushFailureException.class, () -> bosk.driver().flush());
 	}
 
 	@Test

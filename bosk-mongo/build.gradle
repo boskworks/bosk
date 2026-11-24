@@ -22,7 +22,4 @@ tasks.named('test') {
 	// us to increase the deliberately short Mongo timeout, slowing down the tests
 	// for developers.
 	maxParallelForks = 1
-
-	// Opt-in switches for the experimental flush barrier (issue #567).
-	systemProperty 'bosk.test.flushBarrier', System.getProperty('bosk.test.flushBarrier', 'false')
 }

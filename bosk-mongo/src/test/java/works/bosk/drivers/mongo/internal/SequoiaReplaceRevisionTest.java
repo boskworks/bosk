@@ -51,7 +51,7 @@ class SequoiaReplaceRevisionTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
-	void duplicateReplace_doesNotReplaceTheRoot() throws Exception {
+	void duplicateReplace_isApplied() throws Exception {
 		Fixture fixture = newFixture();
 
 		BsonDocument document = stateDocument();
@@ -63,8 +63,10 @@ class SequoiaReplaceRevisionTest extends AbstractMongoDriverTest {
 		collection().replaceOne(new BsonDocument("_id", document.get("_id")), duplicate);
 
 		assertTrue(fixture.replaceSeen.await(20, SECONDS), "The change stream did not see the replace");
-		assertEquals(0, fixture.rootReplacements.get(),
-			"A REPLACE for an already-applied revision must not replace the root");
+		// The database is the source of truth, so a REPLACE is applied even when
+		// its revision describes state the receiver has already applied.
+		assertEquals(1, fixture.rootReplacements.get(),
+			"A REPLACE is applied regardless of its revision");
 	}
 
 	@Test

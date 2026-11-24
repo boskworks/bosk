@@ -1,7 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.MongoException;
-import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
@@ -12,12 +10,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.function.BooleanSupplier;
-import org.bson.conversions.Bson;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
+import org.bson.conversions.Bson;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonString;
-import org.bson.BsonTimestamp;
 import org.bson.BsonValue;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -32,11 +28,8 @@ import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
-import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
-import static com.mongodb.client.model.Projections.fields;
-import static com.mongodb.client.model.Projections.include;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.ReferenceUtils.isTaggedUnionCase;
 import static works.bosk.ReferenceUtils.requireNotTaggedUnionCase;
@@ -70,8 +63,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			collection,
 			downstream,
 			flushTimeout,
-			epoch,
-			driverSettings.testing().flushBarrier()
+			epoch
 		);
 		this.description = getClass().getSimpleName() + ": " + driverSettings;
 	}
@@ -155,8 +147,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 
 	@Override
 	public void writeAllState(StateAndMetadata<R> priorContents) {
-		replaceFlushLock(priorContents.documentRevisions());
-
 		// Sequoia has only one document
 		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
 		RevisionTuple newRevision = RevisionTuple.nextAfter(
@@ -175,9 +165,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		LOGGER.trace("| Options: {}", options);
 		UpdateResult result = collection.updateOne(filter, update, options);
 		LOGGER.debug("| Result: {}", result);
-
-		// Update the state that we "know about"
-		finishedRevision(DOCUMENT_ID, newRevision);
 	}
 
 	/**
@@ -214,14 +201,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					throw new UnprocessableEventException("Missing fullDocument", event.getOperationType());
 				}
 				BsonString docId = documentIdOf(event);
-				RevisionTuple revision = RevisionTuple.from(fullDocument);
-				if (flushLock.get().alreadySeen(docId, revision)) {
-					// An INSERT or REPLACE can carry a revision this driver has already
-					// applied, for example a metadata-only rewrite or a restored document.
-					LOGGER.debug("Skipping revision {} for {}", revision, docId);
-					markSubmitted(requireNonNull(event.getClusterTime()));
-					return;
-				}
 				MapValue<String> diagnosticAttributes = diagnosticAttributesFor(docId);
 				try (
 					var _ = context.withOnly(diagnosticAttributes)
@@ -233,39 +212,19 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					R newRoot = formatter.document2object(state, rootRef);
 					LOGGER.debug("| Replace {}", rootRef);
 					downstream.submitReplacement(rootRef, newRoot);
-					finishedRevision(docId, revision);
 				}
 			} break;
 			case UPDATE: {
 				UpdateDescription updateDescription = event.getUpdateDescription();
 				if (updateDescription != null) {
 					BsonString updateDocId = documentIdOf(event);
-					BsonDocument updatedFields = updateDescription.getUpdatedFields();
-					BsonInt64 revisionValue = updatedFields.getInt64(DocumentFields.revision.name(), null);
-					if (revisionValue == null) {
-						throw new UnprocessableEventException("Sequoia update does not carry a revision", event.getOperationType());
-					}
-					BsonString incarnationValue = updatedFields.getString(DocumentFields.incarnation.name(), null);
-					RevisionTuple revision = new RevisionTuple(
-						incarnationValue == null
-							? requireNonNull(flushLock.get().currentIncarnation(updateDocId), "Current incarnation")
-							: incarnationValue.getValue(),
-						revisionValue.longValue());
-
 					MapValue<String> diagnosticAttributes = diagnosticAttributesFor(updateDocId);
 					try (
 						var _ = context.withOnly(diagnosticAttributes)
 					) {
-						if (flushLock.get().alreadySeen(updateDocId, revision)) {
-							LOGGER.debug("Skipping revision {} for {}", revision, updateDocId);
-							markSubmitted(requireNonNull(event.getClusterTime()));
-							return;
-						}
-
 						replaceUpdatedFields(updateDescription.getUpdatedFields());
 						deleteRemovedFields(updateDescription.getRemovedFields(), event.getOperationType());
 					}
-					finishedRevision(updateDocId, revision);
 				}
 			} break;
 			case DELETE: {
@@ -280,7 +239,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		}
 		markSubmitted(requireNonNull(event.getClusterTime()));
 	}
-
 
 	//
 	// MongoDB helpers
@@ -300,36 +258,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	@Override
 	public BsonDocument rootDocumentsFilter() {
 		return DOCUMENT_FILTER;
-	}
-
-	@Override
-	protected List<FlushLock.Target> readRevisionsToFlush() throws FlushFailureException, InterruptedException {
-		LOGGER.debug("readRevisionsToFlush");
-		try (DocCursor cursor = collection
-			.findLatest(documentFilter(rootRef))
-			.limit(1)
-			.projection(fields(include(
-				"_id",
-				DocumentFields.epoch.name(),
-				DocumentFields.incarnation.name(),
-				DocumentFields.revision.name())))
-			.cursor()
-		) {
-			if (!cursor.hasNext()) {
-				throw new RevisionFieldDisruptedException("No state document found");
-			}
-			BsonDocument document = cursor.next();
-			checkEpoch(document);
-			BsonString id = document.getString("_id");
-			return List.of(new FlushLock.Target(id, RevisionTuple.from(document)));
-		} catch (MongoInterruptedException e) {
-			Thread.interrupted();
-			InterruptedException exception = new InterruptedException("Interrupted while reading revisions");
-			exception.initCause(e);
-			throw exception;
-		} catch (MongoException e) {
-			throw new FlushFailureException("Failed to read revisions", e);
-		}
 	}
 
 	/**

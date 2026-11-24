@@ -135,13 +135,12 @@ should retry; it carries a `Duration retryAfter` hint. The filter maps it to `50
 `IOException`s are left alone.
 
 `MainDriver.flush()` only translates the database-health failures that make client retry
-appropriate: a plain `DisconnectedException`, or a `FlushTimeoutException` (the revision did
-not arrive in time). Both become `RetryableFlushException`. A `MongoException` while reading
-the revision stays an ordinary `FlushFailureException` (500), because the underlying
-`MongoException` may be permanent, such as a security or command error. Revision and format
-problems (`RevisionDisruptedException`, `EpochMismatchException`,
-`RevisionFieldDisruptedException`) also stay at 500, as does `ImmediateReconnectException`:
-they require an immediate internal reconnect or a data fix, not a client retry.
+appropriate: a plain `DisconnectedException`, or a `FlushTimeoutException` (the change
+receiver did not catch up in time). Both become `RetryableFlushException`. A `MongoException`
+during a flush stays an ordinary `FlushFailureException` (500), because the underlying
+`MongoException` may be permanent, such as a security or command error.
+`ImmediateReconnectException` also stays at 500: it requires an immediate internal reconnect,
+not a client retry.
 
 The `Retry-After` value is `reinitializationTimeout` (`10 × timescaleMS`, 100 s by default),
 because that is the driver's own worst-case wait for the change stream to recover and publish a
