@@ -11,10 +11,10 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.function.BooleanSupplier;
 import org.bson.BsonDocument;
-import org.bson.conversions.Bson;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonString;
 import org.bson.BsonValue;
+import org.bson.conversions.Bson;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -122,7 +122,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException {
+	BsonDocument readBsonState() throws InvalidCollectionContentsException {
 		try (DocCursor cursor = collection
 			.find(documentFilter(rootRef))
 			.limit(1)
@@ -131,12 +131,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			BsonDocument document = cursor.next();
 			validateEpoch(document);
 			BsonString id = document.getString("_id");
-			RevisionTuple revision = RevisionTuple.from(document);
 			fieldTracker.seed(id, document);
-			return new BsonStateAndMetadata(
-				document.getDocument(DocumentFields.state.name()),
-				Map.of(id, revision)
-			);
+			return document.getDocument(DocumentFields.state.name());
 		} catch (NoSuchElementException e) {
 			throw new InvalidCollectionContentsException(SEQUOIA, "State document not found: " + DOCUMENT_ID, e);
 		} catch (BsonInvalidOperationException e) {
@@ -146,15 +142,13 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	public void writeAllState(StateAndMetadata<R> priorContents) {
+	public void writeAllState(R state) {
 		// Sequoia has only one document
-		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
-		RevisionTuple newRevision = RevisionTuple.nextAfter(
-			priorContents.documentRevisions().get(DOCUMENT_ID));
+		BsonValue initialState = formatter.object2bsonValue(state, rootRef.targetType());
 
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes this state document write and the manifest write atomic.
-		BsonDocument document = initialDocument(initialState, newRevision, DOCUMENT_ID);
+		BsonDocument document = initialDocument(initialState, DOCUMENT_ID);
 		fieldTracker.seed(DOCUMENT_ID, document);
 		BsonDocument update = new BsonDocument("$set", document);
 		BsonDocument filter = documentFilter(rootRef);
@@ -182,12 +176,10 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			 * so incompatible database changes don't go unnoticed.
 			 */
 			validateManifestEvent(event, Manifest.forSequoia(epoch));
-			markSubmitted(requireNonNull(event.getClusterTime()));
 			return;
 		}
 		if (!DOCUMENT_FILTER.equals(event.getDocumentKey())) {
 			LOGGER.debug("Ignoring event for unrecognized document key: {}", event.getDocumentKey());
-			markSubmitted(requireNonNull(event.getClusterTime()));
 			return;
 		}
 		validateEventEpoch(event);
@@ -240,15 +232,16 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		markSubmitted(requireNonNull(event.getClusterTime()));
 	}
 
+	@Override
+	protected Bson lastStateChangeFilter() {
+		// Sequoia keeps the whole state in the root document. Any write to it
+		// completes a Bosk change, whether standalone or part of a transaction.
+		return new BsonDocument("documentKey._id", DOCUMENT_ID);
+	}
+
 	//
 	// MongoDB helpers
 	//
-
-	@Override
-	protected Bson lastStateChangeFilter() {
-		// The state is one document, so every write to it is a state write.
-		return new BsonDocument("documentKey._id", DOCUMENT_ID);
-	}
 
 	@Override
 	protected BsonDocument documentFilter(Reference<?> documentRef) {

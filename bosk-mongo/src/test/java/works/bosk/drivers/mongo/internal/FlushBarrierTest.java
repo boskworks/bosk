@@ -78,6 +78,16 @@ class FlushBarrierTest {
 	}
 
 	@Test
+	void markSubmittedAfterClose_isIgnored() throws Exception {
+		FlushBarrier barrier = new FlushBarrier();
+		barrier.markSubmitted(ts(10));
+		barrier.close();
+		barrier.markSubmitted(ts(20));
+
+		assertEquals(ts(10), barrier.awaitSubmitted(longDeadline()));
+	}
+
+	@Test
 	void closeWakesWaitersWithDisconnectedException() throws Exception {
 		FlushBarrier barrier = new FlushBarrier();
 		barrier.markSubmitted(ts(10));

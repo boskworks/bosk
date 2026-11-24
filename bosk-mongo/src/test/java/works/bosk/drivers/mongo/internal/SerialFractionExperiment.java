@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Stream;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
 import org.bson.BsonString;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
@@ -329,8 +328,12 @@ public class SerialFractionExperiment extends AbstractMongoDriverTest {
 	}
 
 	private static BsonDocument rawUpdateDocument(String value) {
-		return new BsonDocument("$inc", new BsonDocument("revision", new BsonInt64(1)))
-			.append("$set", new BsonDocument("state.string", new BsonString(value)));
+		return new BsonDocument("$set", new BsonDocument()
+			.append("state.string", new BsonString(value))
+			// Raw updates are applied like any other change; a transactional one needs
+			// a last write, or the receiver rejects it and reloads.
+			.append(BsonFormatter.DocumentFields.writeId.name(),
+				WriteRole.LAST.newWriteId()));
 	}
 
 	private TestEntity manyEntryInitialState(Bosk<TestEntity> bosk) throws works.bosk.exceptions.InvalidTypeException {

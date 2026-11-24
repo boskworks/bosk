@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
 import org.bson.BsonString;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -791,7 +790,6 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 				.updateOne(
 					rootDocumentsFilter(),
 					new BsonDocument("$set", new BsonDocument("state.string", new BsonString("fresh after reconnect")))
-						.append("$inc", new BsonDocument("revision", new BsonInt64(1)))
 				);
 
 			LOGGER.debug("Start a flush that will fail while disconnected and retry after the reconnect");

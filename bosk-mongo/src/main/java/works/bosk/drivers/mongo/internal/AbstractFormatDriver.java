@@ -10,17 +10,15 @@ import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.bson.BsonDocument;
-import org.bson.conversions.Bson;
-import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonNull;
 import org.bson.BsonString;
 import org.bson.BsonTimestamp;
 import org.bson.BsonValue;
+import org.bson.conversions.Bson;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,11 +95,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	@Override
 	public MongoStatus readStatus() {
 		try {
-			BsonStateAndMetadata dbInfo = readBsonStateAndMetadata();
-			BsonDocument dbState = dbInfo.state();
+			BsonDocument dbState = readBsonState();
 			var inMemoryState = formatter.object2bsonValue(rootRef.valueIfExists(), rootRef.targetType());
 			var stateStatus = new StateStatus(
-				rootRevision(dbInfo).revision(),
 				formatter.bsonValueBinarySize(dbState),
 				new BsonComparator().difference(inMemoryState, dbState)
 			);
@@ -120,21 +116,18 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	@Override
-	public StateAndMetadata<R> loadAllState() throws IOException, InvalidCollectionContentsException {
-		BsonStateAndMetadata bsm = readBsonStateAndMetadata();
-		if (bsm.state() == null) {
+	public R loadAllState() throws IOException, InvalidCollectionContentsException {
+		BsonDocument stateDocument = readBsonState();
+		if (stateDocument == null) {
 			throw new IOException("No existing state in document");
 		}
 
-		R root;
 		try {
-			root = formatter.document2object(bsm.state(), rootRef);
+			return formatter.document2object(stateDocument, rootRef);
 		} catch (BsonInvalidOperationException e) {
 			// Only this exception means the data is bad; the others mean the code is bad.
 			throw new InvalidCollectionContentsException(format(), "State document could not be decoded", e);
 		}
-
-		return new StateAndMetadata<>(root, bsm.documentRevisions());
 	}
 
 	@Override
@@ -142,7 +135,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		barrier.markSubmitted(position);
 	}
 
-	abstract BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException;
+	abstract BsonDocument readBsonState() throws InvalidCollectionContentsException;
 
 	/**
 	 * @return a filter selecting the state document corresponding to {@code documentRef}
@@ -157,22 +150,21 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected abstract boolean doUpdate(BsonDocument updateDoc, BsonDocument filter);
 
 	/**
-	 * The change to the topmost document of a transaction: it bumps that
-	 * document's revision and records the current diagnostic attributes.
+	 * The change to the topmost document of a transaction: it writes a fresh
+	 * {@link DocumentFields#writeId writeId} with the {@code last:} role and
+	 * records the current diagnostic attributes.
 	 * <p>
-	 * The resulting update document is meant to be applied to the filter that
-	 * selects the topmost document. Other writes in the same transaction must not
-	 * bump a revision.
+	 * The writer sends this last, so the last event is the topmost write; the
+	 * receiver relies on that order.
 	 */
-	protected BsonDocument revisionBump() {
-		return new BsonDocument()
-			.append("$inc", new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
-			.append("$set", new BsonDocument()
-				.append(
-					DocumentFields.diagnostics.name(),
-					formatter.encodeDiagnostics(context.getAttributes())
-				)
-			);
+	protected BsonDocument topmostWrite() {
+		return new BsonDocument("$set", new BsonDocument()
+			.append(DocumentFields.writeId.name(), WriteRole.LAST.newWriteId())
+			.append(
+				DocumentFields.diagnostics.name(),
+				formatter.encodeDiagnostics(context.getAttributes())
+			)
+		);
 	}
 
 	/**
@@ -292,7 +284,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Set field {}", key);
 		LOGGER.trace("| Set field {}: {}", key, value);
-		BsonDocument result = revisionBump();
+		BsonDocument result = topmostWrite();
 		result.getDocument("$set").append(key, value);
 		return result;
 	}
@@ -301,7 +293,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		assert target.isDeletable(): "Cannot delete a non-deletable reference: " + target;
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Unset field {}", key);
-		return revisionBump().append("$unset", new BsonDocument(key, BsonNull.VALUE));
+		return topmostWrite().append("$unset", new BsonDocument(key, BsonNull.VALUE));
 	}
 
 	/**
@@ -438,17 +430,12 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		LOGGER.debug("Ignoring benign manifest change event");
 	}
 
-	private RevisionTuple rootRevision(BsonStateAndMetadata bsm) {
-		return requireNonNull(
-			bsm.documentRevisions().get(rootDocumentsFilter().getString("_id")),
-			"Root document revision");
-	}
-
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		// The manifest read is what lets the probes watch only state writes:
-		// a rewritten collection changes the manifest's epoch.
-		// The root read covers a root deleted without replacing the collection.
+		// These reads catch a collection this driver can no longer follow: another
+		// format has a different epoch, and a root deleted without replacement is
+		// missing, so fail and reload instead of waiting for writes we never see.
+		// A same-format refurbish keeps the epoch; the receiver's reload catches it.
 		collection.requireNoTransaction();
 		requireExpectedEpoch();
 		// A single absolute deadline for the whole attempt: both waits stop at the
@@ -504,8 +491,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	/**
-	 * Selects the change events that can advance the flush barrier in this format.
-	 * A flush waits for these and ignores every other event.
+	 * Selects the change events that complete a Bosk change in this format. A
+	 * flush waits for these and ignores every other event.
 	 */
 	protected abstract Bson lastStateChangeFilter();
 
@@ -618,13 +605,15 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		barrier.close();
 	}
 
-	protected BsonDocument initialDocument(BsonValue initialState, RevisionTuple revision, BsonString documentId) {
+	protected BsonDocument initialDocument(BsonValue initialState, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
 		fieldValues.put(DocumentFields.epoch.name(), new BsonString(epoch.toString()));
-		revision.putInto(fieldValues);
+		// This is the last write of the initialization, so it carries a fresh
+		// writeId. The write may be an INSERT (a new collection) or an UPDATE
+		// (leftover documents); the marker makes an UPDATE recognizable as last.
+		fieldValues.put(DocumentFields.writeId.name(), WriteRole.LAST.newWriteId());
 		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
-		// The state goes last because it's the big field, and its size can change.
 		fieldValues.put(DocumentFields.state.name(), initialState);
 
 		return fieldValues;
@@ -633,14 +622,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected boolean isManifestID(BsonValue documentId) {
 		return MANIFEST_ID.equals(documentId);
 	}
-
-	/**
-	 * Low-level version of {@link StateAndMetadata}.
-	 */
-	record BsonStateAndMetadata(
-		BsonDocument state,
-		Map<BsonString, RevisionTuple> documentRevisions
-	){}
 
 	/**
 	 * Fails unless {@code target} is a reference that the {@link BoskDriver}

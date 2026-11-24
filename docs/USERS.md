@@ -514,6 +514,9 @@ and then makes a request to the second server to call `flush()` and then read fr
 In this scenario, the second request is guaranteed to reflect the update applied by the first request,
 even though they are executed by different servers.
 
+The guarantee covers updates submitted through a Bosk driver.
+Writes made directly to the database by other clients are outside the contract.
+
 Calling `flush()` inside a read session will still apply the updates,
 but those changes will not be reflected by any reads performed in the same session,
 since the session continues using the state snapshot acquired when it began.
@@ -917,6 +920,22 @@ RUN echo "rs.initiate()" > /docker-entrypoint-initdb.d/rs-initiate.js
 CMD [ "mongod", "--replSet", "rsLonesome", "--port", "27017", "--bind_ip_all" ]
 ```
 
+##### Sharding
+
+We do not offer first-class support for a sharded Bosk state collection,
+because it disrupts the ordering guarantee MongoDB provides for an unsharded collection:
+updates to different shards may be observed in a different order than they were submitted,
+and `flush()` is no longer a reliable barrier,
+since it may return before previously submitted updates have been applied.
+
+If you need the write throughput and can live without those guarantees, sharding may still be usable,
+but we make no correctness guarantee for it:
+independent updates may be applied in the order the change stream chose rather than the order you submitted,
+and a transaction's events need not arrive in the order the receiver's assembly assumes.
+Operations that become cross-shard transactions are also slower and more conflict-prone.
+
+In short: shard the state collection only if you need the write throughput and don't need `flush()`, or the write order, to be reliable.
+
 ##### Robustness and Serviceability
 
 An important design principle of `MongoDriver` is that it should be able to recover from temporary outages without requiring an application reboot.
@@ -974,8 +993,7 @@ The document has these fields:
 - `_id`: always `boskDocument`
 - `state`: the entire bosk state tree
 - `epoch`: copied from the manifest when the document is written; a refurbish that changes the format rewrites it
-- `incarnation`: a UUID that changes when the document is re-created (see [Version fields](#version-fields))
-- `revision`: incremented by every update that writes the document (see [Version fields](#version-fields))
+- `writeId`: a fresh marker written by the update that stores the document; see [Metadata fields](#metadata-fields)
 - `diagnostics`: diagnostic attributes from the most recent update
 
 Sequoia's `_id` is deliberately different from Pando's document IDs,
@@ -990,9 +1008,14 @@ The code will have the details, but some high-level points about the BSON format
 For Pando, the situation is similar, except that instead of having a single document with an `_id` of `boskDocument`,
 there are multiple documents with `_id` values that start with `|` (vertical bar)
 and that describe where the document fits within the overall BSON structure.
-Every one of those documents carries the collection's `epoch` and its own `incarnation` and `revision`.
-Only the topmost document changed by an update has its `revision` incremented:
-that is, the shallowest document whose `state` changes.
+Every one of those documents carries the collection's `epoch`.
+Every write that stores state gives the written document a fresh `writeId`,
+including each sub-part document, even when its state is unchanged:
+an identical replacement produces no change event,
+and the receiver needs the full document of every sub-part to assemble the replaced state.
+The topmost document changed by an update is the shallowest document whose `state` changes.
+The transaction's last write carries the `last:` marker and is the topmost write:
+the writer sends the topmost document last, and the receiver relies on that.
 Updates to different parts of the tree therefore write different documents and do not conflict
 on a shared document.
 
@@ -1000,38 +1023,42 @@ on a shared document.
 If something has gone wrong and you need to do an emergency repair,
 `MongoDriver` will try to do something reasonable,
 and once the state is repaired, connected instances will eventually recover.
-See `MongoDriverRecoveryTest` for some of the scenarios we've envisaged and tested.
+See `RecoveryTest` for some of the scenarios we've envisaged and tested.
 It cannot, though, accommodate invalid collection contents.
 For example, a state document whose `epoch` disagrees with the manifest's makes the collection invalid,
 because the document was written in a different epoch than the manifest declares.
 `MongoDriver` reports the problem rather than loading the collection.
 
-##### Version fields
+##### Metadata fields
 
-State documents carry three values that are easy to confuse.
-One belongs to the whole collection:
-the `epoch` is minted when the collection is initialized
-or refurbished into another format,
-and preserved by a refurbish that keeps the format.
-The other two belong to a single document:
-the `incarnation` is set when the document is created,
-and the `revision` is incremented every time the document changes.
+State documents carry three markers that are easy to confuse:
 
-A flush does not read these values. It waits for the receiver's submitted cluster
-time and probes the change stream for state writes after it; it also reads the
-manifest and root with local read concern to confirm that the collection has not
-been rewritten.
-
-- `epoch`: detects when the collection has been re-created or refurbished to a different format.
-  If a flush detects that the epoch has changed,
-  that triggers a disconnect and reconnect, so the driver reloads from the new collection.
+- `epoch`: belongs to the whole collection.
+  It is minted when the collection is initialized or refurbished into another format,
+  and preserved by a refurbish that keeps the format.
+  It detects when the collection has been re-created, or refurbished into another format.
   For updates, if an update didn't match any documents and the manifest's epoch has changed,
   the driver disconnects and retries the update against the new format.
-- `incarnation`: identifies a document's lifetime.
-  A document that has been deleted and re-created gets a new incarnation,
-  which makes its revision numbers incomparable with the old ones.
-- `revision`: counts the updates that wrote the document.
-  Each update increments the revision of the topmost document it writes.
+- `lockId`: a write-intent token, used by Pando only.
+  A transaction that reads a document to decide whether to write elsewhere sets a fresh ObjectId,
+  so a concurrent writer either waits for the transaction or forces it to retry.
+  Its value is never interpreted, and change events that change only this field are ignored.
+  MongoDB recommends this approach for transactions that read a document before writing it;
+  see [In-progress Transactions and Stale Reads](https://www.mongodb.com/docs/manual/core/transactions-production-consideration/#in-progress-transactions-and-stale-reads).
+- `writeId`: a fresh identifier written whenever a state document is stored,
+  including each sub-part document, so the write is visible in the change stream
+  even when the stored state is unchanged.
+  Its value is `last:`, `part:`, or `pdel:` followed by an ObjectId. Pando's
+  receiver treats an event carrying `last:` as the transaction's last write;
+  it never orders or compares the identifiers.
+  It must be fresh every time because MongoDB reports only fields whose value changed,
+  and a write that changes nothing produces no change event.
+
+A flush uses `writeId` only to recognise Pando's `last:` events.
+It does not use `epoch` or `lockId` to decide what to wait for: it waits for
+the receiver's submitted cluster time and probes the change stream for those
+events after it. It also reads the manifest and root with local read concern to
+confirm that the collection has not been rewritten.
 
 ##### Format evolution
 

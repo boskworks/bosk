@@ -8,14 +8,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
-import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
-import org.bson.BsonNull;
+import org.bson.BsonString;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
@@ -47,7 +44,6 @@ import works.bosk.logback.BoskLogFilter;
 import works.bosk.testing.drivers.state.TestEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.slf4j.event.Level.WARN;
@@ -64,9 +60,9 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * The disruptions are split into groups.
  * {@link FormatAgnosticRecovery} covers disruptions whose detection and recovery
  * do not depend on how the state is laid out in the database, so one format suffices.
- * {@link FormatSpecificRecovery} covers disruptions that exercise format-specific
- * event handling and state layout, so it runs both for Sequoia (the whole state is one
- * document) and for a Pando format whose state is scattered across graft points.
+ * {@link DatabaseInterventionRecovery} covers disruptions that exercise
+ * format-specific event handling and state layout, so it runs for both formats.
+ * {@link WriteIdRoleRecovery} covers Pando's writeId role validation.
  * {@link StartupFailures} covers starting up against a damaged collection.
  * <p>
  * The disruption-recovery tests run in both {@link FlushOrWait} modes:
@@ -123,16 +119,6 @@ class RecoveryTest {
 			}
 		}
 
-		void setRevision(long revisionNumber) {
-			mongoService.client()
-				.getDatabase(driverSettings.database())
-				.getCollection(driverSettings.collection())
-				.updateOne(
-					new BsonDocument(),
-					new BsonDocument("$set", new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonInt64(revisionNumber))) // Value is ignored
-				);
-		}
-
 		/**
 		 * The recovery scenarios scatter and gather the whole state tree, so give the
 		 * initial state content at the nested graft points; otherwise a recovery bug
@@ -172,23 +158,34 @@ class RecoveryTest {
 		 * {@code actual} is evaluated with a read session open on the current thread.
 		 */
 		<T> void assertEventuallyEquals(Bosk<?> bosk, T expected, Supplier<T> actual) throws IOException, InterruptedException {
-			T value;
 			if (flushOrWait == FlushOrWait.FLUSH) {
 				bosk.driver().flush();
-				value = readUnderSession(bosk, actual);
+				assertEquals(expected, readUnderSession(bosk, actual));
 			} else {
-				long deadline = System.nanoTime() + WAIT_BUDGET.toNanos();
-				long intervalNanos = WAIT_INITIAL_POLL.toNanos();
-				value = readUnderSession(bosk, actual);
-				while (!expected.equals(value)) {
-					long remainingNanos = deadline - System.nanoTime();
-					if (remainingNanos <= 0) {
-						break;
-					}
-					Thread.sleep(Duration.ofNanos(Math.min(intervalNanos, remainingNanos)));
-					intervalNanos = Math.min(intervalNanos * 2, WAIT_MAX_POLL.toNanos());
-					value = readUnderSession(bosk, actual);
+				assertEventuallyRecovers(bosk, expected, actual);
+			}
+		}
+
+		/**
+		 * Asserts that {@code actual} eventually equals {@code expected} without
+		 * flushing, in both {@link FlushOrWait} modes.
+		 * <p>
+		 * Use this for changes a flush does not promise to observe, such as a
+		 * write made directly to the database that the receiver rejects and
+		 * reloads.
+		 */
+		<T> void assertEventuallyRecovers(Bosk<?> bosk, T expected, Supplier<T> actual) throws IOException, InterruptedException {
+			long deadline = System.nanoTime() + WAIT_BUDGET.toNanos();
+			long intervalNanos = WAIT_INITIAL_POLL.toNanos();
+			T value = readUnderSession(bosk, actual);
+			while (!expected.equals(value)) {
+				long remainingNanos = deadline - System.nanoTime();
+				if (remainingNanos <= 0) {
+					break;
 				}
+				Thread.sleep(Duration.ofNanos(Math.min(intervalNanos, remainingNanos)));
+				intervalNanos = Math.min(intervalNanos * 2, WAIT_MAX_POLL.toNanos());
+				value = readUnderSession(bosk, actual);
 			}
 			assertEquals(expected, value);
 		}
@@ -356,55 +353,12 @@ class RecoveryTest {
 			));
 		}
 
-		@Test
-		void revisionFieldMissingAtStartup_failsAsInvalidContents(TestInfo testInfo) {
-			// Initialize the database with content so the manifest and root document exist
-			initializeDatabase("revision field missing");
-
-			// Remove the revision field from the root document
-			mongoService.client()
-				.getDatabase(driverSettings.database())
-				.getCollection(driverSettings.collection(), BsonDocument.class)
-				.updateMany(
-					new BsonDocument(Formatter.DocumentFields.revision.name(), new BsonDocument("$exists", BsonBoolean.TRUE)),
-					new BsonDocument("$unset", new BsonDocument(Formatter.DocumentFields.revision.name(), BsonNull.VALUE)) // Value is ignored
-				);
-
-			// Starting a new Bosk in FAIL_FAST mode should throw because the database
-			// contents are invalid (the root document lacks the revision field),
-			// not because of a NullPointerException.
-			MongoDriverSettings failFastSettings = driverSettings.toBuilder()
-				.initialDatabaseUnavailableMode(InitialDatabaseUnavailableMode.FAIL_FAST)
-				.build();
-			DriverFactory<TestEntity> failFastFactory = DriverStack.of(
-				BoskLogFilter.withController(logController),
-				(info, downstream) ->
-					MongoDriver.<TestEntity>factory(
-						mongoService.clientSettings(testInfo),
-						failFastSettings,
-						new BsonSerializer()
-					).build(info, downstream)
-			);
-
-			InitialStateFailureException e = assertThrows(InitialStateFailureException.class, () -> new Bosk<>(
-				boskName("revisionFieldMissing"),
-				TestEntity.class,
-				AbstractMongoDriverTest::initialState,
-				BoskConfig.<TestEntity>builder()
-					.driverFactory(failFastFactory)
-					.build()
-			));
-			assertTrue(hasCause(e, InvalidCollectionContentsException.class),
-				"Missing revision field should be reported as invalid collection contents, but was: " + e);
-			assertFalse(hasCause(e, NullPointerException.class),
-				"Missing revision field must not cause a NullPointerException");
-		}
 	}
 
 	@Nested
 	@InjectFields
 	@InjectFrom({FlushOrWait.class})
-	class FormatSpecificRecovery extends DisruptionRecoveryTestBase {
+	class DatabaseInterventionRecovery extends DisruptionRecoveryTestBase {
 		@InjectorMethod
 		static Stream<ParameterSet> parameterSets() {
 			return TestParameters.driverSettings(
@@ -497,48 +451,82 @@ class RecoveryTest {
 			});
 		}
 
+		/**
+		 * An operator editing the state directly does not update any metadata.
+		 * The change is still an ordinary change event at a later cluster time,
+		 * so the driver applies it without needing a version bump. A direct
+		 * database write is outside the flush guarantee, so poll for it.
+		 */
 		@Test
-		@Disabled
-		void revisionDeleted_recovers() throws InterruptedException, IOException {
-			// It's not clear that this is a valid test. If this test is a burden to support,
-			// we can consider removing it.
-			//
-			// In general, changing the revision field to a lower number is not fair to bosk
-			// unless you also revert to the corresponding state. (And deleting the revision
-			// field is conceptually equivalent to setting it to zero.) Deleting the revision field
-			// is a special case because no ordinary bosk operations delete the revision field, or
-			// set it to zero, so it's not unreasonable to expect bosk to handle this; but it's
-			// also not reasonable to be surprised if it didn't.
-			LOGGER.debug("Setup database to beforeState");
-			TestEntity beforeState = initializeDatabase("before deletion");
+		void operatorEditWithoutMetadataChange_isApplied() throws InterruptedException, IOException {
+			TestEntity before = initializeDatabase("before operator edit");
+			Bosk<TestEntity> bosk = new Bosk<>(
+				boskName(getClass().getSimpleName()),
+				TestEntity.class,
+				AbstractMongoDriverTest::initialState,
+				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+			assertEventuallyEquals(bosk, before, () -> bosk.rootReference().value());
 
-			Bosk<TestEntity> bosk = new Bosk<>(boskName(getClass().getSimpleName()), TestEntity.class, AbstractMongoDriverTest::initialState, BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
-
-			try (var _ = bosk.readSession()) {
-				// This can fail on very short timescales; see testRecovery.
-				// This isn't related to the revision deletion issues described above
-				// and shouldn't really be grounds for removing this test.
-				assertEquals(beforeState, bosk.rootReference().value());
-			}
-
-			LOGGER.debug("Delete revision field");
+			LOGGER.debug("Edit state.string directly, leaving epoch, lockId, and writeId alone");
 			mongoService.client()
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection())
-				.updateOne(
-					new BsonDocument(),
-					new BsonDocument("$unset", new BsonDocument(Formatter.DocumentFields.revision.name(), BsonNull.VALUE)) // Value is ignored
-				);
+				.updateOne(rootDocumentsFilter(),
+					new BsonDocument("$set", new BsonDocument("state.string", new BsonString("edited by operator"))));
 
-			LOGGER.debug("Ensure the driver recovers");
-			assertEventuallyEquals(bosk, beforeState, () -> bosk.rootReference().value());
-
-			LOGGER.debug("Repair by setting revision in the far future");
-			setRevision(1000L);
-
-			LOGGER.debug("Ensure the driver recovers again");
-			assertEventuallyEquals(bosk, beforeState, () -> bosk.rootReference().value());
+			assertEventuallyRecovers(bosk, before.withString("edited by operator"),
+				() -> bosk.rootReference().value());
 		}
+	}
+
+	@Nested
+	@InjectFields
+	@InjectFrom({FlushOrWait.class})
+	class WriteIdRoleRecovery extends DisruptionRecoveryTestBase {
+		@InjectorMethod
+		static Stream<ParameterSet> parameterSets() {
+			// Only Pando validates writeId roles. Sequoia applies the update
+			// directly, so it would satisfy this test without the validation.
+			return TestParameters.driverSettings(
+				Stream.of(PandoFormat.withGraftPoints("/catalog", "/sideTable")),
+				Stream.of(TestParameters.EventTiming.NORMAL)
+			).map(b -> b.applyDriverSettings(s -> s
+				.timescaleMS(SHORT_TIMESCALE)
+			));
+		}
+
+		/**
+		 * A hand-written transaction whose update has no {@code writeId} is not a
+		 * valid state write. That is an external database update, so a flush does
+		 * not promise to observe it: the receiver eventually rejects the write and
+		 * reloads, which is how the edit becomes visible. Poll in both
+		 * {@link FlushOrWait} modes, which exercises the role validation.
+		 */
+		@Test
+		void transactionalEditWithoutWriteId_reconnectsAndReloads() throws Exception {
+			TestEntity before = initializeDatabase("before transactional edit");
+			Bosk<TestEntity> bosk = new Bosk<>(
+				boskName(getClass().getSimpleName()),
+				TestEntity.class,
+				AbstractMongoDriverTest::initialState,
+				BoskConfig.<TestEntity>builder().driverFactory(driverFactory).build());
+			assertEventuallyEquals(bosk, before, () -> bosk.rootReference().value());
+
+			LOGGER.debug("Edit state.string in a hand-written transaction with no writeId");
+			try (var session = mongoService.client().startSession()) {
+				session.startTransaction();
+				mongoService.client()
+					.getDatabase(driverSettings.database())
+					.getCollection(driverSettings.collection())
+					.updateOne(session, rootDocumentsFilter(),
+						new BsonDocument("$set", new BsonDocument("state.string", new BsonString("edited in a transaction"))));
+				session.commitTransaction();
+			}
+
+			assertEventuallyRecovers(bosk, before.withString("edited in a transaction"),
+				() -> bosk.rootReference().value());
+		}
+
 	}
 
 	enum FlushOrWait {
@@ -555,17 +543,8 @@ class RecoveryTest {
 		WAIT,
 	}
 
-	private static boolean hasCause(Throwable throwable, Class<? extends Throwable> causeClass) {
-		for (Throwable t = throwable; t != null; t = t.getCause()) {
-			if (causeClass.isInstance(t)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
 	/**
-	 * How long a WAIT-mode test gives the driver to converge on its own.
+	 * How long a test that polls gives the driver to converge on its own.
 	 * This is comfortably longer than a reconnection-and-reload cycle, and it
 	 * returns as soon as the state converges.
 	 */

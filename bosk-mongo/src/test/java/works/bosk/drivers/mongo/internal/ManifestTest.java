@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.util.stream.Stream;
 import org.bson.BsonDocument;
 import org.bson.BsonInt32;
-import org.bson.BsonInt64;
 import org.bson.BsonString;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
@@ -30,14 +29,12 @@ import static works.bosk.TypeValidation.validateType;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
- * Tests the collection metadata the driver depends on: the manifest, and the
- * document fields other than {@code state} (such as the revision). The driver
- * must detect corrupted or incompatible metadata and surface it as a checked
- * failure rather than misbehaving.
+ * Tests the manifest: the driver must reject an unsupported manifest version
+ * and validate the manifest's type.
  */
 @InjectFields
 @ReplayLogsOnFailure
-public class MetadataTest extends AbstractMongoDriverTest {
+public class ManifestTest extends AbstractMongoDriverTest {
 	/**
 	 * We deliberately don't reference {@link MainDriver#MANIFEST_ID} here
 	 * because if we change the manifest ID then that's a breaking change,
@@ -88,11 +85,6 @@ public class MetadataTest extends AbstractMongoDriverTest {
 			new BsonDocument("_id", new BsonString(MANIFEST_ID)),
 			new BsonDocument("$inc", new BsonDocument("version", new BsonInt32(1)))
 		);
-		// Must also bump the revision number or else flush rightly does nothing
-		collection.updateOne(
-			rootDocumentsFilter(),
-			new BsonDocument("$inc", new BsonDocument("revision", new BsonInt64(1)))
-		);
 
 		LOGGER.debug("Flush should throw");
 		assertThrows(FlushFailureException.class, ()->bosk.driver().flush());
@@ -107,5 +99,5 @@ public class MetadataTest extends AbstractMongoDriverTest {
 	}
 
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(MetadataTest.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(ManifestTest.class);
 }

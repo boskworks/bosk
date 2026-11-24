@@ -72,6 +72,8 @@ public class WholeDocumentReplacementTest {
 			assertEquals(Set.of("|catalog|123", "|catalog|123|sideTable|valuesById|124"),
 				Set.copyOf(writes.documentIds()),
 				"The replacement must write the entry's document and its sub-part, and nothing else");
+			assertEquals("|catalog|123", writes.documentIds().getLast(),
+				"The writer must send the topmost document last");
 			assertFalse(writes.documentIds().contains("|"),
 				"The root document must not be written");
 			try (var _ = bosk.readSession()) {

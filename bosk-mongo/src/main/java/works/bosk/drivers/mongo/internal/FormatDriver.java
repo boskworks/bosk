@@ -45,20 +45,15 @@ import works.bosk.drivers.mongo.status.MongoStatus;
 sealed public interface FormatDriver<R extends StateTreeNode>
 	permits AbstractFormatDriver, DisconnectedDriver {
 	/**
-	 * Processes one change event, marking the cluster time through which the
-	 * receiver has submitted the event's changes downstream once those changes
-	 * are ready. An event that needs nothing submitted is trivially submitted
-	 * through.
+	 * Processes one change event, submitting any appropriate updates downstream.
 	 */
 	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException;
 
 	/**
 	 * Records that everything through {@code position} has been submitted to the
-	 * downstream driver. The receiver calls this from {@link #onEvent} once the
-	 * event's changes are ready; the first call on a freshly published driver is
-	 * the initial state's position, which is the cluster time of the snapshot it
-	 * was loaded from or of the commit that initialized the collection. The
-	 * receiver thread guarantees that no event is marked before it.
+	 * downstream driver. The first call is for the freshly loaded state, before
+	 * any {@link #onEvent(ChangeStreamDocument)} calls; after that, {@code onEvent}
+	 * marks each event whose changes it submits.
 	 */
 	void markSubmitted(BsonTimestamp position);
 
@@ -129,14 +124,15 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * <em>Maintenance note:</em> This method's contract is pretty weird,
 	 * especially with its side effect. It's a struggle to make a clean separation
 	 * between the format driver and the main driver, and this particular compromise
-	 * was a consequence of encapsulating the revision tracking logic inside the format driver.
+	 * was a consequence of seeding the {@link DocumentFieldTracker} for diagnostics
+	 * while reading the state documents.
 	 * Hopefully some day we can arrive at a cleaner interface.
 	 * In the meantime, we've tried to hint at the significance by
 	 * calling this operation "load" instead of just "read".
 	 *
 	 * @throws InvalidCollectionContentsException if the collection contents don't match the declared format
 	 */
-	StateAndMetadata<R> loadAllState() throws IOException, InvalidCollectionContentsException;
+	R loadAllState() throws IOException, InvalidCollectionContentsException;
 
 	/**
 	 * Writes the state documents for the given state.
@@ -150,12 +146,9 @@ sealed public interface FormatDriver<R extends StateTreeNode>
 	 * by using upsert or replace operations, for example.
 	 * <p>
 	 * The manifest is written by {@link MainDriver}, not here.
-	 * @param priorContents the desired state, with metadata representing a (possibly hypothetical)
-	 * "prior" state of the database; in particular, the revision numbers should be advanced
-	 * so that a {@link #flush} after a {@link MongoDriver#refurbish} succeeds in waiting
-	 * for the new state.
+	 * @param state the desired state; the format driver writes it as given
 	 */
-	void writeAllState(StateAndMetadata<R> priorContents);
+	void writeAllState(R state);
 
 	/**
 	 * @return a query filter that returns documents corresponding to the roots of the state tree.

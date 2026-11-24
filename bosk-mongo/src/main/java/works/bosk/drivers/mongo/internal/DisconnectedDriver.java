@@ -89,12 +89,12 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 	}
 
 	@Override
-	public StateAndMetadata<R> loadAllState() {
+	public R loadAllState() {
 		throw disconnected();
 	}
 
 	@Override
-	public void writeAllState(StateAndMetadata<R> priorContents) {
+	public void writeAllState(R state) {
 		throw disconnected();
 	}
 
@@ -102,7 +102,6 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 	public BsonDocument rootDocumentsFilter() {
 		throw disconnected();
 	}
-
 
 	/**
 	 * Chooses how the receiver should react to this disconnection.

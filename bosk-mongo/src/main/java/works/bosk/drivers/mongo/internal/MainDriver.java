@@ -18,7 +18,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -189,8 +188,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			timescaleMS = driverSettings.timescaleMS();
 			ClientSettings clients = ClientSettings.derive(clientSettings, driverSettings);
 
-			// A flush waits for the revision to be applied. Normally that's just
-			// one event delivery, so one operation's worth of time is ample;
+			// A flush attempt has one flushTimeout budget, shared by the wait for
+			// the loaded state and the wait for the change stream. Normally that's
+			// just one event delivery, so one operation's worth of time is ample;
 			// a flush that failed during a disconnect and is retrying may also
 			// have to wait out a reconnect first.
 			// (The flush retries once, so it can take twice this long before
@@ -337,7 +337,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		Throwable fallbackReason = null;
 		try {
 			LoadResult<R> loaded = loadState();
-			entireState = loaded.state().state();
+			entireState = loaded.state();
 
 			publishFormatDriver(loaded.driver(), loaded.snapshotTime());
 			// The state isn't in the tree yet, but the constructor won't return
@@ -353,7 +353,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			) {
 				Identifier epoch = Manifest.newEpoch();
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver(epoch);
-				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Map.of());
 
 				// The state document(s) and the manifest must be written atomically,
 				// so that a failure partway through initialization doesn't leave the
@@ -361,7 +360,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// starts a transaction itself: refurbish already starts its own.
 				queryCollection.ensureTransactionStarted();
 				try (var _ = boskInfo.context().withOnly(diagnosticAttributes)) {
-					preferredDriver.writeAllState(priorContents);
+					preferredDriver.writeAllState(entireState);
 				}
 				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat(), epoch));
 				session.commitTransactionIfAny();
@@ -389,7 +388,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * was stored in, the state itself, and the time of the snapshot it was read
 	 * from.
 	 */
-	private record LoadResult<S extends StateTreeNode>(FormatDriver<S> driver, StateAndMetadata<S> state, BsonTimestamp snapshotTime) {}
+	private record LoadResult<S extends StateTreeNode>(FormatDriver<S> driver, S state, BsonTimestamp snapshotTime) {}
 
 	/**
 	 * Loads the database state in a consistent snapshot.
@@ -412,7 +411,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// the snapshot boundary, leaving nothing to compare against.
 			BsonTimestamp snapshotTime = queryCollection.establishSnapshot();
 			FormatDriver<R> driver = detectFormat();
-			StateAndMetadata<R> state = driver.loadAllState();
+			R state = driver.loadAllState();
 			return new LoadResult<>(driver, state, snapshotTime);
 		}
 	}
@@ -450,7 +449,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						DatabaseFormat preferredFormat = driverSettings.preferredDatabaseFormat();
 						Identifier epoch;
 						boolean formatChanged;
-						StateAndMetadata<R> allState;
+						R allState;
 						// loadAllState seeds the live driver's field tracker, which
 						// event processing also updates, so the two must not run
 						// concurrently.
@@ -590,7 +589,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	static IOException classifyFlushFailure(RuntimeException e, Duration retryAfter) {
 		if (e instanceof ImmediateReconnectException) {
 			// Immediate-reconnect conditions aren't retryable-later conditions. If this
-			// escaped the receiver, it's a persistent revision/format problem.
+			// escaped the receiver, it's a persistent format problem.
 			return new FlushFailureException(e);
 		} else if (e instanceof DisconnectedException) {
 			return new RetryableFlushException(e, retryAfter);
@@ -708,7 +707,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 				publishFormatDriver(loaded.driver(), loaded.snapshotTime());
 
-				downstream.submitReplacement(boskInfo.rootReference(), loaded.state().state());
+				downstream.submitReplacement(boskInfo.rootReference(), loaded.state());
 				LOGGER.debug("Done submitting downstream");
 
 				loaded.driver().markSubmitted(loaded.snapshotTime());
@@ -1205,7 +1204,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * flush that retries against the new driver waits for that.
 	 *
 	 * @param loadTime the time of the state the new driver represents: the
-	 * snapshot it was loaded from, or the commit that initialized it, or empty if it loaded no state
+	 * snapshot it was loaded from, or the commit that initialized it
 	 */
 	void publishFormatDriver(FormatDriver<R> newFormatDriver, BsonTimestamp loadTime) {
 		LOGGER.debug("publishFormatDriver({}) (was {})", newFormatDriver.getClass().getSimpleName(), currentFormatDriver().getClass().getSimpleName());

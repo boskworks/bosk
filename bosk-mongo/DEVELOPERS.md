@@ -190,7 +190,7 @@ There are two `MongoDriver` methods that present special challenges to `FormatDr
 
 For these reasons, `FormatDriver` does not implement these two methods,
 but instead implements two simpler methods:
-- `loadAllState` performs a database read of the entire bosk state and metadata, and returns it in a `StateAndMetadata` object; and
+- `loadAllState` performs a database read of the entire bosk state, and returns it; and
 - `writeAllState` performs a database write of the bosk state documents.
 
 The manifest document, which declares the format of the collection contents, is written by
@@ -248,9 +248,8 @@ Every state document carries the `state` payload plus metadata that the driver n
 | --- | --- |
 | `_id` | The document's location in the conceptual state tree, so change stream events identify it |
 | `epoch` | A per-document copy of the manifest's epoch, a UUID that changes when the collection is initialized or refurbished into another format. Writes include it in their filter, so a stale write matches nothing instead of corrupting a document whose format it does not understand. |
-| `incarnation` | Distinguishes one lifetime of the document's `revision` counter |
-| `revision` | Bumped by the topmost write of a transaction: the flush unit, the dedup key, and the signal that a transaction's event tree is complete |
 | `lockId` | Makes a transaction that read the document a writer of it, so a concurrent writer conflicts |
+| `writeId` | A fresh identifier written by each write that stores state: the transaction's last write, every sub-part write within it, and pre-delete updates. It is prefixed `last:`, `part:`, or `pdel:` by role. Its presence makes the write visible in the change stream even when the state is unchanged, and the `last:` prefix marks the transaction's last write, which is also the topmost document's write. The Pando receiver decides by that prefix and never orders or compares identifiers |
 | `diagnostics` | The `BoskContext` attributes of the write, for hooks |
 
 The `lockId` field follows MongoDB's
@@ -293,13 +292,36 @@ The `FormatDriver` keeps a `FlushBarrier` that records the cluster time of the l
 whose changes have been submitted downstream.
 The barrier has no position until the driver marks the initial state's position with
 `markSubmitted`: the snapshot's cluster time, or the commit that initialized the collection.
-The receiver thread marks it before it processes any event, so the first position is always
-the initial state's. This prevents a flush that is retrying across a reconnect from starting
-before the initial state has been handed to the downstream driver.
-Each event whose changes are submitted advances the cluster time.
+Pando advances the cluster time when it submits a transaction at its last
+write, using that write's cluster time. A standalone event
+is submitted at itself, and an event that changes no state contributes no
+position. Sequoia advances it for each state-document event it processes.
 `flush()` first reads the manifest and root with local read concern to confirm
-the collection has not been rewritten, then captures that cluster time, probes the
-change stream for events after it, and waits for the receiver to submit them.
+the collection has not been rewritten, then captures the position and probes the
+change stream for state writes after it, waiting for the receiver to process them.
+Those reads make a flush fail and reload when it can no longer follow the
+collection: another format has a different epoch, and a root deleted without
+replacement is missing. A same-format refurbish keeps the epoch and rewrites the
+root in one transaction, so the receiver's reload on that deletion is what
+catches it, and the flush retries against the new state.
+The write a Pando flush waits for is a `last:` write; in Sequoia it is the
+root document write.
+An acknowledged write is already in the oplog when `flush()` begins, because
+writes use `WriteConcern.MAJORITY` and change streams report only
+majority-committed changes; the probe starts at the barrier position, so it
+covers anything the receiver has not submitted yet.
+A write made directly to the database is outside that guarantee: if it is invalid,
+the receiver eventually rejects it and reloads, but a flush need not wait for that.
+
+Pando treats a deletion of the root state document as disruptive: `onEvent`
+throws, and the receiver reconnects and reloads. Outside a refurbish, Bosk never
+deletes the root document, and a `DELETE` cannot carry a `writeId`, so a root
+deletion means the collection has been rewritten by something else. A refurbish
+deletes and rewrites the root in one transaction, so the reload sees the new
+state. A transaction with no `last:` write—only deletes, or only `part:` or
+`pdel:` writes—stays queued, and its changes never reach the assembled state.
+A state write with no `writeId`, or an unrecognized one, is rejected, and the
+driver reloads.
 
 #### Division of responsibilities
 
@@ -328,7 +350,7 @@ Here is a summary of the responsibilities of `MainDriver`, `UpdateDriver`, and `
 - Describes updates as `AtomicUpdateOperation` or `TransactionalUpdateOperation`
 - Interacts with the downstream driver, aside from `initialRoot`
 - Implements `flush`
-- Implements revisions, and ignores revisions older than the current one
+- Marks the cluster time through which it has submitted changes downstream
 - Ignores events on unrelated documents within the bosk collection (like the manifest)
 - Processes updates to the manifest itself
 	- Throws `CollectionRewrittenException` if the manifest describes a different format than the one loaded
@@ -365,10 +387,9 @@ other events are handled by `MainDriver` itself:
 The cursor is open before the state is loaded, so the events it delivers include some
 that the load already reflects. Each load records the time of the snapshot it read from,
 and `onEvent` ignores events at or before that time. Replaying them would be at best
-wasted work, and at worst harmful: an event's revision belongs to the incarnation of the
-document it changed, and a pre-load event can describe an incarnation the load has
-already replaced. Applying it would record a revision that the new incarnation hasn't
-reached, so subsequent genuine updates would look already applied, and would be ignored.
+wasted work, and at worst harmful: a pre-load event describes a state the load has
+already replaced. Applying it would move the in-memory state backwards from the snapshot,
+even though the barrier still reports the snapshot as submitted.
 
 This is why the load is a snapshot read rather than a transaction. A transaction is
 consistent too, but its operation time advances past the snapshot boundary, so it gives
