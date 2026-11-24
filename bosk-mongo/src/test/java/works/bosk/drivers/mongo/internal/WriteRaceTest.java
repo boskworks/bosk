@@ -140,7 +140,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 	void mustNotProcessEventsBeforeInitialStateApplied() throws Exception {
 		BlockingGate loadGate = new BlockingGate("the Pando load's graft read");
 		BlockingGate initialStateGate = new BlockingGate("the load thread before the initial state is applied");
-		BlockingGate eventGate = new BlockingGate("the final event of the change tree");
+		BlockingGate eventGate = new BlockingGate("the last event of the change tree");
 		CountDownLatch initialStateReached = new CountDownLatch(1);
 		CountDownLatch eventReached = new CountDownLatch(1);
 		CountDownLatch eventProcessed = new CountDownLatch(1);
@@ -159,7 +159,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 
 		// Load the test bosk on a background thread, with probes that pause the
 		// load at the graft read, block the load thread after the state is loaded
-		// but before it is applied, and gate the final event of the change tree.
+		// but before it is applied, and gate the last event of the change tree.
 		AtomicReference<Bosk<TestEntity>> testBoskRef = new AtomicReference<>();
 		AtomicReference<Throwable> constructionError = new AtomicReference<>();
 		Thread loadThread = new Thread(() -> {
@@ -200,7 +200,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 
 			// The change events for the concurrent write are now buffered. If the
 			// driver processes them before the initial state is applied (the bug),
-			// the final event of the change tree reaches the gating listener now.
+			// the last event of the change tree reaches the gating listener now.
 			// If events are deferred until the state is applied (the fix), no event
 			// reaches it until after the initial state gate is released below.
 			boolean gated = eventReached.await(5, SECONDS);
@@ -239,7 +239,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 	}
 
 	/**
-	 * A {@link ChangeListener} that blocks the final event of the change tree
+	 * A {@link ChangeListener} that blocks the last event of the change tree
 	 * (the root document's update that carries the revision field) until the
 	 * test releases {@code eventGate}, so the test can force the tree to be
 	 * processed at a chosen moment.
@@ -272,13 +272,13 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 
 		@Override
 		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
-			boolean finalEvent = isFinalTreeEvent(event);
-			if (finalEvent && eventReached.getCount() > 0) {
+			boolean lastEvent = isLastTreeEvent(event);
+			if (lastEvent && eventReached.getCount() > 0) {
 				eventReached.countDown();
 				eventGate.awaitRelease(Duration.ofSeconds(60));
 			}
 			downstream.onEvent(event);
-			if (finalEvent) {
+			if (lastEvent) {
 				eventProcessed.countDown();
 			}
 		}
@@ -287,7 +287,7 @@ public class WriteRaceTest extends AbstractMongoDriverTest {
 		 * True for the root document's update that carries the revision field,
 		 * which is the last event of the change tree.
 		 */
-		private static boolean isFinalTreeEvent(ChangeStreamDocument<BsonDocument> event) {
+		private static boolean isLastTreeEvent(ChangeStreamDocument<BsonDocument> event) {
 			BsonValue id = event.getDocumentKey().get("_id");
 			return id instanceof BsonString s
 				&& s.getValue().endsWith("|")

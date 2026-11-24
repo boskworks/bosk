@@ -200,7 +200,7 @@ final class UpdateDriver implements BoskDriver {
 	 * probably broken and must still take the disconnect path. Only a genuine
 	 * write conflict is safe to report as a retryable update.
 	 * <p>
-	 * The library may also wrap the final write conflict in a timeout exception
+	 * The library may also wrap the last write conflict in a timeout exception
 	 * when the transaction budget expires, which lacks the label, so accept that
 	 * form as well.
 	 */

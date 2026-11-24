@@ -506,8 +506,8 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 			processTree(singletonList(event));
 		} else {
 			demultiplexer.add(event);
-			if (isFinalEventOfTree(event)) {
-				LOGGER.debug("Processing final event {} on {}", event.getOperationType(), event.getDocumentKey());
+			if (isLastEventOfTree(event)) {
+				LOGGER.debug("Processing last event {} on {}", event.getOperationType(), event.getDocumentKey());
 				processTree(demultiplexer.pop(event));
 			} else {
 				LOGGER.debug("Queueing event {} on {}", event.getOperationType(), event.getDocumentKey());
@@ -516,18 +516,18 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	}
 
 	/**
-	 * The final event of a transaction is the topmost document's revision bump.
+	 * The last event of a transaction is the topmost document's revision bump.
 	 * <p>
 	 * For an {@code UPDATE}, that means the update includes the revision field.
 	 * Only the topmost write bumps a revision, and the topmost document always
-	 * already exists, so a normal transaction's final event is an {@code UPDATE}.
+	 * already exists, so a normal transaction's last event is an {@code UPDATE}.
 	 * <p>
 	 * The exception is root initialization (and refurbish), which may insert the
 	 * root document. Sub-document {@code INSERT}s also carry revisions, because
-	 * every document has them, so they must not be mistaken for the final event.
-	 * That is why an {@code INSERT} or {@code REPLACE} is final only for the root.
+	 * every document has them, so they must not be mistaken for the last event.
+	 * That is why an {@code INSERT} or {@code REPLACE} is last only for the root.
 	 */
-	private boolean isFinalEventOfTree(ChangeStreamDocument<BsonDocument> event) {
+	private boolean isLastEventOfTree(ChangeStreamDocument<BsonDocument> event) {
 		return switch (event.getOperationType()) {
 			case UPDATE -> updateEventHasField(event, DocumentFields.revision);
 			case INSERT, REPLACE, DELETE -> isRootDocumentEvent(event);
@@ -574,7 +574,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 		if (treeEvents.isEmpty()) {
 			return;
 		}
-		// In the per-document revision design, the final event is always the
+		// In the per-document revision design, the last event is always the
 		// topmost event: the write that changed the shallowest document's state
 		// also bumped its revision. (Initialization is the same: the root write
 		// carries both the state and the revision.)
@@ -590,7 +590,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 				case INSERT, REPLACE: {
 					BsonDocument fullDocument = topmostEvent.getFullDocument();
 					if (fullDocument == null) {
-						throw new UnprocessableEventException("Missing fullDocument on final event", topmostEvent.getOperationType());
+						throw new UnprocessableEventException("Missing fullDocument on topmost event", topmostEvent.getOperationType());
 					}
 					RevisionTuple revision = RevisionTuple.from(fullDocument);
 					if (flushLock.get().alreadySeen(docId, revision)) {
@@ -598,7 +598,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 						return;
 					}
 
-					LOGGER.debug("Topmost event is {}", topmostEvent.getOperationType());
+					LOGGER.debug("Topmost event is last event: {}", topmostEvent.getOperationType());
 					propagateDownstream(topmostEvent, priorEvents);
 
 					recordRevisions(priorEvents);
@@ -611,7 +611,7 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 						return;
 					}
 
-					LOGGER.debug("Topmost event is final event");
+					LOGGER.debug("Topmost event is last event");
 					propagateDownstream(topmostEvent, priorEvents);
 					recordRevisions(priorEvents);
 					finishedRevision(docId, revision);
@@ -637,12 +637,12 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	private RevisionTuple revisionFromUpdateEvent(BsonString docId, ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException {
 		UpdateDescription updateDescription = event.getUpdateDescription();
 		if (updateDescription == null) {
-			throw new UnprocessableEventException("Missing update description on final event", event.getOperationType());
+			throw new UnprocessableEventException("Missing update description on last event", event.getOperationType());
 		}
 		BsonDocument updatedFields = updateDescription.getUpdatedFields();
 		BsonInt64 revision = updatedFields.getInt64(DocumentFields.revision.name(), null);
 		if (revision == null) {
-			throw new UnprocessableEventException("Final event does not carry a revision", event.getOperationType());
+			throw new UnprocessableEventException("Last event does not carry a revision", event.getOperationType());
 		}
 		BsonString incarnation = updatedFields.getString(DocumentFields.incarnation.name(), null);
 		String incarnationValue = incarnation == null
@@ -803,11 +803,11 @@ final class PandoFormatDriver<R extends StateTreeNode> extends AbstractFormatDri
 	 * A replacement that has sub-parts writes those sub-parts as separate
 	 * documents, then sets the target field to a stub in the topmost document.
 	 * The topmost document's update carries the revision bump that makes the
-	 * transaction's final event identifiable.
+	 * transaction's last event identifiable.
 	 * <p>
 	 * Before setting the field, we pre-delete it: we unset it.
 	 * This ensures the field changes even when the new value equals
-	 * the old one, so the final event's {@code updatedFields} includes it and we
+	 * the old one, so the last event's {@code updatedFields} includes it and we
 	 * can gather the sub-parts into the value we send downstream. Without this,
 	 * an update whose value happened to be unchanged could leave us unable to
 	 * tell which state field changed.
