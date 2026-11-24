@@ -268,16 +268,16 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * with a different one means the database has been refurbished, so the driver
 	 * must reload it.
 	 *
-	 * @throws FormatChangedException if the event's document has a different epoch
+	 * @throws CollectionRewrittenException if the event's document has a different epoch
 	 * @throws UnprocessableEventException if the event modifies the epoch, which no valid update does
 	 */
-	protected void validateEventEpoch(ChangeStreamDocument<BsonDocument> event) throws FormatChangedException, UnprocessableEventException {
+	protected void validateEventEpoch(ChangeStreamDocument<BsonDocument> event) throws CollectionRewrittenException, UnprocessableEventException {
 		BsonDocument fullDocument = event.getFullDocument();
 		if (fullDocument != null) {
 			BsonString expected = new BsonString(epoch.toString());
 			BsonValue found = fullDocument.get(DocumentFields.epoch.name());
 			if (!expected.equals(found)) {
-				throw new FormatChangedException("State document " + documentIdOf(event).getValue()
+				throw new CollectionRewrittenException("State document " + documentIdOf(event).getValue()
 					+ " has epoch " + found + ", but this driver is using " + expected.getValue(),
 					event.getOperationType());
 			}
@@ -455,7 +455,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * manifest that {@link MainDriver} writes), but outside that, we want to be as
 	 * strict as possible so incompatible database changes don't go unnoticed.
 	 */
-	protected void validateManifestEvent(ChangeStreamDocument<BsonDocument> event, Manifest effectiveManifest) throws UnprocessableEventException, FormatChangedException {
+	protected void validateManifestEvent(ChangeStreamDocument<BsonDocument> event, Manifest effectiveManifest) throws UnprocessableEventException, CollectionRewrittenException {
 		LOGGER.debug("onManifestEvent({})", event.getOperationType().name());
 		if (event.getOperationType() == INSERT || event.getOperationType() == REPLACE) {
 			BsonDocument manifestDoc = requireNonNull(event.getFullDocument());
@@ -466,7 +466,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 				throw new UnprocessableEventException("Invalid manifest", e, event.getOperationType());
 			}
 			if (!manifest.equals(effectiveManifest)) {
-				throw new FormatChangedException("Manifest indicates format has changed", event.getOperationType());
+				throw new CollectionRewrittenException("Manifest indicates format has changed", event.getOperationType());
 			}
 		} else {
 			// We always use INSERT/REPLACE to update the manifest;

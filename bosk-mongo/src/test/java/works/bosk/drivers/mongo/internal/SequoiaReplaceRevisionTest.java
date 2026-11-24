@@ -125,7 +125,7 @@ class SequoiaReplaceRevisionTest extends AbstractMongoDriverTest {
 		MainDriver.setProbes(TestProbes.noop().withListenerFactory(downstream ->
 			new ForwardingChangeListener(downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					super.onEvent(event);
 					if (armed.get()
 						&& event.getOperationType() == OperationType.REPLACE

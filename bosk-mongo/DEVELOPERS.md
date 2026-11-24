@@ -285,7 +285,7 @@ or else it can throw `UnprocessableEventException`, which causes the `ChangeRece
 and reinitialize from scratch with a new `FormatDriver`.
 
 If instead the collection's manifest now describes a different format than the one this driver loaded,
-`onEvent` throws `FormatChangedException`.
+`onEvent` throws `CollectionRewrittenException`.
 This is expected rather than exceptional;
 it happens in particular when another bosk performs a `refurbish` to a different format.
 The `ChangeReceiver` reloads the state and continues without treating it as a problem.
@@ -330,7 +330,7 @@ Here is a summary of the responsibilities of `MainDriver`, `UpdateDriver`, and `
 - Implements revisions, and ignores revisions older than the current one
 - Ignores events on unrelated documents within the bosk collection (like the manifest)
 - Processes updates to the manifest itself
-	- Throws `FormatChangedException` if the manifest describes a different format than the one loaded
+	- Throws `CollectionRewrittenException` if the manifest describes a different format than the one loaded
 	- Can otherwise throw `UnprocessableEventException` at its discretion,
 	  but must not do so for any changes from its own `writeAllState`
 	  method (or the manifest written by `MainDriver` during initialization),

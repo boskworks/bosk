@@ -43,7 +43,7 @@ import works.bosk.drivers.mongo.status.MongoStatus;
  */
 sealed public interface FormatDriver<R extends StateTreeNode>
 	permits AbstractFormatDriver, DisconnectedDriver {
-	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException;
+	void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException;
 
 	/**
 	 * Describes how to replace the object referenced by {@code target}.

@@ -420,7 +420,7 @@ public class SerialFractionExperiment extends AbstractMongoDriverTest {
 		}
 
 		@Override
-		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 			counters.events.increment();
 			long start = System.nanoTime();
 			try {

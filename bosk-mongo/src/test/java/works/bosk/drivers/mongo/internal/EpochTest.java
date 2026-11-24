@@ -187,7 +187,7 @@ class EpochTest extends AbstractMongoDriverTest {
 			null
 		);
 
-		assertThrows(FormatChangedException.class, () -> driver.validateEventEpoch(event));
+		assertThrows(CollectionRewrittenException.class, () -> driver.validateEventEpoch(event));
 	}
 
 	@Test

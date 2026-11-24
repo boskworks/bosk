@@ -264,7 +264,7 @@ public class PerDocumentRevisionTest extends AbstractMongoDriverTest {
 		MainDriver.setProbes(TestProbes.noop().withListenerFactory(downstream ->
 			new ForwardingChangeListener(downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					if (armed.get() && isRevisionBearingUpdateOf(event, "|catalog|123")) {
 						gate.signal();
 						gate.awaitRelease(Duration.ofSeconds(60));
@@ -402,7 +402,7 @@ public class PerDocumentRevisionTest extends AbstractMongoDriverTest {
 		AtomicBoolean recording = new AtomicBoolean(false);
 		MainDriver.setProbes(TestProbes.noop().withListenerFactory(downstream -> new ForwardingChangeListener(downstream) {
 			@Override
-			public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+			public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 				if (recording.get()) {
 					events.add(RecordedEvent.of(event));
 				}

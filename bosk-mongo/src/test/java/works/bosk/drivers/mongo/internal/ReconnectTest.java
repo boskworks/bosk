@@ -482,7 +482,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 
 		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					if (new BsonString(DISCONNECT_PROBE_ID).equals(event.getDocumentKey().get("_id"))) {
 						LOGGER.debug("Rejecting event to force a disconnect");
 						throw new UnprocessableEventException("Forced disconnect for test", event.getOperationType());
@@ -584,7 +584,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 
 		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					if (armed.compareAndSet(true, false)) {
 						LOGGER.debug("Gating the change event");
 						eventGate.signal();
@@ -718,7 +718,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 
 		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					if (new BsonString(DISCONNECT_PROBE_ID).equals(event.getDocumentKey().get("_id"))) {
 						LOGGER.debug("Rejecting event to force a disconnect");
 						throw new UnprocessableEventException("Forced disconnect for test", event.getOperationType());
