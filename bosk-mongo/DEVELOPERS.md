@@ -313,6 +313,23 @@ covers anything the receiver has not submitted yet.
 A write made directly to the database is outside that guarantee: if it is invalid,
 the receiver eventually rejects it and reloads, but a flush need not wait for that.
 
+Flush's reads must come from the primary.
+Every write reaches the primary before it's acknowledged, so the primary is the
+only node guaranteed to reflect them all; a secondary can trail writes the client
+has already seen acknowledged, and a flush that read from one could return before
+those writes were applied.
+So `SessionCollection.fromPrimary` sets the read preference explicitly instead of
+inheriting the client's, and the epoch check and the probes both go through it.
+The epoch check uses `findLatest`, a local read of the primary; the probes are
+change streams, which report only majority-committed changes.
+That's the strength a flush needs, because a write is acknowledged only once a
+majority has it, while a local read could show changes that are later rolled back.
+Read concern decides what's durable, not how current the answer is: a majority
+read on a lagging secondary is still durable, and still behind.
+Everything else, including the `ChangeReceiver`'s stream, follows the client's
+configured read preference: a secondary there costs flush latency, because the
+receiver falls behind, but not correctness.
+
 Pando treats a deletion of the root state document as disruptive: `onEvent`
 throws, and the receiver reconnects and reloads. Outside a refurbish, Bosk never
 deletes the root document, and a `DELETE` cannot carry a `writeId`, so a root
