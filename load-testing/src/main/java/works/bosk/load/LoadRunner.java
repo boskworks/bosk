@@ -409,7 +409,7 @@ public final class LoadRunner {
 	}
 
 	private static void registerHooks(Bosk<TestEntity> bosk, LoadConfig config, AtomicBoolean hookActive) throws InvalidTypeException {
-		if (config.hookLatency().isZero()) {
+		if (config.hookCount() == 0) {
 			return;
 		}
 		if (config.hookScope() == HookScope.ROOT) {
@@ -427,7 +427,7 @@ public final class LoadRunner {
 	}
 
 	private static void sleepIfActive(AtomicBoolean hookActive, LoadConfig config) throws InterruptedException {
-		if (hookActive.get()) {
+		if (hookActive.get() && !config.hookLatency().isZero()) {
 			Thread.sleep(config.hookLatency());
 		}
 	}

@@ -42,9 +42,9 @@ Options:
 | `--flush` | `everyOp` | `everyOp`, `everyN`, or `end` |
 | `--flushEvery` | `100` | Flush interval for `everyN` |
 | `--valueBytes` | `16` | Length of the string values written by the workload |
-| `--hookLatency` | `0ms` | Sleep time for each hook; zero disables hooks |
+| `--hookLatency` | `0ms` | Sleep time for each hook; zero means it doesn't sleep |
 | `--hookScope` | `root` | Hook scope: `root` or `entity` |
-| `--hookCount` | `1` | Number of hooks to register |
+| `--hookCount` | `0` | Number of hooks to register; zero disables hooks |
 | `--hookQueueMaxSize` | `1000` | Hook queue threshold at which overload mode begins |
 | `--readers` | `0` | Reader threads running alongside the writers; zero disables reads |
 | `--readShape` | `leaf` | What readers read: `leaf`, `entity`, or `catalog` |
@@ -96,7 +96,12 @@ Each scenario runs ten seconds of warmup and ten seconds of measurement, twice b
 | `update-sequoia-8` | mongo | Eight threads through Sequoia. |
 | `flush-per-update` | mongo | One thread flushing after every update: the flush path a request takes. |
 | `submit-simple-8` | core | Eight threads through the in-memory driver: the core submit path with no I/O. |
+| `submit-simple-1` | core | The same path with one thread, for comparing against `hooks-root-1`. |
+| `hooks-root-1` | core | One thread with a single root hook that does nothing: per-update dispatch. |
+| `hooks-root-8` | core | The same hook under eight threads. |
+| `hooks-entity-8` | core | Eight threads with one hook scoped to every entity's string field. |
 | `read-simple-8` | core | Eight reader threads taking a read session per operation. |
+| `read-simple-perthread` | core | The same readers, each holding one read session for the run. |
 | `flush-idle` | mongo | Fifty flushes with nothing written in between. |
 | `flush-after-burst` | mongo | One flush after each burst of a hundred updates. |
 | `init-1000` | mongo | Constructing a bosk whose collection holds a thousand entries. |

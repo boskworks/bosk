@@ -68,6 +68,9 @@ public final class SanityChild {
 		addLatency(metrics, "submit", result.submitLatency());
 		addLatency(metrics, "flush", result.flushLatency());
 		addLatency(metrics, "read", result.readLatency());
+		if (result.reads() > 0) {
+			metrics.add("read_throughput", result.reads() / seconds(result.measuredNanos()), "ops/s");
+		}
 		metrics.add("gc_count", result.gcCountAfter() - result.gcCountBefore(), "count");
 		metrics.add("gc_time", result.gcTimeMillisAfter() - result.gcTimeMillisBefore(), "ms");
 		return new Measurement(metrics.list(), result.errors(), result.verified());

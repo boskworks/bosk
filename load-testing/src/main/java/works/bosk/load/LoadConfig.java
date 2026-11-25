@@ -22,9 +22,9 @@ import static java.util.Objects.requireNonNull;
  * @param flushMode        when to call {@link works.bosk.BoskDriver#flush()}
  * @param flushEvery       the interval used by {@link FlushMode#EVERY_N}
  * @param valueBytes       the length of the string values written by the workload
- * @param hookLatency      how long each hook sleeps per invocation; zero disables hooks
+ * @param hookLatency      how long each hook sleeps per invocation; zero means it doesn't sleep
  * @param hookScope        whether each hook is scoped to the root or to every entity's string
- * @param hookCount        how many hooks to register
+ * @param hookCount        how many hooks to register; zero disables hooks
  * @param hookQueueMaxSize the hook queue threshold at which overload mode begins
  * @param readers          how many reader threads read concurrently with the writers; zero disables reads
  * @param readShape        what each reader thread reads
@@ -91,8 +91,8 @@ public record LoadConfig(
 		if (hookLatency.isNegative()) {
 			throw new IllegalArgumentException("hookLatency must not be negative");
 		}
-		if (hookCount <= 0) {
-			throw new IllegalArgumentException("hookCount must be positive");
+		if (hookCount < 0) {
+			throw new IllegalArgumentException("hookCount must not be negative");
 		}
 		if (hookQueueMaxSize <= 0) {
 			throw new IllegalArgumentException("hookQueueMaxSize must be positive");
@@ -118,7 +118,7 @@ public record LoadConfig(
 		private int valueBytes = 16;
 		private Duration hookLatency = Duration.ZERO;
 		private HookScope hookScope = HookScope.ROOT;
-		private int hookCount = 1;
+		private int hookCount = 0;
 		private int hookQueueMaxSize = 1000;
 		private int readers = 0;
 		private ReadShape readShape = ReadShape.LEAF;
