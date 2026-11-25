@@ -49,3 +49,13 @@ tasks.named('run') {
 		jvmArgs(project.property('loadJvmArgs').toString().split('\\s+'))
 	}
 }
+
+tasks.register('sanity', JavaExec) {
+	group = 'verification'
+	description = 'Runs the performance sanity suite.'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'works.bosk.load.SanitySuite'
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(jdkVersion)
+	}
+}

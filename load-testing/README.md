@@ -76,6 +76,47 @@ second copy of a large catalog.
 - `heap_used_before` and `heap_used_after` in the summary are point-in-time values. The time series in `samples.csv` is the better source for heap and GC behaviour.
 - The `max` latency is often a GC or scheduling spike. Look at the percentiles for the shape of the distribution.
 
+## Performance sanity suite
+
+The suite runs a fixed set of short scenarios, one JVM per scenario, to notice when something has got markedly slower. It is not a benchmark and it does not compare against stored numbers: it writes the measurements and the environment, and you compare two runs by eye, on the same machine.
+
+```bash
+./gradlew :load-testing:sanity
+./gradlew :load-testing:sanity --args="--label=my-branch --reps=3"
+./gradlew :load-testing:sanity --args="--only=update-pando-8,flush-per-update"
+./gradlew :load-testing:sanity --args="--list"
+```
+
+Each scenario runs ten seconds of warmup and ten seconds of measurement, twice by default. That is about four minutes in total, including one MongoDB container per scenario.
+
+| Scenario | Group | What it measures |
+|---|---|---|
+| `update-pando-1` | mongo | One thread of disjoint field updates through grafted Pando. |
+| `update-pando-8` | mongo | Eight threads, same driver: contention and pool behaviour. |
+| `update-sequoia-8` | mongo | Eight threads through Sequoia. |
+| `flush-per-update` | mongo | One thread flushing after every update: the flush path a request takes. |
+| `submit-simple-8` | core | Eight threads through the in-memory driver: the core submit path with no I/O. |
+| `read-simple-8` | core | Eight reader threads taking a read session per operation. |
+| `flush-idle` | mongo | Fifty flushes with nothing written in between. |
+| `flush-after-burst` | mongo | One flush after each burst of a hundred updates. |
+| `init-1000` | mongo | Constructing a bosk whose collection holds a thousand entries. |
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--label` | `local` | Name used for the output files |
+| `--reps` | `2` | Repetitions per scenario |
+| `--out` | `build/sanity-results` | Output directory |
+| `--only` | all | Comma-separated scenario names |
+| `--list` | | List the scenarios and exit |
+
+The output directory contains:
+
+- `sanity-<label>.csv`: one row per scenario and metric, with each repetition, the median, and the range.
+- `sanity-<label>.env`: the git revision, JVM, heap, CPU, and MongoDB image, so you can tell whether two runs are comparable.
+- `<scenario>-rep<n>.log`: the child process output, for anything that went wrong.
+
+Read the range, not just the median: a scenario whose repetitions disagree by more than about ten percent cannot show a smaller regression. The first repetition of the first scenario sometimes pays for page cache and container warm-up, so `--reps=3` and a second run settle it.
+
 ## Current main (2026-11-21)
 
 The harness is rebased onto `upstream/main` at `128ce7ec9`. This is the first run against the

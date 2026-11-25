@@ -50,5 +50,5 @@ final class MongoEnvironment implements AutoCloseable {
 		container.stop();
 	}
 
-	private static final String MONGO_IMAGE = "mongo:9.0.4";
+	static final String MONGO_IMAGE = "mongo:9.0.4";
 }
