@@ -45,7 +45,7 @@ Options:
 | `--hookLatency` | `0ms` | Sleep time for each hook; zero means it doesn't sleep |
 | `--hookScope` | `root` | Hook scope: `root` or `entity` |
 | `--hookCount` | `0` | Number of hooks to register; zero disables hooks |
-| `--hookQueueMaxSize` | `1000` | Hook queue threshold at which overload mode begins |
+| `--hookQueueMaxSize` | `1000` | Hook queue threshold at which overload mode begins; zero means always compacted |
 | `--readers` | `0` | Reader threads running alongside the writers; zero disables reads |
 | `--readShape` | `leaf` | What readers read: `leaf`, `entity`, or `catalog` |
 | `--sessionLifetime` | `perOp` | `perOp` opens a session per read; `perThread` holds one open for the run |

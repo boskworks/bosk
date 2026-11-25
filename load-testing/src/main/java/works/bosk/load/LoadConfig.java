@@ -25,7 +25,7 @@ import static java.util.Objects.requireNonNull;
  * @param hookLatency      how long each hook sleeps per invocation; zero means it doesn't sleep
  * @param hookScope        whether each hook is scoped to the root or to every entity's string
  * @param hookCount        how many hooks to register; zero disables hooks
- * @param hookQueueMaxSize the hook queue threshold at which overload mode begins
+ * @param hookQueueMaxSize the hook queue threshold at which overload mode begins. Zero means always overloaded
  * @param readers          how many reader threads read concurrently with the writers; zero disables reads
  * @param readShape        what each reader thread reads
  * @param sessionLifetime  how long each reader keeps its read session open
@@ -94,8 +94,8 @@ public record LoadConfig(
 		if (hookCount < 0) {
 			throw new IllegalArgumentException("hookCount must not be negative");
 		}
-		if (hookQueueMaxSize <= 0) {
-			throw new IllegalArgumentException("hookQueueMaxSize must be positive");
+		if (hookQueueMaxSize < 0) {
+			throw new IllegalArgumentException("hookQueueMaxSize must not be negative");
 		}
 		if (readers < 0) {
 			throw new IllegalArgumentException("readers must not be negative");
