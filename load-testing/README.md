@@ -75,6 +75,7 @@ second copy of a large catalog.
 - Warmup is excluded from the metrics.
 - `heap_used_before` and `heap_used_after` in the summary are point-in-time values. The time series in `samples.csv` is the better source for heap and GC behaviour.
 - The `max` latency is often a GC or scheduling spike. Look at the percentiles for the shape of the distribution.
+- `hook_invocations` counts the hook calls that actually ran during measurement. When the hook queue reaches `hookQueueMaxSize`, updates are compacted instead, and the count plateaus below the update count even as throughput rises.
 
 ## Performance sanity suite
 
@@ -99,6 +100,8 @@ Each scenario runs ten seconds of warmup and ten seconds of measurement, twice b
 | `submit-simple-1` | core | The same path with one thread, for comparing against `hooks-root-1`. |
 | `hooks-root-1` | core | One thread with a single root hook that does nothing: per-update dispatch. |
 | `hooks-root-8` | core | The same hook under eight threads. |
+| `hooks-root-2` | core | Two threads: whether hook execution keeps up with the updates. |
+| `hooks-root-4` | core | Four threads, between the two previous cases. |
 | `hooks-entity-8` | core | Eight threads with one hook scoped to every entity's string field. |
 | `read-simple-8` | core | Eight reader threads taking a read session per operation. |
 | `read-simple-perthread` | core | The same readers, each holding one read session for the run. |

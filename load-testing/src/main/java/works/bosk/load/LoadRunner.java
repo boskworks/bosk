@@ -78,7 +78,8 @@ public final class LoadRunner {
 				.build());
 		workload.initialize(bosk);
 		AtomicBoolean hookActive = new AtomicBoolean(false);
-		registerHooks(bosk, config, hookActive);
+		LongAdder hookInvocations = new LongAdder();
+		registerHooks(bosk, config, hookActive, hookInvocations);
 		hookActive.set(true);
 		BoskDriver driver = bosk.driver();
 
@@ -129,6 +130,8 @@ public final class LoadRunner {
 		boolean stalled = false;
 		long measureStart = 0;
 		long measureEnd = 0;
+		long hookInvocationsBefore = 0;
+		long hookInvocationsDuring = 0;
 		try {
 			for (Thread worker : allThreads) {
 				worker.start();
@@ -136,10 +139,12 @@ public final class LoadRunner {
 			start.countDown();
 			Thread.sleep(config.warmup());
 			sampler.start();
+			hookInvocationsBefore = hookInvocations.sum();
 			measuring.set(true);
 			measureStart = System.nanoTime();
 			Thread.sleep(config.duration());
 			measureEnd = System.nanoTime();
+			hookInvocationsDuring = hookInvocations.sum() - hookInvocationsBefore;
 			measuring.set(false);
 			stop.set(true);
 			sampler.stop();
@@ -194,6 +199,7 @@ public final class LoadRunner {
 			ops,
 			errors.sum(),
 			reads,
+			hookInvocationsDuring,
 			mergeLatencies(submitLatencies),
 			mergeLatencies(flushLatencies),
 			mergeLatencies(readLatencies),
@@ -408,25 +414,26 @@ public final class LoadRunner {
 		return LatencySummary.of(merged);
 	}
 
-	private static void registerHooks(Bosk<TestEntity> bosk, LoadConfig config, AtomicBoolean hookActive) throws InvalidTypeException {
+	private static void registerHooks(Bosk<TestEntity> bosk, LoadConfig config, AtomicBoolean hookActive, LongAdder hookInvocations) throws InvalidTypeException {
 		if (config.hookCount() == 0) {
 			return;
 		}
 		if (config.hookScope() == HookScope.ROOT) {
 			for (int i = 0; i < config.hookCount(); i++) {
 				bosk.hookRegistrar().registerHook("load-hook-" + i, bosk.rootReference(),
-					_ -> sleepIfActive(hookActive, config));
+					_ -> runHook(hookActive, hookInvocations, config));
 			}
 		} else {
 			Reference<String> scope = bosk.buildReferences(Refs.class).anyEntityString();
 			for (int i = 0; i < config.hookCount(); i++) {
 				bosk.hookRegistrar().registerHook("load-hook-" + i, scope,
-					_ -> sleepIfActive(hookActive, config));
+					_ -> runHook(hookActive, hookInvocations, config));
 			}
 		}
 	}
 
-	private static void sleepIfActive(AtomicBoolean hookActive, LoadConfig config) throws InterruptedException {
+	private static void runHook(AtomicBoolean hookActive, LongAdder hookInvocations, LoadConfig config) throws InterruptedException {
+		hookInvocations.increment();
 		if (hookActive.get() && !config.hookLatency().isZero()) {
 			Thread.sleep(config.hookLatency());
 		}

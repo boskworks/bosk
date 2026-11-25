@@ -14,6 +14,7 @@ import java.util.List;
  * @param ops                 operations completed during measurement
  * @param errors              exceptions seen by the workers, readers, or the verifier
  * @param reads               read operations completed during measurement
+ * @param hookInvocations     hook calls run during measurement
  * @param submitLatency       update submission latency
  * @param flushLatency        flush latency; empty when the run never flushed during measurement
  * @param readLatency         read latency; empty when the run had no readers
@@ -40,6 +41,7 @@ public record LoadResult(
 	long ops,
 	long errors,
 	long reads,
+	long hookInvocations,
 	LatencySummary submitLatency,
 	LatencySummary flushLatency,
 	LatencySummary readLatency,

@@ -73,6 +73,12 @@ public final class SanityChild {
 		}
 		metrics.add("gc_count", result.gcCountAfter() - result.gcCountBefore(), "count");
 		metrics.add("gc_time", result.gcTimeMillisAfter() - result.gcTimeMillisBefore(), "ms");
+		if (result.config().hookCount() > 0) {
+			metrics.add("hook_invocations", result.hookInvocations(), "count");
+			if (result.ops() > 0) {
+				metrics.add("hooks_per_update", (double) result.hookInvocations() / result.ops(), "ratio");
+			}
+		}
 		return new Measurement(metrics.list(), result.errors(), result.verified());
 	}
 
