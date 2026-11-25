@@ -85,12 +85,10 @@ We can state this as a set of properties that a running `MongoDriver` is expecte
   not of constructing a new `Bosk`.
 
 One subtlety is worth calling out because it is easy to get wrong:
-`flush()` is the only driver operation that reads the per-document revision numbers,
-so some problems (for example, a missing revision field or a changed epoch)
-are naturally noticed there first.
-The same problems must also be detected asynchronously,
-by change stream processing or when the state is reloaded,
-so that a driver whose application never flushes still recovers.
+a flush that cannot complete triggers a reconnect and reload.
+That is a strong form of recovery, and it can mask a problem
+that a driver whose application never flushes must still detect on its own,
+by change stream processing or when the state is reloaded.
 
 A consequence for tests:
 the driver's behaviour when `flush()` is never called is the ordinary case, not an exotic one,
@@ -192,7 +190,7 @@ There are two `MongoDriver` methods that present special challenges to `FormatDr
 
 For these reasons, `FormatDriver` does not implement these two methods,
 but instead implements two simpler methods:
-- `loadAllState` performs a database read of the entire bosk state and metadata, and returns it in a `StateAndMetadata` object; and
+- `loadAllState` performs a database read of the entire bosk state, and returns it; and
 - `writeAllState` performs a database write of the bosk state documents.
 
 The manifest document, which declares the format of the collection contents, is written by
@@ -249,10 +247,9 @@ Every state document carries the `state` payload plus metadata that the driver n
 | Field | Purpose |
 | --- | --- |
 | `_id` | The document's location in the conceptual state tree, so change stream events identify it |
-| `epoch` | A per-document copy of the manifest's epoch, a UUID that changes when the collection is initialized or refurbished into another format. Writes include it in their filter, so a stale write matches nothing instead of corrupting a document whose format it does not understand; a flush, whose revision reads are not atomic, compares it in each document to tell which revisions are safe to wait for |
-| `incarnation` | Distinguishes one lifetime of the document's `revision` counter |
-| `revision` | Bumped by the topmost write of a transaction: the flush unit, the dedup key, and the signal that a transaction's event tree is complete |
+| `epoch` | A per-document copy of the manifest's epoch, a UUID that changes when the collection is initialized or refurbished into another format. Writes include it in their filter, so a stale write matches nothing instead of corrupting a document whose format it does not understand. |
 | `lockId` | Makes a transaction that read the document a writer of it, so a concurrent writer conflicts |
+| `writeId` | A fresh identifier written by each write that stores state: the transaction's last write, every sub-part write within it, and pre-delete updates. It is prefixed `last:`, `part:`, or `pdel:` by role. Its presence makes the write visible in the change stream even when the state is unchanged, and the `last:` prefix marks the transaction's last write, which is also the topmost document's write. The Pando receiver decides by that prefix and never orders or compares identifiers |
 | `diagnostics` | The `BoskContext` attributes of the write, for hooks |
 
 The `lockId` field follows MongoDB's
@@ -273,7 +270,7 @@ The logical-existence check for a cross-document precondition's entry is also no
 entry absent, the update does nothing, which is always safe; if it reports it present, a concurrent deletion
 can be treated as happening after the update, so locking the ancestor chain would buy nothing.
 
-#### `onEvent` and revision tracking
+#### `onEvent` and `markSubmitted`
 
 The third feature that distinguishes a `FormatDriver` from a `MongoDriver`
 is that `FormatDriver` is expected to respond to change stream events.
@@ -284,21 +281,47 @@ The `FormatDriver` is expected to perform the appropriate operations in order to
 or else it can throw `UnprocessableEventException`, which causes the `ChangeReceiver` to reset
 and reinitialize from scratch with a new `FormatDriver`.
 
-If instead the collection's manifest now describes a different format than the one this driver loaded,
-`onEvent` throws `FormatChangedException`.
+If instead the collection has been rewritten, `onEvent` throws
+`CollectionRewrittenException`: a manifest that describes a different format,
+a deleted root state document, or a same-format refurbish.
 This is expected rather than exceptional;
-it happens in particular when another bosk performs a `refurbish` to a different format.
+it happens in particular when another bosk performs a `refurbish`.
 The `ChangeReceiver` reloads the state and continues without treating it as a problem.
 
-The `FormatDriver` keeps a `FlushLock` that tracks the revision number of every state document
-that has been applied downstream.
-When `loadAllState` reads the database, it seeds the lock one revision short of each
-loaded revision; `onHasBeenApplied` then advances the lock once `MainDriver` has applied the
-loaded state to the in-memory tree.
-This prevents a flush that is retrying across a reconnect from reporting success while the
-in-memory state is still stale.
-Each change event advances the revisions it carries, and `flush()` waits for the revisions it
-reads from the database to appear in the lock.
+The `FormatDriver` keeps a `FlushBarrier` that records the cluster time of the last event
+whose changes have been submitted downstream.
+The barrier has no position until the driver marks the initial state's position with
+`markSubmitted`: the snapshot's cluster time, or the commit that initialized the collection.
+Pando advances the cluster time when it submits a transaction at its last
+write, using that write's cluster time. A standalone event
+is submitted at itself, and an event that changes no state contributes no
+position. Sequoia advances it for each state-document event it processes.
+`flush()` first reads the manifest and root with local read concern to confirm
+the collection has not been rewritten, then captures the position and probes the
+change stream for state writes after it, waiting for the receiver to process them.
+Those reads make a flush fail and reload when it can no longer follow the
+collection: another format has a different epoch, and a root deleted without
+replacement is missing. A same-format refurbish keeps the epoch and rewrites the
+root in one transaction, so the receiver's reload on that deletion is what
+catches it, and the flush retries against the new state.
+The write a Pando flush waits for is a `last:` write; in Sequoia it is the
+root document write.
+An acknowledged write is already in the oplog when `flush()` begins, because
+writes use `WriteConcern.MAJORITY` and change streams report only
+majority-committed changes; the probe starts at the barrier position, so it
+covers anything the receiver has not submitted yet.
+A write made directly to the database is outside that guarantee: if it is invalid,
+the receiver eventually rejects it and reloads, but a flush need not wait for that.
+
+Pando treats a deletion of the root state document as disruptive: `onEvent`
+throws, and the receiver reconnects and reloads. Outside a refurbish, Bosk never
+deletes the root document, and a `DELETE` cannot carry a `writeId`, so a root
+deletion means the collection has been rewritten by something else. A refurbish
+deletes and rewrites the root in one transaction, so the reload sees the new
+state. A transaction with no `last:` write—only deletes, or only `part:` or
+`pdel:` writes—stays queued, and its changes never reach the assembled state.
+A state write with no `writeId`, or an unrecognized one, is rejected, and the
+driver reloads.
 
 #### Division of responsibilities
 
@@ -327,10 +350,10 @@ Here is a summary of the responsibilities of `MainDriver`, `UpdateDriver`, and `
 - Describes updates as `AtomicUpdateOperation` or `TransactionalUpdateOperation`
 - Interacts with the downstream driver, aside from `initialRoot`
 - Implements `flush`
-- Implements revisions, and ignores revisions older than the current one
+- Marks the cluster time through which it has submitted changes downstream
 - Ignores events on unrelated documents within the bosk collection (like the manifest)
 - Processes updates to the manifest itself
-	- Throws `FormatChangedException` if the manifest describes a different format than the one loaded
+	- Throws `CollectionRewrittenException` if the manifest describes a different format than the one loaded
 	- Can otherwise throw `UnprocessableEventException` at its discretion,
 	  but must not do so for any changes from its own `writeAllState`
 	  method (or the manifest written by `MainDriver` during initialization),
@@ -364,10 +387,9 @@ other events are handled by `MainDriver` itself:
 The cursor is open before the state is loaded, so the events it delivers include some
 that the load already reflects. Each load records the time of the snapshot it read from,
 and `onEvent` ignores events at or before that time. Replaying them would be at best
-wasted work, and at worst harmful: an event's revision belongs to the incarnation of the
-document it changed, and a pre-load event can describe an incarnation the load has
-already replaced. Applying it would record a revision that the new incarnation hasn't
-reached, so subsequent genuine updates would look already applied, and would be ignored.
+wasted work, and at worst harmful: a pre-load event describes a state the load has
+already replaced. Applying it would move the in-memory state backwards from the snapshot,
+even though the barrier still reports the snapshot as submitted.
 
 This is why the load is a snapshot read rather than a transaction. A transaction is
 consistent too, but its operation time advances past the snapshot boundary, so it gives
@@ -403,12 +425,11 @@ A pleasant consequence of this design is that
 the driver gracefully reinitializes if some other server performs a `refurbish` operation:
 if the refurbish changes the format, then the driver will receive some change event it can't process,
 causing it to reinitialize, which naturally re-reads the manifest and re-detects the format.
-On the other hand, if the refurbish doesn't change the format,
-then the driver will see no change events it can't handle,
-and it will simply continue running without interruption.
+For a same-format refurbish, the state document is deleted and rewritten,
+so both formats reload and pick up the new state.
 
 `MainDriver` and `ChangeReceiver` have a lifetime that coincides with that of the `Bosk`.
-`FormatDriver` and `FlushLock` have a lifetime that coincides with that of the cursor.
+`FormatDriver` and `FlushBarrier` have a lifetime that coincides with that of the cursor.
 
 ### Miscellaneous development notes
 

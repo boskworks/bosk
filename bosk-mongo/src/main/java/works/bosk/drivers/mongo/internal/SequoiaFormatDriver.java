@@ -1,7 +1,5 @@
 package works.bosk.drivers.mongo.internal;
 
-import com.mongodb.MongoException;
-import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.OperationType;
@@ -13,10 +11,10 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.function.BooleanSupplier;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonString;
 import org.bson.BsonValue;
+import org.bson.conversions.Bson;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,11 +28,8 @@ import works.bosk.drivers.mongo.BsonSerializer;
 import works.bosk.drivers.mongo.MongoDriverSettings;
 import works.bosk.drivers.mongo.MongoDriverSettings.DatabaseFormat;
 import works.bosk.drivers.mongo.internal.BsonFormatter.DocumentFields;
-import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
-import static com.mongodb.client.model.Projections.fields;
-import static com.mongodb.client.model.Projections.include;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.ReferenceUtils.isTaggedUnionCase;
 import static works.bosk.ReferenceUtils.requireNotTaggedUnionCase;
@@ -127,7 +122,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException {
+	BsonDocument readBsonState() throws InvalidCollectionContentsException {
 		try (DocCursor cursor = collection
 			.find(documentFilter(rootRef))
 			.limit(1)
@@ -136,12 +131,8 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 			BsonDocument document = cursor.next();
 			validateEpoch(document);
 			BsonString id = document.getString("_id");
-			RevisionTuple revision = RevisionTuple.from(document);
 			fieldTracker.seed(id, document);
-			return new BsonStateAndMetadata(
-				document.getDocument(DocumentFields.state.name()),
-				Map.of(id, revision)
-			);
+			return document.getDocument(DocumentFields.state.name());
 		} catch (NoSuchElementException e) {
 			throw new InvalidCollectionContentsException(SEQUOIA, "State document not found: " + DOCUMENT_ID, e);
 		} catch (BsonInvalidOperationException e) {
@@ -151,17 +142,13 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	}
 
 	@Override
-	public void writeAllState(StateAndMetadata<R> priorContents) {
-		replaceFlushLock(priorContents.documentRevisions());
-
+	public void writeAllState(R state) {
 		// Sequoia has only one document
-		BsonValue initialState = formatter.object2bsonValue(priorContents.state(), rootRef.targetType());
-		RevisionTuple newRevision = RevisionTuple.nextAfter(
-			priorContents.documentRevisions().get(DOCUMENT_ID));
+		BsonValue initialState = formatter.object2bsonValue(state, rootRef.targetType());
 
 		// Note: the manifest is written by MainDriver, so the caller must have started
 		// a transaction that makes this state document write and the manifest write atomic.
-		BsonDocument document = initialDocument(initialState, newRevision, DOCUMENT_ID);
+		BsonDocument document = initialDocument(initialState, DOCUMENT_ID);
 		fieldTracker.seed(DOCUMENT_ID, document);
 		BsonDocument update = new BsonDocument("$set", document);
 		BsonDocument filter = documentFilter(rootRef);
@@ -172,9 +159,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		LOGGER.trace("| Options: {}", options);
 		UpdateResult result = collection.updateOne(filter, update, options);
 		LOGGER.debug("| Result: {}", result);
-
-		// Update the state that we "know about"
-		finishedRevision(DOCUMENT_ID, newRevision);
 	}
 
 	/**
@@ -183,7 +167,7 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 	 * {@link MainDriver} writes).
 	 */
 	@Override
-	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 		fieldTracker.processEvent(event);
 		assert event.getDocumentKey() != null;
 		if (isManifestID(event.getDocumentKey().get("_id"))) {
@@ -209,13 +193,6 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					throw new UnprocessableEventException("Missing fullDocument", event.getOperationType());
 				}
 				BsonString docId = documentIdOf(event);
-				RevisionTuple revision = RevisionTuple.from(fullDocument);
-				if (flushLock.get().alreadySeen(docId, revision)) {
-					// An INSERT or REPLACE can carry a revision this driver has already
-					// applied, for example a metadata-only rewrite or a restored document.
-					LOGGER.debug("Skipping revision {} for {}", revision, docId);
-					return;
-				}
 				MapValue<String> diagnosticAttributes = diagnosticAttributesFor(docId);
 				try (
 					var _ = context.withOnly(diagnosticAttributes)
@@ -227,51 +204,39 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 					R newRoot = formatter.document2object(state, rootRef);
 					LOGGER.debug("| Replace {}", rootRef);
 					downstream.submitReplacement(rootRef, newRoot);
-					finishedRevision(docId, revision);
 				}
 			} break;
 			case UPDATE: {
 				UpdateDescription updateDescription = event.getUpdateDescription();
 				if (updateDescription != null) {
 					BsonString updateDocId = documentIdOf(event);
-					BsonDocument updatedFields = updateDescription.getUpdatedFields();
-					BsonInt64 revisionValue = updatedFields.getInt64(DocumentFields.revision.name(), null);
-					if (revisionValue == null) {
-						throw new UnprocessableEventException("Sequoia update does not carry a revision", event.getOperationType());
-					}
-					BsonString incarnationValue = updatedFields.getString(DocumentFields.incarnation.name(), null);
-					RevisionTuple revision = new RevisionTuple(
-						incarnationValue == null
-							? requireNonNull(flushLock.get().currentIncarnation(updateDocId), "Current incarnation")
-							: incarnationValue.getValue(),
-						revisionValue.longValue());
-
 					MapValue<String> diagnosticAttributes = diagnosticAttributesFor(updateDocId);
 					try (
 						var _ = context.withOnly(diagnosticAttributes)
 					) {
-						if (flushLock.get().alreadySeen(updateDocId, revision)) {
-							LOGGER.debug("Skipping revision {} for {}", revision, updateDocId);
-							return;
-						}
-
 						replaceUpdatedFields(updateDescription.getUpdatedFields());
 						deleteRemovedFields(updateDescription.getRemovedFields(), event.getOperationType());
 					}
-					finishedRevision(updateDocId, revision);
 				}
 			} break;
 			case DELETE: {
-				// The revision number and incarnation have been deleted along with
-				// the document. We deliberately don't clear the applied revisions:
-				// the re-created document's revision and the epoch together
-				// ensure that flushes still wait for the re-initialized collection.
-				LOGGER.debug("Document containing the revision has been deleted");
-			} break;
+				// The only state document is the root, so its deletion means the
+				// stored state is gone. Outside a refurbish, the driver never
+				// deletes it, so the deletion signals a rewrite: reload.
+				throw new CollectionRewrittenException("Root document has been deleted", event.getOperationType());
+			}
 			default: {
 				throw new UnprocessableEventException("Cannot process event", event.getOperationType());
 			}
 		}
+		markSubmitted(requireNonNull(event.getClusterTime()));
+	}
+
+	@Override
+	protected Bson lastStateChangeFilter() {
+		// Sequoia keeps the whole state in the root document. Any write to it
+		// completes a Bosk change, whether standalone or part of a transaction.
+		return new BsonDocument("documentKey._id", DOCUMENT_ID);
 	}
 
 	//
@@ -288,43 +253,13 @@ final class SequoiaFormatDriver<R extends StateTreeNode> extends AbstractFormatD
 		return DOCUMENT_FILTER;
 	}
 
-	@Override
-	protected List<FlushLock.Target> readRevisionsToFlush() throws FlushFailureException, InterruptedException {
-		LOGGER.debug("readRevisionsToFlush");
-		try (DocCursor cursor = collection
-			.findLatest(documentFilter(rootRef))
-			.limit(1)
-			.projection(fields(include(
-				"_id",
-				DocumentFields.epoch.name(),
-				DocumentFields.incarnation.name(),
-				DocumentFields.revision.name())))
-			.cursor()
-		) {
-			if (!cursor.hasNext()) {
-				throw new RevisionFieldDisruptedException("No state document found");
-			}
-			BsonDocument document = cursor.next();
-			checkEpoch(document);
-			BsonString id = document.getString("_id");
-			return List.of(new FlushLock.Target(id, RevisionTuple.from(document)));
-		} catch (MongoInterruptedException e) {
-			Thread.interrupted();
-			InterruptedException exception = new InterruptedException("Interrupted while reading revisions");
-			exception.initCause(e);
-			throw exception;
-		} catch (MongoException e) {
-			throw new FlushFailureException("Failed to read revisions", e);
-		}
-	}
-
 	/**
 	 * @return true if something changed
 	 */
 	@Override
 	protected boolean doUpdate(BsonDocument updateDoc, BsonDocument rawFilter) {
 		BsonDocument filter = withEpoch(rawFilter);
-		LOGGER.debug("| Update: {}", updateDoc);
+		LOGGER.trace("| Update: {}", updateDoc);
 		LOGGER.debug("| Filter: {}", filter);
 		UpdateResult result = collection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);

@@ -55,6 +55,14 @@ class SessionCollection {
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
 
 	/**
+	 * The underlying collection, for operations that need the raw Mongo API
+	 * (for example opening a probe change stream).
+	 */
+	MongoCollection<BsonDocument> rawCollection() {
+		return downstream;
+	}
+
+	/**
 	 * A {@code SessionCollection} with no read, write, or commit interposition.
 	 */
 	static SessionCollection of(MongoCollection<BsonDocument> downstream, MongoClient mongoClient) {

@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
 import org.bson.BsonString;
 import org.junit.jupiter.api.Test;
 import works.bosk.Bosk;
@@ -33,82 +32,37 @@ import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
- * Sequoia stores the whole state in one document, so a REPLACE event carries the
- * whole state and is re-applied downstream. A REPLACE for a revision the driver has
- * already applied is not a state change and must not be re-applied.
+ * Sequoia stores the whole state in one document. A REPLACE is applied even when
+ * only metadata changed: the database is the source of truth.
  */
 @ReplayLogsOnFailure
 @InjectFields
-class SequoiaReplaceRevisionTest extends AbstractMongoDriverTest {
+class SequoiaDuplicateReplaceTest extends AbstractMongoDriverTest {
+
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
 		return Stream.of(new ParameterSet(
-			"SequoiaReplaceRevisionTest",
+			"SequoiaDuplicateReplaceTest",
 			MongoDriverSettings.builder()
 				.preferredDatabaseFormat(SEQUOIA)
 				.timescaleMS(LONG_TIMESCALE)
-				.database("SequoiaReplaceRevisionTest")));
+				.database("SequoiaDuplicateReplaceTest")));
 	}
 
 	@Test
-	void duplicateReplace_doesNotReplaceTheRoot() throws Exception {
+	void duplicateReplace_isApplied() throws Exception {
 		Fixture fixture = newFixture();
 
 		BsonDocument document = stateDocument();
 		BsonDocument duplicate = document.clone();
-		// Change only metadata, so the revision still describes the same state.
 		duplicate.put("diagnostics", new BsonDocument("attributes", new BsonDocument("test", new BsonString("changed"))));
 
 		fixture.armed.set(true);
 		collection().replaceOne(new BsonDocument("_id", document.get("_id")), duplicate);
 
 		assertTrue(fixture.replaceSeen.await(20, SECONDS), "The change stream did not see the replace");
-		assertEquals(0, fixture.rootReplacements.get(),
-			"A REPLACE for an already-applied revision must not replace the root");
-	}
-
-	@Test
-	void replaceWithNewRevision_isApplied() throws Exception {
-		Fixture fixture = newFixture();
-
-		BsonDocument document = stateDocument();
-		BsonDocument updated = document.clone();
-		updated.getDocument("state").put("string", new BsonString("from raw replace"));
-		updated.put("revision", new BsonInt64(document.getInt64("revision").getValue() + 1));
-
-		fixture.armed.set(true);
-		collection().replaceOne(new BsonDocument("_id", document.get("_id")), updated);
-
-		assertTrue(fixture.replaceSeen.await(20, SECONDS), "The change stream did not see the replace");
 		assertEquals(1, fixture.rootReplacements.get(),
-			"A REPLACE with a new revision must be applied");
-		fixture.bosk.driver().flush();
-		try (var _ = fixture.bosk.readSession()) {
-			assertEquals("from raw replace",
-				fixture.bosk.rootReference().then(String.class, "string").value());
-		}
-	}
-
-	@Test
-	void sameRevisionWithNewIncarnation_isApplied() throws Exception {
-		Fixture fixture = newFixture();
-
-		BsonDocument document = stateDocument();
-		BsonDocument recreated = document.clone();
-		recreated.put("incarnation", new BsonString("a different lifetime"));
-		recreated.getDocument("state").put("string", new BsonString("from a re-created document"));
-
-		fixture.armed.set(true);
-		collection().replaceOne(new BsonDocument("_id", document.get("_id")), recreated);
-
-		assertTrue(fixture.replaceSeen.await(20, SECONDS), "The change stream did not see the replace");
-		assertEquals(1, fixture.rootReplacements.get(),
-			"A new incarnation must be applied even when the revision is unchanged");
-		fixture.bosk.driver().flush();
-		try (var _ = fixture.bosk.readSession()) {
-			assertEquals("from a re-created document",
-				fixture.bosk.rootReference().then(String.class, "string").value());
-		}
+			"A REPLACE with unchanged state is still applied");
 	}
 
 	private record Fixture(
@@ -125,7 +79,7 @@ class SequoiaReplaceRevisionTest extends AbstractMongoDriverTest {
 		MainDriver.setProbes(TestProbes.noop().withListenerFactory(downstream ->
 			new ForwardingChangeListener(downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					super.onEvent(event);
 					if (armed.get()
 						&& event.getOperationType() == OperationType.REPLACE

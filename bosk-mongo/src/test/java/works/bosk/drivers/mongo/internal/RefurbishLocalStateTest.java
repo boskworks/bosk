@@ -40,12 +40,11 @@ import static works.bosk.testing.BoskTestUtils.boskName;
  * as it does for any other update.
  * An update that was committed but not applied here when the refurbish loaded
  * is in the database and in the rewritten documents;
- * an implementation that treats the revisions it wrote as already applied loses it,
+ * an implementation that treats the documents it rewrote as already applied loses it,
  * because the pending change event is skipped.
  * <p>
- * Sequoia doesn't check revisions on INSERT and REPLACE events,
- * so it re-applies the state and masks the mistake;
- * that is why these tests target Pando.
+ * Sequoia re-applies the state on every INSERT and REPLACE event,
+ * so it masks the mistake; that is why these tests target Pando.
  */
 @ReplayLogsOnFailure
 @InjectFields

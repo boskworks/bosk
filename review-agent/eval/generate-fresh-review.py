@@ -17,7 +17,7 @@ from eval import generate_review
 
 sys.stdout.reconfigure(line_buffering=True)
 
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+DEFAULT_MODEL = "deepseek/deepseek-flash"
 DEFAULT_GEN_TIMEOUT = 1800
 
 

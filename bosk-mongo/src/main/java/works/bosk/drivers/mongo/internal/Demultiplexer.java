@@ -24,14 +24,14 @@ class Demultiplexer {
 	}
 
 	/**
-	 * Returns a list of the change stream documents from the same transaction as {@code finalEvent}.
+	 * Returns a list of the change stream documents from the same transaction as {@code lastEvent}.
 	 * Clears those events from the internal state so the same event is never returned twice.
 	 * Can be called multiple times for the same transaction.
 	 *
 	 * @return the events in the order they were added.
 	 */
-	public List<ChangeStreamDocument<BsonDocument>> pop(ChangeStreamDocument<BsonDocument> finalEvent) {
-		return transactionsInProgress.remove(TransactionID.from(finalEvent));
+	public List<ChangeStreamDocument<BsonDocument>> pop(ChangeStreamDocument<BsonDocument> lastEvent) {
+		return transactionsInProgress.remove(TransactionID.from(lastEvent));
 	}
 
 	private record TransactionID(BsonDocument lsid, BsonInt64 txnNumber) {

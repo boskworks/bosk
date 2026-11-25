@@ -23,7 +23,7 @@ from match_findings import extract_json
 
 sys.stdout.reconfigure(line_buffering=True)
 
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+DEFAULT_MODEL = "deepseek/deepseek-flash"
 _EMPTY_GH_DIR = tempfile.mkdtemp(prefix="review-gh-empty-")
 
 

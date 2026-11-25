@@ -18,7 +18,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -189,8 +188,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			timescaleMS = driverSettings.timescaleMS();
 			ClientSettings clients = ClientSettings.derive(clientSettings, driverSettings);
 
-			// A flush waits for the revision to be applied. Normally that's just
-			// one event delivery, so one operation's worth of time is ample;
+			// A flush attempt has one flushTimeout budget, shared by the wait for
+			// the loaded state and the wait for the change stream. Normally that's
+			// just one event delivery, so one operation's worth of time is ample;
 			// a flush that failed during a disconnect and is retrying may also
 			// have to wait out a reconnect first.
 			// (The flush retries once, so it can take twice this long before
@@ -337,12 +337,12 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		Throwable fallbackReason = null;
 		try {
 			LoadResult<R> loaded = loadState();
-			entireState = loaded.state().state();
-
-			// Hasn't technically been applied, but we're still initializing the Bosk, and its constructor won't return until the state has been applied
-			loaded.driver().onHasBeenApplied(loaded.state());
+			entireState = loaded.state();
 
 			publishFormatDriver(loaded.driver(), loaded.snapshotTime());
+			// The state isn't in the tree yet, but the constructor won't return
+			// until it is, and nothing can flush before then.
+			loaded.driver().markSubmitted(loaded.snapshotTime());
 		} catch (UninitializedCollectionException e) {
 			// We log this at warn because, in production, this is a big deal.
 			// Annoying in tests, so we log it with UNINITIALIZED_COLLECTION_LOGGER so we can selectively disable it.
@@ -353,7 +353,6 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			) {
 				Identifier epoch = Manifest.newEpoch();
 				FormatDriver<R> preferredDriver = newPreferredFormatDriver(epoch);
-				StateAndMetadata<R> priorContents = new StateAndMetadata<>(entireState, Map.of());
 
 				// The state document(s) and the manifest must be written atomically,
 				// so that a failure partway through initialization doesn't leave the
@@ -361,7 +360,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// starts a transaction itself: refurbish already starts its own.
 				queryCollection.ensureTransactionStarted();
 				try (var _ = boskInfo.context().withOnly(diagnosticAttributes)) {
-					preferredDriver.writeAllState(priorContents);
+					preferredDriver.writeAllState(entireState);
 				}
 				writeManifest(Manifest.forFormat(driverSettings.preferredDatabaseFormat(), epoch));
 				session.commitTransactionIfAny();
@@ -370,7 +369,9 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 				// so events at or before it describe a state that we have already
 				// replaced: the deletions that emptied the collection, and our own
 				// writes. They must not be replayed into the new state.
-				publishFormatDriver(preferredDriver, session.operationTime());
+				BsonTimestamp initializationTime = session.operationTime();
+				publishFormatDriver(preferredDriver, initializationTime);
+				preferredDriver.markSubmitted(initializationTime);
 			} catch (RuntimeException | FailedMongoClientSessionException e2) {
 				LOGGER.warn("Failed to initialize database; disconnecting", e2);
 				setDisconnectedDriver(e2, currentFormatDriver());
@@ -387,7 +388,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	 * was stored in, the state itself, and the time of the snapshot it was read
 	 * from.
 	 */
-	private record LoadResult<S extends StateTreeNode>(FormatDriver<S> driver, StateAndMetadata<S> state, BsonTimestamp snapshotTime) {}
+	private record LoadResult<S extends StateTreeNode>(FormatDriver<S> driver, S state, BsonTimestamp snapshotTime) {}
 
 	/**
 	 * Loads the database state in a consistent snapshot.
@@ -410,7 +411,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 			// the snapshot boundary, leaving nothing to compare against.
 			BsonTimestamp snapshotTime = queryCollection.establishSnapshot();
 			FormatDriver<R> driver = detectFormat();
-			StateAndMetadata<R> state = driver.loadAllState();
+			R state = driver.loadAllState();
 			return new LoadResult<>(driver, state, snapshotTime);
 		}
 	}
@@ -448,9 +449,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 						DatabaseFormat preferredFormat = driverSettings.preferredDatabaseFormat();
 						Identifier epoch;
 						boolean formatChanged;
-						StateAndMetadata<R> allState;
-						// loadAllState replaces the live driver's FlushLock, which event
-						// processing also updates, so the two must not run concurrently.
+						R allState;
+						// loadAllState seeds the live driver's field tracker, which
+						// event processing also updates, so the two must not run
+						// concurrently.
 						synchronized (receiver) {
 							// Use the driver that does the load throughout: a retry can run after
 							// another replica refurbished the collection, so the driver this
@@ -587,7 +589,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	static IOException classifyFlushFailure(RuntimeException e, Duration retryAfter) {
 		if (e instanceof ImmediateReconnectException) {
 			// Immediate-reconnect conditions aren't retryable-later conditions. If this
-			// escaped the receiver, it's a persistent revision/format problem.
+			// escaped the receiver, it's a persistent format problem.
 			return new FlushFailureException(e);
 		} else if (e instanceof DisconnectedException) {
 			return new RetryableFlushException(e, retryAfter);
@@ -705,11 +707,10 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 
 				publishFormatDriver(loaded.driver(), loaded.snapshotTime());
 
-				downstream.submitReplacement(boskInfo.rootReference(), loaded.state().state());
+				downstream.submitReplacement(boskInfo.rootReference(), loaded.state());
 				LOGGER.debug("Done submitting downstream");
 
-				downstream.flush();
-				loaded.driver().onHasBeenApplied(loaded.state());
+				loaded.driver().markSubmitted(loaded.snapshotTime());
 			} else {
 				LOGGER.debug("Running initialStateTask");
 				try {
@@ -739,7 +740,7 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 		}
 
 		@Override
-		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+		public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 			LOGGER.debug("onEvent({}:{})", event.getOperationType().getValue(), getDocumentKeyValue(event));
 			LOGGER.trace("Event details: {}", event);
 			BsonTimestamp eventTime = event.getClusterTime();
@@ -1197,9 +1198,13 @@ public final class MainDriver<R extends StateTreeNode> implements MongoDriver {
 	/**
 	 * Sets {@link #drivers} and also signals any threads waiting on {@link #driversChanged}
 	 * to retry their operation.
+	 * <p>
+	 * The new driver's barrier has no position until the caller reports its
+	 * initial state's position with {@link FormatDriver#markSubmitted}, so a
+	 * flush that retries against the new driver waits for that.
 	 *
 	 * @param loadTime the time of the state the new driver represents: the
-	 * snapshot it was loaded from, or the commit that initialized it, or empty if it loaded no state
+	 * snapshot it was loaded from, or the commit that initialized it
 	 */
 	void publishFormatDriver(FormatDriver<R> newFormatDriver, BsonTimestamp loadTime) {
 		LOGGER.debug("publishFormatDriver({}) (was {})", newFormatDriver.getClass().getSimpleName(), currentFormatDriver().getClass().getSimpleName());

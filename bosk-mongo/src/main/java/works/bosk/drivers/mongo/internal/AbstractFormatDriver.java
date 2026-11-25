@@ -1,22 +1,24 @@
 package works.bosk.drivers.mongo.internal;
 
+import com.mongodb.MongoException;
+import com.mongodb.MongoInterruptedException;
+import com.mongodb.ReadConcern;
+import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.UpdateDescription;
 import com.mongodb.client.result.UpdateResult;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonNull;
 import org.bson.BsonString;
+import org.bson.BsonTimestamp;
 import org.bson.BsonValue;
+import org.bson.conversions.Bson;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,12 +36,17 @@ import works.bosk.drivers.mongo.status.StateStatus;
 import works.bosk.exceptions.FlushFailureException;
 import works.bosk.exceptions.InvalidTypeException;
 
+import static com.mongodb.client.model.Aggregates.match;
+import static com.mongodb.client.model.Aggregates.project;
+import static com.mongodb.client.model.Filters.and;
+import static com.mongodb.client.model.Filters.gt;
 import static com.mongodb.client.model.Projections.fields;
 import static com.mongodb.client.model.Projections.include;
 import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.mongodb.client.model.changestream.OperationType.REPLACE;
 import static java.util.Collections.newSetFromMap;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.bson.BsonBoolean.FALSE;
 import static org.bson.BsonBoolean.TRUE;
 import static works.bosk.ReferenceUtils.isTaggedUnionCase;
@@ -57,7 +64,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	final Duration flushTimeout;
 	final Identifier epoch;
 
-	final AtomicReference<FlushLock> flushLock = new AtomicReference<>(null);
+	final FlushBarrier barrier;
 
 	final DocumentFieldTracker fieldTracker = new DocumentFieldTracker();
 
@@ -77,6 +84,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		this.downstream = downstream;
 		this.flushTimeout = flushTimeout;
 		this.epoch = epoch;
+		this.barrier = new FlushBarrier();
 	}
 
 	@Override
@@ -87,11 +95,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	@Override
 	public MongoStatus readStatus() {
 		try {
-			BsonStateAndMetadata dbInfo = readBsonStateAndMetadata();
-			BsonDocument dbState = dbInfo.state();
+			BsonDocument dbState = readBsonState();
 			var inMemoryState = formatter.object2bsonValue(rootRef.valueIfExists(), rootRef.targetType());
 			var stateStatus = new StateStatus(
-				rootRevision(dbInfo).revision(),
 				formatter.bsonValueBinarySize(dbState),
 				new BsonComparator().difference(inMemoryState, dbState)
 			);
@@ -110,62 +116,26 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	}
 
 	@Override
-	public StateAndMetadata<R> loadAllState() throws IOException, InvalidCollectionContentsException {
-		BsonStateAndMetadata bsm = readBsonStateAndMetadata();
-		if (bsm.state() == null) {
+	public R loadAllState() throws IOException, InvalidCollectionContentsException {
+		BsonDocument stateDocument = readBsonState();
+		if (stateDocument == null) {
 			throw new IOException("No existing state in document");
 		}
-		// The new FlushLock must not consider the loaded revisions "already seen":
-		// MainDriver publishes this driver before applying the loaded state downstream,
-		// and a flush that failed during a disconnect and is retrying could wake up on the
-		// publish and, seeing the loaded revision already satisfied, report success while
-		// the in-memory state is still stale. Seeding the lock one revision short makes
-		// such flushes wait until MainDriver calls onHasBeenApplied, which advances the
-		// lock once the loaded state has actually been applied downstream.
-		replaceFlushLock(revisionsBefore(bsm.documentRevisions()));
 
-		R root;
 		try {
-			root = formatter.document2object(bsm.state(), rootRef);
+			return formatter.document2object(stateDocument, rootRef);
 		} catch (BsonInvalidOperationException e) {
 			// Only this exception means the data is bad; the others mean the code is bad.
 			throw new InvalidCollectionContentsException(format(), "State document could not be decoded", e);
 		}
-
-		return new StateAndMetadata<>(root, bsm.documentRevisions());
 	}
 
 	@Override
-	public void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata) {
-		flushLock.get().finishedAll(stateAndMetadata.documentRevisions());
+	public void markSubmitted(BsonTimestamp position) {
+		barrier.markSubmitted(position);
 	}
 
-	/**
-	 * @return a copy of {@code revisions} with each revision decremented by one,
-	 * suitable for seeding a {@link FlushLock} before the loaded state has been
-	 * applied downstream
-	 */
-	static Map<BsonString, RevisionTuple> revisionsBefore(Map<BsonString, RevisionTuple> revisions) {
-		Map<BsonString, RevisionTuple> result = new HashMap<>(revisions.size());
-		revisions.forEach((documentId, revision) ->
-			result.put(documentId, new RevisionTuple(revision.incarnation(), revision.revision() - 1)));
-		return result;
-	}
-
-	/**
-	 * Must be called before {@link FormatDriver#onHasBeenApplied} or any event processing.
-	 *
-	 * @param applied the revision whose state has already been applied to the
-	 * local Bosk state, for each document, keyed by document ID. A flush returns
-	 * immediately for these and waits for anything newer. A load passes each
-	 * revision one short, because the loaded state is not applied until
-	 * {@link #onHasBeenApplied}.
-	 */
-	protected void replaceFlushLock(Map<BsonString, RevisionTuple> applied) {
-		flushLock.set(new FlushLock(applied, flushTimeout));
-	}
-
-	abstract BsonStateAndMetadata readBsonStateAndMetadata() throws InvalidCollectionContentsException;
+	abstract BsonDocument readBsonState() throws InvalidCollectionContentsException;
 
 	/**
 	 * @return a filter selecting the state document corresponding to {@code documentRef}
@@ -180,37 +150,21 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected abstract boolean doUpdate(BsonDocument updateDoc, BsonDocument filter);
 
 	/**
-	 * Reads every state document's revision number and incarnation, in bottom-up
-	 * order (descendants before ancestors), for {@link #flush()} to wait on.
+	 * The change to the topmost document of a transaction: it writes a fresh
+	 * {@link DocumentFields#writeId writeId} with the {@code last:} role and
+	 * records the current diagnostic attributes.
 	 * <p>
-	 * Descendants are read first so that, if a concurrent transaction removes a
-	 * descendant and bumps an ancestor, the ancestor read happens after the
-	 * removal and therefore observes the ancestor's new revision. Waiting then
-	 * proceeds top-down, so the ancestor's transaction is applied before its
-	 * descendants' revisions are interpreted.
-	 * <p>
-	 * Each document's epoch is checked against this driver's, so a collection that
-	 * has been reinitialized or refurbished since the driver loaded it fails the flush.
+	 * The writer sends this last, so the last event is the topmost write; the
+	 * receiver relies on that order.
 	 */
-	protected abstract List<FlushLock.Target> readRevisionsToFlush() throws FlushFailureException, InterruptedException;
-
-	/**
-	 * The change to the topmost document of a transaction: it bumps that
-	 * document's revision and records the current diagnostic attributes.
-	 * <p>
-	 * The resulting update document is meant to be applied to the filter that
-	 * selects the topmost document. Other writes in the same transaction must not
-	 * bump a revision.
-	 */
-	protected BsonDocument revisionBump() {
-		return new BsonDocument()
-			.append("$inc", new BsonDocument(DocumentFields.revision.name(), new BsonInt64(1)))
-			.append("$set", new BsonDocument()
-				.append(
-					DocumentFields.diagnostics.name(),
-					formatter.encodeDiagnostics(context.getAttributes())
-				)
-			);
+	protected BsonDocument topmostWrite() {
+		return new BsonDocument("$set", new BsonDocument()
+			.append(DocumentFields.writeId.name(), WriteRole.LAST.newWriteId())
+			.append(
+				DocumentFields.diagnostics.name(),
+				formatter.encodeDiagnostics(context.getAttributes())
+			)
+		);
 	}
 
 	/**
@@ -268,16 +222,16 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * with a different one means the database has been refurbished, so the driver
 	 * must reload it.
 	 *
-	 * @throws FormatChangedException if the event's document has a different epoch
+	 * @throws CollectionRewrittenException if the event's document has a different epoch
 	 * @throws UnprocessableEventException if the event modifies the epoch, which no valid update does
 	 */
-	protected void validateEventEpoch(ChangeStreamDocument<BsonDocument> event) throws FormatChangedException, UnprocessableEventException {
+	protected void validateEventEpoch(ChangeStreamDocument<BsonDocument> event) throws CollectionRewrittenException, UnprocessableEventException {
 		BsonDocument fullDocument = event.getFullDocument();
 		if (fullDocument != null) {
 			BsonString expected = new BsonString(epoch.toString());
 			BsonValue found = fullDocument.get(DocumentFields.epoch.name());
 			if (!expected.equals(found)) {
-				throw new FormatChangedException("State document " + documentIdOf(event).getValue()
+				throw new CollectionRewrittenException("State document " + documentIdOf(event).getValue()
 					+ " has epoch " + found + ", but this driver is using " + expected.getValue(),
 					event.getOperationType());
 			}
@@ -328,8 +282,9 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 
 	protected <T> BsonDocument replacementDoc(Reference<T> target, BsonValue value, Reference<?> startingRef) {
 		String key = dottedFieldNameOf(target, startingRef);
-		LOGGER.debug("| Set field {}: {}", key, value);
-		BsonDocument result = revisionBump();
+		LOGGER.debug("| Set field {}", key);
+		LOGGER.trace("| Set field {}: {}", key, value);
+		BsonDocument result = topmostWrite();
 		result.getDocument("$set").append(key, value);
 		return result;
 	}
@@ -338,7 +293,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		assert target.isDeletable(): "Cannot delete a non-deletable reference: " + target;
 		String key = dottedFieldNameOf(target, startingRef);
 		LOGGER.debug("| Unset field {}", key);
-		return revisionBump().append("$unset", new BsonDocument(key, BsonNull.VALUE));
+		return topmostWrite().append("$unset", new BsonDocument(key, BsonNull.VALUE));
 	}
 
 	/**
@@ -454,7 +409,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * manifest that {@link MainDriver} writes), but outside that, we want to be as
 	 * strict as possible so incompatible database changes don't go unnoticed.
 	 */
-	protected void validateManifestEvent(ChangeStreamDocument<BsonDocument> event, Manifest effectiveManifest) throws UnprocessableEventException, FormatChangedException {
+	protected void validateManifestEvent(ChangeStreamDocument<BsonDocument> event, Manifest effectiveManifest) throws UnprocessableEventException, CollectionRewrittenException {
 		LOGGER.debug("onManifestEvent({})", event.getOperationType().name());
 		if (event.getOperationType() == INSERT || event.getOperationType() == REPLACE) {
 			BsonDocument manifestDoc = requireNonNull(event.getFullDocument());
@@ -465,7 +420,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 				throw new UnprocessableEventException("Invalid manifest", e, event.getOperationType());
 			}
 			if (!manifest.equals(effectiveManifest)) {
-				throw new FormatChangedException("Manifest indicates format has changed", event.getOperationType());
+				throw new CollectionRewrittenException("Manifest indicates format has changed", event.getOperationType());
 			}
 		} else {
 			// We always use INSERT/REPLACE to update the manifest;
@@ -475,84 +430,190 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		LOGGER.debug("Ignoring benign manifest change event");
 	}
 
-	/**
-	 * Marks the given documents' revisions as applied, waking any flush waiting
-	 * for them.
-	 */
-	protected void finishedRevisions(Map<BsonString, RevisionTuple> revisions) {
-		flushLock.get().finishedAll(revisions);
-	}
-
-	/**
-	 * Marks one document's revision as applied, waking any flush waiting for it.
-	 */
-	protected void finishedRevision(BsonString documentId, RevisionTuple revision) {
-		flushLock.get().finished(documentId, revision);
-	}
-
-	/**
-	 * @return true if {@code documentId} identifies the root document, as
-	 * selected by {@link #rootDocumentsFilter()}
-	 */
-	protected boolean isRootDocumentId(BsonString documentId) {
-		return documentId.equals(rootDocumentsFilter().get("_id"));
-	}
-
-	private RevisionTuple rootRevision(BsonStateAndMetadata bsm) {
-		return requireNonNull(
-			bsm.documentRevisions().get(rootDocumentsFilter().getString("_id")),
-			"Root document revision");
-	}
-
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		// The revision read uses findLatest, which bypasses the session and reads
-		// the latest committed values, so flush needs no session or transaction.
+		// These reads catch a collection this driver can no longer follow: another
+		// format has a different epoch, and a root deleted without replacement is
+		// missing, so fail and reload instead of waiting for writes we never see.
+		// A same-format refurbish keeps the epoch; the receiver's reload catches it.
 		collection.requireNoTransaction();
-		List<FlushLock.Target> targets = readRevisionsToFlush();
-		FlushLock lock = flushLock.get();
-
-		LOGGER.debug("Revisions to flush: {}", targets);
-		lock.awaitAll(targets);
+		requireExpectedEpoch();
+		// A single absolute deadline for the whole attempt: both waits stop at the
+		// same instant, so their combined time cannot exceed flushTimeout.
+		long flushDeadline = System.nanoTime() + flushTimeout.toNanos();
+		awaitCaughtUpTo(barrier.awaitSubmitted(flushDeadline), flushDeadline);
 		LOGGER.debug("| Flush downstream");
 		downstream.flush();
 	}
 
 	/**
-	 * Checks that {@code document} carries this driver's epoch.
-	 * <p>
-	 * Revisions from a different epoch are not comparable with the ones this
-	 * driver has applied, so {@link #flush()} must not wait on them.
+	 * Checks that the manifest and root still carry this driver's epoch.
+	 * A collection rewritten into another format has a different epoch, and so
+	 * does a reinitialized collection, so a flush fails and reloads rather than
+	 * waiting for writes that belong to the new collection.
+	 * A same-format refurbish keeps the epoch, but it deletes the root, which
+	 * makes the receiver reload; its writes are state writes, so a flush waits
+	 * for them in any case.
+	 * The root check covers a root deleted without replacing the collection.
 	 *
-	 * @throws EpochMismatchException if it does not, meaning the collection has
-	 * been reinitialized or refurbished since this driver loaded it
+	 * @throws FlushFailureException if the manifest or root is missing,
+	 * unreadable, or carries another epoch
 	 */
-	protected void checkEpoch(BsonDocument document) throws EpochMismatchException {
-		BsonString expected = new BsonString(epoch.toString());
-		BsonValue found = document.get(DocumentFields.epoch.name());
-		if (!expected.equals(found)) {
-			throw new EpochMismatchException("State document " + document.getString("_id").getValue()
-				+ " has epoch " + found + ", but this driver is using " + epoch);
+	private void requireExpectedEpoch() throws FlushFailureException {
+		MongoCollection<BsonDocument> local = collection.rawCollection().withReadConcern(ReadConcern.LOCAL);
+		BsonDocument manifestDocument = local
+			.find(new BsonDocument("_id", MANIFEST_ID))
+			.limit(1)
+			.first();
+		if (manifestDocument == null) {
+			throw new FlushFailureException("Manifest document is missing; reloading");
+		}
+		Manifest manifest;
+		try {
+			manifest = formatter.decodeManifest(manifestDocument);
+		} catch (UnrecognizedFormatException e) {
+			throw new FlushFailureException("Manifest is no longer readable; reloading", e);
+		}
+		if (!epoch.equals(manifest.epoch())) {
+			throw new FlushFailureException("Manifest epoch has changed; reloading");
+		}
+		BsonDocument rootDocument = local
+			.find(rootDocumentsFilter())
+			.limit(1)
+			.first();
+		if (rootDocument == null) {
+			throw new FlushFailureException("Root document is missing; reloading");
+		}
+		BsonValue rootEpoch = rootDocument.get(DocumentFields.epoch.name());
+		if (!(rootEpoch instanceof BsonString s) || !s.getValue().equals(epoch.toString())) {
+			throw new FlushFailureException("Root document epoch has changed; reloading");
 		}
 	}
+
+	/**
+	 * Selects the change events that complete a Bosk change in this format. A
+	 * flush waits for these and ignores every other event.
+	 */
+	protected abstract Bson lastStateChangeFilter();
+
+	/**
+	 * Waits until {@link FlushBarrier#submittedThrough} is at or past
+	 * {@code startPosition}.
+	 * <p>
+	 * Two probes keep the wait bounded whether the stream is quiet or busy: the
+	 * backlog probe bounds it when the stream goes quiet, and the arrival probe
+	 * when new events keep arriving.
+	 * <p>
+	 * The backlog probe starts at {@code startPosition}, so it covers any update
+	 * submitted before the flush that the {@code ChangeReceiver} has not yet
+	 * submitted downstream. Such an update is already in the oplog: writes use
+	 * {@link com.mongodb.WriteConcern#MAJORITY}, and change streams report only
+	 * majority-committed changes. An empty batch therefore means no such update
+	 * is outstanding, and the last event it saw is a safe bound.
+	 * <p>
+	 * The arrival probe opens during the flush, so any event it sees postdates
+	 * every update submitted before the flush; waiting for the later of the two
+	 * bounds covers them all. If {@code startPosition} has aged out of the
+	 * oplog, the backlog probe fails and the flush reloads instead of skipping
+	 * events.
+	 *
+	 * @see <a href="https://www.mongodb.com/docs/manual/changeStreams/#event-notification">MongoDB change streams: Event Notification</a>
+	 */
+	private void awaitCaughtUpTo(BsonTimestamp startPosition, long deadlineNanos) throws FlushFailureException, InterruptedException {
+		checkDeadline(deadlineNanos);
+		MongoCollection<BsonDocument> raw = collection.rawCollection();
+		try {
+			try (var backlogProbe = raw.watch(List.of(
+					match(and(gt("clusterTime", startPosition), lastStateChangeFilter())),
+					project(include("clusterTime"))))
+				.startAtOperationTime(startPosition)
+				.batchSize(BACKLOG_PROBE_BATCH_SIZE)
+				.maxAwaitTime(MIN_WAIT_MS, MILLISECONDS)
+				.cursor()) {
+
+				var first = backlogProbe.tryNext();
+				if (first == null) {
+					LOGGER.debug("Flush probe found nothing pending");
+					return;
+				}
+
+				checkDeadline(deadlineNanos);
+				try (var arrivalProbe = raw.watch(List.of(match(lastStateChangeFilter()), project(include("clusterTime"))))
+					.maxAwaitTime(MIN_WAIT_MS, MILLISECONDS)
+					.cursor()) {
+
+					BsonTimestamp last = requireNonNull(first.getClusterTime());
+					while (true) {
+						checkDeadline(deadlineNanos);
+						var arrival = arrivalProbe.tryNext();
+						if (arrival != null) {
+							barrier.awaitSubmittedThrough(latest(last, requireNonNull(arrival.getClusterTime())), deadlineNanos);
+							return;
+						}
+						while (backlogProbe.available() > 0) {
+							last = latest(last, requireNonNull(backlogProbe.next().getClusterTime()));
+						}
+						var event = backlogProbe.tryNext();
+						if (event == null) {
+							barrier.awaitSubmittedThrough(last, deadlineNanos);
+							return;
+						}
+						last = latest(last, requireNonNull(event.getClusterTime()));
+					}
+				}
+			}
+		} catch (MongoInterruptedException e) {
+			// The driver sets the interrupt flag before throwing. Clear it and
+			// rethrow as an interrupt, so doRetryableDriverOperation retries
+			// without disconnecting a healthy driver.
+			Thread.interrupted();
+			InterruptedException exception = new InterruptedException("Interrupted while probing the change stream");
+			exception.initCause(e);
+			throw exception;
+		} catch (MongoException e) {
+			throw new FlushFailureException("Flush probe failed", e);
+		}
+	}
+
+	private static BsonTimestamp latest(BsonTimestamp first, BsonTimestamp second) {
+		return first.compareTo(second) >= 0 ? first : second;
+	}
+
+	private static void checkDeadline(long deadlineNanos) throws FlushTimeoutException {
+		if (System.nanoTime() - deadlineNanos >= 0) {
+			throw new FlushTimeoutException("Timed out probing the change stream");
+		}
+	}
+
+	/**
+	 * The shortest poll we can ask for. A zero {@code maxAwaitTime} leaves the
+	 * server's default, which for a tailable cursor is 1000ms, so the probes ask
+	 * for 1ms instead.
+	 */
+	private static final long MIN_WAIT_MS = 1;
+
+	/**
+	 * How many events the backlog probe asks for per round trip. The loop drains whatever
+	 * is available and stops at the first quiet moment, so a bigger batch would
+	 * only fetch events past the point where the flush finishes.
+	 */
+	private static final int BACKLOG_PROBE_BATCH_SIZE = 100;
 
 	@Override
 	public void close() {
 		LOGGER.debug("+ close()");
-		FlushLock lock = flushLock.get();
-		if (lock != null) {
-			// A driver that was created but never loaded its state has no FlushLock.
-			lock.close();
-		}
+		barrier.close();
 	}
 
-	protected BsonDocument initialDocument(BsonValue initialState, RevisionTuple revision, BsonString documentId) {
+	protected BsonDocument initialDocument(BsonValue initialState, BsonString documentId) {
 		BsonDocument fieldValues = new BsonDocument("_id", documentId);
 
 		fieldValues.put(DocumentFields.epoch.name(), new BsonString(epoch.toString()));
-		revision.putInto(fieldValues);
+		// This is the last write of the initialization, so it carries a fresh
+		// writeId. The write may be an INSERT (a new collection) or an UPDATE
+		// (leftover documents); the marker makes an UPDATE recognizable as last.
+		fieldValues.put(DocumentFields.writeId.name(), WriteRole.LAST.newWriteId());
 		fieldValues.put(DocumentFields.diagnostics.name(), formatter.encodeDiagnostics(context.getAttributes()));
-		// The state goes last because it's the big field, and its size can change.
 		fieldValues.put(DocumentFields.state.name(), initialState);
 
 		return fieldValues;
@@ -561,14 +622,6 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	protected boolean isManifestID(BsonValue documentId) {
 		return MANIFEST_ID.equals(documentId);
 	}
-
-	/**
-	 * Low-level version of {@link StateAndMetadata}.
-	 */
-	record BsonStateAndMetadata(
-		BsonDocument state,
-		Map<BsonString, RevisionTuple> documentRevisions
-	){}
 
 	/**
 	 * Fails unless {@code target} is a reference that the {@link BoskDriver}

@@ -208,7 +208,7 @@ class RefurbishUpdateLossTest extends AbstractMongoDriverTest {
 			.withListenerFactory(listener ->
 				new ForwardingChangeListener(listener) {
 					@Override
-					public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+					public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 						eventGate.awaitRelease(Duration.ofMinutes(5));
 						super.onEvent(event);
 					}

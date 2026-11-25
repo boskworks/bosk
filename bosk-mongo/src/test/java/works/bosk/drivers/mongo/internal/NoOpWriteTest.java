@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
 import org.bson.BsonRegularExpression;
 import org.bson.BsonString;
 import org.junit.jupiter.api.Nested;
@@ -33,8 +32,8 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
  * A write that cannot be applied (because its path passes through an absent
- * catalog entry) is silently ignored by the driver: it must not advance the
- * root document's revision, and must not leave orphaned documents behind.
+ * catalog entry) is silently ignored by the driver: it must not modify the
+ * root document, and must not leave orphaned documents behind.
  * The variants differ in the Pando graft-point configuration, so each lives in
  * its own {@link Nested} class.
  */
@@ -55,7 +54,7 @@ public class NoOpWriteTest {
 		}
 
 		@Test
-		void writeInsideNonexistentNode_doesNotBumpRevision() throws InvalidTypeException, IOException, InterruptedException {
+		void writeInsideNonexistentNode_doesNotModifyRootDocument() throws InvalidTypeException, IOException, InterruptedException {
 			Bosk<TestEntity> bosk = new Bosk<>(
 				boskName(),
 				TestEntity.class,
@@ -68,13 +67,13 @@ public class NoOpWriteTest {
 				.then(Identifier.from("ghost"))
 				.then(String.class, "string");
 
-			BsonInt64 revisionBefore = rootDocumentRevision();
+			BsonDocument documentBefore = rootDocument();
 
 			bosk.driver().submitReplacement(ghostField, "ignored");
 			bosk.driver().flush();
 
-			assertEquals(revisionBefore, rootDocumentRevision(),
-				"A write that cannot be applied must not advance the revision");
+			assertEquals(documentBefore, rootDocument(),
+				"A write that cannot be applied must not modify the root document");
 		}
 	}
 
@@ -114,13 +113,13 @@ public class NoOpWriteTest {
 				s1ID,
 				TestEntity.empty(s1ID, ghostCatalog));
 
-			BsonInt64 revisionBefore = rootDocumentRevision();
+			BsonDocument documentBefore = rootDocument();
 
 			bosk.driver().submitReplacement(ghostSideTable, sideTable);
 			bosk.driver().flush();
 
-			assertEquals(revisionBefore, rootDocumentRevision(),
-				"A write that cannot be applied must not advance the revision");
+			assertEquals(documentBefore, rootDocument(),
+				"A write that cannot be applied must not modify the root document");
 
 			// No sub-part documents may be left behind under the nonexistent entry.
 			assertTrue(countDocumentsWithIdPrefix("|catalog|ghost|") == 0,
@@ -156,14 +155,14 @@ public class NoOpWriteTest {
 			Identifier entryID = Identifier.from("g1");
 			Reference<TestEntity> ghostEntry = refs.childCatalog(ghostID).then(entryID);
 
-			BsonInt64 revisionBefore = rootDocumentRevision();
+			BsonDocument documentBefore = rootDocument();
 
 			bosk.driver().submitReplacement(ghostEntry,
 				TestEntity.empty(entryID, refs.childCatalog(entryID)));
 			bosk.driver().flush();
 
-			assertEquals(revisionBefore, rootDocumentRevision(),
-				"A write that cannot be applied must not advance the revision");
+			assertEquals(documentBefore, rootDocument(),
+				"A write that cannot be applied must not modify the root document");
 			assertTrue(countDocumentsWithIdPrefix("|catalog|ghost|") == 0,
 				"The entry document must be rolled back along with the failed container write");
 		}
@@ -195,7 +194,7 @@ public class NoOpWriteTest {
 			Refs refs = bosk.buildReferences(Refs.class);
 			Reference<Identifier> rootIDRef = bosk.rootReference().then(Identifier.class, TestEntity.Fields.id);
 			Identifier wrongID = Identifier.from("wrong");
-			BsonInt64 revisionBefore = rootDocumentRevision();
+			BsonDocument documentBefore = rootDocument();
 
 			// The field already exists.
 			bosk.driver().submitConditionalCreation(refs.valuesString(), "newValue");
@@ -206,7 +205,7 @@ public class NoOpWriteTest {
 
 			bosk.driver().flush();
 
-			assertEquals(revisionBefore, rootDocumentRevision(),
+			assertEquals(documentBefore, rootDocument(),
 				"Conditional operations that do not apply must not modify the state");
 		}
 	}
@@ -218,12 +217,12 @@ public class NoOpWriteTest {
 				.withCatalog(Catalog.of(TestEntity.empty(entity123, refs.childCatalog(entity123))));
 		}
 
-		protected BsonInt64 rootDocumentRevision() {
+		protected BsonDocument rootDocument() {
 			MongoCollection<BsonDocument> collection = mongoService.client()
 				.getDatabase(driverSettings.database())
 				.getCollection(driverSettings.collection(), BsonDocument.class);
 			try (var cursor = collection.find(new BsonDocument("_id", new BsonString("|"))).cursor()) {
-				return cursor.next().getInt64(BsonFormatter.DocumentFields.revision.name());
+				return cursor.next();
 			}
 		}
 

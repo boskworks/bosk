@@ -163,7 +163,7 @@ class PandoPreconditionLockTest extends AbstractMongoDriverTest {
 	}
 
 	@Test
-	void conditionalWriteTakesLockWithoutBumpingRevision(TestInfo testInfo) throws Exception {
+	void conditionalWriteTakesLockWithoutChangingWriteId(TestInfo testInfo) throws Exception {
 		Bosk<TestEntity> bosk = newBosk(testInfo, "bosk", TestProbes.noop());
 		Refs refs = bosk.buildReferences(Refs.class);
 		Reference<Identifier> preconditionRef = revisionRef(refs, entity124);
@@ -171,7 +171,7 @@ class PandoPreconditionLockTest extends AbstractMongoDriverTest {
 
 		BsonDocument before = entityDocument(entity124);
 		assertFalse(before.containsKey("lockId"), "Unexpected lock before the conditional write");
-		BsonValue revisionBefore = before.get("revision");
+		BsonValue writeIdBefore = before.get("writeId");
 
 		bosk.driver().submitConditionalReplacement(
 			refs.catalog().then(entity123).then(String.class, "string"),
@@ -183,8 +183,8 @@ class PandoPreconditionLockTest extends AbstractMongoDriverTest {
 		BsonDocument after = entityDocument(entity124);
 		assertTrue(after.containsKey("lockId"),
 			"The precondition document should hold the transaction's write lock");
-		assertEquals(revisionBefore, after.get("revision"),
-			"Taking the lock must not bump the document's revision");
+		assertEquals(writeIdBefore, after.get("writeId"),
+			"Taking the lock must not look like the last write");
 		try (var _ = bosk.readSession()) {
 			assertEquals("conditional",
 				refs.catalog().then(entity123).then(String.class, "string").value());

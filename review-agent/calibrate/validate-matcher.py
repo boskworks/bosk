@@ -22,7 +22,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+DEFAULT_MODEL = "deepseek/deepseek-flash"
 
 sys.path.insert(0, str(ROOT / "eval"))
 from match_findings import match_findings  # noqa: E402

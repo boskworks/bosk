@@ -116,6 +116,12 @@ configure(subprojects.findAll {
 		reports.junitXml.required = true
 		jvmArgs += "-Dslf4j.internal.verbosity=error" // Suppress replay warnings due to parallel test execution
 		jvmArgs += "--enable-final-field-mutation=ALL-UNNAMED" // Spring Security mutates a final field reflectively
+
+		// Hard stop for a run that deadlocks. JUnit's own timeout is measured on
+		// the test thread, so it cannot interrupt a blocked test; separate-thread
+		// mode could, but it breaks tests that rely on thread-local probes.
+		// The slowest module suite takes a few minutes, so this leaves a wide margin.
+		timeout = java.time.Duration.ofMinutes(20)
 	}
 
 	spotbugs {

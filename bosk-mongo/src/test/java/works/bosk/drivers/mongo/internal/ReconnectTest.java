@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.bson.BsonDocument;
-import org.bson.BsonInt64;
 import org.bson.BsonString;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -482,7 +481,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 
 		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					if (new BsonString(DISCONNECT_PROBE_ID).equals(event.getDocumentKey().get("_id"))) {
 						LOGGER.debug("Rejecting event to force a disconnect");
 						throw new UnprocessableEventException("Forced disconnect for test", event.getOperationType());
@@ -551,9 +550,9 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 	@Test
 	void interruptedFlush_doesNotDisconnectHealthyDriver(TestInfo testInfo) throws InvalidTypeException, IOException, InterruptedException {
 		// Regression test for a bug in doRetryableDriverOperation: an InterruptedException
-		// thrown by a driver operation (here, a flush interrupted while waiting on a
-		// FlushLock) used to be treated as a general failure, disconnecting a perfectly
-		// healthy driver and forcing a full reconnect cycle. An interrupt is not a
+		// thrown by a driver operation (here, a flush interrupted while waiting for the
+		// receiver to catch up) used to be treated as a general failure, disconnecting a
+		// perfectly healthy driver and forcing a full reconnect cycle. An interrupt is not a
 		// database-health problem, so the driver must stay connected and the operation
 		// should be retried.
 		//
@@ -584,7 +583,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 
 		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					if (armed.compareAndSet(true, false)) {
 						LOGGER.debug("Gating the change event");
 						eventGate.signal();
@@ -632,8 +631,9 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 			});
 			flusher.start();
 
-			// Give the flush a moment to block on the flush lock, then interrupt it
+			// Give the flush a moment to block in the flush barrier, then interrupt it
 			Thread.sleep(2 * SHORT_TIMESCALE);
+			assertTrue(flusher.isAlive(), "Flush should be blocked in the barrier before the interrupt");
 			flusher.interrupt();
 
 			// Release the gated event so the flush can complete
@@ -654,9 +654,9 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		// Regression test for a race where, on reconnect, MainDriver publishes the new
 		// FormatDriver BEFORE it applies the freshly-loaded database state to the in-memory
 		// tree. A flush that failed during the disconnect and is retrying can wake up on
-		// the publish, find the new FlushLock's revision already satisfied (because
-		// loadAllState seeded it with the loaded revision), and return success while the
-		// in-memory state still holds the pre-reconnect contents.
+		// the publish and return success while the in-memory state still holds the
+		// pre-reconnect contents. The barrier prevents that: it has no position until
+		// markSubmitted runs, which happens only after the fresh state is submitted.
 		//
 		// We force a disconnect, write fresh state to the database while disconnected, and
 		// then hold the ChangeReceiver between publishFormatDriver and
@@ -677,16 +677,15 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 		//          await(driversChanged)
 		//   countDown(proceedWithReconnect)
 		//                                 onConnectionSucceeded
-		//                                   loadAllState (seeds the flush lock)
+		//                                   loadAllState (reads the snapshot)
 		//                                   publishFormatDriver (wakes the flush)
-		//     (flush retries, reads the    downstream.submitReplacement
-		//      fresh revision, and must     reconnectGate.signal()
+		//     (flush retries against the   downstream.submitReplacement
+		//      new driver, and must        reconnectGate.signal()
 		//      block awaiting it)           reconnectGate.awaitRelease
 		//   await(reconnectGate)
 		//   assert flush is blocked
 		//   reconnectGate.release()        (submitReplacement completes)
-		//                                   downstream.flush()
-		//                                   onHasBeenApplied (releases the flush)
+		//                                   markSubmitted (releases the flush)
 		//   flush() returns; a read session sees the fresh state
 
 		suppressLogging(WARN, MainDriver.class, ChangeReceiver.class, AbstractFormatDriver.class);
@@ -718,7 +717,7 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 
 		MainDriver.modifyProbes(t -> t.withListenerFactory(downstream -> new ErrorRecordingChangeListener(errorRecorder, downstream) {
 				@Override
-				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+				public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 					if (new BsonString(DISCONNECT_PROBE_ID).equals(event.getDocumentKey().get("_id"))) {
 						LOGGER.debug("Rejecting event to force a disconnect");
 						throw new UnprocessableEventException("Forced disconnect for test", event.getOperationType());
@@ -791,7 +790,6 @@ public class ReconnectTest extends AbstractMongoDriverTest {
 				.updateOne(
 					rootDocumentsFilter(),
 					new BsonDocument("$set", new BsonDocument("state.string", new BsonString("fresh after reconnect")))
-						.append("$inc", new BsonDocument("revision", new BsonInt64(1)))
 				);
 
 			LOGGER.debug("Start a flush that will fail while disconnected and retry after the reconnect");

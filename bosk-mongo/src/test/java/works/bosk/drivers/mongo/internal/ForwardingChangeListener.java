@@ -18,7 +18,7 @@ class ForwardingChangeListener implements ChangeListener {
 	}
 
 	@Override
-	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+	public void onEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 		downstream.onEvent(event);
 	}
 

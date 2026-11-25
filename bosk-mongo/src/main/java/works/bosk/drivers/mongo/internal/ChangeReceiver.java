@@ -222,9 +222,9 @@ class ChangeReceiver implements Closeable {
 									return;
 								}
 							}
-						} catch (FormatChangedException e) {
-							// Expected when another replica refurbishes the collection to a different format.
-							disconnectExpected("Database format changed", REMEDY_CONTINUE, e);
+						} catch (CollectionRewrittenException e) {
+							// Expected when the collection is rewritten: a refurbish, or a deleted root document.
+							disconnectExpected("Collection rewritten", REMEDY_CONTINUE, e);
 							continue;
 						} catch (UnprocessableEventException | UnexpectedEventProcessingException e) {
 							disconnect("Unable to process MongoDB change event", REMEDY_CONTINUE, e);
@@ -345,7 +345,7 @@ class ChangeReceiver implements Closeable {
 	/**
 	 * Should not throw RuntimeException, or else {@link #connectionLoop()} is likely to overreact.
 	 */
-	private void eventLoop(MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> cursor) throws UnprocessableEventException, UnexpectedEventProcessingException, FormatChangedException {
+	private void eventLoop(MongoChangeStreamCursor<ChangeStreamDocument<BsonDocument>> cursor) throws UnprocessableEventException, UnexpectedEventProcessingException, CollectionRewrittenException {
 		if (isClosed) {
 			LOGGER.debug("Receiver is closed");
 			return;
@@ -381,7 +381,7 @@ class ChangeReceiver implements Closeable {
 		}
 	}
 
-	private void processEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, FormatChangedException {
+	private void processEvent(ChangeStreamDocument<BsonDocument> event) throws UnprocessableEventException, CollectionRewrittenException {
 		if (settings.testing().eventDelayMS() > 0) {
 			LOGGER.debug("| eventDelayMS {}ms ", settings.testing().eventDelayMS());
 			try {

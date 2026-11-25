@@ -3,6 +3,7 @@ package works.bosk.drivers.mongo.internal;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import lombok.RequiredArgsConstructor;
 import org.bson.BsonDocument;
+import org.bson.BsonTimestamp;
 import works.bosk.Identifier;
 import works.bosk.Reference;
 import works.bosk.StateTreeNode;
@@ -83,12 +84,17 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 	}
 
 	@Override
-	public StateAndMetadata<R> loadAllState() {
+	public void markSubmitted(BsonTimestamp position) {
 		throw disconnected();
 	}
 
 	@Override
-	public void writeAllState(StateAndMetadata<R> priorContents) {
+	public R loadAllState() {
+		throw disconnected();
+	}
+
+	@Override
+	public void writeAllState(R state) {
 		throw disconnected();
 	}
 
@@ -97,32 +103,21 @@ final class DisconnectedDriver<R extends StateTreeNode> implements FormatDriver<
 		throw disconnected();
 	}
 
-	@Override
-	public void onHasBeenApplied(StateAndMetadata<R> stateAndMetadata) {
-		throw disconnected();
-	}
-
 	/**
 	 * Chooses how the receiver should react to this disconnection.
 	 * <p>
 	 * A stale view of a healthy database is worth reconnecting to immediately:
-	 * <ul>
-	 * <li>{@link RevisionDisruptedException} can be a symptom of a
-	 * {@link MainDriver#refurbish() refurbish} to another format, leaving the
-	 * driver looking at documents that no longer exist.</li>
-	 * <li>{@link FormatChangedDuringUpdateException} means an update lost a race
-	 * with exactly that refurbish.</li>
-	 * </ul>
-	 * Neither can be triggered by the reconnect itself: it reloads the database
-	 * and builds a driver for whatever format it finds, so it never performs the
-	 * updates that raise these exceptions.
+	 * {@link FormatChangedDuringUpdateException} means an update lost a race with
+	 * a {@link MainDriver#refurbish() refurbish} to another format. It cannot be
+	 * triggered by the reconnect itself: the reconnect reloads the database and
+	 * builds a driver for whatever format it finds, so it never performs the
+	 * update that raises this exception.
 	 * <p>
 	 * Every other reason might be a database-health problem, so the receiver waits
 	 * for its next poll before reconnecting.
 	 */
 	private DisconnectedException disconnected() {
 		return switch (reason) {
-			case RevisionDisruptedException e -> new ImmediateReconnectException(e);
 			case FormatChangedDuringUpdateException e -> new ImmediateReconnectException(e);
 			default -> new DisconnectedException(reason);
 		};

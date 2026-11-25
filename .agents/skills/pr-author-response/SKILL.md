@@ -27,6 +27,7 @@ Pay particular attention to comments from the maintainer (login `prdoyle`). They
 ## Posting discipline
 
 - Use `gh api --jq` for all response extraction. Never pipe `gh` output through `head`/`grep`/`sed`: a pipe hands the exit status to the filter and can truncate the error body, so failures become invisible.
+- Write commit SHAs as plain text, not code spans. GitHub auto-links a bare SHA; backticks suppress the link. Use backticks only for code identifiers, paths, and the like.
 - Reply to a review comment (the pull number is part of the path; omitting it returns 404):
   `gh api repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies --method POST -f body="..."`.
   Do not prefix your reply with `[review]` — that marker is the reviewer's, and you post under the same

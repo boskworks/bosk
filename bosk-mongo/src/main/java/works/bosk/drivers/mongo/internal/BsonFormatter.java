@@ -320,42 +320,15 @@ public class BsonFormatter {
 		 * Every write includes it in its filter, so a write planned against a
 		 * format that has since been refurbished away matches nothing.
 		 * <p>
-		 * A flush compares it to the epoch the driver read from the manifest,
-		 * because a collection that has been deleted and reinitialized may reuse
-		 * revision numbers the driver has already seen.
+		 * An INSERT or REPLACE carrying a different epoch means this driver's view
+		 * of the collection is stale, so the receiver reloads. An UPDATE that
+		 * modifies it is rejected. A collection that has been deleted and
+		 * reinitialized may otherwise reuse document identities the driver has
+		 * already seen.
 		 * <p>
 		 * This field is required on every state document.
 		 */
 		epoch,
-
-		/**
-		 * A UUID identifying one lifetime of this document's
-		 * {@link #revision revision} counter.
-		 *
-		 * <p>
-		 * A new value is generated whenever the document is created, and again
-		 * whenever it is re-created, at which time the revision counter resets to
-		 * 1. Because the incarnation is generated for the new document rather than
-		 * derived from the old one, it does not depend on the old document still
-		 * existing. A target from an old incarnation can therefore be recognized
-		 * as old even though its revision number may be higher than the new
-		 * document's.
-		 *
-		 * <p>
-		 * This field is required on every state document.
-		 */
-		incarnation,
-
-		/**
-		 * A 64-bit long that is incremented every time this document is the
-		 * <em>topmost</em> document changed by an update: that is, the shallowest
-		 * document whose {@code state} changes.
-		 *
-		 * <p>
-		 * A newly created document starts at 1. This field is required on every
-		 * state document.
-		 */
-		revision,
 
 		/**
 		 * A marker written by any transaction that reads this document to decide whether
@@ -371,6 +344,34 @@ public class BsonFormatter {
 		 * @see <a href="https://www.mongodb.com/docs/manual/core/transactions-production-consideration/#in-progress-transactions-and-stale-reads">In-progress Transactions and Stale Reads</a>
 		 */
 		lockId,
+
+		/**
+		 * A fresh identifier written by each write that changes a state document:
+		 * the topmost document of an update, every sub-part document written with
+		 * it, and pre-delete updates.
+		 * Its value is a prefix from {@link WriteRole} ({@code last:},
+		 * {@code part:}, or {@code pdel:}) followed by a fresh
+		 * {@link org.bson.types.ObjectId}. The receiver decides the last write
+		 * solely by the {@link WriteRole#LAST} role; the writer sends the
+		 * topmost document's write last, and identifiers are never ordered or
+		 * compared.
+		 * <p>
+		 * It must be a fresh value every time: MongoDB reports only fields whose
+		 * value changed, and a write that changes nothing produces no change event.
+		 * A constant marker would disappear after the first write. A sub-part's
+		 * state is often unchanged from the previous write, so without a fresh
+		 * marker its replacement would produce no event, and the receiver would
+		 * not have the full document it needs to assemble the replaced state.
+		 * <p>
+		 * The receiver recognizes the transaction's last write as the event
+		 * carrying a {@code last:} marker. Sub-part writes carry {@code part:},
+		 * and pre-deletes carry {@code pdel:}; neither is the last write. A
+		 * {@code DELETE} cannot carry a marker at all.
+		 * Lock-only writes must not set it.
+		 *
+		 * @see WriteRole
+		 */
+		writeId,
 
 		/**
 		 * The contents of {@link BoskContext#getAttributes()} corresponding to this

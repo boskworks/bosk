@@ -76,7 +76,7 @@ Fields:
 - `state`: the bosk state
 - `epoch`: matches the manifest's
 - Any graft points (Catalogs or SideTables) map IDs to the value `true` (rather than containing the actual tree node)
-- `incarnation`, `revision`: the root document's revision number and incarnation (see below)
+- `lockId`, `writeId`: markers; see below
 - `diagnostics`: the diagnostic attributes from the most recent update for which this document was topmost
 
 #### Sub-part documents
@@ -84,7 +84,7 @@ Fields:
 - `_id`: a pipe-delimited BSON path to the location of this document's state within the overall BSON structure
 - `state`: the state of the particular node represented by this document
 - `epoch`: matches the manifest's
-- `incarnation`, `revision`: the document's revision number and incarnation
+- `writeId`: a fresh marker; see [Markers](#markers)
 
 Often, the BSON path for a particular state tree node looks like its bosk path with slashes replaced by pipe characters.
 They will differ for nodes under `SideTable` nodes,
@@ -96,35 +96,47 @@ what let the receiver gather the new value. Each sub-part is written with a
 single upserting replace, which produces an `INSERT` or a `REPLACE` carrying
 the full document.
 
-#### Revision numbers and incarnations
+#### Markers
 
-Every state document carries `incarnation` and `revision` fields.
-Only the **topmost** document changed by an update has its `revision` incremented:
-that is, the shallowest document whose `state` field changes.
-This means unrelated updates to different graft documents do not conflict on a shared document.
+Every state document carries the collection's `epoch`, and every write that
+stores state gives it a fresh `writeId` (`last:`, `part:`, or `pdel:` plus an
+ObjectId). A pre-delete update is marked `pdel:`. The transaction's last write is
+marked `last:`; every other state write is marked `part:`. That includes each
+sub-part write, even when its state is unchanged: an identical replacement
+produces no change event, and the receiver needs the full document of every
+sub-part to assemble the replaced state.
+The **topmost** document changed by an update — the shallowest document whose
+`state` field changes — also gets the current diagnostics.
+The receiver recognizes the transaction's last write as the event carrying a
+`last:` writeId, and treats it as the topmost document's write; the writer sends
+the topmost document last. Sub-part writes carry `part:` and pre-deletes carry
+`pdel:`; neither is the last write. A `DELETE` cannot carry a marker at all.
+The identifier must merely be different each time: MongoDB reports only fields
+whose value changed.
 
-A document created for the first time has a fresh incarnation (a UUID) and revision 1.
-When a document is deleted and re-created, it gets another fresh incarnation and
-its revision resets to 1. Incarnations are identities, not ordered values, so a
-re-created document's revision 1 is not mistaken for an old revision 1.
-A flush target is satisfied when the applied incarnation differs, which means the
-target belongs to a superseded lifetime, or when both share an incarnation and
-the applied revision is at least the target revision. A flush waits for
-ancestors before descendants, so the incarnation change has been applied before a
-descendant's incarnation is compared.
+A transaction that reads a document to decide whether to write elsewhere sets
+that document's `lockId` to a fresh ObjectId, making the transaction a writer of
+the document so concurrent writers conflict. Its value is never interpreted.
+
+Every transaction of the driver's own ends with a `last:` write, including
+refurbish, whose deletes are followed by the new state. A hand-written
+transaction that ends without one leaves only its earlier events queued. If
+those are sub-document deletions, they do not affect the assembled state. If
+they include a deletion of the root document, the receiver rejects it as soon
+as it arrives and reloads, because outside a refurbish Bosk never deletes the
+root.
 
 Replacing a whole entry that a graft point stores separately is an update of the
-entry's document: the entry keeps its incarnation, its revision is incremented,
-and the container is not written, so the entry's document is the topmost document
-of the transaction. If the container has no stub for the entry, the entry is
-being created: its document gets a fresh incarnation and revision 1, and the
-container's stub is added as the transaction's topmost write. Deleting an entry
-leaves its document behind but removes the container's stub (see
-[Deleted nodes can be left behind](#deleted-nodes-can-be-left-behind)), so the
-presence of the document alone does not mean the entry exists.
+entry's document: its `writeId` is refreshed and the container is not written,
+so the entry's document is the topmost document of the transaction. If the
+container has no stub for the entry, the entry is being created: its document is
+replaced, and the container's stub is added as the transaction's topmost write.
+Deleting an entry leaves its document behind but removes the container's stub
+(see [Deleted nodes can be left behind](#deleted-nodes-can-be-left-behind)), so
+the presence of the document alone does not mean the entry exists.
 
-`flush()` reads every document's revision number and incarnation in bottom-up
-order (descendants before ancestors) using `ReadConcern.LOCAL`; it is read-only.
-It then waits for them in top-down order (ancestors before descendants).
-Waiting for each document's revision means a flush observes changes to graft
-documents that do not touch the root.
+`flush()` does not scan the state documents. It reads the manifest and root with
+local read concern to confirm that the collection has not been rewritten, then
+waits for the change receiver to submit events up to a cluster time captured
+after the call, probing the change stream from the receiver's submitted cluster
+time. Grafted updates therefore do not make a flush scan the whole collection.
