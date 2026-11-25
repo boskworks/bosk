@@ -28,6 +28,7 @@ import org.bson.BsonInt32;
 import org.bson.BsonTimestamp;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -53,14 +54,6 @@ class SessionCollection {
 	private final CommitInterceptor commitInterceptor;
 	private final SessionInterceptor sessionInterceptor;
 	private final ThreadLocal<Session> currentSession = new ThreadLocal<>();
-
-	/**
-	 * The underlying collection, for operations that need the raw Mongo API
-	 * (for example opening a probe change stream).
-	 */
-	MongoCollection<BsonDocument> rawCollection() {
-		return downstream;
-	}
 
 	/**
 	 * A {@code SessionCollection} with no read, write, or commit interposition.
@@ -402,6 +395,18 @@ class SessionCollection {
 	}
 
 	/**
+	 * The collection as seen by the primary, for reads that must reflect the
+	 * writes the client has seen acknowledged.
+	 * <p>
+	 * Every write is applied to the primary before it is acknowledged, so the
+	 * primary is the only node guaranteed to reflect them all; a secondary can
+	 * trail.
+	 */
+	MongoCollection<BsonDocument> fromPrimary() {
+		return downstream.withReadPreference(ReadPreference.primary());
+	}
+
+	/**
 	 * Reads the primary's latest value, regardless of the current session.
 	 * Uses {@link ReadConcern#LOCAL} and {@link ReadPreference#primary()}, so it
 	 * sees data that a snapshot or majority read might not, and bypasses any
@@ -417,9 +422,8 @@ class SessionCollection {
 	 */
 	public FindBuilder findLatest(Bson filter) {
 		return new FindBuilder(
-			this.downstream
+			fromPrimary()
 				.withReadConcern(LOCAL)
-				.withReadPreference(ReadPreference.primary())
 				.find(filter),
 			filter,
 			findInterceptor);
@@ -512,6 +516,15 @@ class SessionCollection {
 			this.downstream = downstream.projection(projection);
 			this.options = options.withProjection(projection);
 			return this;
+		}
+
+		/**
+		 * The first document, or null if there is none.
+		 */
+		public @Nullable BsonDocument first() {
+			try (DocCursor cursor = cursor()) {
+				return cursor.hasNext() ? cursor.next() : null;
+			}
 		}
 
 		public DocCursor cursor() {

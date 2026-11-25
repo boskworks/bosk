@@ -87,8 +87,22 @@ class SessionCollectionTest {
 	}
 
 	@Test
-	void findLatest_readsFromPrimary(TestInfo testInfo) throws FailedMongoClientSessionException {
-		makeData("test");
+	void fromPrimary_doesNotInheritClientReadPreference(TestInfo testInfo) throws FailedMongoClientSessionException {
+		MongoClientSettings settings = MongoClientSettings
+			.builder(mongoService.clientSettings(testInfo))
+			// A user may prefer secondary reads, but a caller that asks for the
+			// deployment's latest value must not inherit that: LOCAL on a secondary
+			// is not the latest value in the deployment.
+			.readPreference(ReadPreference.secondaryPreferred())
+			.build();
+		try (MongoClient secondaryClient = MongoClients.create(settings)) {
+			assertEquals(ReadPreference.primary(), sessionCollection(secondaryClient).fromPrimary().getReadPreference(),
+				"Latest-value reads must go to the primary");
+		}
+	}
+
+	@Test
+	void findLatest_doesNotInheritClientReadPreference(TestInfo testInfo) throws FailedMongoClientSessionException {
 		List<String> readPreferenceModes = new CopyOnWriteArrayList<>();
 		CommandListener recorder = new CommandListener() {
 			@Override
@@ -105,32 +119,28 @@ class SessionCollectionTest {
 		};
 		MongoClientSettings settings = MongoClientSettings
 			.builder(mongoService.clientSettings(testInfo))
-			// Without pinning, findLatest would inherit this preference and the
-			// read could be served by a secondary, where LOCAL is not the latest
-			// value in the deployment.
 			.readPreference(ReadPreference.secondaryPreferred())
 			.addCommandListener(recorder)
 			.build();
 		try (MongoClient secondaryClient = MongoClients.create(settings)) {
-			MongoCollection<BsonDocument> secondaryRaw = secondaryClient
-				.getDatabase(DB_NAME)
-				.getCollection(COLLECTION_NAME, BsonDocument.class);
-			SessionCollection secondaryCollection = SessionCollection.of(secondaryRaw, secondaryClient);
-			try (DocCursor cursor = secondaryCollection
-				.findLatest(new BsonDocument("_id", new BsonString("test")))
-				.cursor()
-			) {
-				assertTrue(cursor.hasNext());
-			}
+			sessionCollection(secondaryClient)
+				.findLatest(new BsonDocument("_id", new BsonString("absent")))
+				.first();
 		}
 
 		assertEquals(1, readPreferenceModes.size(), "Expected one find command, got " + readPreferenceModes);
-		// The test client connects directly to a single replica-set member. The
-		// driver reports a primary read on such a connection as "primaryPreferred",
-		// because the one server it can see may be a secondary. What matters here
-		// is that the read does not carry the client's "secondaryPreferred".
-		assertEquals("primaryPreferred", readPreferenceModes.getFirst(),
+		// The test client connects directly to one replica-set member, where the
+		// driver renders a primary read as "primaryPreferred", so we can't assert
+		// "primary" here; what we can see is that the client's preference didn't
+		// leak through.
+		assertNotEquals(ReadPreference.secondaryPreferred().getName(), readPreferenceModes.getFirst(),
 			"findLatest must not inherit the client's read preference");
+	}
+
+	private static SessionCollection sessionCollection(MongoClient client) {
+		return SessionCollection.of(
+			client.getDatabase(DB_NAME).getCollection(COLLECTION_NAME, BsonDocument.class),
+			client);
 	}
 
 	@Test

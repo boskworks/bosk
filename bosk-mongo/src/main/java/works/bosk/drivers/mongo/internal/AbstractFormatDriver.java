@@ -2,8 +2,6 @@ package works.bosk.drivers.mongo.internal;
 
 import com.mongodb.MongoException;
 import com.mongodb.MongoInterruptedException;
-import com.mongodb.ReadConcern;
-import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.UpdateDescription;
 import com.mongodb.client.result.UpdateResult;
@@ -460,9 +458,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * unreadable, or carries another epoch
 	 */
 	private void requireExpectedEpoch() throws FlushFailureException {
-		MongoCollection<BsonDocument> local = collection.rawCollection().withReadConcern(ReadConcern.LOCAL);
-		BsonDocument manifestDocument = local
-			.find(new BsonDocument("_id", MANIFEST_ID))
+		BsonDocument manifestDocument = collection
+			.findLatest(new BsonDocument("_id", MANIFEST_ID))
 			.limit(1)
 			.first();
 		if (manifestDocument == null) {
@@ -477,8 +474,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 		if (!epoch.equals(manifest.epoch())) {
 			throw new FlushFailureException("Manifest epoch has changed; reloading");
 		}
-		BsonDocument rootDocument = local
-			.find(rootDocumentsFilter())
+		BsonDocument rootDocument = collection
+			.findLatest(rootDocumentsFilter())
 			.limit(1)
 			.first();
 		if (rootDocument == null) {
@@ -506,10 +503,11 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 * <p>
 	 * The backlog probe starts at {@code startPosition}, so it covers any update
 	 * submitted before the flush that the {@code ChangeReceiver} has not yet
-	 * submitted downstream. Such an update is already in the oplog: writes use
-	 * {@link com.mongodb.WriteConcern#MAJORITY}, and change streams report only
-	 * majority-committed changes. An empty batch therefore means no such update
-	 * is outstanding, and the last event it saw is a safe bound.
+	 * submitted downstream. Such an update is already in the oplog, and
+	 * committed: writes use {@link com.mongodb.WriteConcern#MAJORITY}, and the
+	 * primary's change stream has reached the same majority commit point that
+	 * the acknowledgement waited for. So an empty batch means no such update is
+	 * outstanding, and the last event it saw is a safe bound.
 	 * <p>
 	 * The arrival probe opens during the flush, so any event it sees postdates
 	 * every update submitted before the flush; waiting for the later of the two
@@ -521,9 +519,8 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 	 */
 	private void awaitCaughtUpTo(BsonTimestamp startPosition, long deadlineNanos) throws FlushFailureException, InterruptedException {
 		checkDeadline(deadlineNanos);
-		MongoCollection<BsonDocument> raw = collection.rawCollection();
 		try {
-			try (var backlogProbe = raw.watch(List.of(
+			try (var backlogProbe = collection.fromPrimary().watch(List.of(
 					match(and(gt("clusterTime", startPosition), lastStateChangeFilter())),
 					project(include("clusterTime"))))
 				.startAtOperationTime(startPosition)
@@ -538,7 +535,7 @@ abstract non-sealed class AbstractFormatDriver<R extends StateTreeNode> implemen
 				}
 
 				checkDeadline(deadlineNanos);
-				try (var arrivalProbe = raw.watch(List.of(match(lastStateChangeFilter()), project(include("clusterTime"))))
+				try (var arrivalProbe = collection.fromPrimary().watch(List.of(match(lastStateChangeFilter()), project(include("clusterTime"))))
 					.maxAwaitTime(MIN_WAIT_MS, MILLISECONDS)
 					.cursor()) {
 
