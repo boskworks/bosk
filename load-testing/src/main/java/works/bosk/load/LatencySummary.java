@@ -1,12 +1,12 @@
 package works.bosk.load;
 
 import java.util.Locale;
-import org.HdrHistogram.Histogram;
+import org.HdrHistogram.AbstractHistogram;
 
 /**
  * A summary of one latency distribution.
  *
- * <p>All values are in nanoseconds. Percentiles use {@link Histogram#getValueAtPercentile},
+ * <p>All values are in nanoseconds. Percentiles use {@link AbstractHistogram#getValueAtPercentile},
  * which returns the highest value in the bucket containing the requested percentile, so the
  * reported value is conservative.
  */
@@ -20,7 +20,7 @@ public record LatencySummary(
 	long maxNanos
 ) {
 
-	public static LatencySummary of(Histogram histogram) {
+	public static LatencySummary of(AbstractHistogram histogram) {
 		if (histogram.getTotalCount() == 0) {
 			return empty();
 		} else {

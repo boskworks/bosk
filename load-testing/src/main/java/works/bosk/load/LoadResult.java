@@ -18,6 +18,7 @@ import java.util.List;
  * @param submitLatency       update submission latency
  * @param flushLatency        flush latency; empty when the run never flushed during measurement
  * @param readLatency         read latency; empty when the run had no readers
+ * @param hookInvocationLatency time spent inside the hook body; empty when the run had no hooks
  * @param verified            whether the final state matched the expected state
  * @param verificationMessage why verification failed, or {@code null}
  * @param verificationChecked the number of targets verification examined
@@ -45,6 +46,7 @@ public record LoadResult(
 	LatencySummary submitLatency,
 	LatencySummary flushLatency,
 	LatencySummary readLatency,
+	LatencySummary hookInvocationLatency,
 	boolean verified,
 	String verificationMessage,
 	int verificationChecked,

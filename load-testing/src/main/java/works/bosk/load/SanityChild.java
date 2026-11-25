@@ -68,6 +68,7 @@ public final class SanityChild {
 		addLatency(metrics, "submit", result.submitLatency());
 		addLatency(metrics, "flush", result.flushLatency());
 		addLatency(metrics, "read", result.readLatency());
+		addLatency(metrics, "hook_body", result.hookInvocationLatency());
 		if (result.reads() > 0) {
 			metrics.add("read_throughput", result.reads() / seconds(result.measuredNanos()), "ops/s");
 		}

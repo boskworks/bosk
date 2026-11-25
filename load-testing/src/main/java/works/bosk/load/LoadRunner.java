@@ -10,6 +10,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
+import org.HdrHistogram.ConcurrentHistogram;
 import org.HdrHistogram.Histogram;
 import works.bosk.Bosk;
 import works.bosk.BoskConfig;
@@ -79,7 +80,8 @@ public final class LoadRunner {
 		workload.initialize(bosk);
 		AtomicBoolean hookActive = new AtomicBoolean(false);
 		LongAdder hookInvocations = new LongAdder();
-		registerHooks(bosk, config, hookActive, hookInvocations);
+		ConcurrentHistogram hookLatency = LatencyRecorder.newConcurrentHistogram();
+		registerHooks(bosk, config, hookActive, hookInvocations, hookLatency);
 		hookActive.set(true);
 		BoskDriver driver = bosk.driver();
 
@@ -203,6 +205,7 @@ public final class LoadRunner {
 			mergeLatencies(submitLatencies),
 			mergeLatencies(flushLatencies),
 			mergeLatencies(readLatencies),
+			LatencySummary.of(hookLatency),
 			verified,
 			verificationMessage,
 			verificationChecked,
@@ -414,29 +417,31 @@ public final class LoadRunner {
 		return LatencySummary.of(merged);
 	}
 
-	private static void registerHooks(Bosk<TestEntity> bosk, LoadConfig config, AtomicBoolean hookActive, LongAdder hookInvocations) throws InvalidTypeException {
+	private static void registerHooks(Bosk<TestEntity> bosk, LoadConfig config, AtomicBoolean hookActive, LongAdder hookInvocations, ConcurrentHistogram hookLatency) throws InvalidTypeException {
 		if (config.hookCount() == 0) {
 			return;
 		}
 		if (config.hookScope() == HookScope.ROOT) {
 			for (int i = 0; i < config.hookCount(); i++) {
 				bosk.hookRegistrar().registerHook("load-hook-" + i, bosk.rootReference(),
-					_ -> runHook(hookActive, hookInvocations, config));
+					_ -> runHook(hookActive, hookInvocations, hookLatency, config));
 			}
 		} else {
 			Reference<String> scope = bosk.buildReferences(Refs.class).anyEntityString();
 			for (int i = 0; i < config.hookCount(); i++) {
 				bosk.hookRegistrar().registerHook("load-hook-" + i, scope,
-					_ -> runHook(hookActive, hookInvocations, config));
+					_ -> runHook(hookActive, hookInvocations, hookLatency, config));
 			}
 		}
 	}
 
-	private static void runHook(AtomicBoolean hookActive, LongAdder hookInvocations, LoadConfig config) throws InterruptedException {
+	private static void runHook(AtomicBoolean hookActive, LongAdder hookInvocations, ConcurrentHistogram hookLatency, LoadConfig config) throws InterruptedException {
+		long start = System.nanoTime();
 		hookInvocations.increment();
 		if (hookActive.get() && !config.hookLatency().isZero()) {
 			Thread.sleep(config.hookLatency());
 		}
+		hookLatency.recordValue(Math.max(1, System.nanoTime() - start));
 	}
 
 	private static DriverFactory<TestEntity> driverFactory(LoadConfig config, MongoEnvironment mongo, AtomicReference<MongoDriver> mongoDriver) {

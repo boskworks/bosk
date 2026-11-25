@@ -1,6 +1,7 @@
 package works.bosk.load;
 
 import java.time.Duration;
+import org.HdrHistogram.ConcurrentHistogram;
 import org.HdrHistogram.Histogram;
 
 /**
@@ -26,6 +27,14 @@ public final class LatencyRecorder {
 
 	public static Histogram newHistogram() {
 		return new Histogram(MAX_TRACKABLE_NANOS, SIGNIFICANT_DIGITS);
+	}
+
+	/**
+	 * A histogram safe to record into from several threads, for measurements
+	 * that aren't confined to one worker, such as hook bodies.
+	 */
+	public static ConcurrentHistogram newConcurrentHistogram() {
+		return new ConcurrentHistogram(MAX_TRACKABLE_NANOS, SIGNIFICANT_DIGITS);
 	}
 
 	private static final long MAX_TRACKABLE_NANOS = Duration.ofMinutes(1).toNanos();

@@ -76,6 +76,7 @@ second copy of a large catalog.
 - `heap_used_before` and `heap_used_after` in the summary are point-in-time values. The time series in `samples.csv` is the better source for heap and GC behaviour.
 - The `max` latency is often a GC or scheduling spike. Look at the percentiles for the shape of the distribution.
 - `hook_invocations` counts the hook calls that actually ran during measurement. When the hook queue reaches `hookQueueMaxSize`, updates are compacted instead, and the count plateaus below the update count even as throughput rises.
+- `hook_body_*` times only the hook callback. The delivery wrapper around it, which includes a fresh virtual thread, MDC setup and a read session, is not included, and at one thread it costs about 7 µs per call.
 
 ## Performance sanity suite
 
