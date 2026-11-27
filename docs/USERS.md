@@ -587,6 +587,10 @@ In standard mode, the hook call-back occurs inside a read session containing a s
 If hook work falls behind, Bosk may enter [overload mode](#overload-mode), where a hook may see a later snapshot instead.
 In either case, there are no race conditions between bosk reads in a hook versus other bosk updates happening in parallel.
 
+Hooks never run concurrently with one another.
+However many threads submit updates, at most one hook call is in progress at a time,
+so a hook needs no protection against another hook running at the same moment.
+
 Hooks run on separate threads from the one that submitted the triggering update,
 and so they do not inherit that thread's MDC.
 The `bosk.name` and `bosk.instanceID` MDC keys are nevertheless established during hook execution,

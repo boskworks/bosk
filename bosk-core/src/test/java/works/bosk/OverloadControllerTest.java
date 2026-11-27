@@ -154,8 +154,8 @@ class OverloadControllerTest {
 	}
 
 	/**
-	 * Queues a threshold's worth of notifications, which the drain would then remove
-	 * before the backlog empties, leaving the controller in overload mode.
+	 * Queues a threshold's worth of notifications, which the drain would then
+	 * remove before the backlog empties, leaving the controller in overload mode.
 	 */
 	private void startOverload() {
 		queueNotifications(10);
@@ -184,4 +184,5 @@ class OverloadControllerTest {
 			controller.recordQueuedNotification();
 		}
 	}
+
 }

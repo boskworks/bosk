@@ -14,8 +14,8 @@ import static works.bosk.OverloadController.Mode.STANDARD;
  *
  * <p>
  * The hook runner reports the events that drive this state machine: queued and
- * dequeued notifications, completed notifications, and an empty backlog. This
- * class turns those events into mode transitions and probation budgets; it
+ * dequeued notifications, completed notifications, and an empty backlog.
+ * This class turns those events into mode transitions and probation budgets; it
  * knows nothing about the queue's contents or the hooks they run.
  *
  * <p>
@@ -137,7 +137,8 @@ final class OverloadController {
 	}
 
 	/**
-	 * Forgets the queued notifications, as when the queue is drained or discarded.
+	 * Forgets the queued notifications, as when the queue is drained or
+	 * discarded.
 	 */
 	synchronized void clearQueuedNotifications() {
 		queuedNotificationCount = 0;

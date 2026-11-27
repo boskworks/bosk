@@ -10,12 +10,12 @@ import java.util.PrimitiveIterator;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.Semaphore;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import works.bosk.internal.ConcurrentAppendOnlyList;
 
-import static java.lang.Thread.holdsLock;
 import static java.util.Objects.requireNonNull;
 import static works.bosk.OverloadController.Mode.CATCH_UP;
 import static works.bosk.OverloadController.Mode.OVERLOAD;
@@ -39,28 +39,80 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
  * state snapshot. See the user's guide for the guarantees each mode provides.
  *
  * <p>
- * The driver's monitor guards this object, because accepting a notification has
- * to happen atomically with the state change that produced it: that keeps hook
- * work in update order, and ensures a batch never runs a hook against a state
- * older than the change it is reporting. The driver holds its monitor when
- * calling {@link #update} and {@link #register}; everything else takes the
- * monitor itself.
+ * A producer holds the driver's monitor across the state change and the
+ * notification it accepts, which keeps notifications in update order. The
+ * driver holds that monitor when calling {@link #update} and
+ * {@link #register}; the queue, the backlog, and the decision that no hook work
+ * remains are guarded by {@link #hookWorkMonitor} instead.
+ * <p>
+ * The draining side deliberately does not take the driver's monitor. Under load
+ * the driver holds it almost continuously, so the draining thread waits behind
+ * one update after another and the hooks run far less often than they otherwise
+ * would. Instead, the drainer reads what it needs from structures that don't
+ * require that monitor: the registrations from an append-only list, the state
+ * from the bosk's own volatile field, and the queue and the backlog under
+ * {@link #hookWorkMonitor}, which also guards the decision that no work remains.
+ *
+ * <p>
+ * Three monitors and a permit stand between an update and a hook run, and every
+ * path acquires them in the same order: a producer holds the driver's monitor
+ * for the whole update, then {@link #hookWorkMonitor} to record a notification,
+ * then the controller's monitor to decide a mode transition; the drainer holds
+ * {@link #drainPermit} for the whole drain, then either of the last two. The
+ * permit is never held with the driver's monitor, and the drainer never takes
+ * the driver's monitor at all.
  */
 final class HookRunner<R extends StateTreeNode> {
 	private final Bosk<R> bosk;
-	private final Object monitor;
+	/**
+	 * Checks that the caller holds {@code LocalDriver}'s monitor, which it must
+	 * for {@link #update} and {@link #register}. This class never acquires that
+	 * monitor: the driver holds it for the whole update, and the draining side
+	 * deliberately doesn't need it.
+	 */
+	private final BooleanSupplier holdsLocalDriverMonitor;
+	/**
+	 * Guards the queue, the {@link #backlog}, and the decision that no hook work
+	 * remains. That decision has to be atomic with recording new work in either
+	 * structure, or a notification can arrive between the check and the mode
+	 * transition and sit unrun.
+	 * <p>
+	 * {@link HookBacklog}'s methods are not synchronized; callers hold this
+	 * monitor. Acquire it after the driver's monitor and before the controller's.
+	 * <p>
+	 * The drainer also holds it while recording a completed notification, whose
+	 * transition out of probation must not overlap a producer's decision where to
+	 * record.
+	 */
+	private final Object hookWorkMonitor = new Object();
 	private final ConcurrentAppendOnlyList<HookRegistration<?>> hooks = new ConcurrentAppendOnlyList<>();
+	/**
+	 * Notifications waiting to be expanded. The drainer polls it one at a time
+	 * under {@link #hookWorkMonitor}.
+	 */
 	private final Deque<HookNotification<R>> hookQueue = new ArrayDeque<>();
 	private final HookBacklog backlog = new HookBacklog();
 	private final OverloadController overloadController;
+	/**
+	 * Admits one drainer at a time, which is what makes hooks non-overlapping.
+	 * <p>
+	 * It is a permit rather than a lock because the drainer holds it across the
+	 * hook itself, and because a hook's own update calls {@link #drainIfAllowed}
+	 * while the drainer is waiting for that hook: a blocking acquisition would
+	 * deadlock, so that method only ever tries to acquire.
+	 * <p>
+	 * Nothing ever waits on it. The only acquisition is
+	 * {@link Semaphore#tryAcquire()}, and a caller that fails returns without
+	 * draining, leaving the work to whichever thread holds the permit.
+	 */
 	private final Semaphore drainPermit = new Semaphore(1);
 	private final Thread.Builder hookThreadBuilder = Thread
 		.ofVirtual()
 		.name("bosk-hook-", 1);
 
-	HookRunner(Bosk<R> bosk, Object monitor, int hookOverloadThreshold) {
+	HookRunner(Bosk<R> bosk, BooleanSupplier holdsLocalDriverMonitor, int hookOverloadThreshold) {
 		this.bosk = bosk;
-		this.monitor = monitor;
+		this.holdsLocalDriverMonitor = holdsLocalDriverMonitor;
 		this.overloadController = new OverloadController(hookOverloadThreshold);
 	}
 
@@ -69,11 +121,11 @@ final class HookRunner<R extends StateTreeNode> {
 	 * that matches its scope.
 	 *
 	 * <p>
-	 * The caller must hold the monitor, so that the registration is ordered with
+	 * The caller must hold the driver's monitor, so that the registration is ordered with
 	 * respect to updates.
 	 */
 	<T> void register(String name, Reference<T> scope, BoskHook<T> action) {
-		assert holdsLock(monitor);
+		assert holdsLocalDriverMonitor.getAsBoolean();
 		HookRegistration<T> reg = new HookRegistration<>(name, scope, action, hooks.size());
 		hooks.add(reg);
 		accept(new HookNotification<>(
@@ -90,14 +142,14 @@ final class HookRunner<R extends StateTreeNode> {
 	 * running any hooks yet.
 	 *
 	 * <p>
-	 * The caller must hold the monitor, so that hook work stays in update order.
+	 * The caller must hold the driver's monitor, so that hook work stays in update order.
 	 *
 	 * @param priorRoot the state before the update, for detecting which references
 	 *                  changed
 	 * @param target    the reference the update was applied to
 	 */
 	void update(@Nullable R priorRoot, Reference<?> target) {
-		assert holdsLock(monitor);
+		assert holdsLocalDriverMonitor.getAsBoolean();
 		R rootForHook = bosk.currentRoot();
 		int hookEnd = hooks.size();
 		boolean anyMatch = hooks.subList(0, hookEnd).stream()
@@ -139,9 +191,9 @@ final class HookRunner<R extends StateTreeNode> {
 	 * in the presence of parallelism.
 	 *
 	 * <p>
-	 * Note: don't call while holding the monitor. Running hooks means running arbitrary
-	 * user code, which can take an arbitrary amount of time, and if the monitor is held,
-	 * that blocks other threads from submitting updates.
+	 * Note: don't call while holding the driver's monitor. Running hooks means
+	 * running arbitrary user code, which can take an arbitrary amount of time, and
+	 * if that monitor is held, it blocks other threads from submitting updates.
 	 */
 	void drainIfAllowed() {
 		do {
@@ -170,12 +222,12 @@ final class HookRunner<R extends StateTreeNode> {
 								}
 								case CATCH_UP -> runCatchUpBatch(buildBatch());
 								case STANDARD, PROBATION -> {
+									// A concurrent overflow may have switched modes
+									// since the switch read the mode; leave this work
+									// for the overload batch rather than running it
+									// after earlier work has been compacted.
 									HookNotification<R> work;
-									synchronized (monitor) {
-										// A concurrent overflow may have switched modes
-										// since the switch read the mode; leave this work
-										// for the overload batch rather than running it
-										// after earlier work has been compacted.
+									synchronized (hookWorkMonitor) {
 										if (overloadController.mode().isCompacting()) {
 											continue;
 										}
@@ -189,7 +241,13 @@ final class HookRunner<R extends StateTreeNode> {
 										break drain;
 									}
 									expandAndExecute(work);
-									overloadController.recordCompletedNotification();
+									// A completion can move probation to catch-up, which is
+									// compacting. The transition takes the same monitor as a
+									// producer's routing decision, so nothing can be queued once
+									// a compacting mode is in force.
+									synchronized (hookWorkMonitor) {
+										overloadController.recordCompletedNotification();
+									}
 								}
 							}
 						} catch (InterruptedException e) {
@@ -250,19 +308,24 @@ final class HookRunner<R extends StateTreeNode> {
 	 * bounded, because a compacting mode never adds to it.
 	 *
 	 * <p>
-	 * Doing the expansion under the monitor, where the update's state change
+	 * Doing the expansion under the driver's monitor, where the update's state change
 	 * also happens, keeps the calls in update order. The first call for a
 	 * reference records whether it existed beforehand, and that must come from
 	 * the earliest update that touched it. Expanding runs no user code: it
 	 * compares the two snapshots and records calls.
 	 */
 	private void accept(HookNotification<R> notification) {
-		assert holdsLock(monitor);
-		if (overloadController.mode().isCompacting()) {
-			compact(notification, backlog);
-		} else {
-			hookQueue.addLast(notification);
-			overloadController.recordQueuedNotification();
+		assert holdsLocalDriverMonitor.getAsBoolean();
+		synchronized (hookWorkMonitor) {
+			if (overloadController.mode().isCompacting()) {
+				// Both branches record under hookWorkMonitor, the same lock
+				// reportCaughtUp holds while deciding that no work remains, so
+				// the mode check and the recording are atomic with that decision.
+				compact(notification, backlog);
+			} else {
+				hookQueue.addLast(notification);
+				overloadController.recordQueuedNotification();
+			}
 		}
 	}
 
@@ -276,7 +339,7 @@ final class HookRunner<R extends StateTreeNode> {
 	 * batch cannot change the mode under the batch's feet.
 	 */
 	private void reportCaughtUp() {
-		synchronized (monitor) {
+		synchronized (hookWorkMonitor) {
 			if (hookQueue.isEmpty() && backlog.isEmpty()) {
 				overloadController.hookWorkDrained();
 			}
@@ -297,8 +360,7 @@ final class HookRunner<R extends StateTreeNode> {
 	}
 
 	/**
-	 * Records the notification's calls into the given set, without running any
-	 * hooks.
+	 * Compacts the notification into the given backlog.
 	 */
 	private void compact(HookNotification<R> notification, HookBacklog into) {
 		for (int i = notification.hookStart(); i < notification.hookEnd(); i++) {
@@ -317,12 +379,20 @@ final class HookRunner<R extends StateTreeNode> {
 		return registration;
 	}
 
+	/**
+	 * Copies every queued notification in one step, and zeroes the count that
+	 * drives the overload threshold, because that count describes the queue that
+	 * was just emptied. Both happen under {@link #hookWorkMonitor}, so a producer
+	 * either adds to the queue being copied or to the empty one that replaces it,
+	 * never to a half-drained one.
+	 */
 	private List<HookNotification<R>> drainQueuedNotifications() {
-		assert holdsLock(monitor);
-		List<HookNotification<R>> result = new ArrayList<>(hookQueue);
-		hookQueue.clear();
-		overloadController.clearQueuedNotifications();
-		return result;
+		synchronized (hookWorkMonitor) {
+			List<HookNotification<R>> result = new ArrayList<>(hookQueue);
+			hookQueue.clear();
+			overloadController.clearQueuedNotifications();
+			return result;
+		}
 	}
 
 	/**
@@ -341,12 +411,7 @@ final class HookRunner<R extends StateTreeNode> {
 	 * compacted work, because it is older and its baselines are the earlier ones.
 	 */
 	private CompactedBatch<R> buildBatch() throws InterruptedException {
-		List<HookNotification<R>> queued;
-		R queueSnapshot;
-		synchronized (monitor) {
-			queued = drainQueuedNotifications();
-			queueSnapshot = bosk.currentRoot();
-		}
+		List<HookNotification<R>> queued = drainQueuedNotifications();
 		if (!queued.isEmpty()) {
 			LOGGER.debug("Flushing {} queued notifications into a batch", queued.size());
 			HookBacklog flushed = new HookBacklog();
@@ -355,11 +420,15 @@ final class HookRunner<R extends StateTreeNode> {
 			}
 			Map<Path, PendingHooks> pending = flushed.detach();
 			if (!pending.isEmpty()) {
-				return new CompactedBatch<>(pending, queueSnapshot);
+				return new CompactedBatch<>(pending, bosk.currentRoot());
 			}
 			// Everything in the queue cancelled itself; fall through to the backlog.
 		}
-		synchronized (monitor) {
+		// Detach the backlog and take the snapshot that describes it under the same
+		// lock, so the snapshot is at least as new as every call in the batch.
+		// Reading it earlier would let a call recorded in the meantime run against
+		// a state that predates it.
+		synchronized (hookWorkMonitor) {
 			return new CompactedBatch<>(backlog.detach(), bosk.currentRoot());
 		}
 	}
@@ -369,7 +438,7 @@ final class HookRunner<R extends StateTreeNode> {
 	 */
 	private void runCatchUpBatch(CompactedBatch<R> batch) throws InterruptedException {
 		if (batch.pending().isEmpty()) {
-			synchronized (monitor) {
+			synchronized (hookWorkMonitor) {
 				if (!backlog.isEmpty() || !hookQueue.isEmpty()) {
 					// Work arrived while this batch was being prepared; it will
 					// be run by the next catch-up batch.
@@ -414,7 +483,9 @@ final class HookRunner<R extends StateTreeNode> {
 			}
 		} catch (RuntimeException e) {
 			LOGGER.debug("Hook batch failed; returning the unrun calls to the backlog", e);
-			backlog.mergeEarlier(batch.pending());
+			synchronized (hookWorkMonitor) {
+				backlog.mergeEarlier(batch.pending());
+			}
 			throw e;
 		} catch (Error e) {
 			LOGGER.warn("Hook batch aborted by an error; discarding the calls that did not run", e);
@@ -433,7 +504,7 @@ final class HookRunner<R extends StateTreeNode> {
 	}
 
 	private void clearHookWork() {
-		synchronized (monitor) {
+		synchronized (hookWorkMonitor) {
 			hookQueue.clear();
 			backlog.clear();
 			overloadController.reset();
@@ -441,7 +512,7 @@ final class HookRunner<R extends StateTreeNode> {
 	}
 
 	private boolean hasHookWork() {
-		synchronized (monitor) {
+		synchronized (hookWorkMonitor) {
 			return !hookQueue.isEmpty() || !backlog.isEmpty();
 		}
 	}
@@ -694,6 +765,11 @@ final class HookRunner<R extends StateTreeNode> {
 			return this.hook;
 		}
 
+		/**
+		 * Identifies this registration for the lifetime of the runner. Compacted
+		 * calls carry indices rather than registrations, so an index must stay
+		 * valid and is never reused.
+		 */
 		int index() {
 			return this.index;
 		}

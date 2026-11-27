@@ -25,8 +25,16 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Calls accumulate in the <em>active</em> set until a batch detaches them. The
- * detached set is run outside this object's monitor, while the next active set
- * accepts calls for changes that arrive while it runs.
+ * batch owns the detached set exclusively: this object does not touch it again
+ * until the batch either finishes or hands back the calls that did not run.
+ * Meanwhile the next active set accepts calls for changes that arrive while the
+ * batch runs.
+ *
+ * <p>
+ * This class does not synchronise. {@link HookRunner} guards a shared instance
+ * with the same lock that guards its queue, because the decision that no hook
+ * work remains has to be atomic across both. A freshly constructed instance
+ * that has not been shared needs no lock.
  *
  * <p>
  * Compacted calls do not carry diagnostic attributes because there is no single
@@ -45,7 +53,7 @@ final class HookBacklog {
 	 *                      {@link Reference#exists()} would have reported
 	 * @param existsAfter   whether the reference exists after the change
 	 */
-	synchronized void add(int hookIndex, Path path, boolean existedBefore, boolean existsAfter) {
+	void add(int hookIndex, Path path, boolean existedBefore, boolean existsAfter) {
 		assert existedBefore || existsAfter : "A call must describe an actual change";
 		PendingHooks hooks = active.get(path);
 		if (hooks == null) {
@@ -68,7 +76,7 @@ final class HookBacklog {
 		}
 	}
 
-	synchronized boolean isEmpty() {
+	boolean isEmpty() {
 		return active.isEmpty();
 	}
 
@@ -80,7 +88,7 @@ final class HookBacklog {
 	 * If this set already has a call for the same pair, the earlier batch's
 	 * baseline wins, because its observation came first.
 	 */
-	synchronized void mergeEarlier(Map<Path, PendingHooks> earlierBatch) {
+	void mergeEarlier(Map<Path, PendingHooks> earlierBatch) {
 		for (var entry : earlierBatch.entrySet()) {
 			PendingHooks earlier = entry.getValue();
 			if (earlier.toRun().isEmpty()) {
@@ -98,13 +106,13 @@ final class HookBacklog {
 	 * Detaches the active calls to be run and starts a fresh active set. The
 	 * returned map is no longer modified by this object.
 	 */
-	synchronized Map<Path, PendingHooks> detach() {
+	Map<Path, PendingHooks> detach() {
 		Map<Path, PendingHooks> result = active;
 		active = new LinkedHashMap<>();
 		return result;
 	}
 
-	synchronized void clear() {
+	void clear() {
 		active = new LinkedHashMap<>();
 	}
 
