@@ -24,8 +24,9 @@ import static works.bosk.PendingHookSet.PendingHooks;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
- * Hook delivery: which calls an update triggers, when they run, and how much work
- * may accumulate before delivery is compacted.
+ * Hook triggering and execution: which notifications an update produces, which
+ * calls they expand into, when those calls run, and how much work may accumulate
+ * before it is compacted.
  *
  * <p>
  * The local driver calls {@link #update} as it applies each update, and
@@ -37,17 +38,18 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
  * state snapshot. See the user's guide for the guarantees each mode provides.
  *
  * <p>
- * The driver's monitor guards this object, because accepting a trigger has to
- * happen atomically with the state change that produced it: that keeps hook
- * work in update order, and ensures a batch's state snapshot is never older than
- * the notifications it delivers. The driver holds its monitor when calling
- * {@link #update} and {@link #register}; everything else takes the monitor itself.
+ * The driver's monitor guards this object, because accepting a notification has
+ * to happen atomically with the state change that produced it: that keeps hook
+ * work in update order, and ensures a batch never runs a hook against a state
+ * older than the change it is reporting. The driver holds its monitor when
+ * calling {@link #update} and {@link #register}; everything else takes the
+ * monitor itself.
  */
 final class HookRunner<R extends StateTreeNode> {
 	private final Bosk<R> bosk;
 	private final Object monitor;
 	private final List<HookRegistration<?>> hooks = new ArrayList<>();
-	private final Deque<HookTrigger<R>> hookQueue = new ArrayDeque<>();
+	private final Deque<HookNotification<R>> hookQueue = new ArrayDeque<>();
 	private final PendingHookSet overloadPending = new PendingHookSet();
 	private final OverloadController overloadController;
 	private final Semaphore drainPermit = new Semaphore(1);
@@ -73,7 +75,7 @@ final class HookRunner<R extends StateTreeNode> {
 		assert holdsLock(monitor);
 		HookRegistration<T> reg = new HookRegistration<>(name, scope, action, hooks.size());
 		hooks.add(reg);
-		accept(new HookTrigger<>(
+		accept(new HookNotification<>(
 			null,
 			requireNonNull(bosk.currentRoot()),
 			bosk.rootRef,
@@ -100,7 +102,7 @@ final class HookRunner<R extends StateTreeNode> {
 		boolean anyMatch = hooks.subList(0, hookEnd).stream()
 			.anyMatch(hook -> hook.matchesTarget(target));
 		if (anyMatch) {
-			accept(new HookTrigger<>(
+			accept(new HookNotification<>(
 				priorRoot,
 				rootForHook,
 				target,
@@ -167,7 +169,7 @@ final class HookRunner<R extends StateTreeNode> {
 								}
 								case CATCH_UP -> runCatchUpBatch(buildBatch());
 								case STANDARD, PROBATION -> {
-									HookTrigger<R> work;
+									HookNotification<R> work;
 									synchronized (monitor) {
 										// A concurrent overflow may have switched modes
 										// since the switch read the mode; leave this work
@@ -178,15 +180,15 @@ final class HookRunner<R extends StateTreeNode> {
 										}
 										work = hookQueue.pollFirst();
 										if (work != null) {
-											overloadController.recordDequeuedTrigger();
+											overloadController.recordDequeuedNotification();
 										}
 									}
 									if (work == null) {
 										LOGGER.debug("Hook queue is empty");
 										break drain;
 									}
-									execute(work);
-									overloadController.recordCompletedTrigger();
+									expandAndExecute(work);
+									overloadController.recordCompletedNotification();
 								}
 							}
 						} catch (InterruptedException e) {
@@ -237,35 +239,35 @@ final class HookRunner<R extends StateTreeNode> {
 	}
 
 	/**
-	 * Adds a trigger, either to the queue for standard-style delivery or expanded
+	 * Adds a notification, either to the queue to be expanded later or expanded
 	 * into {@link #overloadPending} immediately.
 	 *
 	 * <p>
-	 * Expanding here rather than at delivery time is what keeps compacted work
-	 * from waiting in a queue: the notifications are already recorded, and they
-	 * can be delivered whenever a batch next runs. It is also what makes
-	 * {@link #hookQueue} bounded, because a compacting mode never adds to it.
+	 * Expanding here rather than when the batch runs is what keeps compacted work
+	 * from waiting in a queue: the calls are already recorded, and they can be run
+	 * by whichever batch comes next. It is also what makes {@link #hookQueue}
+	 * bounded, because a compacting mode never adds to it.
 	 *
 	 * <p>
 	 * Doing the expansion under the monitor, where the update's state change
-	 * also happens, keeps the notifications in update order. The first
-	 * notification for a reference records whether it existed beforehand, and
-	 * that must come from the earliest update that touched it. Expanding runs no
-	 * user code: it walks the two snapshots and records notifications.
+	 * also happens, keeps the calls in update order. The first call for a
+	 * reference records whether it existed beforehand, and that must come from
+	 * the earliest update that touched it. Expanding runs no user code: it
+	 * compares the two snapshots and records calls.
 	 */
-	private void accept(HookTrigger<R> trigger) {
+	private void accept(HookNotification<R> notification) {
 		assert holdsLock(monitor);
 		if (overloadController.mode().isCompacting()) {
-			compact(trigger, overloadPending);
+			compact(notification, overloadPending);
 		} else {
-			hookQueue.addLast(trigger);
-			overloadController.recordQueuedTrigger();
+			hookQueue.addLast(notification);
+			overloadController.recordQueuedNotification();
 		}
 	}
 
 	/**
 	 * Reports to the controller when the drain has nothing left to do, so that it
-	 * can decide whether to try standard delivery again.
+	 * can decide whether to try standard mode again.
 	 *
 	 * <p>
 	 * Reporting here, rather than when a particular update arrives, means the mode
@@ -280,31 +282,31 @@ final class HookRunner<R extends StateTreeNode> {
 		}
 	}
 
-	private void execute(HookTrigger<R> trigger) throws InterruptedException {
-		for (int i = trigger.hookStart(); i < trigger.hookEnd(); i++) {
-			executeHook(hookAt(i), trigger);
+	private void expandAndExecute(HookNotification<R> notification) throws InterruptedException {
+		for (int i = notification.hookStart(); i < notification.hookEnd(); i++) {
+			executeHook(hookAt(i), notification);
 		}
 	}
 
-	private <S> void executeHook(HookRegistration<S> reg, HookTrigger<R> trigger) throws InterruptedException {
-		reg.triggerAction(trigger.priorRoot(), trigger.rootForHook(), trigger.target(), (changedRef, _, _) -> {
-			LOGGER.debug("Hook: trigger {}({}) due to {}", reg.name(), changedRef, trigger.target());
-			run(reg.name(), reg.hook(), changedRef, trigger.rootForHook(), trigger.diagnosticAttributes());
+	private <S> void executeHook(HookRegistration<S> reg, HookNotification<R> notification) throws InterruptedException {
+		reg.triggerAction(notification.priorRoot(), notification.rootForHook(), notification.target(), (changedRef, _, _) -> {
+			LOGGER.debug("Hook: trigger {}({}) due to {}", reg.name(), changedRef, notification.target());
+			run(reg.name(), reg.hook(), changedRef, notification.rootForHook(), notification.diagnosticAttributes());
 		});
 	}
 
 	/**
-	 * Records the trigger's pending notifications into the given set, without
-	 * running any hooks.
+	 * Records the notification's calls into the given set, without running any
+	 * hooks.
 	 */
-	private void compact(HookTrigger<R> trigger, PendingHookSet into) {
-		for (int i = trigger.hookStart(); i < trigger.hookEnd(); i++) {
-			compactHook(hookAt(i), trigger, into);
+	private void compact(HookNotification<R> notification, PendingHookSet into) {
+		for (int i = notification.hookStart(); i < notification.hookEnd(); i++) {
+			compactHook(hookAt(i), notification, into);
 		}
 	}
 
-	private <S> void compactHook(HookRegistration<S> reg, HookTrigger<R> trigger, PendingHookSet into) {
-		reg.triggerAction(trigger.priorRoot(), trigger.rootForHook(), trigger.target(),
+	private <S> void compactHook(HookRegistration<S> reg, HookNotification<R> notification, PendingHookSet into) {
+		reg.triggerAction(notification.priorRoot(), notification.rootForHook(), notification.target(),
 			(changedRef, existedBefore, existsAfter) -> into.add(reg.index(), changedRef.path(), existedBefore, existsAfter));
 	}
 
@@ -316,16 +318,16 @@ final class HookRunner<R extends StateTreeNode> {
 		}
 	}
 
-	private List<HookTrigger<R>> drainQueuedTriggers() {
+	private List<HookNotification<R>> drainQueuedNotifications() {
 		assert holdsLock(monitor);
-		List<HookTrigger<R>> result = new ArrayList<>(hookQueue);
+		List<HookNotification<R>> result = new ArrayList<>(hookQueue);
 		hookQueue.clear();
-		overloadController.clearQueuedTriggers();
+		overloadController.clearQueuedNotifications();
 		return result;
 	}
 
 	/**
-	 * One batch: the pending notifications to run, and the state they run against.
+	 * One batch: the pending calls to run, and the state they run against.
 	 */
 	private record CompactedBatch<RR>(Map<Path, PendingHooks> pending, RR snapshot) {}
 
@@ -335,22 +337,22 @@ final class HookRunner<R extends StateTreeNode> {
 	 *
 	 * <p>
 	 * The queue only holds work from before the driver entered overload mode,
-	 * because compacting modes expand triggers as they arrive rather than
+	 * because compacting modes expand notifications as they arrive rather than
 	 * queueing them. That work is flushed into its own generation, ahead of any
 	 * compacted work, because it is older and its baselines are the earlier ones.
 	 */
 	private CompactedBatch<R> buildBatch() throws InterruptedException {
-		List<HookTrigger<R>> queued;
+		List<HookNotification<R>> queued;
 		R queueSnapshot;
 		synchronized (monitor) {
-			queued = drainQueuedTriggers();
+			queued = drainQueuedNotifications();
 			queueSnapshot = bosk.currentRoot();
 		}
 		if (!queued.isEmpty()) {
-			LOGGER.debug("Flushing {} queued triggers into a batch", queued.size());
+			LOGGER.debug("Flushing {} queued notifications into a batch", queued.size());
 			PendingHookSet flushed = new PendingHookSet();
-			for (HookTrigger<R> trigger : queued) {
-				compact(trigger, flushed);
+			for (HookNotification<R> notification : queued) {
+				compact(notification, flushed);
 			}
 			Map<Path, PendingHooks> pending = flushed.detach();
 			if (!pending.isEmpty()) {
@@ -384,13 +386,13 @@ final class HookRunner<R extends StateTreeNode> {
 	}
 
 	/**
-	 * Runs the notifications in the batch against its snapshot. Each notification is
-	 * removed from the batch as it starts, so a failure leaves only the work that did
-	 * not run.
+	 * Runs the pending calls in the batch against its snapshot. Each call is
+	 * removed from the batch as it starts, so a failure leaves only the work that
+	 * did not run.
 	 *
 	 * <p>
-	 * A {@link RuntimeException} puts those unrun notifications back into the backlog,
-	 * so a later drain can run them. An interrupt or an {@link Error} discards them:
+	 * A {@link RuntimeException} puts those unrun calls back into the backlog, so a
+	 * later drain can run them. An interrupt or an {@link Error} discards them:
 	 * an interrupt abandons all hook work, and bosk does not try to continue after an
 	 * error.
 	 */
@@ -412,11 +414,11 @@ final class HookRunner<R extends StateTreeNode> {
 				}
 			}
 		} catch (RuntimeException e) {
-			LOGGER.debug("Hook batch failed; requeueing the notifications that did not run", e);
+			LOGGER.debug("Hook batch failed; returning the unrun calls to the backlog", e);
 			overloadPending.mergeEarlier(batch.pending());
 			throw e;
 		} catch (Error e) {
-			LOGGER.warn("Hook batch aborted by an error; discarding the notifications that did not run", e);
+			LOGGER.warn("Hook batch aborted by an error; discarding the calls that did not run", e);
 			throw e;
 		}
 	}
@@ -427,7 +429,7 @@ final class HookRunner<R extends StateTreeNode> {
 		if (!existedAtBaseline && refValueIfExists(changedRef, snapshot) == null) {
 			return;
 		}
-		// Compacted notifications have no single originating update, so they do not carry diagnostic attributes.
+		// Compacted calls have no single originating update, so they do not carry diagnostic attributes.
 		run(reg.name(), reg.hook(), changedRef, snapshot, MapValue.empty());
 	}
 
@@ -617,7 +619,7 @@ final class HookRunner<R extends StateTreeNode> {
 	 * @param <X> the checked exception the action can throw. The traversal
 	 *            propagates it, so each caller has to handle only what its own
 	 *            action can throw: an action that runs hooks can be interrupted,
-	 *            while one that merely records notifications cannot.
+	 *            while one that merely records calls cannot.
 	 */
 	@FunctionalInterface
 	interface HookAction<S, X extends Exception> {

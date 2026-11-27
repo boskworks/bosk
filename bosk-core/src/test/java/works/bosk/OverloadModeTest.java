@@ -227,7 +227,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 		updater.start();
 		blocking.awaitStarted();
 
-		// The drain is blocked, so registration triggers remain queued.
+		// The drain is blocked, so registration notifications remain queued.
 		thresholdBosk.hookRegistrar().registerHook("extra1", thresholdRefs.anyChildString(), ref -> {});
 		assertEquals(STANDARD, thresholdBosk.hookMode(), "One queued registration is below the threshold");
 		thresholdBosk.hookRegistrar().registerHook("extra2", thresholdRefs.anyChildString(), ref -> {});
@@ -239,7 +239,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 	}
 
 	@Test
-	void oneUpdateMatchingSeveralHooksQueuesOneTrigger() throws InterruptedException, InvalidTypeException {
+	void oneUpdateMatchingSeveralHooksQueuesOneNotification() throws InterruptedException, InvalidTypeException {
 		Bosk<TestRoot> multiHookBosk = new Bosk<>(
 			"overload-multi-hook-test",
 			TestRoot.class,
@@ -249,16 +249,16 @@ public class OverloadModeTest extends AbstractBoskTest {
 		Reference<String> stringRef = multiHookRefs.childString(Identifier.from("child1"));
 		multiHookBosk.hookRegistrar().registerHook("specific", stringRef, ref -> {});
 		multiHookBosk.hookRegistrar().registerHook("parameterized", multiHookRefs.anyChildString(), ref -> {});
-		assertEquals(STANDARD, multiHookBosk.hookMode(), "The registration triggers should have drained");
+		assertEquals(STANDARD, multiHookBosk.hookMode(), "The registration notifications should have drained");
 
 		multiHookBosk.driver().submitReplacement(stringRef, "v1");
 
 		assertEquals(STANDARD, multiHookBosk.hookMode(),
-			"One update should queue one trigger, however many hooks it matches");
+			"One update should queue one notification, however many hooks it matches");
 	}
 
 	@Test
-	void thresholdOfTwoAllowsOneQueuedTriggerBeforeOverload() throws InterruptedException, InvalidTypeException {
+	void thresholdOfTwoAllowsOneQueuedNotificationBeforeOverload() throws InterruptedException, InvalidTypeException {
 		Bosk<TestRoot> thresholdBosk = new Bosk<>(
 			"overload-queue-threshold-test",
 			TestRoot.class,
@@ -277,10 +277,10 @@ public class OverloadModeTest extends AbstractBoskTest {
 		assertEquals(STANDARD, thresholdBosk.hookMode(), "The first execution should run in standard mode");
 
 		thresholdBosk.driver().submitReplacement(stringRef, "v2");
-		assertEquals(STANDARD, thresholdBosk.hookMode(), "One queued trigger should be allowed");
+		assertEquals(STANDARD, thresholdBosk.hookMode(), "One queued notification should be allowed");
 
 		thresholdBosk.driver().submitReplacement(stringRef, "v3");
-		assertEquals(OVERLOAD, thresholdBosk.hookMode(), "The second queued trigger should reach the threshold");
+		assertEquals(OVERLOAD, thresholdBosk.hookMode(), "The second queued notification should reach the threshold");
 
 		hook.unblock();
 		updater.join(10_000);
@@ -306,7 +306,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 		Thread updater = new Thread(() -> alwaysOverloadBosk.driver().submitReplacement(stringRef, "v1"));
 		updater.start();
 		hook.awaitStarted();
-		assertEquals(OVERLOAD, alwaysOverloadBosk.hookMode(), "A threshold of " + threshold + " should not queue work for standard delivery");
+		assertEquals(OVERLOAD, alwaysOverloadBosk.hookMode(), "A threshold of " + threshold + " should not queue work for standard mode");
 
 		alwaysOverloadBosk.driver().submitReplacement(stringRef, "v2");
 		alwaysOverloadBosk.driver().submitReplacement(stringRef, "v3");
@@ -320,7 +320,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 	}
 
 	@Test
-	void parameterizedScopeIsRebuiltFromTriggerPath() throws InterruptedException {
+	void parameterizedScopeIsRebuiltFromNotificationPath() throws InterruptedException {
 		Identifier childID = Identifier.from("newChild");
 		List<String> seen = new CopyOnWriteArrayList<>();
 		bosk.hookRegistrar().registerHook("anyChildString", refs.anyChildString(), ref ->
@@ -366,13 +366,13 @@ public class OverloadModeTest extends AbstractBoskTest {
 		assertEquals(PROBATION, probationBosk.hookMode(), "A drained backlog should leave the driver on probation");
 
 		probationBosk.driver().submitReplacement(stringRef, "v6");
-		assertEquals(PROBATION, probationBosk.hookMode(), "A probation should deliver updates one at a time");
+		assertEquals(PROBATION, probationBosk.hookMode(), "A probation should process updates one at a time");
 		probationBosk.driver().submitReplacement(stringRef, "v7");
 		probationBosk.driver().submitReplacement(stringRef, "v8");
 
 		assertEquals(STANDARD, probationBosk.hookMode(), "A completed probation should enter standard mode");
 		assertEquals(List.of("v1", "v5", "v5", "v6", "v7", "v8"), hook.seen,
-			"The probation should deliver each remaining update separately");
+			"The probation should run each remaining update's hooks separately");
 	}
 
 	@Test
@@ -396,7 +396,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 		Thread updater = new Thread(() -> probationBosk.driver().submitReplacement(stringRef, "v8"));
 		updater.start();
 		hook.awaitStarted();
-		assertEquals(PROBATION, probationBosk.hookMode(), "A probation should deliver updates one at a time");
+		assertEquals(PROBATION, probationBosk.hookMode(), "A probation should process updates one at a time");
 
 		probationBosk.driver().submitReplacement(stringRef, "v9");
 		probationBosk.driver().submitReplacement(stringRef, "v10");
@@ -437,7 +437,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 
 		assertEquals(STANDARD, catchUpBosk.hookMode(), "A completed catch-up should enter standard mode");
 		assertEquals(List.of("v1", "v11", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v20"), hook.seen,
-			"The probation should deliver each update, and the catch-up should compact its batch");
+			"The probation should run each update's hooks separately, and the catch-up should compact its batch");
 	}
 
 	@Test
