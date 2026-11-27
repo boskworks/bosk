@@ -23,7 +23,6 @@ import works.bosk.testing.drivers.state.TestEntity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static works.bosk.drivers.mongo.internal.TestParameters.ParameterSet;
-import static works.bosk.drivers.mongo.internal.TestParameters.SHORT_TIMESCALE;
 import static works.bosk.testing.BoskTestUtils.boskName;
 
 /**
@@ -41,13 +40,21 @@ import static works.bosk.testing.BoskTestUtils.boskName;
 @InjectFields
 class WithTransactionRetryTest extends AbstractMongoDriverTest {
 
+	/**
+	 * Long enough that a transaction's budget outlives the client's measured
+	 * round trip time, and that the update after the exhausted conflict budget
+	 * has room to flush under a loaded test suite. Short enough that the budget
+	 * is exhausted quickly.
+	 */
+	private static final int TIMESCALE_MS = 1_000;
+
 	@InjectorMethod
 	static Stream<ParameterSet> parameterSets() {
 		return Stream.of(new ParameterSet(
 			"WithTransactionRetryTest",
 			MongoDriverSettings.builder()
 				.preferredDatabaseFormat(PandoFormat.withGraftPoints("/catalog"))
-				.timescaleMS(SHORT_TIMESCALE)
+				.timescaleMS(TIMESCALE_MS)
 				.database("WithTransactionRetryTest")));
 	}
 
@@ -78,7 +85,7 @@ class WithTransactionRetryTest extends AbstractMongoDriverTest {
 		failWrites.set(true);
 		RetryableUpdateException e = assertThrows(RetryableUpdateException.class,
 			() -> bosk.driver().submitReplacement(entry, firstValue));
-		assertEquals(Duration.ofMillis(SHORT_TIMESCALE), e.retryAfter());
+		assertEquals(Duration.ofMillis(TIMESCALE_MS), e.retryAfter());
 
 		// The driver must still be usable: the next update succeeds
 		// now that the injected conflict is gone.
