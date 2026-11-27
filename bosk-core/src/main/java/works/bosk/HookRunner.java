@@ -13,6 +13,7 @@ import java.util.concurrent.Semaphore;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import works.bosk.internal.ConcurrentAppendOnlyList;
 
 import static java.lang.Thread.holdsLock;
 import static java.util.Objects.requireNonNull;
@@ -48,7 +49,7 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 final class HookRunner<R extends StateTreeNode> {
 	private final Bosk<R> bosk;
 	private final Object monitor;
-	private final List<HookRegistration<?>> hooks = new ArrayList<>();
+	private final ConcurrentAppendOnlyList<HookRegistration<?>> hooks = new ConcurrentAppendOnlyList<>();
 	private final Deque<HookNotification<R>> hookQueue = new ArrayDeque<>();
 	private final HookBacklog backlog = new HookBacklog();
 	private final OverloadController overloadController;
@@ -311,11 +312,9 @@ final class HookRunner<R extends StateTreeNode> {
 	}
 
 	private HookRegistration<?> hookAt(int index) {
-		synchronized (monitor) {
-			HookRegistration<?> registration = hooks.get(index);
-			assert registration.index() == index;
-			return registration;
-		}
+		HookRegistration<?> registration = hooks.get(index);
+		assert registration.index() == index;
+		return registration;
 	}
 
 	private List<HookNotification<R>> drainQueuedNotifications() {
