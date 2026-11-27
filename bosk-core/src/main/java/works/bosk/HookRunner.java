@@ -60,7 +60,8 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
  * then the controller's monitor to decide a mode transition; the drainer holds
  * {@link #drainPermit} for the whole drain, then either of the last two. The
  * permit is never held with the driver's monitor, and the drainer never takes
- * the driver's monitor at all.
+ * the driver's monitor at all. See {@code bosk-core/DEVELOPERS.md} for why each
+ * one exists and what would let us remove it.
  */
 final class HookRunner<R extends StateTreeNode> {
 	private final Bosk<R> bosk;
@@ -316,13 +317,53 @@ final class HookRunner<R extends StateTreeNode> {
 	 */
 	private void accept(HookNotification<R> notification) {
 		assert holdsLocalDriverMonitor.getAsBoolean();
+		if (overloadController.mode().isCompacting()) {
+			acceptCompacted(notification);
+			return;
+		}
+		synchronized (hookWorkMonitor) {
+			if (!overloadController.mode().isCompacting()) {
+				hookQueue.addLast(notification);
+				overloadController.recordQueuedNotification();
+				return;
+			}
+		}
+		// The drainer moved to catch-up while we waited for the lock. Route the
+		// notification again so the mode is read under the monitor, which is what
+		// makes the check and the recording atomic.
+		acceptCompacted(notification);
+	}
+
+	/**
+	 * Compacts the notification's calls into the backlog.
+	 *
+	 * <p>
+	 * Comparing the two snapshots runs outside {@link #hookWorkMonitor}, so that
+	 * lock is held only to record what the comparison found: one map and set
+	 * write per call, proportional to the size of the update rather than to the
+	 * number of updates. That is what stops a drainer from being starved.
+	 * <p>
+	 * The same lock also guards the decision of whether there is any hook work
+	 * left, so that a notification arriving concurrently cannot slip past a drain
+	 * that is finishing.
+	 * <p>
+	 * That decision makes the mode checks asymmetric. Only a compacting mode runs
+	 * the backlog, so a notification recorded here after the drainer has reported
+	 * caught up and left overload mode would never run: the mode is read again
+	 * under the lock, and the notification is queued instead if it has moved on.
+	 * Work that goes the other way (queued just as another update enters overload
+	 * mode) is harmless, because a batch flushes the queue ahead of the backlog.
+	 */
+	private void acceptCompacted(HookNotification<R> notification) {
+		List<PendingCall> calls = expand(notification);
 		synchronized (hookWorkMonitor) {
 			if (overloadController.mode().isCompacting()) {
-				// Both branches record under hookWorkMonitor, the same lock
-				// reportCaughtUp holds while deciding that no work remains, so
-				// the mode check and the recording are atomic with that decision.
-				compact(notification, backlog);
+				for (PendingCall call : calls) {
+					backlog.add(call.hookIndex(), call.path(),
+						call.existedBefore(), call.existsAfter());
+				}
 			} else {
+				LOGGER.debug("Mode is no longer compacting; queueing the notification instead");
 				hookQueue.addLast(notification);
 				overloadController.recordQueuedNotification();
 			}
@@ -360,17 +401,21 @@ final class HookRunner<R extends StateTreeNode> {
 	}
 
 	/**
-	 * Compacts the notification into the given backlog.
+	 * Expands the notification into a new list of calls, without running any
+	 * hooks.
 	 */
-	private void compact(HookNotification<R> notification, HookBacklog into) {
+	private List<PendingCall> expand(HookNotification<R> notification) {
+		List<PendingCall> calls = new ArrayList<>();
 		for (int i = notification.hookStart(); i < notification.hookEnd(); i++) {
-			compactHook(hookAt(i), notification, into);
+			expandHook(hookAt(i), notification, calls);
 		}
+		return calls;
 	}
 
-	private <S> void compactHook(HookRegistration<S> reg, HookNotification<R> notification, HookBacklog into) {
+	private <S> void expandHook(HookRegistration<S> reg, HookNotification<R> notification, List<PendingCall> calls) {
 		reg.triggerAction(notification.priorRoot(), notification.rootForHook(), notification.target(),
-			(changedRef, existedBefore, existsAfter) -> into.add(reg.index(), changedRef.path(), existedBefore, existsAfter));
+			(changedRef, existedBefore, existsAfter) -> calls.add(
+				new PendingCall(reg.index(), changedRef.path(), existedBefore, existsAfter)));
 	}
 
 	private HookRegistration<?> hookAt(int index) {
@@ -383,8 +428,8 @@ final class HookRunner<R extends StateTreeNode> {
 	 * Copies every queued notification in one step, and zeroes the count that
 	 * drives the overload threshold, because that count describes the queue that
 	 * was just emptied. Both happen under {@link #hookWorkMonitor}, so a producer
-	 * either adds to the queue being copied or to the empty one that replaces it,
-	 * never to a half-drained one.
+	 * either adds before the copy, and is copied, or after it, and waits for the
+	 * next drain. It never adds to a queue that is halfway drained.
 	 */
 	private List<HookNotification<R>> drainQueuedNotifications() {
 		synchronized (hookWorkMonitor) {
@@ -393,6 +438,12 @@ final class HookRunner<R extends StateTreeNode> {
 			overloadController.clearQueuedNotifications();
 			return result;
 		}
+	}
+
+	/**
+	 * One pending call, before it is merged into a {@link HookBacklog}.
+	 */
+	private record PendingCall(int hookIndex, Path path, boolean existedBefore, boolean existsAfter) {
 	}
 
 	/**
@@ -416,7 +467,10 @@ final class HookRunner<R extends StateTreeNode> {
 			LOGGER.debug("Flushing {} queued notifications into a batch", queued.size());
 			HookBacklog flushed = new HookBacklog();
 			for (HookNotification<R> notification : queued) {
-				compact(notification, flushed);
+				for (PendingCall call : expand(notification)) {
+					flushed.add(call.hookIndex(), call.path(),
+						call.existedBefore(), call.existsAfter());
+				}
 			}
 			Map<Path, PendingHooks> pending = flushed.detach();
 			if (!pending.isEmpty()) {
