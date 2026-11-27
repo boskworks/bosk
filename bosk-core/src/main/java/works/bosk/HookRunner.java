@@ -20,7 +20,7 @@ import static works.bosk.OverloadController.Mode.CATCH_UP;
 import static works.bosk.OverloadController.Mode.OVERLOAD;
 import static works.bosk.OverloadController.Mode.PROBATION;
 import static works.bosk.OverloadController.Mode.STANDARD;
-import static works.bosk.PendingHookSet.PendingHooks;
+import static works.bosk.HookBacklog.PendingHooks;
 import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
 
 /**
@@ -33,7 +33,7 @@ import static works.bosk.logging.MappedDiagnosticContext.setupMDC;
  * {@link #drainIfAllowed} afterwards to run the resulting calls. Hook work
  * accumulates in {@link #hookQueue}, which bounds how many state snapshots it
  * holds. If it reaches {@link BoskConfig#hookOverloadThreshold}, the driver enters
- * overload mode and each update is instead compacted into {@link #overloadPending}:
+ * overload mode and each update is instead compacted into {@link #backlog}:
  * at most one pending call per hook registration and reference, run against a later
  * state snapshot. See the user's guide for the guarantees each mode provides.
  *
@@ -50,7 +50,7 @@ final class HookRunner<R extends StateTreeNode> {
 	private final Object monitor;
 	private final List<HookRegistration<?>> hooks = new ArrayList<>();
 	private final Deque<HookNotification<R>> hookQueue = new ArrayDeque<>();
-	private final PendingHookSet overloadPending = new PendingHookSet();
+	private final HookBacklog backlog = new HookBacklog();
 	private final OverloadController overloadController;
 	private final Semaphore drainPermit = new Semaphore(1);
 	private final Thread.Builder hookThreadBuilder = Thread
@@ -240,7 +240,7 @@ final class HookRunner<R extends StateTreeNode> {
 
 	/**
 	 * Adds a notification, either to the queue to be expanded later or expanded
-	 * into {@link #overloadPending} immediately.
+	 * into {@link #backlog} immediately.
 	 *
 	 * <p>
 	 * Expanding here rather than when the batch runs is what keeps compacted work
@@ -258,7 +258,7 @@ final class HookRunner<R extends StateTreeNode> {
 	private void accept(HookNotification<R> notification) {
 		assert holdsLock(monitor);
 		if (overloadController.mode().isCompacting()) {
-			compact(notification, overloadPending);
+			compact(notification, backlog);
 		} else {
 			hookQueue.addLast(notification);
 			overloadController.recordQueuedNotification();
@@ -276,7 +276,7 @@ final class HookRunner<R extends StateTreeNode> {
 	 */
 	private void reportCaughtUp() {
 		synchronized (monitor) {
-			if (hookQueue.isEmpty() && overloadPending.isEmpty()) {
+			if (hookQueue.isEmpty() && backlog.isEmpty()) {
 				overloadController.hookWorkDrained();
 			}
 		}
@@ -299,13 +299,13 @@ final class HookRunner<R extends StateTreeNode> {
 	 * Records the notification's calls into the given set, without running any
 	 * hooks.
 	 */
-	private void compact(HookNotification<R> notification, PendingHookSet into) {
+	private void compact(HookNotification<R> notification, HookBacklog into) {
 		for (int i = notification.hookStart(); i < notification.hookEnd(); i++) {
 			compactHook(hookAt(i), notification, into);
 		}
 	}
 
-	private <S> void compactHook(HookRegistration<S> reg, HookNotification<R> notification, PendingHookSet into) {
+	private <S> void compactHook(HookRegistration<S> reg, HookNotification<R> notification, HookBacklog into) {
 		reg.triggerAction(notification.priorRoot(), notification.rootForHook(), notification.target(),
 			(changedRef, existedBefore, existsAfter) -> into.add(reg.index(), changedRef.path(), existedBefore, existsAfter));
 	}
@@ -333,7 +333,7 @@ final class HookRunner<R extends StateTreeNode> {
 
 	/**
 	 * Builds the next batch: the queue's leftovers, if there are any, otherwise the
-	 * compacted backlog.
+	 * backlog.
 	 *
 	 * <p>
 	 * The queue only holds work from before the driver entered overload mode,
@@ -350,7 +350,7 @@ final class HookRunner<R extends StateTreeNode> {
 		}
 		if (!queued.isEmpty()) {
 			LOGGER.debug("Flushing {} queued notifications into a batch", queued.size());
-			PendingHookSet flushed = new PendingHookSet();
+			HookBacklog flushed = new HookBacklog();
 			for (HookNotification<R> notification : queued) {
 				compact(notification, flushed);
 			}
@@ -361,7 +361,7 @@ final class HookRunner<R extends StateTreeNode> {
 			// Everything in the queue cancelled itself; fall through to the backlog.
 		}
 		synchronized (monitor) {
-			return new CompactedBatch<>(overloadPending.detach(), bosk.currentRoot());
+			return new CompactedBatch<>(backlog.detach(), bosk.currentRoot());
 		}
 	}
 
@@ -371,7 +371,7 @@ final class HookRunner<R extends StateTreeNode> {
 	private void runCatchUpBatch(CompactedBatch<R> batch) throws InterruptedException {
 		if (batch.pending().isEmpty()) {
 			synchronized (monitor) {
-				if (!overloadPending.isEmpty() || !hookQueue.isEmpty()) {
+				if (!backlog.isEmpty() || !hookQueue.isEmpty()) {
 					// Work arrived while this batch was being prepared; it will
 					// be run by the next catch-up batch.
 					return;
@@ -415,7 +415,7 @@ final class HookRunner<R extends StateTreeNode> {
 			}
 		} catch (RuntimeException e) {
 			LOGGER.debug("Hook batch failed; returning the unrun calls to the backlog", e);
-			overloadPending.mergeEarlier(batch.pending());
+			backlog.mergeEarlier(batch.pending());
 			throw e;
 		} catch (Error e) {
 			LOGGER.warn("Hook batch aborted by an error; discarding the calls that did not run", e);
@@ -436,14 +436,14 @@ final class HookRunner<R extends StateTreeNode> {
 	private void clearHookWork() {
 		synchronized (monitor) {
 			hookQueue.clear();
-			overloadPending.clear();
+			backlog.clear();
 			overloadController.reset();
 		}
 	}
 
 	private boolean hasHookWork() {
 		synchronized (monitor) {
-			return !hookQueue.isEmpty() || !overloadPending.isEmpty();
+			return !hookQueue.isEmpty() || !backlog.isEmpty();
 		}
 	}
 

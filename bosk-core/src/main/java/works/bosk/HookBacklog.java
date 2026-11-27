@@ -5,7 +5,16 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Pending hook calls, with one entry per hook registration and reference.
+ * The backlog of compacted hook calls, with one entry per hook registration and
+ * reference.
+ *
+ * <p>
+ * This is where a {@link HookNotification} ends up when it is compacted: in
+ * overload mode an update's changes are recorded here, one call per hook
+ * registration and reference, rather than the update queueing its notification.
+ * {@link HookRunner} decides which of the two structures receives an update's
+ * work, and runs whatever is still in the queue before this backlog, because
+ * that work is older.
  *
  * <p>
  * Each path keeps the set of hook registrations with a pending call, and the
@@ -23,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * Compacted calls do not carry diagnostic attributes because there is no single
  * originating update for them.
  */
-final class PendingHookSet {
+final class HookBacklog {
 	private Map<Path, PendingHooks> active = new LinkedHashMap<>();
 
 	/**

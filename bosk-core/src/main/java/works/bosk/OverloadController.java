@@ -20,11 +20,11 @@ import static works.bosk.OverloadController.Mode.STANDARD;
  *
  * <p>
  * Overload mode is left through a bounded standard-mode probation. The probation
- * starts when the compacted backlog has drained, and runs subsequent updates
- * one at a time. It succeeds if it spends its whole budget of notifications
- * without overflowing the queue. A successful probation enters
- * {@link Mode#CATCH_UP}, a transient mode that runs one final compacted
- * generation before the driver returns to standard mode.
+ * starts when the backlog has drained, and runs subsequent updates one at a
+ * time. It succeeds if it spends its whole budget of notifications without
+ * overflowing the queue. A successful probation enters {@link Mode#CATCH_UP}, a
+ * transient mode that runs one final compacted generation before the driver
+ * returns to standard mode.
  *
  * <p>
  * A standard-mode overflow soon after a successful probation means the probation

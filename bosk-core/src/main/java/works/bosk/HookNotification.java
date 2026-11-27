@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * Expanding the notification runs each hook in that range as it finds it, so it
  * can wait for a hook, and hence can be interrupted. Expanding it into
- * {@link PendingHookSet} merely records its calls.
+ * {@link HookBacklog} merely records its calls.
  */
 record HookNotification<RR>(
 	@Nullable RR priorRoot,

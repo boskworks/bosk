@@ -650,7 +650,7 @@ Compaction also bounds the memory:
 each queued notification holds state snapshots, so once the limit is reached, later updates add only their pending calls,
 which are bounded by the state tree rather than by the number of updates.
 
-Once the compacted backlog clears, the driver runs a bounded standard-mode _probation_
+Once the backlog clears, the driver runs a bounded standard-mode _probation_
 to check whether it has caught up.
 During the probation, hook work is queued and run as it would be in standard mode.
 If the probation spends its whole budget without reaching the limit again,

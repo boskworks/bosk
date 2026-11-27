@@ -362,7 +362,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 		updater.join(10_000);
 		assertFalse(updater.isAlive(), "The updating thread should finish");
 		assertEquals(List.of("v1", "v5", "v5"), hook.seen,
-			"The flushed queue and the compacted backlog should each report the latest state");
+			"The flushed queue and the backlog should each report the latest state");
 		assertEquals(PROBATION, probationBosk.hookMode(), "A drained backlog should leave the driver on probation");
 
 		probationBosk.driver().submitReplacement(stringRef, "v6");
@@ -488,7 +488,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 		updater.join(10_000);
 		assertFalse(updater.isAlive(), "The updating thread should finish");
 		assertEquals(List.of("v1", "v5", "v5"), hook.seen,
-			"The flushed queue and the compacted backlog should each report the latest state");
+			"The flushed queue and the backlog should each report the latest state");
 	}
 
 	/**
@@ -509,7 +509,7 @@ public class OverloadModeTest extends AbstractBoskTest {
 		updater.join(10_000);
 		assertFalse(updater.isAlive(), "The updating thread should finish");
 		assertEquals(List.of("v1", "v11", "v11"), hook.seen,
-			"The flushed queue and the compacted backlog are separate batches, each reporting the latest state");
+			"The flushed queue and the backlog are separate batches, each reporting the latest state");
 	}
 
 	private static final class CatchUpHook implements BoskHook<String> {
