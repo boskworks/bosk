@@ -286,7 +286,7 @@ abstract sealed class BoskBase<R extends StateTreeNode> permits Bosk {
 	 */
 	private final class LocalDriver implements BoskDriver {
 		final Bosk.DefaultStateFunction<R> initialStateFunction;
-		final HookRunner<R> hookRunner = new HookRunner<>((Bosk<R>) BoskBase.this, this, hookOverloadThreshold);
+		final HookRunner<R> hookRunner = new HookRunner<>((Bosk<R>) BoskBase.this, () -> holdsLock(this), hookOverloadThreshold);
 
 		public LocalDriver(Bosk.DefaultStateFunction<R> initialStateFunction) {
 			this.initialStateFunction = initialStateFunction;

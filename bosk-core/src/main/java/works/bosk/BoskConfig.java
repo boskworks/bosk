@@ -5,10 +5,10 @@ import static java.util.Objects.requireNonNull;
 /**
  * @param driverFactory         the factory used to build the driver stack
  * @param registrarFactory      the factory used to build the hook registrar
- * @param hookOverloadThreshold the number of queued hook triggers at which the driver starts
- *                              compacting. An update that matches any hook registration queues
- *                              one trigger, and registering a hook queues one too. Zero disables
- *                              standard-mode delivery: every update is compacted.
+ * @param hookOverloadThreshold the number of queued hook notifications at which the driver
+ *                              starts compacting. An update that matches any hook registration
+ *                              queues one notification, and registering a hook queues one too.
+ *                              Zero disables standard mode: every update is compacted.
  */
 public record BoskConfig<R extends StateTreeNode> (
 	DriverFactory<R> driverFactory,

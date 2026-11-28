@@ -6,16 +6,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The compacted backlog keeps one path entry and stores the interested hook
+ * The backlog keeps one path entry and stores the interested hook
  * registrations in an {@link IntSet}, so its size follows the number of pending
- * notifications rather than the number of hook registrations.
+ * calls rather than the number of hook registrations.
  *
  * <p>
  * Regressing that would be invisible to the tests that check which hooks run,
  * because the cost of a wide per-reference representation is paid in memory
  * alone. This test measures the memory instead.
  */
-class PendingHookSetMemoryTest {
+class HookBacklogMemoryTest {
 
 	@Test
 	void sizeDoesNotDependOnHowManyHooksAreRegistered() {
@@ -30,7 +30,7 @@ class PendingHookSetMemoryTest {
 	}
 
 	/**
-	 * Puts the same pending work into a fresh {@link PendingHookSet} whose hook
+	 * Puts the same pending work into a fresh {@link HookBacklog} whose hook
 	 * indices span {@code [0, registeredHooks)}, and reports how much memory that
 	 * allocated.
 	 *
@@ -53,7 +53,7 @@ class PendingHookSetMemoryTest {
 		// Warm up class loading and the JIT. The measured run builds a fresh map,
 		// so its table growth is included in both measurements.
 		AllocationMeter.measure(bean, () -> {
-			PendingHookSet warmup = new PendingHookSet();
+			HookBacklog warmup = new HookBacklog();
 			for (int p = 0; p < WARMUP_PATHS; p++) {
 				addEveryHook(warmup, paths[p], hookIndices);
 			}
@@ -61,17 +61,17 @@ class PendingHookSetMemoryTest {
 		});
 
 		return AllocationMeter.measure(bean, () -> {
-			PendingHookSet pending = new PendingHookSet();
+			HookBacklog backlog = new HookBacklog();
 			for (Path path : paths) {
-				addEveryHook(pending, path, hookIndices);
+				addEveryHook(backlog, path, hookIndices);
 			}
-			return pending;
+			return backlog;
 		});
 	}
 
-	private static void addEveryHook(PendingHookSet pending, Path path, int[] hookIndices) {
+	private static void addEveryHook(HookBacklog backlog, Path path, int[] hookIndices) {
 		for (int hookIndex : hookIndices) {
-			pending.add(hookIndex, path, true, true);
+			backlog.add(hookIndex, path, true, true);
 		}
 	}
 

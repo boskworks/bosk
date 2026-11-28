@@ -5,7 +5,16 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Pending hook calls, with one entry per hook registration and reference.
+ * The backlog of compacted hook calls, with one entry per hook registration and
+ * reference.
+ *
+ * <p>
+ * This is where a {@link HookNotification} ends up when it is compacted: in
+ * overload mode an update's changes are recorded here, one call per hook
+ * registration and reference, rather than the update queueing its notification.
+ * {@link HookRunner} decides which of the two structures receives an update's
+ * work, and runs whatever is still in the queue before this backlog, because
+ * that work is older.
  *
  * <p>
  * Each path keeps the set of hook registrations with a pending call, and the
@@ -15,20 +24,27 @@ import org.jspecify.annotations.Nullable;
  * runs, that registration is removed: the hook has nothing to do.
  *
  * <p>
- * Notifications accumulate in the <em>active</em> set until a batch detaches
- * them. The detached set is delivered outside this object's monitor, while the
- * next active set accepts notifications for changes that arrive during
- * delivery.
+ * Calls accumulate in the <em>active</em> set until a batch detaches them. The
+ * batch owns the detached set exclusively: this object does not touch it again
+ * until the batch either finishes or hands back the calls that did not run.
+ * Meanwhile the next active set accepts calls for changes that arrive while the
+ * batch runs.
  *
  * <p>
- * Compacted notifications do not carry diagnostic attributes because there is
- * no single originating update for them.
+ * This class does not synchronise. {@link HookRunner} guards a shared instance
+ * with the same lock that guards its queue, because the decision that no hook
+ * work remains has to be atomic across both. A freshly constructed instance
+ * that has not been shared needs no lock.
+ *
+ * <p>
+ * Compacted calls do not carry diagnostic attributes because there is no single
+ * originating update for them.
  */
-final class PendingHookSet {
+final class HookBacklog {
 	private Map<Path, PendingHooks> active = new LinkedHashMap<>();
 
 	/**
-	 * Adds a pending hook notification.
+	 * Adds a pending call.
 	 *
 	 * @param hookIndex     the registration's stable index, as reported by
 	 *                      {@link HookRunner.HookRegistration#index()}
@@ -37,8 +53,8 @@ final class PendingHookSet {
 	 *                      {@link Reference#exists()} would have reported
 	 * @param existsAfter   whether the reference exists after the change
 	 */
-	synchronized void add(int hookIndex, Path path, boolean existedBefore, boolean existsAfter) {
-		assert existedBefore || existsAfter : "A hook notification must describe an actual change";
+	void add(int hookIndex, Path path, boolean existedBefore, boolean existsAfter) {
+		assert existedBefore || existsAfter : "A call must describe an actual change";
 		PendingHooks hooks = active.get(path);
 		if (hooks == null) {
 			hooks = new PendingHooks();
@@ -60,19 +76,19 @@ final class PendingHookSet {
 		}
 	}
 
-	synchronized boolean isEmpty() {
+	boolean isEmpty() {
 		return active.isEmpty();
 	}
 
 	/**
-	 * Adds notifications that were observed earlier than the ones already in this
-	 * set, as when a batch is put back after delivery failed.
+	 * Adds calls that were observed earlier than the ones already in this set, as
+	 * when a batch fails partway and returns the calls it did not run.
 	 *
 	 * <p>
-	 * If this set already has a notification for the same pair, the earlier batch's
+	 * If this set already has a call for the same pair, the earlier batch's
 	 * baseline wins, because its observation came first.
 	 */
-	synchronized void mergeEarlier(Map<Path, PendingHooks> earlierBatch) {
+	void mergeEarlier(Map<Path, PendingHooks> earlierBatch) {
 		for (var entry : earlierBatch.entrySet()) {
 			PendingHooks earlier = entry.getValue();
 			if (earlier.toRun().isEmpty()) {
@@ -87,16 +103,16 @@ final class PendingHookSet {
 	}
 
 	/**
-	 * Detaches the active notifications for delivery and starts a fresh active
-	 * set. The returned map is no longer modified by this object.
+	 * Detaches the active calls to be run and starts a fresh active set. The
+	 * returned map is no longer modified by this object.
 	 */
-	synchronized Map<Path, PendingHooks> detach() {
+	Map<Path, PendingHooks> detach() {
 		Map<Path, PendingHooks> result = active;
 		active = new LinkedHashMap<>();
 		return result;
 	}
 
-	synchronized void clear() {
+	void clear() {
 		active = new LinkedHashMap<>();
 	}
 
@@ -105,7 +121,7 @@ final class PendingHookSet {
 		/**
 		 * The registrations whose reference did not exist at baseline, or
 		 * {@code null} if none were. This can include registrations that are no
-		 * longer pending; a later notification overwrites the entry.
+		 * longer pending; a later call overwrites the entry.
 		 *
 		 * <p>
 		 * Null stands for the empty set. That is not the usual style in this

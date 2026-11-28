@@ -33,7 +33,7 @@ public interface HookRegistrar {
 	 *
 	 * <p>
 	 * If hook work falls behind updates, Bosk may enter <em>overload mode</em> and
-	 * compact notifications. A hook may then be called once for several changes to the
+	 * compact that work. A hook may then be called once for several changes to the
 	 * same reference, may see a later state than the one immediately after the
 	 * triggering update, and may not be called at all for a reference that exists only
 	 * briefly.
